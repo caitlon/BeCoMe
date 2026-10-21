@@ -7,15 +7,23 @@ import {
   Calculator,
   BarChart3,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { PageShell } from "@/components/layout/PageShell";
 import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
+import {
+  assistantEnabled,
+  AssistantDocsNavLabelSlot,
+  AssistantDocsSectionSlot,
+} from "@/components/assistant";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
 
-const sectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
+const baseSectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
+// The assistant section is rendered by a lazy slot, so its id is tracked only in a build that has one.
+const sectionIds: readonly string[] = assistantEnabled ? [...baseSectionIds, "assistant"] : baseSectionIds;
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
@@ -33,6 +41,9 @@ const Documentation = () => {
     { id: "expert-opinions", label: t("expertOpinions.title"), icon: Users },
     { id: "results", label: t("results.title"), icon: Calculator },
     { id: "visualization", label: t("visualization.title"), icon: BarChart3 },
+    ...(assistantEnabled
+      ? [{ id: "assistant", label: <AssistantDocsNavLabelSlot />, icon: Sparkles }]
+      : []),
     { id: "glossary", label: t("glossary.title"), icon: FileText },
   ];
 
@@ -345,6 +356,8 @@ const Documentation = () => {
                   </CardContent>
                 </Card>
               </section>
+
+              <AssistantDocsSectionSlot />
 
               {/* Glossary */}
               <section id="glossary" className="mb-12">

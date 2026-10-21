@@ -23,6 +23,14 @@ vi.mock('@/components/assistant/AssistantPrivacyCard', () => ({
   },
 }));
 
+vi.mock('@/components/assistant/AssistantGuide', () => ({
+  AssistantDocsSection: () => {
+    if (triggers.throws) throw new Error('chunk failed');
+    return <p>docs section</p>;
+  },
+  AssistantDocsNavLabel: () => <>docs nav label</>,
+}));
+
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     triggers.throws = false;
@@ -170,14 +178,51 @@ describe('components/assistant build gate', () => {
     });
   });
 
+  describe('assistantEnabled', () => {
+    it.each([
+      { value: 'true', expected: true },
+      { value: '', expected: false },
+      { value: 'TRUE', expected: false },
+    ])('is $expected when VITE_ASSISTANT_ENABLED is "$value"', async ({ value, expected }) => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', value);
+
+      const { assistantEnabled } = await import('@/components/assistant');
+
+      expect(assistantEnabled).toBe(expected);
+    });
+  });
+
+  describe('AssistantDocsSectionSlot / AssistantDocsNavLabelSlot', () => {
+    it.each(['', 'TRUE'])('render nothing when VITE_ASSISTANT_ENABLED is "%s"', async (value) => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', value);
+
+      const { AssistantDocsSectionSlot, AssistantDocsNavLabelSlot } = await import('@/components/assistant');
+      const { container: section } = render(<AssistantDocsSectionSlot />);
+      const { container: label } = render(<AssistantDocsNavLabelSlot />);
+
+      expect(section).toBeEmptyDOMElement();
+      expect(label).toBeEmptyDOMElement();
+    });
+
+    it('mount the lazy section and label inside a Suspense boundary when enabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { AssistantDocsSectionSlot, AssistantDocsNavLabelSlot } = await import('@/components/assistant');
+      render(<AssistantDocsSectionSlot />);
+      expect(await screen.findByText('docs section')).toBeInTheDocument();
+
+      render(<AssistantDocsNavLabelSlot />);
+      expect(await screen.findByText('docs nav label')).toBeInTheDocument();
+    });
+  });
+
   describe('a slot whose chunk fails', () => {
     it('renders nothing and leaves the page around it alone', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       triggers.throws = true;
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot } = await import(
-        '@/components/assistant'
-      );
+      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot, AssistantDocsSectionSlot } =
+        await import('@/components/assistant');
 
       render(
         <>
@@ -185,6 +230,7 @@ describe('components/assistant build gate', () => {
           <AssistantHeaderSlot />
           <AssistantResultSlot projectId="p1" />
           <AssistantProfileSlot />
+          <AssistantDocsSectionSlot />
         </>
       );
       await act(async () => {

@@ -86,5 +86,35 @@
       "writing": "Píšu odpověď. Může to trvat až minutu.",
       "answering": "Odpovídám…"
     }
+  },
+  "guide": {
+    "docs": {
+      "title": "Asistent",
+      "intro": "Asistent odpovídá na otázky o metodě BeCoMe a o vašich projektech. Je to systém umělé inteligence, jazykový model, ne člověk, a jeho odpovědi mohou být chybné. Cokoli důležitého ověřte na stránce výsledku a v této dokumentaci.",
+      "where": {
+        "title": "Kde ho najdete",
+        "body": "Přihlaste se a v horní liště klikněte na <b>Asistent</b>. Na stránce výsledků projektu otevře tlačítko <b>Vysvětlit výsledek</b> asistenta rovnou s tímto projektem."
+      },
+      "answers": {
+        "title": "Na co odpoví",
+        "method": "Jak funguje metoda: fuzzy názory, nejlepší kompromis, maximální chyba.",
+        "project": "Váš projekt: jeho názory a výsledek. Vidí jen to, co v projektu vidíte vy.",
+        "app": "Jak aplikaci používat, například jak vytvořit projekt nebo pozvat experty. Obecné otázky můžete klást i bez projektu.",
+        "readOnly": "Asistent jen čte. Projekt, názor ani váš účet změnit nemůže."
+      },
+      "limits": {
+        "title": "Omezení",
+        "rate": "Za hodinu můžete poslat nejvýše 60 zpráv. Po dosažení limitu vám asistent řekne, kolik minut počkat.",
+        "time": "Odpověď může trvat až minutu.",
+        "storage": "Konverzace se do vašeho účtu neukládá. Zůstává jen v této záložce prohlížeče.",
+        "history": "V dlouhé konverzaci se starší zprávy s novými otázkami už neposílají, takže k nim asistent přestane přihlížet."
+      },
+      "data": {
+        "title": "Vaše údaje",
+        "sent": "Vaše otázka a údaje otevřeného projektu, včetně jmen, pozic a názorů ostatních členů, odcházejí k modelu AI v EU. Co přesně se posílá a jak dlouho se uchovává, popisují <privacy>Zásady ochrany osobních údajů</privacy>.",
+        "sensitive": "Do asistenta nepište citlivé údaje.",
+        "objection": "Pokud nechcete, aby asistent ukazoval vaše názory ostatním členům, zapněte v profilu <b>Skrýt moje názory před asistentem ostatních členů</b>."
+      }
+    }
   }
 }
