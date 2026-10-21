@@ -23,6 +23,15 @@ import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIConte
  */
 const enabled = import.meta.env.VITE_ASSISTANT_ENABLED === "true";
 
+/**
+ * The same answer as a plain boolean, for the few pages that must decide
+ * something about their own structure (a table-of-contents entry, a section id
+ * to track) before a lazy slot has rendered. It carries no copy: the strings
+ * stay in the slots' chunk.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a constant gated by the same build flag as the exports below
+export const assistantEnabled: boolean = enabled;
+
 // eslint-disable-next-line react-refresh/only-export-components -- null is the disabled-build state
 export const AssistantEntry: LazyExoticComponent<ComponentType> | null = enabled
   ? lazy(() => import("./AssistantRoot"))
@@ -95,6 +104,38 @@ export function AssistantProfileSlot() {
     <ErrorBoundary fallback={null}>
       <Suspense fallback={null}>
         <LazyProfileCard />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+const LazyDocsSection: LazyExoticComponent<ComponentType> | null = enabled
+  ? lazy(() => import("./AssistantGuide").then((m) => ({ default: m.AssistantDocsSection })))
+  : null;
+
+/** Same reasoning as AssistantHeaderSlot, for Documentation.tsx: the assistant section and its copy. */
+export function AssistantDocsSectionSlot() {
+  if (!LazyDocsSection) return null;
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <LazyDocsSection />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+const LazyDocsNavLabel: LazyExoticComponent<ComponentType> | null = enabled
+  ? lazy(() => import("./AssistantGuide").then((m) => ({ default: m.AssistantDocsNavLabel })))
+  : null;
+
+/** The label of the documentation page's table-of-contents entry, so that its text comes from the same lazy chunk. */
+export function AssistantDocsNavLabelSlot() {
+  if (!LazyDocsNavLabel) return null;
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <LazyDocsNavLabel />
       </Suspense>
     </ErrorBoundary>
   );

@@ -86,5 +86,35 @@
       "writing": "Writing the answer. This can take up to a minute.",
       "answering": "Answering…"
     }
+  },
+  "guide": {
+    "docs": {
+      "title": "Assistant",
+      "intro": "The assistant answers questions about the BeCoMe method and about your projects. It is an artificial intelligence system, a language model, not a person, and its answers can be wrong. Check anything important on the result page and in this documentation.",
+      "where": {
+        "title": "Where to find it",
+        "body": "Sign in and click <b>Assistant</b> in the top bar. On a project's result page, <b>Explain this result</b> opens the assistant with that project already selected."
+      },
+      "answers": {
+        "title": "What it can answer",
+        "method": "How the method works: fuzzy opinions, the best compromise, the maximum error.",
+        "project": "Your project: its opinions and its result. It sees only what you see as a member of the project.",
+        "app": "How to use the app, for example how to create a project or invite experts. General questions work without a project too.",
+        "readOnly": "It only reads. It cannot change a project, an opinion or your account."
+      },
+      "limits": {
+        "title": "Limits",
+        "rate": "You can send up to 60 messages an hour. When you reach the limit, the assistant tells you how many minutes to wait.",
+        "time": "An answer can take up to a minute.",
+        "storage": "The conversation is not saved to your account. It stays only in this browser tab.",
+        "history": "In a long conversation, older messages are no longer sent with new questions, so the assistant stops taking them into account."
+      },
+      "data": {
+        "title": "Your data",
+        "sent": "Your question and the data of the open project, including other members' names, positions and opinions, go to an AI model in the EU. The <privacy>Privacy notice</privacy> describes exactly what is sent and how long it is kept.",
+        "sensitive": "Do not type sensitive data into the assistant.",
+        "objection": "If you do not want the assistant to show your opinions to other members, turn on <b>Hide my opinions from other members' assistant</b> in your profile."
+      }
+    }
   }
 }
