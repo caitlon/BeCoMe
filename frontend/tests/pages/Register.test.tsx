@@ -114,8 +114,8 @@ describe('Register', () => {
   it('links the terms and the privacy notice under the submit button, with no consent checkbox', () => {
     render(<Register />);
 
-    const terms = screen.getByRole('link', { name: /^Terms/ });
-    const privacy = screen.getByRole('link', { name: /^Privacy notice/ });
+    const terms = screen.getByRole('link', { name: /^Terms ?, opens in new tab$/ });
+    const privacy = screen.getByRole('link', { name: /^Privacy notice ?, opens in new tab$/ });
 
     expect(terms).toHaveAttribute('href', '/terms');
     expect(privacy).toHaveAttribute('href', '/privacy');
