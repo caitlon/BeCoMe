@@ -128,7 +128,7 @@ carries the same two entries.
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
-**Contact**: Ekaterina Kuzmina, xkuze010@studenti.czu.cz, Czech University of Life Sciences Prague.
+**Contact**: Ekaterina Kuzmina, caiton@pm.me, Czech University of Life Sciences Prague.
 
 ## References
 
