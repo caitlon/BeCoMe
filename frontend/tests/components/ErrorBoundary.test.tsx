@@ -42,6 +42,25 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
   });
 
+  it('calls onError once when a child throws, and not when it does not', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onError = vi.fn();
+
+    render(
+      <ErrorBoundary fallback={null} onError={onError}>
+        <p>safe content</p>
+      </ErrorBoundary>
+    );
+    expect(onError).not.toHaveBeenCalled();
+
+    render(
+      <ErrorBoundary fallback={null} onError={onError}>
+        <Boom />
+      </ErrorBoundary>
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the fallback as a focusable main#main-content so the skip link has a target', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 

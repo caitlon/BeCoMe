@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Hoisted so the same spy survives vi.resetModules() and reaches the re-imported assistant module.
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
+vi.mock('@sentry/react', () => sentry);
+
 // The slots import ./triggers lazily; a stand-in with a real button makes
 // "the slot rendered its lazy child" observable instead of "did not throw".
 const triggers = vi.hoisted(() => ({ throws: false, guideLoads: 0, guideFails: false }));
@@ -23,12 +27,12 @@ vi.mock('@/components/assistant/AssistantPrivacyCard', () => ({
   },
 }));
 
-
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     triggers.throws = false;
     triggers.guideLoads = 0;
     triggers.guideFails = false;
+    sentry.captureException.mockClear();
     // A fresh module instance per test: every export below is computed once
     // from `enabled` at module scope, so re-reading any of them after
     // vi.stubEnv requires re-evaluating the module, exactly like
@@ -184,7 +188,7 @@ describe('components/assistant build gate', () => {
   });
 
   describe('useAssistantGuide', () => {
-    it.each(['', 'TRUE'])('returns null and never loads the guide when VITE_ASSISTANT_ENABLED is "%s"', async (value) => {
+    it.each(['', 'TRUE', undefined])('returns null and never loads the guide when VITE_ASSISTANT_ENABLED is "%s"', async (value) => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', value);
 
       const { useAssistantGuide } = await import('@/components/assistant');
@@ -221,22 +225,84 @@ describe('components/assistant build gate', () => {
       expect(triggers.guideLoads).toBe(1);
     });
 
-    it('stays null when the chunk fails to load', async () => {
+    it('stays null when the chunk fails to load, and reports it once', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       triggers.guideFails = true;
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const { useAssistantGuide } = await import('@/components/assistant');
-      const { result } = renderHook(() => useAssistantGuide());
+      const first = renderHook(() => useAssistantGuide());
+      const second = renderHook(() => useAssistantGuide());
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
-      expect(result.current).toBeNull();
+      expect(first.result.current).toBeNull();
+      expect(second.result.current).toBeNull();
+      expect(consoleError).toHaveBeenCalledTimes(1);
       expect(consoleError).toHaveBeenCalledWith('[ERROR] Assistant guide failed to load', {
         error: expect.any(String),
       });
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error));
       consoleError.mockRestore();
+    });
+
+    it('reports a failure that lands after the hook unmounted', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      triggers.guideFails = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const { unmount } = renderHook(() => useAssistantGuide());
+      unmount();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      consoleError.mockRestore();
+    });
+
+    it('tries the import again on the next mount after a failed load', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      triggers.guideFails = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const failed = renderHook(() => useAssistantGuide());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(failed.result.current).toBeNull();
+      failed.unmount();
+
+      triggers.guideFails = false;
+      const retried = renderHook(() => useAssistantGuide());
+      await waitFor(() => expect(retried.result.current).not.toBeNull());
+
+      expect(triggers.guideLoads).toBe(2);
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      consoleError.mockRestore();
+    });
+
+    it('hands a remount the loaded module on its first render', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const first = renderHook(() => useAssistantGuide());
+      await waitFor(() => expect(first.result.current).not.toBeNull());
+      first.unmount();
+
+      const seen: unknown[] = [];
+      renderHook(() => {
+        const guide = useAssistantGuide();
+        seen.push(guide);
+        return guide;
+      });
+
+      expect(seen[0]).not.toBeNull();
+      expect(seen.every((guide) => guide !== null)).toBe(true);
     });
   });
 
@@ -245,7 +311,9 @@ describe('components/assistant build gate', () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       triggers.throws = true;
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot } = await import('@/components/assistant');
+      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot } = await import(
+        '@/components/assistant'
+      );
 
       render(
         <>

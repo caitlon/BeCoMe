@@ -12,7 +12,8 @@ import { logger } from "@/lib/logger";
  * is unreachable and `vite build`'s dead-code elimination drops the dynamic
  * `import()` calls together with it -- none of the AssistantRoot chunk, the
  * triggers chunk (buttons, assistant.json content, every /api/v1/assistant/*
- * path) and the profile privacy card chunk reaches `dist/`. That only holds for
+ * path), the profile privacy card chunk and the documentation guide chunk
+ * reaches `dist/`. That only holds for
  * `vite build`; `vite dev` serves unbundled ESM and never tree-shakes. The
  * real check is a production build plus a grep of `dist/assets` for the
  * chunk names.
@@ -105,26 +106,42 @@ export function AssistantProfileSlot() {
 /** The module behind the documentation section and the guide's other parts, as the hook below hands it out. */
 export type AssistantGuideModule = typeof import("./AssistantGuide");
 
+let guideLoaded: AssistantGuideModule | null = null;
 let guideLoad: Promise<AssistantGuideModule> | null = null;
 
+function loadGuide(): Promise<AssistantGuideModule> {
+  guideLoad ??= import("./AssistantGuide").then(
+    (loaded) => {
+      guideLoaded = loaded;
+      return loaded;
+    },
+    (error: unknown) => {
+      // A stale hashed chunk after a deploy lands here. Forgetting the promise lets
+      // the next mount retry; callers that share this attempt see one report.
+      guideLoad = null;
+      logger.error("Assistant guide failed to load", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      Sentry.captureException(error);
+      throw error;
+    },
+  );
+  return guideLoad;
+}
+
 function useGuide(): AssistantGuideModule | null {
-  const [guide, setGuide] = useState<AssistantGuideModule | null>(null);
+  // Seeded from the module that already resolved, so a revisit paints the full page at once.
+  const [guide, setGuide] = useState<AssistantGuideModule | null>(guideLoaded);
 
   useEffect(() => {
     let active = true;
-    guideLoad ??= import("./AssistantGuide");
-    guideLoad.then(
+    loadGuide().then(
       (loaded) => {
         if (active) setGuide(loaded);
       },
-      (error: unknown) => {
-        // A stale hashed chunk after a deploy lands here. The guide simply stays
-        // absent, so a page that waits on it never shows half of it.
-        if (!active) return;
-        logger.error("Assistant guide failed to load", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        Sentry.captureException(error);
+      () => {
+        // Already reported by loadGuide. The guide simply stays absent, so a
+        // page that waits on it never shows half of it.
       },
     );
     return () => {
