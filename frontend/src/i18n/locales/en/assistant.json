@@ -115,6 +115,11 @@
         "sensitive": "Do not type sensitive data into the assistant.",
         "objection": "If you do not want the assistant to show your opinions to other members, turn on <b>Hide my opinions from other members' assistant</b> in your profile."
       }
+    },
+    "tour": {
+      "title": "Ask the assistant",
+      "body": "Not sure what a result or a term means? Click the assistant button <icon/> in the top bar and ask in your own words. It knows the BeCoMe method and the projects you are a member of. It is an AI and can be wrong, so check what matters on the result page.",
+      "hint": "More in the <docs>documentation<sr>, opens in new tab</sr></docs>, section Assistant."
     }
   }
 }

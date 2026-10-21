@@ -115,6 +115,11 @@
         "sensitive": "Do asistenta nepište citlivé údaje.",
         "objection": "Pokud nechcete, aby asistent ukazoval vaše názory ostatním členům, zapněte v profilu <b>Skrýt moje názory před asistentem ostatních členů</b>."
       }
+    },
+    "tour": {
+      "title": "Zeptejte se asistenta",
+      "body": "Nevíte, co znamená výsledek nebo pojem? Klikněte v horní liště na tlačítko asistenta <icon/> a zeptejte se vlastními slovy. Zná metodu BeCoMe a projekty, jejichž jste členem. Je to AI a může se mýlit, proto důležité věci ověřte na stránce výsledku.",
+      "hint": "Více v <docs>dokumentaci<sr>, otevře se v nové záložce</sr></docs>, v části Asistent."
     }
   }
 }
