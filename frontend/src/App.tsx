@@ -28,6 +28,7 @@ const About = lazy(() => import("./pages/About"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const FaqPage = lazy(() => import("./pages/FAQ"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -51,6 +52,7 @@ const App = () => (
                       <Route path="/docs" element={<Documentation />} />
                       <Route path="/faq" element={<FaqPage />} />
                       <Route path="/privacy" element={<Privacy />} />
+                      <Route path="/terms" element={<Terms />} />
                       <Route path="/case-studies" element={<CaseStudies />} />
                       <Route path="/case-study/:id" element={<CaseStudy />} />
                       <Route path="/login" element={

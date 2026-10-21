@@ -33,6 +33,7 @@ describe('Footer', () => {
     expect(screen.getByRole('link', { name: /documentation/i })).toHaveAttribute('href', '/docs');
     expect(screen.getByRole('link', { name: /faq/i })).toHaveAttribute('href', '/faq');
     expect(screen.getByRole('link', { name: /privacy/i })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: /terms/i })).toHaveAttribute('href', '/terms');
   });
 
   it('external links have target="_blank" and rel="noopener noreferrer"', () => {
