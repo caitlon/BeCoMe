@@ -6,11 +6,23 @@ vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
+// Counts how often the guide module is evaluated, and can make that import fail
+// the way a stale hashed chunk does after a deploy.
+const guide = vi.hoisted(() => ({ loads: 0, fails: false }));
+
 describe('Documentation assistant section', () => {
   beforeEach(() => {
-    // The slots compute their build flag once at module scope, so the page and
-    // the helpers that share its i18n instance are re-imported per test.
+    // The assistant module computes its build flag once at module scope, so the
+    // page and the helpers that share its i18n instance are re-imported per test.
     vi.resetModules();
+    guide.loads = 0;
+    guide.fails = false;
+    // Registered per test, not hoisted: a hoisted factory runs once per file.
+    vi.doMock('@/components/assistant/AssistantGuide', async (importOriginal) => {
+      guide.loads += 1;
+      if (guide.fails) throw new Error('chunk failed');
+      return importOriginal();
+    });
   });
 
   afterEach(() => {
@@ -29,11 +41,8 @@ describe('Documentation assistant section', () => {
   }
 
   describe('in a build without the flag', () => {
-    it('keeps the five sections and the five TOC entries', async () => {
+    it('keeps the five sections and the five TOC entries, and never imports the guide', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
-      // Already loaded, so a gate that wrongly let the slot through would render
-      // the section within one flush instead of staying pending forever.
-      await import('@/components/assistant/AssistantGuide');
 
       const { container } = await renderDocumentation();
       await act(async () => {
@@ -43,11 +52,12 @@ describe('Documentation assistant section', () => {
       expect(tocButtons()).toHaveLength(5);
       expect(container.querySelector('#assistant')).not.toBeInTheDocument();
       expect(screen.queryByText('Where to find it')).not.toBeInTheDocument();
+      expect(guide.loads).toBe(0);
     });
   });
 
   describe('in a build with the flag', () => {
-    it('adds a sixth TOC entry and the section once the lazy chunk resolves', async () => {
+    it('adds a sixth TOC entry and the section once the guide module has loaded', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
 
       const { container } = await renderDocumentation();
@@ -57,6 +67,37 @@ describe('Documentation assistant section', () => {
       expect(tocButtons()).toHaveLength(6);
       expect(within(screen.getByRole('navigation', { name: /table of contents/i })).getByRole('button', { name: 'Assistant' })).toBeInTheDocument();
       expect(screen.getByText('You can send up to 60 messages an hour. When you reach the limit, the assistant tells you how many minutes to wait.')).toBeInTheDocument();
+      expect(guide.loads).toBe(1);
+    });
+
+    it('shows neither the entry nor the section while the module is still loading', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { container } = await renderDocumentation();
+
+      // First paint, before the import has resolved.
+      expect(tocButtons()).toHaveLength(5);
+      expect(container.querySelector('#assistant')).not.toBeInTheDocument();
+      await screen.findByRole('heading', { level: 2, name: 'Assistant' });
+    });
+
+    it('keeps the page intact, with no empty TOC button, when the module fails to load', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      guide.fails = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { container } = await renderDocumentation();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      const buttons = tocButtons();
+      expect(buttons).toHaveLength(5);
+      for (const button of buttons) expect(button).toHaveAccessibleName();
+      expect(container.querySelector('#assistant')).not.toBeInTheDocument();
+      expect(container.querySelectorAll('section[id]')).toHaveLength(5);
+      expect(guide.loads).toBe(1);
+      consoleError.mockRestore();
     });
 
     it('puts the section between visualization and the glossary', async () => {

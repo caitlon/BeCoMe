@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // The slots import ./triggers lazily; a stand-in with a real button makes
 // "the slot rendered its lazy child" observable instead of "did not throw".
-const triggers = vi.hoisted(() => ({ throws: false }));
+const triggers = vi.hoisted(() => ({ throws: false, guideLoads: 0, guideFails: false }));
 vi.mock('@/components/assistant/triggers', () => ({
   HeaderTrigger: () => {
     if (triggers.throws) throw new Error('chunk failed');
@@ -23,22 +23,27 @@ vi.mock('@/components/assistant/AssistantPrivacyCard', () => ({
   },
 }));
 
-vi.mock('@/components/assistant/AssistantGuide', () => ({
-  AssistantDocsSection: () => {
-    if (triggers.throws) throw new Error('chunk failed');
-    return <p>docs section</p>;
-  },
-  AssistantDocsNavLabel: () => <>docs nav label</>,
-}));
 
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     triggers.throws = false;
+    triggers.guideLoads = 0;
+    triggers.guideFails = false;
     // A fresh module instance per test: every export below is computed once
     // from `enabled` at module scope, so re-reading any of them after
     // vi.stubEnv requires re-evaluating the module, exactly like
     // frontend/tests/lib/turnstile.test.ts does for VITE_TURNSTILE_SITE_KEY.
     vi.resetModules();
+    // Registered per test, not hoisted: a hoisted factory runs once per file,
+    // and these tests count and fail the import of the guide.
+    vi.doMock('@/components/assistant/AssistantGuide', () => {
+      triggers.guideLoads += 1;
+      if (triggers.guideFails) throw new Error('chunk failed');
+      return {
+        AssistantDocsSection: () => <p>docs section</p>,
+        AssistantDocsNavLabel: () => <>docs nav label</>,
+      };
+    });
   });
 
   afterEach(() => {
@@ -178,41 +183,60 @@ describe('components/assistant build gate', () => {
     });
   });
 
-  describe('assistantEnabled', () => {
-    it.each([
-      { value: 'true', expected: true },
-      { value: '', expected: false },
-      { value: 'TRUE', expected: false },
-    ])('is $expected when VITE_ASSISTANT_ENABLED is "$value"', async ({ value, expected }) => {
+  describe('useAssistantGuide', () => {
+    it.each(['', 'TRUE'])('returns null and never loads the guide when VITE_ASSISTANT_ENABLED is "%s"', async (value) => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', value);
 
-      const { assistantEnabled } = await import('@/components/assistant');
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const { result } = renderHook(() => useAssistantGuide());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
 
-      expect(assistantEnabled).toBe(expected);
-    });
-  });
-
-  describe('AssistantDocsSectionSlot / AssistantDocsNavLabelSlot', () => {
-    it.each(['', 'TRUE'])('render nothing when VITE_ASSISTANT_ENABLED is "%s"', async (value) => {
-      vi.stubEnv('VITE_ASSISTANT_ENABLED', value);
-
-      const { AssistantDocsSectionSlot, AssistantDocsNavLabelSlot } = await import('@/components/assistant');
-      const { container: section } = render(<AssistantDocsSectionSlot />);
-      const { container: label } = render(<AssistantDocsNavLabelSlot />);
-
-      expect(section).toBeEmptyDOMElement();
-      expect(label).toBeEmptyDOMElement();
+      expect(result.current).toBeNull();
+      expect(triggers.guideLoads).toBe(0);
     });
 
-    it('mount the lazy section and label inside a Suspense boundary when enabled', async () => {
+    it('returns null while the chunk loads, then the guide module', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
 
-      const { AssistantDocsSectionSlot, AssistantDocsNavLabelSlot } = await import('@/components/assistant');
-      render(<AssistantDocsSectionSlot />);
-      expect(await screen.findByText('docs section')).toBeInTheDocument();
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const { result } = renderHook(() => useAssistantGuide());
 
-      render(<AssistantDocsNavLabelSlot />);
-      expect(await screen.findByText('docs nav label')).toBeInTheDocument();
+      expect(result.current).toBeNull();
+      await waitFor(() => expect(result.current).not.toBeNull());
+      expect(result.current).toHaveProperty('AssistantDocsSection');
+      expect(result.current).toHaveProperty('AssistantDocsNavLabel');
+    });
+
+    it('loads the chunk once however many callers ask', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const first = renderHook(() => useAssistantGuide());
+      const second = renderHook(() => useAssistantGuide());
+
+      await waitFor(() => expect(first.result.current).not.toBeNull());
+      await waitFor(() => expect(second.result.current).toBe(first.result.current));
+      expect(triggers.guideLoads).toBe(1);
+    });
+
+    it('stays null when the chunk fails to load', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      triggers.guideFails = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { useAssistantGuide } = await import('@/components/assistant');
+      const { result } = renderHook(() => useAssistantGuide());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(result.current).toBeNull();
+      expect(consoleError).toHaveBeenCalledWith('[ERROR] Assistant guide failed to load', {
+        error: expect.any(String),
+      });
+      consoleError.mockRestore();
     });
   });
 
@@ -221,8 +245,7 @@ describe('components/assistant build gate', () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       triggers.throws = true;
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot, AssistantDocsSectionSlot } =
-        await import('@/components/assistant');
+      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot } = await import('@/components/assistant');
 
       render(
         <>
@@ -230,7 +253,6 @@ describe('components/assistant build gate', () => {
           <AssistantHeaderSlot />
           <AssistantResultSlot projectId="p1" />
           <AssistantProfileSlot />
-          <AssistantDocsSectionSlot />
         </>
       );
       await act(async () => {
