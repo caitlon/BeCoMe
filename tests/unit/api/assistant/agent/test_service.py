@@ -789,6 +789,22 @@ class TestFailures:
 
         assert records == []
 
+    async def test_a_generation_timeout_that_is_not_the_deadline_is_not_reported_as_one(self):
+        """
+        GIVEN a model whose generation raises a TimeoutError of its own, well inside the deadline
+        WHEN a turn is answered
+        THEN that TimeoutError reaches the caller and no timeout is logged
+        """
+        model = _FailingModel(responses=[], error=TimeoutError("inner"))
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(TimeoutError, match="inner"),
+        ):
+            await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert records == []
+
 
 async def _drain(service, request, ctx):
     turn = await service.prepare(request, ctx)
