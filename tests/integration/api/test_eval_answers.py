@@ -689,7 +689,7 @@ class TestMain:
 
         # WHEN
         with (
-            patch.object(ea, "git_version", return_value="code-1"),
+            patch.object(ea, "git_version", return_value="code-1") as git_version,
             patch.object(ea, "create_app", return_value=client.app),
         ):
             code = ea.main(_argv(tmp_path))
@@ -704,6 +704,7 @@ class TestMain:
         assert "Secret-free" not in shown
         assert "app_version and corpus_version are null" in captured.err
         assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == "code-1"
+        git_version.assert_called_once_with(ea.REPO_ROOT)
 
     def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
         self, client, tmp_path, capsys
@@ -879,6 +880,8 @@ class TestFailureHandling:
 
         # WHEN
         client.app.dependency_overrides[deps.get_docs_retriever] = _RaisingRetriever
+        # The three runs must share one code version, so the live git describe is pinned;
+        # pacing is off because 22 questions would otherwise wait out a real 60 s window.
         with (
             patch.object(ea, "git_version", return_value="code-1"),
             patch.object(ea, "create_app", return_value=client.app),
