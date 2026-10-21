@@ -56,9 +56,9 @@ describe('Privacy', () => {
   it('names the controller and offers a mailto link', () => {
     render(<Privacy />);
 
-    expect(screen.getByRole('link', { name: 'xkuze010@studenti.czu.cz' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'caiton@pm.me' })).toHaveAttribute(
       'href',
-      'mailto:xkuze010@studenti.czu.cz'
+      'mailto:caiton@pm.me'
     );
   });
 
