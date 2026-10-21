@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import "./i18n";
 
@@ -14,6 +14,7 @@ import "./i18n";
 
 const transComponents = {
   b: <strong />,
+  icon: <Sparkles className="inline h-4 w-4 align-text-bottom text-primary" aria-hidden="true" />,
   privacy: <Link to="/privacy" className="underline underline-offset-4 hover:text-foreground" />,
 };
 

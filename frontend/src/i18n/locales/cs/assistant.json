@@ -93,7 +93,7 @@
       "intro": "Asistent odpovídá na otázky o metodě BeCoMe a o vašich projektech. Je to systém umělé inteligence, jazykový model, ne člověk, a jeho odpovědi mohou být chybné. Cokoli důležitého ověřte na stránce výsledku a v této dokumentaci.",
       "where": {
         "title": "Kde ho najdete",
-        "body": "Přihlaste se a v horní liště klikněte na <b>Asistent</b>. Na stránce výsledků projektu otevře tlačítko <b>Vysvětlit výsledek</b> asistenta rovnou s tímto projektem."
+        "body": "Přihlaste se a v horní liště klikněte na tlačítko asistenta <icon/>. Na stránce výsledků projektu otevře tlačítko <b>Vysvětlit výsledek</b> asistenta rovnou s tímto projektem."
       },
       "answers": {
         "title": "Na co odpoví",
