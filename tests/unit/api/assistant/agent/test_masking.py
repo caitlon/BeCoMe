@@ -173,7 +173,6 @@ _ROWS = [
     # the word a cut name ends in is not searched for alone, the cut name is, whole
     ((_JO_NAME,), "The dam was built", "The dam was built"),
     ((_JO_NAME,), f"Ask {_CUT_JO} and {_CUT_JO.removesuffix('...')}", "Ask Expert 1 and Expert 1"),
-    ((("Will",)), "he will go", "he will go"),  # one word cannot be cut, so it has no cut form
     # a position that is stored with dots is not a cut one, so its stem is left alone
     (
         (("Alice Moore", "Manager..."),),
@@ -459,21 +458,23 @@ class TestBlockRows:
     def test_the_words_of_a_strangers_cut_name_are_masked_on_their_own(self):
         """
         GIVEN a block row of a stranger whose long name the block shows cut mid-word, and a
-            text with the words before the cut, the cut name quoted without its dots, and an
-            ordinary sentence that begins with the cut word
+            text with the words before the cut, one of them as short as two letters and written
+            alone with its capital, the cut name quoted without its dots, and an ordinary
+            sentence that begins with the cut word
         WHEN the text is masked with the roster
         THEN every whole word, the whole prefix and the quoted cut name are masked under the
             stranger's label, and the sentence is left alone
         """
         text = render_opinions([_opinion(_JO_NAME, "Chair")]) + (
             "\nBartholomew Alexander Montgomery Featherstonehaugh Jo is here; Alexander agrees."
-            f" Quoted: {_CUT_JO.removesuffix('...')} end. The dam was built"
+            f" Jo nods. Quoted: {_CUT_JO.removesuffix('...')} end. The dam was built"
         )
 
         masked = _hide(text, _roster("Bob Green"))
 
         assert masked.endswith(
-            "\nExpert 2 is here; Expert 2 agrees. Quoted: Expert 2 end. The dam was built"
+            "\nExpert 2 is here; Expert 2 agrees. Expert 2 nods. Quoted: Expert 2 end."
+            " The dam was built"
         )
 
     def test_the_last_word_of_a_strangers_cut_name_is_masked_when_the_cut_left_it_whole(self):
@@ -490,6 +491,20 @@ class TestBlockRows:
         masked = _hide(text, _roster("Bob Green"))
 
         assert masked.endswith("\nExpert 2 agreed.")
+
+    def test_a_one_word_name_that_ends_in_dots_gets_a_label_without_error(self):
+        """
+        GIVEN a stranger whose name is one word of over thirty characters that ends in dots,
+            so it looks cut but has no word break to cut at
+        WHEN the roster gives the row a label, twice
+        THEN it is labelled Expert 1 both times, and the word is masked elsewhere
+        """
+        roster = TurnRoster()
+        word = "A" * 40
+
+        assert roster.label_for(word + "...") == "Expert 1"
+        assert roster.label_for(word + "...") == "Expert 1"
+        assert mask_participants(f"Ask {word}", roster) == "Ask Expert 1"
 
     def test_a_short_name_or_position_that_ends_in_dots_is_not_a_cut_one(self):
         """
@@ -661,3 +676,20 @@ def test_the_edges_of_a_word_split_as_a_regular_expression_would_split_them(word
     expected = re.fullmatch(r"(\W*)(.*?)(\W*)", word, re.DOTALL)
     assert expected is not None
     assert masking._split_edges(word) == expected.groups()
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [(30, False), (31, True)],
+    ids=["at the half of the limit", "past the half of the limit"],
+)
+def test_a_text_ending_in_dots_looks_cut_only_past_half_of_the_limit(length, expected):
+    """
+    GIVEN a text that ends in dots, with exactly half of the name limit characters or one more
+    WHEN it is asked whether it looks cut
+    THEN only the longer one does
+    """
+    text = "A" * (length - 3) + "..."
+    assert len(text) == length
+
+    assert masking._looks_cut(text, masking.EXPERT_LIMIT) is expected
