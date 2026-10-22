@@ -350,6 +350,14 @@ class Settings(BaseSettings):
     # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
     assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    # The token cap of one reply of that model, which also writes the context sentences and
+    # summaries at index time. It bounds a runaway reply, not a normal one: a translation of
+    # a 4000-character Czech message is about 1300 tokens, and a cut query would search for
+    # the wrong thing. A model that thinks inline needs a higher value, because an unclosed
+    # <think> block is not stripped on the query and index-time paths. A hosted reasoning
+    # model with reasoning on would spend the whole budget on thinking and return no text,
+    # which is why the hosted chat models send assistant_api_reasoning_effort below.
+    assistant_query_max_tokens: int = Field(default=2048, gt=0)
     # The model that writes the chat answers, on its own llama-server. The token cap bounds
     # one reply. The retrieval k is how many passages the chat endpoint's search returns (the
     # retrieval evaluation keeps its own k, RetrievalConfig.k).

@@ -55,7 +55,9 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
 
     In api mode (settings.assistant_llm_provider) the client sends the hosted key and
     sends the configured ``reasoning_effort``; in local mode it is as it always was. The client
-    keeps the SDK's own retries in both modes.
+    keeps the SDK's own retries in both modes. A reply is capped at
+    settings.assistant_query_max_tokens, which bounds a query transform and an index-time
+    context sentence or summary alike.
 
     :param settings: Application settings.
     :return: A ChatOpenAI client for settings.assistant_llm_base_url.
@@ -66,6 +68,7 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
         api_key=_api_key(settings, settings.assistant_llm_provider),
         model=settings.assistant_llm_model,
         timeout=settings.assistant_llm_timeout_seconds,
+        max_completion_tokens=settings.assistant_query_max_tokens,
         extra_body=_api_chat_extra_body(settings, hosted),
     )
 
