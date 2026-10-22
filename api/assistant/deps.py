@@ -301,28 +301,16 @@ async def enforce_message_limit(
 
 
 @limiter.limit(LIMIT_ASSISTANT_CHAT)
-def limit_chat_per_address(request: Request) -> None:
-    """Refuse a ``/chat`` request from an address that has sent too many this minute.
+def limit_per_address(request: Request) -> None:
+    """Refuse a chat request from an address that has sent too many this minute.
 
     The per-address limit is a dependency listed first on the route, not the decorator of the
     endpoint: slowapi's decorator runs only once FastAPI has resolved every dependency, so a
     message it refused would already have spent a turn slot or an hourly message and built the
     API client. A request it refuses reaches none of them. It is a plain function, so FastAPI
-    runs the counter's store call in a worker thread and not on the event loop. The function
-    is separate from :func:`limit_stream_per_address` because slowapi keys the counter by the
-    decorated function's name, and each route keeps a counter of its own.
-
-    :param request: The incoming request, whose address the counter is keyed by.
-    :raises RateLimitExceeded: When this address has used its allowance for the minute; the
-        application's handler turns it into ``429``.
-    """
-
-
-@limiter.limit(LIMIT_ASSISTANT_CHAT)
-def limit_stream_per_address(request: Request) -> None:
-    """Refuse a ``/chat/stream`` request from an address that has sent too many this minute.
-
-    The same limit as :func:`limit_chat_per_address`, with a counter of its own.
+    runs the counter's store call in a worker thread and not on the event loop. One function
+    serves both chat routes, and each route still keeps a counter of its own, because slowapi
+    scopes the counter by the request's path.
 
     :param request: The incoming request, whose address the counter is keyed by.
     :raises RateLimitExceeded: When this address has used its allowance for the minute; the

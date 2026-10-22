@@ -1661,11 +1661,12 @@ class TestConcurrentTurnCap:
 class TestPerAddressRefusalSpendsNoMessage:
     """The per-address limit is checked before the hourly message is spent."""
 
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_message_the_limiter_refuses_spends_no_hourly_message(
-        self, assistant_settings, client, configure
+        self, assistant_settings, client, configure, endpoint
     ):
         """
-        GIVEN an hourly budget of 21 messages, and the per-address limiter on
+        GIVEN an hourly budget of 21 messages, and the per-address limiter on, on both routes
         WHEN one address sends 21 messages, the last of which the limiter refuses, and the
             limiter's own counter is then cleared and a 22nd message is sent
         THEN the 21st is the limiter's 429, and the 22nd is answered: the refused message
@@ -1682,12 +1683,12 @@ class TestPerAddressRefusalSpendsNoMessage:
             limiter.reset()
             try:
                 first = [
-                    client.post(CHAT, json={"message": f"m{i}"}, headers=auth_header(token))
+                    client.post(endpoint, json={"message": f"m{i}"}, headers=auth_header(token))
                     for i in range(allowed + 1)
                 ]
             finally:
                 limiter.reset()
-        after = client.post(CHAT, json={"message": "later"}, headers=auth_header(token))
+        after = client.post(endpoint, json={"message": "later"}, headers=auth_header(token))
 
         # THEN
         assert [response.status_code for response in first] == [200] * allowed + [429]
