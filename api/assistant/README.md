@@ -540,8 +540,8 @@ When: after a change to any source the corpus is built from reaches the environm
 - the private corpus repository.
 
 Also refresh after a change to the chunker settings or to the corpus code itself: the lists in
-`corpus.py` (`PUBLIC_EXTRA_READMES`, `EXCLUDED_PUBLIC`), `loaders.py`, `chunkers.py` and
-`enrich.py`.
+`corpus.py` (`PUBLIC_EXTRA_READMES`, `EXCLUDED_PUBLIC`), `loaders.py`, `chunkers.py`,
+`enrich.py` and `pipeline.py`, or to the embedding model.
 
 On dev, refresh after the merge into `dev` and the backend deploy. On test and prod, refresh as
 part of the promotion that carries the change, after that promotion's backend deploy. Build each
@@ -550,7 +550,7 @@ environment's corpus from a clean checkout that is up to date with `origin/<bran
 `app_version` carries no `-dirty` suffix. A fresh checkout has no `supplementary/` folder, and
 `ASSISTANT_PRIVATE_CORPUS_MANIFEST`, `ASSISTANT_PRIVATE_CORPUS_DIRS` and `ASSISTANT_CAPTIONS_FILE`
 resolve against the repository root unless they are absolute paths, so set them to absolute paths
-there.
+there (`ASSISTANT_PRIVATE_CORPUS_DIRS` is a JSON list, `'["/abs/corpus"]'`).
 
 1. Caption the new chunks, following [Refreshing captions after a corpus or chunker
    change](#refreshing-captions-after-a-corpus-or-chunker-change) through the commit of the
@@ -563,8 +563,9 @@ there.
 2. In the same checkout and the same shell environment as the ingest, run `uv run python
    scripts/assistant/captions.py missing --strategy markdown_headers --size 500 --overlap-pct 10`.
    It takes the chunking flags (`--strategy`, `--size`, `--overlap-pct`, `--wave`), not `--name`
-   or `--context`. It reads the private-layer variables and `ASSISTANT_CAPTIONS_FILE` from that
-   environment, and without them it checks only the public layer. It prints `<missing> of <total>
+   or `--context`. Without `ASSISTANT_CAPTIONS_FILE` it stops with an error; without the
+   private-layer variables it checks only the public layer and can report `0` while private
+   chunks have no caption. It prints `<missing> of <total>
    chunks have no caption; <stale> captions match no chunk`. The first count must be `0`; ignore
    the count after the semicolon, because `prune` is skipped. If some chunks are missing, the
    ingest builds them with only their title and prints "some chunks have no matching caption". If
@@ -574,10 +575,10 @@ there.
    owner: `psql 'postgresql://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require'
    -c "SELECT name, created_at, chunk_count, corpus_hash, app_version, corpus_version FROM
    assistant_collections"`. `created_at` is the time of the reload, and it is the proof of it.
-   `corpus_hash` covers the text of each source file after snippets are resolved, so it changes
-   only when such a text changed, and not on a reload that only added captions. `chunk_count`
-   changes only when the number of chunks does. `app_version` and `corpus_version` name the two
-   checkouts, so either stays the same when only the other repository changed. Remove the proxy.
+   `corpus_hash` is built from each source file's hash once per chunk, so it changes when a source
+   text changes or the sources split into a different number of chunks, and not on a reload that
+   only added captions. `app_version` and `corpus_version` name the two checkouts, so either
+   stays the same when only the other repository changed. Remove the proxy.
 4. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
    built once per process, and it builds its BM25 index from the collection's documents on the
    first search that needs one (`hybrid`, the default mode, and `bm25`). Ingest swaps the table
