@@ -1651,12 +1651,15 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_langsmith_endpoint must be the EU"):
             Settings()
 
-    @pytest.mark.parametrize("project", ["", "   ", "become-assistant-local"])
+    @pytest.mark.parametrize(
+        "project", ["", "   ", "become-assistant-local", "Become-Assistant-Local"]
+    )
     def test_rejects_langsmith_tracing_without_a_project_on_a_deployed_service(
         self, monkeypatch, tmp_path, project
     ):
         """
-        GIVEN a deployed service with LangSmith tracing on and an empty, blank or local-default project
+        GIVEN a deployed service with LangSmith tracing on and an empty, blank or local-default
+            project, the default in any case
         WHEN Settings is constructed
         THEN validation fails, naming assistant_langsmith_project
         """
@@ -1669,6 +1672,24 @@ class TestAssistantSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_langsmith_project must be set"):
             Settings()
+
+    def test_strips_whitespace_from_the_langsmith_project(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed service with LangSmith tracing on and a project name with spaces around it
+        WHEN Settings is constructed
+        THEN the project is stored without them, so the traces land in the named project
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", "  become-assistant-dev  ")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_project == "become-assistant-dev"
 
     @pytest.mark.parametrize("switch", _LANGSMITH_LIBRARY_SWITCHES)
     @pytest.mark.parametrize("tracing_enabled", ["true", "false"])
