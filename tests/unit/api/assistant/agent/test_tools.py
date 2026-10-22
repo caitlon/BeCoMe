@@ -1032,11 +1032,33 @@ class TestMaskOpinionNames:
         assert "Eva" not in masked
         assert masked == repr(repr(ValueError(mask_opinion_names(block))))
 
+    @pytest.mark.parametrize("depth", [3, 4, 5, 8])
+    def test_masks_a_block_escaped_any_number_of_times(self, depth):
+        """
+        GIVEN an exception whose message is an opinions block, repr'd three, four, five and
+            eight times, as when an error is stored as text again and again
+        WHEN the text is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+
+        def wrap(text: str) -> str:
+            wrapped = repr(ValueError(text))
+            for _ in range(depth - 1):
+                wrapped = repr(wrapped)
+            return wrapped
+
+        masked = mask_opinion_names(wrap(block))
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == wrap(mask_opinion_names(block))
+
     def test_masks_a_block_after_a_long_run_of_backslashes(self):
         """
         GIVEN the repr of an exception with an opinions block, behind four hundred thousand
-            backslashes, so the escaped text holds two hundred thousand tokens that are not
-            line breaks
+            backslashes, a run that is deeper than any block in the text
         WHEN the text is masked
         THEN the block is masked and the run in front of it is as it was
         """

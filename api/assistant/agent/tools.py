@@ -204,45 +204,58 @@ def render_opinions(opinions: Sequence[OpinionView]) -> str:
 # What ends a line. A text reaches the mask either as it was written, with real newlines, or
 # as ``repr(exc)`` and the like, where each newline is the two characters backslash and ``n``.
 # Each further repr doubles every backslash, so in a text that went through ``d`` reprs a newline
-# is ``2 ** (d - 1)`` backslashes and an ``n``, and a typed backslash is ``2 ** d`` of them. That
-# run is a token of its own and is consumed first, so a name that holds a typed backslash and
-# ``n`` stays in one piece. The text does not say how many reprs it went through, so each depth
-# is read in its own pass. A pass may cut a name that holds a typed backslash and ``n`` where
+# is ``2 ** (d - 1)`` backslashes and an ``n``, and a typed backslash is ``2 ** d`` of them. A run
+# of backslashes before an ``n`` is therefore a number of typed backslashes followed by one
+# break, and the break is the run's lowest set bit. The text does not say how many reprs it went
+# through, so each depth is read in its own pass, from 1 up to the deepest one its longest run of
+# backslashes can hold. A pass may cut a name that holds a typed backslash and ``n`` where
 # another depth would not, but the earlier passes have already masked that name.
-_REAL_LINE_BREAK = re.compile(r"(\n)")
+#
+# A pattern starts only where a run starts, which keeps the match linear in the length of the
+# text: tried at every backslash of a long run, it would measure the rest of the run each time.
+_REAL_LINE_BREAK = re.compile(r"(?P<break>\n)")
+_BACKSLASH_RUN = re.compile(r"\\+")
 
 
 def _escaped_line_break(depth: int) -> re.Pattern[str]:
     """Build the pattern of a text that went through ``depth`` reprs.
 
     :param depth: The number of reprs, at least 1.
-    :return: A pattern whose one group is a typed backslash or an escaped newline.
+    :return: A pattern that matches a whole run of backslashes before an ``n`` when the run
+        is typed backslashes and one break; its ``break`` group is that break.
     """
-    return re.compile(rf"(\\{{{2**depth}}}|\\{{{2 ** (depth - 1)}}}n)")
+    return re.compile(rf"(?<!\\)(?:\\{{{2**depth}}})*(?P<break>\\{{{2 ** (depth - 1)}}}n)")
 
 
-_ESCAPED_LINE_BREAKS = tuple(_escaped_line_break(depth) for depth in (1, 2))
+def _escape_depths(text: str) -> range:
+    """List the repr depths a text can hold a line break of.
+
+    A break at depth ``d`` needs a run of ``2 ** (d - 1)`` backslashes, so the longest run
+    in the text bounds the depth.
+
+    :param text: Any text.
+    :return: The depths to read, from 1; empty when the text holds no backslash.
+    """
+    longest = max(map(len, _BACKSLASH_RUN.findall(text)), default=0)
+    return range(1, longest.bit_length() + 1)
 
 
 def _split_lines(text: str, line_break: re.Pattern[str]) -> tuple[list[str], list[str]]:
     """Cut a text into lines and keep the breaks between them.
 
-    :param text: The text; the break is the pattern's one capturing group.
-    :param line_break: The pattern that finds a line break, a typed backslash included
-        as a token that is not one.
+    :param text: The text.
+    :param line_break: The pattern that finds a line break; its ``break`` group is the break.
+        Whatever else it matches, a typed backslash, stays in the line.
     :return: The lines, and the break that follows each of them but the last.
     """
     lines: list[str] = []
     breaks: list[str] = []
-    line: list[str] = []
-    for index, piece in enumerate(line_break.split(text)):
-        if index % 2 == 0 or piece.endswith("\\"):
-            line.append(piece)
-        else:
-            breaks.append(piece)
-            lines.append("".join(line))
-            line = []
-    lines.append("".join(line))
+    start = 0
+    for found in line_break.finditer(text):
+        lines.append(text[start : found.start("break")])
+        breaks.append(found["break"])
+        start = found.end()
+    lines.append(text[start:])
     return lines, breaks
 
 
@@ -271,9 +284,8 @@ def _label_rows(lines: list[str], roster: TurnRoster | None) -> None:
 def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | None) -> str:
     """Mask the opinions blocks of a text whose lines end with the given break.
 
-    :param text: The text; the break is the pattern's one capturing group.
-    :param line_break: The pattern that finds a line break, a doubled backslash included
-        as a token that is not one.
+    :param text: The text.
+    :param line_break: The pattern that finds a line break, as in :func:`_split_lines`.
     :param roster: The turn's participants, or None to number the rows of each block.
     :return: The text with each block's names replaced, every break as it was.
     """
@@ -296,9 +308,9 @@ def mask_opinion_rows(text: str, roster: TurnRoster | None = None) -> str:
     :func:`~api.assistant.agent.masking.mask_participants`, and gives a known expert's row
     the roster's label itself. A row-shaped line that is not directly under
     a count line is left as it is. A block is found whether its lines end with a newline or
-    with the two characters backslash and ``n``, as in ``repr(exc)``, or with two backslashes
-    and ``n``, as in the repr of that; the text is read once for each form, so a name that holds
-    a typed backslash and ``n`` cannot cut its row in two.
+    with the two characters backslash and ``n``, as in ``repr(exc)``, or with 2, 4, 8 and so on
+    backslashes and ``n``, as in the repr of that; the text is read once for each form, so a name
+    that holds a typed backslash and ``n`` cannot cut its row in two.
 
     :param text: Any text; one that holds no opinions block comes back unchanged.
     :param roster: The turn's participants. With it, a row of an expert the roster has not
@@ -309,8 +321,8 @@ def mask_opinion_rows(text: str, roster: TurnRoster | None = None) -> str:
     if _OPINION_COUNT_PREFIX not in text:
         return text
     masked = _mask_lines(text, _REAL_LINE_BREAK, roster)
-    for line_break in _ESCAPED_LINE_BREAKS:
-        masked = _mask_lines(masked, line_break, roster)
+    for depth in _escape_depths(masked):
+        masked = _mask_lines(masked, _escaped_line_break(depth), roster)
     return masked
 
 
