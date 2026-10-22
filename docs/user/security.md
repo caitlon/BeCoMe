@@ -27,7 +27,8 @@ retired. The whole session is then revoked rather than left running beside the t
 
 ## Who can see your opinions
 
-The members of the project, and nobody else. A project is visible to its owner and the experts
+Inside BeCoMe, the members of the project and nobody else. What the assistant sends to its model is
+listed [below](#what-the-assistant-sends). A project is visible to its owner and the experts
 invited into it. Your opinion carries your name, so a panel is not anonymous: everyone in the room
 can see who said what, which is the point of a panel and worth knowing before you answer.
 
