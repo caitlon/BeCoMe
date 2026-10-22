@@ -29,10 +29,10 @@ from api.assistant.roles import UpstreamRole, tagged_role
 #: (``InterfaceError``) or cannot be had from the pool in time (the pool's ``TimeoutError``),
 #: and the builtin ``ConnectionError``, which some database drivers raise bare for a refused
 #: connection, and a collection whose table is missing or unreadable
-#: (``CollectionUnavailableError``, raised by ``open_store``), and a chat model server whose
-#: 200 holds no completion (``MalformedModelResponseError``, raised by the chat models only).
-#: ``DBAPIError`` as a whole is left out on purpose: it also holds data errors such as
-#: ``IntegrityError``, which are bugs, not outages.
+#: (``CollectionUnavailableError``, raised by ``open_store``), and a model, embedding or
+#: rerank server whose 200 holds no reply (``MalformedModelResponseError``). ``DBAPIError``
+#: as a whole is left out on purpose: it also holds data errors such as ``IntegrityError``,
+#: which are bugs, not outages.
 UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (
     openai.APIError,
     httpx.TransportError,

@@ -10,9 +10,11 @@ the model factories and the log sites can all use it.
 from typing import Final, Literal
 
 #: The servers a turn can name as the failing one: the model that writes answers, the one that
-#: translates queries, the document index and the application's own API. ``unknown`` is what a
-#: log record says when nothing tagged the failure.
-type UpstreamRole = Literal["answer", "query", "vector_db", "app_api", "unknown"]
+#: translates queries, the embedding and rerank servers, the document index and the
+#: application's own API. ``unknown`` is what a log record says when nothing tagged the failure.
+type UpstreamRole = Literal[
+    "answer", "query", "embedding", "rerank", "vector_db", "app_api", "unknown"
+]
 
 _ATTRIBUTE: Final = "upstream_role"
 

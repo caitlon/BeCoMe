@@ -1,10 +1,11 @@
-"""A model server that answers 200 with a body that is no answer.
+"""A model, embedding or rerank server that answers 200 with a body that is no answer.
 
 The clients here are real ones with a fake HTTP transport: nothing reaches a network. What
 each must do is raise ``MalformedModelResponseError`` for such a body, tag every failure
 with the role of the server it came from, and leave a bug of our own as it is.
 """
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -12,17 +13,29 @@ import httpx
 import openai
 import pytest
 from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.messages import BaseMessage
+from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import tool
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI
 
+from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.service import AssistantService
+from api.assistant.client import UserApiClient
+from api.assistant.errors import AssistantUnavailableError
 from api.assistant.rag.models import (
+    LlamaServerReranker,
     MalformedModelResponseError,
     make_answer_model,
     make_chat_model,
+    make_embeddings,
 )
+from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig
 from api.assistant.roles import tagged_role
 from api.config import Settings
+from api.schemas.assistant import AssistantChatRequest
+from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.helpers import captured_log_records
 
 
 def _json_bytes(content: bytes) -> httpx.Response:
@@ -407,3 +420,190 @@ class TestChatModelOtherFailures:
             [piece async for piece in model.astream("hi")]
 
         assert tagged_role(raised.value) == role
+
+
+def _embeddings_for(response: httpx.Response | Exception):
+    embeddings = make_embeddings(_settings())
+    transport = _transport(response)
+    embeddings.client = openai.OpenAI(
+        api_key="unused",  # pragma: allowlist secret
+        base_url="http://embed.test/v1",
+        http_client=httpx.Client(transport=transport),
+        max_retries=0,
+    ).embeddings
+    embeddings.async_client = openai.AsyncOpenAI(
+        api_key="unused",  # pragma: allowlist secret
+        base_url="http://embed.test/v1",
+        http_client=httpx.AsyncClient(transport=transport),
+        max_retries=0,
+    ).embeddings
+    return embeddings
+
+
+_EMBEDDING_BODIES = {
+    "html": _HTML,
+    "error object": httpx.Response(200, json={"error": {"message": "boom"}}),
+    "no data": httpx.Response(200, json={"object": "list"}),
+    "not json": httpx.Response(200, content=b"not json"),
+}
+
+
+@pytest.mark.parametrize("response", _EMBEDDING_BODIES.values(), ids=_EMBEDDING_BODIES.keys())
+class TestEmbeddingsMalformedBody:
+    """A 200 from the embedding server that holds no vectors is the server's fault."""
+
+    def test_embedding_a_query_raises_the_dedicated_error(self, response):
+        """
+        GIVEN an embeddings client whose server answers 200 with no vectors
+        WHEN a query and documents are embedded
+        THEN MalformedModelResponseError is raised for each, tagged embedding
+        """
+        embeddings = _embeddings_for(response)
+
+        for call in (
+            lambda: embeddings.embed_query("hi"),
+            lambda: embeddings.embed_documents(["a"]),
+        ):
+            with pytest.raises(MalformedModelResponseError) as raised:
+                call()
+            assert tagged_role(raised.value) == "embedding"
+
+    @pytest.mark.asyncio
+    async def test_embedding_asynchronously_raises_the_dedicated_error(self, response):
+        """
+        GIVEN the same client
+        WHEN a query and documents are embedded asynchronously
+        THEN MalformedModelResponseError is raised for each, tagged embedding
+        """
+        embeddings = _embeddings_for(response)
+
+        for call in (
+            lambda: embeddings.aembed_query("hi"),
+            lambda: embeddings.aembed_documents(["a"]),
+        ):
+            with pytest.raises(MalformedModelResponseError) as raised:
+                await call()
+            assert tagged_role(raised.value) == "embedding"
+
+
+class TestEmbeddingsOtherFailures:
+    """An embedding server that cannot be reached keeps its error type and says which it was."""
+
+    def test_a_connection_failure_carries_the_role(self):
+        """
+        GIVEN an embeddings client whose server cannot be reached
+        WHEN a query is embedded
+        THEN openai.APIConnectionError is raised, tagged embedding
+        """
+        embeddings = _embeddings_for(httpx.ConnectError("refused"))
+
+        with pytest.raises(openai.APIConnectionError) as raised:
+            embeddings.embed_query("hi")
+
+        assert tagged_role(raised.value) == "embedding"
+
+
+def _reranker(monkeypatch, response: httpx.Response | Exception) -> LlamaServerReranker:
+    """A reranker whose HTTP client answers `response`, whatever its constructor arguments."""
+    real = httpx.AsyncClient
+
+    def client(**kwargs: Any) -> httpx.AsyncClient:
+        return real(transport=_transport(response), **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", client)
+    return LlamaServerReranker(base_url="http://rerank.test/v1", model="m", timeout=5.0)
+
+
+class TestRerankerMalformedBody:
+    """A 200 from the rerank server that holds no results is the server's fault."""
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            _HTML,
+            httpx.Response(200, json={"error": "boom"}),
+            httpx.Response(200, json=["not", "an", "object"]),
+            httpx.Response(200, json={"results": None}),
+        ],
+        ids=["html", "no results", "a list", "null results"],
+    )
+    def test_the_dedicated_error_is_raised_and_tagged_rerank(self, monkeypatch, response):
+        """
+        GIVEN a reranker whose server answers 200 with a body that holds no results
+        WHEN texts are scored
+        THEN MalformedModelResponseError is raised, tagged rerank
+        """
+        reranker = _reranker(monkeypatch, response)
+
+        with pytest.raises(MalformedModelResponseError) as raised:
+            asyncio.run(reranker.rerank("q", ["a", "b"]))
+
+        assert tagged_role(raised.value) == "rerank"
+
+    def test_an_unreachable_server_keeps_its_error_and_carries_the_role(self, monkeypatch):
+        """
+        GIVEN a reranker whose server cannot be reached
+        WHEN texts are scored
+        THEN httpx.ConnectError is raised as it is, tagged rerank
+        """
+        reranker = _reranker(monkeypatch, httpx.ConnectError("refused"))
+
+        with pytest.raises(httpx.ConnectError) as raised:
+            asyncio.run(reranker.rerank("q", ["a"]))
+
+        assert tagged_role(raised.value) == "rerank"
+
+
+class _Store(InMemoryVectorStore):
+    """An in-memory store with the identity relevance function a dense search needs."""
+
+    def _select_relevance_score_fn(self):
+        return lambda similarity: similarity
+
+
+@pytest.mark.asyncio
+class TestMalformedRepliesAreAnOutage:
+    """A turn whose embedding or rerank server answers 200 with a page is a 503, by role."""
+
+    @pytest.mark.parametrize("role", ["embedding", "rerank"])
+    async def test_the_turn_is_unavailable_and_the_record_names_the_server(self, monkeypatch, role):
+        """
+        GIVEN a retriever built on the real embeddings client, or on the real reranker,
+            whose server answers 200 with an HTML page
+        WHEN a turn is answered
+        THEN AssistantUnavailableError is raised and one warning carries the dedicated error
+            as the reason and the failing server as the role
+        """
+        if role == "embedding":
+            store = _Store(_embeddings_for(_HTML))
+            reranker = None
+        else:
+            store = _Store(DeterministicFakeEmbedding(size=8))
+            await store.aadd_texts(["a passage"])
+            reranker = _reranker(monkeypatch, _HTML)
+        config = RetrievalConfig(mode="dense", k=1, rerank=role == "rerank", query_transform="none")
+        ctx = AssistantContext(
+            client=UserApiClient.__new__(UserApiClient),
+            retriever=DocsRetriever(store=store, config=config, reranker=reranker, llm=None),
+            sources=SourceRegistry(),
+            tool_outputs=[],
+            current_project_id=None,
+            locale="en",
+        )
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_mode="workflow",
+        )
+        service = AssistantService(
+            settings, ScriptedToolCallingModel(responses=[AIMessage(content="never used")])
+        )
+
+        with (
+            captured_log_records("api.assistant.agent.service") as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await service.answer(AssistantChatRequest(message="hi", history=[]), ctx)
+
+        assert [(r.event, r.reason, r.role) for r in records] == [
+            ("assistant_dependency_unavailable", "MalformedModelResponseError", role)
+        ]

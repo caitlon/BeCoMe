@@ -26,10 +26,11 @@ _LOCAL_API_KEY = SecretStr("not-needed")
 # reasons a retry cures, a dead local server only gets slower with them.
 _API_MAX_RETRIES = 2
 
-# What a client of the OpenAI chat API raises, in the place it reads a reply, when the 200 it
-# got is not shaped like one: a ValueError for an HTML page or an error object, a TypeError
-# for a null field, an AttributeError for a null message. A KeyError is not on the list: the
-# library parses the reply into a model that always has the key, so no probe reached one.
+# What a client of the OpenAI chat or embeddings API raises, in the places it reads a reply,
+# when the 200 it got is not shaped like one: a ValueError for an HTML page or an error
+# object, a TypeError for a null field, an AttributeError for a null message. A KeyError is not
+# on the list: the library parses the reply into a model that always has the key, so no probe
+# reached one.
 _REPLY_SHAPE_ERRORS = (ValueError, TypeError, AttributeError)
 
 # What decoding a reply that is not JSON raises, before the place above is reached: a
@@ -44,10 +45,10 @@ _CHUNK_SHAPE_ERRORS = (*_REPLY_SHAPE_ERRORS, KeyError)
 
 
 class MalformedModelResponseError(Exception):
-    """Raised when a model server answers 200 with a body that is no reply.
+    """Raised when a model, embedding or rerank server answers 200 with a body that is no reply.
 
-    An HTML page from a proxy, an ``error`` object, a body without its
-    ``choices``: the server failed to answer, as much as if it had refused the connection,
+    An HTML page from a proxy, an ``error`` object, a body without its ``choices`` or
+    ``results``: the server failed to answer, as much as if it had refused the connection,
     so it is listed in :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS`. It is not an
     ``AssistantError``, which the API's error handler would answer by itself. The message
     never holds any of the body.
@@ -147,6 +148,32 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
                 raise MalformedModelResponseError(
                     f"the {self.upstream_role} server streamed no chunk at all"
                 )
+
+
+class _RoleTaggedEmbeddings(OpenAIEmbeddings):
+    """An OpenAIEmbeddings client whose failures carry the role ``embedding``.
+
+    The library does not check the body it gets: an HTML page raises an ``AttributeError``
+    and a body without vectors a ``ValueError``, from inside the call, so those errors are
+    caught around each of the four public methods and raised as
+    :class:`MalformedModelResponseError`.
+    """
+
+    def embed_documents(self, *args: Any, **kwargs: Any) -> list[list[float]]:
+        with _upstream("embedding", _REPLY_SHAPE_ERRORS):
+            return super().embed_documents(*args, **kwargs)
+
+    def embed_query(self, *args: Any, **kwargs: Any) -> list[float]:
+        with _upstream("embedding", _REPLY_SHAPE_ERRORS):
+            return super().embed_query(*args, **kwargs)
+
+    async def aembed_documents(self, *args: Any, **kwargs: Any) -> list[list[float]]:
+        with _upstream("embedding", _REPLY_SHAPE_ERRORS):
+            return await super().aembed_documents(*args, **kwargs)
+
+    async def aembed_query(self, *args: Any, **kwargs: Any) -> list[float]:
+        with _upstream("embedding", _REPLY_SHAPE_ERRORS):
+            return await super().aembed_query(*args, **kwargs)
 
 
 def _api_chat_extra_body(settings: Settings, hosted: bool) -> dict[str, str] | None:
@@ -299,9 +326,10 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     client keeps the SDK's own retries in both modes.
 
     :param settings: Application settings.
-    :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
+    :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url, whose
+        failures carry the role ``embedding``.
     """
-    return OpenAIEmbeddings(
+    return _RoleTaggedEmbeddings(
         base_url=settings.assistant_embedding_base_url,
         api_key=_api_key(settings, settings.assistant_embedding_provider),
         model=settings.assistant_embedding_model,
@@ -333,26 +361,33 @@ class LlamaServerReranker:
     async def rerank(self, query: str, texts: list[str]) -> list[float]:
         """Score each text's relevance to the query.
 
-        Errors are not caught here: a non-2xx response raises httpx.HTTPStatusError,
-        and an unreachable server raises httpx.ConnectError, both as-is. The chat
-        endpoint's service layer is what turns either into AssistantUnavailableError.
+        A non-2xx response raises httpx.HTTPStatusError, and an unreachable server
+        raises httpx.ConnectError, both as-is but tagged with the role ``rerank``. A 200
+        whose body is not JSON, or holds no ``results`` list, raises
+        MalformedModelResponseError. The chat endpoint's service layer is what turns any
+        of them into AssistantUnavailableError.
 
         :param query: The search query.
         :param texts: Candidate passages, in the order to score.
         :return: One relevance score per text, in the SAME order as texts - not
             sorted by score. A caller that wants a ranking sorts the (text, score)
             pairs itself.
+        :raises MalformedModelResponseError: if the response is not a JSON object with a
+            ``results`` list.
         :raises ValueError: if a result's "index" falls outside range(len(texts)),
             if the response scores the same index more than once, or if it leaves
             any index in that range unscored.
         """
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(
-                f"{self._base_url}/rerank",
-                json={"model": self._model, "query": query, "documents": texts},
-            )
-        response.raise_for_status()
-        results = response.json()["results"]
+        with _upstream("rerank", (ValueError, KeyError, TypeError)):
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/rerank",
+                    json={"model": self._model, "query": query, "documents": texts},
+                )
+            response.raise_for_status()
+            results = response.json()["results"]
+            if not isinstance(results, list):
+                raise TypeError("results is not a list")
         scores = [0.0] * len(texts)
         seen_indices: set[int] = set()
         for result in results:
