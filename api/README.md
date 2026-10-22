@@ -62,7 +62,7 @@ api/
 │   ├── opinions.py         # /api/v1/projects/{id}/opinions
 │   ├── invitations.py      # /api/v1/invitations/*
 │   ├── calculate.py        # /api/v1/calculate
-│   ├── assistant.py        # /api/v1/assistant/* (registered when ASSISTANT_ENABLED; never in prod)
+│   ├── assistant.py        # /api/v1/assistant/* (registered when ASSISTANT_ENABLED)
 │   └── health.py           # /api/v1/health
 ├── schemas/            # Pydantic DTOs
 │   ├── auth.py             # Login, register, tokens
@@ -101,8 +101,8 @@ api/
 The sections below cover the routes of a deployed service. The assistant's three routes,
 `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
 `POST /api/v1/assistant/chat/stream`, are not listed here. They exist
-only when `ASSISTANT_ENABLED=true`. Production refuses to start with that setting on, and the
-Railway `dev` and `test` services need all three model roles set to `api`. A service that leaves
+only when `ASSISTANT_ENABLED=true`. Any Railway environment other than `dev`, `test` and `prod` refuses to start with that setting
+on, and a deployed service needs all three model roles set to `api`. A service that leaves
 it off answers 404 for the whole `/api/v1/assistant` prefix. All three routes need a signed-in
 session and answer 401 without one. Their behavior is in the
 [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
@@ -336,7 +336,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
-| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` in the `prod` profile or on a Railway environment other than `dev` and `test`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
+| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` on a Railway environment other than `dev`, `test` and `prod`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is

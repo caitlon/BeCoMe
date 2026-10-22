@@ -2,8 +2,8 @@
 
 This router is registered only when Settings.assistant_enabled is true (see
 api.main.create_app), so a service that leaves the flag off answers 404 for the whole
-/api/v1/assistant prefix. Settings._validate_assistant_deploy refuses to start production
-with the flag on in the first place, so this module never even loads there.
+/api/v1/assistant prefix. Settings._validate_assistant_deploy refuses to start a Railway
+environment other than dev, test and prod with the flag on, so this module never loads there.
 """
 
 import contextlib
