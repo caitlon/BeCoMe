@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 import httpx
+import requests
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
@@ -23,8 +24,21 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr
+from requests.adapters import HTTPAdapter
 
 from api.assistant.rag.retrieval import RetrievedChunk
+
+
+class NoNetworkAdapter(HTTPAdapter):
+    """A requests transport adapter that refuses to send anything.
+
+    Mounted on a LangSmith client's session, it makes a request that slipped past the test's
+    ``request_with_retries`` fail rather than leave the machine.
+    """
+
+    def send(self, *args: Any, **kwargs: Any) -> requests.Response:
+        raise requests.ConnectionError("the test allows no network traffic")
+
 
 # What a scripted reply reports as its token usage when the test gave it none.
 DEFAULT_USAGE: UsageMetadata = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
