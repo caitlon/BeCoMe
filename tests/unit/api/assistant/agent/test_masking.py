@@ -477,16 +477,25 @@ class TestBlockRows:
             " The dam was built"
         )
 
-    def test_the_last_word_of_a_strangers_cut_name_is_masked_when_the_cut_left_it_whole(self):
+    @pytest.mark.parametrize(
+        ("name", "word"),
+        [
+            ("Bartholomew Alexander Montgomery Featherstonehaugh Horvat Svobodova", "Horvat"),
+            ("Bartholomew Alexander Montgomery Featherstonehaughan Kral Svobodova", "Kral"),
+        ],
+        ids=["six letters", "four letters"],
+    )
+    def test_the_last_word_of_a_strangers_cut_name_is_masked_when_the_cut_left_it_whole(
+        self, name, word
+    ):
         """
         GIVEN a block row of a stranger whose long name the block cuts exactly after a word of
             four letters or more, and a sentence that begins with that word after the block
         WHEN the text is masked with the roster
         THEN the word is masked under the stranger's label
         """
-        name = "Bartholomew Alexander Montgomery Featherstonehaugh Horvat Svobodova"
-        assert clean_text(name, masking.EXPERT_LIMIT).endswith(" Horvat...")
-        text = render_opinions([_opinion(name)]) + "\nHorvat agreed."
+        assert clean_text(name, masking.EXPERT_LIMIT).endswith(f" {word}...")
+        text = render_opinions([_opinion(name)]) + f"\n{word} agreed."
 
         masked = _hide(text, _roster("Bob Green"))
 
