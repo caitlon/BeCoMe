@@ -28,6 +28,7 @@ from api.assistant.rate_limit import GLOBAL_KEY
 from api.config import Settings
 from api.exceptions import ValidationError
 from api.schemas.assistant import AssistantChatRequest
+from tests.shared.assistant_fakes import tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -939,23 +940,34 @@ class TestBuildFailures:
             yield captured
 
     @pytest.mark.parametrize(
-        "failure",
+        ("failure", "role"),
         [
-            OperationalError("SELECT 1", {}, Exception("connection refused by secret-host")),
-            ConnectionRefusedError("secret-host refused"),
-            openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
-            CollectionUnavailableError("collection 'secret_table' cannot be opened"),
+            (
+                OperationalError("SELECT 1", {}, Exception("connection refused by secret-host")),
+                "vector_db",
+            ),
+            (ConnectionRefusedError("secret-host refused"), "vector_db"),
+            (
+                tagged(
+                    openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
+                    "embedding",
+                ),
+                "embedding",
+            ),
+            (CollectionUnavailableError("collection 'secret_table' cannot be opened"), "vector_db"),
         ],
         ids=lambda e: type(e).__name__,
     )
     def test_the_retriever_being_built_against_a_down_backend_is_unavailable(
-        self, failure, records
+        self, failure, role, records
     ):
         """
         GIVEN a store that cannot be opened because its backend is down
         WHEN the retriever is requested
         THEN AssistantUnavailableError is raised, the engine's pool is closed, and one
-             warning records the event, the mode and the error class, never the error's text
+             warning records the event, the mode, the error class and the role of the
+             server (the document index unless the error was tagged at another source),
+             never the error's text
         """
         # GIVEN
         settings = _settings()
@@ -980,6 +992,7 @@ class TestBuildFailures:
             settings.assistant_mode,
             type(failure).__name__,
         )
+        assert record.role == role
         assert not any(
             "secret-host" in str(value) or "secret_table" in str(value)
             for value in vars(record).values()

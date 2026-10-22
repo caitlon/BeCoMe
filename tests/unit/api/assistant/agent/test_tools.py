@@ -31,9 +31,10 @@ from api.assistant.agent.tools import (
 )
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.rag.models import MalformedModelResponseError
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectBrief, ProjectView, ResultView
-from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.assistant_fakes import ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -1142,6 +1143,7 @@ class TestUnavailableLogging:
         assert record.event == "assistant_tool_unavailable"
         assert record.tool == "get_project"
         assert record.reason == "AssistantUpstreamError"
+        assert record.role == "app_api"
         assert record.exc_info is None
         assert "returned 500" not in record.getMessage()
         assert PROJECT_ID not in record.getMessage()
@@ -1161,6 +1163,31 @@ class TestUnavailableLogging:
 
         assert [(r.tool, r.reason) for r in records] == [("search_docs", "ConnectError")]
         assert "secret-host" not in records[0].getMessage()
+
+    @pytest.mark.parametrize(
+        ("failure", "role"),
+        [
+            (OperationalError("SELECT 1", {}, Exception("lost")), "vector_db"),
+            (tagged(MalformedModelResponseError("html"), "rerank"), "rerank"),
+            (tagged(openai.APIConnectionError(request=_REQUEST), "embedding"), "embedding"),
+            (httpx.ConnectError("refused"), "unknown"),
+        ],
+        ids=["database", "rerank", "embedding", "untagged"],
+    )
+    async def test_a_failing_search_logs_the_role_of_the_server_that_failed(self, failure, role):
+        """
+        GIVEN a retriever whose search fails in the store, or in a server tagged at its source
+        WHEN the search tool runs
+        THEN the WARNING carries the role, never read from the error's text
+        """
+        retriever = AsyncMock(spec=DocsRetriever)
+        retriever.search.side_effect = failure
+        ctx = _ctx(retriever=retriever)
+
+        with captured_log_records("api.assistant.agent.tools") as records:
+            await search_docs.ainvoke({"query": "x", "runtime": _runtime(ctx)})
+
+        assert [r.role for r in records] == [role]
 
     async def test_a_not_found_reply_logs_nothing(self):
         """

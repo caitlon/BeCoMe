@@ -48,7 +48,7 @@ from api.assistant.rate_limit import (
     get_assistant_global_throttle,
     get_assistant_throttle,
 )
-from api.assistant.upstream import UNAVAILABLE_ERRORS
+from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.auth.dependencies import AccessToken, CurrentUser
 from api.config import Settings, get_settings
 from api.exceptions import ValidationError
@@ -76,8 +76,9 @@ def _outage_as_unavailable(settings: Settings) -> Iterator[None]:
     by a dependency, before the service runs, and opening its store is the one place a
     dependency reaches a backend: the model clients are built without touching the network,
     and a model server that is down is met at generation time, inside the service. The
-    record is the service's own: the event, the mode and the exception's class name, never
-    its text. An error outside :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not
+    record is the service's own: the event, the mode, the exception's class name and the
+    role of the server that failed (the document index unless the error was tagged at
+    another source), never its text. An error outside :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not
     touched. A failed build is not cached, so the next request tries again.
 
     :param settings: Application settings, for the mode written in the record.
@@ -92,6 +93,7 @@ def _outage_as_unavailable(settings: Settings) -> Iterator[None]:
                 "event": "assistant_dependency_unavailable",
                 "mode": settings.assistant_mode,
                 "reason": type(exc).__name__,
+                "role": role_of(exc, default="vector_db"),
             },
         )
         raise AssistantUnavailableError("a server the assistant needs is unavailable") from None

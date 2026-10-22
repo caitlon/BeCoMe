@@ -20,6 +20,7 @@ from uuid import uuid4
 
 import httpx
 import langsmith as ls
+import openai
 import pytest
 import requests
 from fastapi import HTTPException, Request
@@ -34,6 +35,7 @@ from api.assistant import deps
 from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantUpstreamError
+from api.assistant.rag.models import make_answer_model
 from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
@@ -1287,6 +1289,84 @@ class TestColdStartOutages:
         # THEN
         assert response.status_code == 500
         assert response.json() != UNAVAILABLE_BODY
+
+
+_NO_COMPLETION_BODIES = {
+    "a page": ("text/html", b"<html>bad gateway page</html>"),
+    "an error object": ("application/json", b'{"error": {"message": "overloaded"}}'),
+    "no choices": ("application/json", b'{"id": "c", "object": "chat.completion"}'),
+}
+
+
+def _use_real_model_answering(client, content_type: str, body: bytes) -> None:
+    """Make the app's answer model the real one, with a server that answers 200 with `body`."""
+    settings = get_settings()
+    model = make_answer_model(settings)
+    http_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, headers={"content-type": content_type}, content=body
+            )
+        )
+    )
+    api_client = openai.AsyncOpenAI(
+        api_key="unused",  # pragma: allowlist secret
+        base_url="http://model.test/v1",
+        http_client=http_client,
+        max_retries=0,
+    )
+    model.root_async_client = api_client
+    model.async_client = api_client.chat.completions
+    _use_model(client, model)
+
+
+@pytest.mark.parametrize("reply", _NO_COMPLETION_BODIES.values(), ids=_NO_COMPLETION_BODIES.keys())
+class TestModelServerAnswersNoCompletion:
+    """A model server whose 200 is no completion is an outage, in every mode: never a 500."""
+
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_the_chat_route_answers_503(self, assistant_settings, client, configure, mode, reply):
+        """
+        GIVEN the real answer model talking to a server that answers 200 with a page, an
+            error object or a body without choices
+        WHEN a question is posted to /chat
+        THEN the answer is 503 with the fixed detail and one warning names the answer model
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        token = register_and_login(client, f"no-completion-{mode}@example.com")
+        _use_real_model_answering(client, *reply)
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert [(r.event, r.reason, r.role) for r in records] == [
+            ("assistant_dependency_unavailable", "MalformedModelResponseError", "answer")
+        ]
+
+    def test_the_stream_route_ends_in_a_503_error_event(
+        self, assistant_settings, client, configure, reply
+    ):
+        """
+        GIVEN the same model
+        WHEN a question is posted to /chat/stream
+        THEN the stream ends in an error event with code 503, after no token
+        """
+        # GIVEN
+        token = register_and_login(client, "no-completion-stream@example.com")
+        _use_real_model_answering(client, *reply)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        events = _events(response.text)
+        assert [name for name, _ in events] == ["error"]
+        assert events[0][1]["code"] == 503
 
 
 class TestMessageLimit:
