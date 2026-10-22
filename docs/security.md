@@ -401,7 +401,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
-| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
+| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev, test and prod services |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
@@ -531,10 +531,10 @@ production.
 
 The assistant, which runs its models locally by default or at a hosted provider per role, has a
 check of its own, separate from the nine invariants. `assistant_enabled` defaults to `false`, and
-`_validate_assistant_deploy` refuses to start when it is `true` in the `prod` profile, or on a
-Railway environment whose name is not `dev` or `test` (compared stripped and case-insensitively, so
-an unknown or renamed environment is refused). The profile and the name are checked independently.
-On any deploy the validator also requires the three model roles to be `api`, since a local model
+`_validate_assistant_deploy` refuses to start when it is `true` on a Railway environment whose
+name is not `dev`, `test` or `prod` (compared stripped and case-insensitively, so an unknown or
+renamed environment is refused). The `prod` profile is a deploy like the other two and is held to
+the rules that follow. On any deploy the validator also requires the three model roles to be `api`, since a local model
 server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR` or
 `ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch the cap off. The model is shown each
 expert's name and position in the opinions block, except for members who objected to the assistant
@@ -554,7 +554,7 @@ on, a deployed service must use the EU endpoint and a named project other than t
 and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and its
 `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to turn
 tracing on. The key, https and loopback checks stay in `_validate_assistant_providers`. The
-production refusal, the hosted-roles rule and the tracing rules also fire when
+environment-name refusal, the hosted-roles rule and the tracing rules also fire when
 `RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
 `is_deploy` is still held to them. The assistant router is registered only when the setting is on,
 so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
@@ -655,9 +655,9 @@ request it happened during returns normally, so there is no other symptom to not
 accepted risk is unchanged. What changed is that it now announces itself. The assistant's
 hourly cap does not fail open. On a Redis error each process counts in its own memory with the
 same budget, so a store outage leaves a cap per process, not none, and the record
-`assistant_throttle_unavailable` goes out at ERROR. The assistant cannot run in production, so the
-production alert rule below is not expected to fire for it; on the dev and test services the
-record is for whoever reads their log.
+`assistant_throttle_unavailable` goes out at ERROR. Where the assistant runs
+in production, the alert rule below fires for it as for the other throttles; on the dev and test
+services the record is for whoever reads their log.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A

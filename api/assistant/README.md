@@ -1,19 +1,19 @@
 # Assistant
 
-Runs on a developer machine; the validator also allows it on the Railway `dev` and `test`
-services. `Settings` refuses to start production (the `prod` profile, or any Railway environment
-other than `dev` and `test`) with `ASSISTANT_ENABLED=true`, and on a deployed service it requires
-all three model roles to be `api`.
+Runs on a developer machine; the validator also allows it on the Railway `dev`, `test` and `prod`
+services. `Settings` refuses to start any other Railway environment with `ASSISTANT_ENABLED=true`,
+and on a deployed service, the `prod` profile included, it requires all three model roles to be
+`api`.
 
-On the dev and test services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
+On the dev, test and prod services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
 `ASSISTANT_LLM_PROVIDER` and `ASSISTANT_EMBEDDING_PROVIDER` are `api`, each base URL is the OVH
 endpoint, and `ASSISTANT_API_KEY_OVH` holds the key. LangSmith tracing is allowed there
 only to the EU endpoint, into a named project other than the local default, and through
 `ASSISTANT_LANGSMITH_ENABLED` alone: `LANGSMITH_TRACING` and its `LANGCHAIN_` variants, and
 `LANGSMITH_RUNS_ENDPOINTS` and `LANGCHAIN_RUNS_ENDPOINTS`, are refused on a deployed service. A
 deployed service needs an image built with the `assistant` extra and a corpus database reachable
-through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example` and `env/.env.test.example` list the
-variables.
+through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.example` and
+`env/.env.prod.example` list the variables.
 
 ## Contents
 

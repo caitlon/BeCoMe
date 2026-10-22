@@ -111,10 +111,10 @@ _ASSISTANT_PROVIDER_ROLES = (
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 )
 
-# Railway environments the assistant may run in. An allowlist, so it fails closed: the real
-# names are dev, test and prod, but before 2026-09-12 they were production and staging, and a
-# renamed or preview environment (pr-123) must be refused rather than allowed.
-_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test"})
+# Railway environments the assistant may run in: the three real ones. An allowlist, so it
+# fails closed: before 2026-09-12 the names were production and staging, and a renamed or
+# preview environment (pr-123) must be refused rather than allowed.
+_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test", "prod"})
 
 # The one LangSmith endpoint a deployed service may send traces to: the EU region.
 _LANGSMITH_EU_ENDPOINT = "https://eu.api.smith.langchain.com"
@@ -334,10 +334,10 @@ class Settings(BaseSettings):
     turnstile_hostnames: list[str] = []
 
     # AI assistant (RAG + read-only project explainer). Off everywhere by default;
-    # _validate_assistant_deploy refuses to start production, or a Railway environment
-    # other than dev and test, with it on, and on a deploy it demands every model role be
-    # api. api/routes/assistant.py is registered only when this is true (see
-    # api.main.create_app), so a service that leaves it off answers 404 for the whole
+    # _validate_assistant_deploy refuses to start a Railway environment other than dev,
+    # test and prod with it on, and on a deploy, the prod profile included, it demands
+    # every model role be api. api/routes/assistant.py is registered only when this is true
+    # (see api.main.create_app), so a service that leaves it off answers 404 for the whole
     # prefix.
     assistant_enabled: bool = False
     # Whether a chat answer reaches the client with its sources, excerpts and [n] markers.
@@ -540,15 +540,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_assistant_deploy(self) -> "Settings":
-        """Refuse the assistant in production, and on a deploy require hosted roles and a corpus DB.
+        """Refuse an unknown Railway environment; on a deploy require hosted roles and a corpus DB.
 
         The assistant reads project data as the signed-in user and calls an LLM, so it may
-        run on a laptop and on the dev and test services, never in production. Production
-        is refused by profile and by Railway environment name, independently: APP_ENV=prod
-        on Railway ``dev`` and APP_ENV=dev on Railway ``prod`` are both refused. The Railway
-        name is checked against an allowlist, so an unknown or renamed environment is
-        refused too. A deployed service has no llama-server to reach, so every model role
-        there must be api; a laptop and a CI runner keep local roles. A zero message limit
+        run on a laptop and on the dev, test and prod services. The Railway name is checked
+        against an allowlist of those three, so an unknown or renamed environment
+        (``production``, ``staging``, a preview) is refused. The prod profile is a deploy
+        like the other two and is held to every rule below. A deployed service has no
+        llama-server to reach, so every model role there must be api; a laptop and a CI
+        runner keep local roles. A zero message limit
         switches that cap off, so a deployed service may set neither the per-user nor the
         global limit to zero. LangSmith tracing
         sends the text of questions, tool replies and answers, which is project data read
@@ -574,8 +574,8 @@ class Settings(BaseSettings):
         process on Railway is held to both rules, whatever else is set alongside it.
 
         :return: The validated settings instance.
-        :raises ValueError: If assistant_enabled is true in the prod profile or on a
-            Railway environment outside the allowlist, or on a deployed service while
+        :raises ValueError: If assistant_enabled is true on a Railway environment outside
+            the allowlist, or on a deployed service while
             assistant_rate_limit_per_hour or assistant_global_turns_per_hour is 0, a model
             role is still local, assistant_langsmith_enabled is true with an endpoint other
             than the EU one or a blank or local-default project, a library tracing switch is on, a
@@ -589,13 +589,11 @@ class Settings(BaseSettings):
             return self
         on_railway = self.railway_environment_name is not None
         railway_name = (self.railway_environment_name or "").strip().lower()
-        if self.environment is Environment.PROD or (
-            on_railway and railway_name not in _ASSISTANT_RAILWAY_ENVIRONMENTS
-        ):
+        if on_railway and railway_name not in _ASSISTANT_RAILWAY_ENVIRONMENTS:
             raise ValueError(
-                "assistant_enabled must stay false in production and in any Railway "
-                f"environment other than dev and test (the {self.environment.value} profile "
-                f"here, Railway environment {self.railway_environment_name!r})"
+                "assistant_enabled must stay false in any Railway environment other than "
+                f"dev, test and prod (the {self.environment.value} profile here, Railway "
+                f"environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:
             for limit_name in ("assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"):

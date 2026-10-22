@@ -1223,7 +1223,7 @@ _VECTOR_URL = (
 
 
 class TestAssistantSettings:
-    """The assistant runs on a laptop and on dev/test with hosted roles, never in production."""
+    """The assistant runs on a laptop and on dev, test and prod with hosted roles."""
 
     def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
         """
@@ -1337,13 +1337,26 @@ class TestAssistantSettings:
 
     @pytest.mark.parametrize(
         ("profile", "railway_name"),
-        [("dev", "dev"), ("test", "test"), ("dev", " Dev "), ("test", "TEST")],
+        [
+            ("dev", "dev"),
+            ("test", "test"),
+            ("prod", "prod"),
+            ("prod", None),
+            ("prod", "dev"),
+            ("dev", "prod"),
+            ("test", "prod"),
+            ("dev", " Dev "),
+            ("test", "TEST"),
+            ("dev", "PROD"),
+            ("dev", " prod "),
+        ],
     )
-    def test_allows_the_assistant_on_the_dev_and_test_services(
+    def test_allows_the_assistant_on_the_dev_test_and_prod_services(
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
-        GIVEN a deployed dev or test service with every model role hosted
+        GIVEN a fully configured deployed service, the prod profile and the Railway prod
+            environment included, with every model role hosted
         WHEN Settings is constructed with assistant_enabled=true
         THEN validation passes, the Railway name compared stripped and case-insensitively
         """
@@ -1362,27 +1375,25 @@ class TestAssistantSettings:
     @pytest.mark.parametrize(
         ("profile", "railway_name"),
         [
-            ("prod", None),
-            ("prod", "prod"),
-            ("prod", "dev"),
-            ("dev", "prod"),
-            ("test", "prod"),
-            ("dev", "PROD"),
-            ("dev", " prod "),
             ("dev", "production"),
+            ("dev", "PRODUCTION"),
             ("dev", "staging"),
             ("dev", "pr-123"),
+            ("dev", "prod-eu"),
             ("dev", ""),
+            ("prod", "production"),
+            ("prod", "staging"),
+            ("test", "pr-123"),
         ],
     )
-    def test_rejects_the_assistant_in_production_or_an_unknown_railway_environment(
+    def test_rejects_the_assistant_on_an_unknown_railway_environment(
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
-        GIVEN a fully configured service that is production by profile, by Railway
-            environment name, or whose Railway environment is not a known non-production one
+        GIVEN a fully configured service whose Railway environment is none of dev, test and
+            prod (a retired or preview name, or an empty one), under any profile
         WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, naming the field
+        THEN validation fails, naming the field and the allowed environments
         """
         # GIVEN
         self._configure_deployed_assistant(
@@ -1390,7 +1401,56 @@ class TestAssistantSettings:
         )
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
+        with pytest.raises(
+            ValidationError, match=r"assistant_enabled must stay false.*dev, test and prod"
+        ):
+            Settings()
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("prod", None), ("prod", "prod"), ("dev", "prod")]
+    )
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ({"ASSISTANT_ANSWER_PROVIDER": "local"}, "assistant_answer_provider must be api"),
+            ({"ASSISTANT_LLM_PROVIDER": "local"}, "assistant_llm_provider must be api"),
+            ({"ASSISTANT_EMBEDDING_PROVIDER": "local"}, "assistant_embedding_provider must be api"),
+            ({"ASSISTANT_VECTOR_DB_URL": ""}, "assistant_vector_db_url must be set"),
+            ({"ASSISTANT_RATE_LIMIT_PER_HOUR": "0"}, "assistant_rate_limit_per_hour must be above"),
+            (
+                {"ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0"},
+                "assistant_global_turns_per_hour must be above",
+            ),
+            (
+                {
+                    "ASSISTANT_LANGSMITH_ENABLED": "true",
+                    "ASSISTANT_LANGSMITH_API_KEY": "lsv2_test",  # pragma: allowlist secret
+                    "ASSISTANT_LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+                    "ASSISTANT_LANGSMITH_PROJECT": "become-assistant-prod",
+                },
+                "assistant_langsmith_endpoint must be the EU",
+            ),
+        ],
+    )
+    def test_holds_the_prod_service_to_the_deploy_rules(
+        self, monkeypatch, tmp_path, profile, railway_name, overrides, message
+    ):
+        """
+        GIVEN a fully configured prod service (by profile, by Railway environment, or both)
+            with the assistant on and one deploy rule broken: a local model role, an empty
+            corpus database URL, a zero message limit or a non-EU LangSmith endpoint
+        WHEN Settings is constructed
+        THEN validation fails with that rule's message, as it does on dev and test
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        for name, value in overrides.items():
+            monkeypatch.setenv(name, value)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=message):
             Settings()
 
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
@@ -1432,9 +1492,12 @@ class TestAssistantSettings:
         for provider, _ in _PROVIDER_ROLES:
             assert provider in str(excinfo.value)
 
-    def test_checks_the_railway_environment_even_with_testing_set(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("railway_name", ["production", "prod-eu"])
+    def test_checks_the_railway_environment_even_with_testing_set(
+        self, monkeypatch, tmp_path, railway_name
+    ):
         """
-        GIVEN TESTING=1 alongside Railway environment prod, so is_deploy is false, with
+        GIVEN TESTING=1 alongside an unknown Railway environment, so is_deploy is false, with
             every role hosted
         WHEN Settings is constructed with assistant_enabled=true
         THEN the environment rule still refuses it, since a process on Railway is a
@@ -1442,11 +1505,31 @@ class TestAssistantSettings:
         """
         # GIVEN
         self._configure_deployed_assistant(
-            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+            monkeypatch, tmp_path, profile="dev", railway_name=railway_name, testing=True
         )
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_enabled must stay false"):
+            Settings()
+
+    def test_holds_railway_prod_to_the_deploy_rules_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 alongside Railway environment prod, so is_deploy is false, with
+            one model role left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the hosted-roles rule still refuses it, since a process on Railway prod is a
+            deployed service whatever else is set alongside it
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
             Settings()
 
     def test_checks_the_hosted_roles_even_with_testing_set(self, monkeypatch, tmp_path):
