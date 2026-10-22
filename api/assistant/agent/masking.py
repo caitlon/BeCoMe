@@ -148,6 +148,9 @@ _NAME_SEPARATOR = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
 # symbol or an escape such as the backslash and n of a line break, and replacing it would tear
 # a text apart.
 _MIN_NAME_PART = 2
+# The last word of a cut name is searched for alone only with this many letters: a word cut
+# mid-word to fewer (The, of Theodorakis) would hit ordinary words.
+_MIN_CUT_WORD = 4
 # A word of a name this long is found in any case of its first letter. A shorter one, which
 # may be an ordinary word (Will, Eva), keeps the case it was written in.
 _MIN_LOOSE_CASE = 5
@@ -456,8 +459,9 @@ class TurnRoster:
         if not name:
             return None
         cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
-        # An expert first met as a stranger's row has the cut name, so look for that too.
-        participant = self._by_name.get(name) or (self._find(cut) if cut != name else None)
+        # An expert first met as a stranger's row is keyed by the cut name, so look for that too.
+        # Only the key: another fetched expert's cut is no proof of the same person.
+        participant = self._by_name.get(name) or (self._by_name.get(cut) if cut != name else None)
         if participant is None:
             if len(self._by_name) >= _MAX_REGISTERED:
                 return None
@@ -521,10 +525,14 @@ class TurnRoster:
                 if _looks_cut(name, EXPERT_LIMIT):
                     dotless = name.removesuffix("...")
                     owner.cuts.update((name, dotless))
-                    # Only the last word can be cut mid-word, so the words before it are whole.
+                    # Only the last word can be cut mid-word, so the words before it are whole,
+                    # and the last one is whole too when it is long enough to be a name.
                     breaks = list(_NAME_SEPARATOR.finditer(dotless))
                     if breaks:
                         owner.names.add(dotless[: breaks[-1].start()])
+                        last = dotless[breaks[-1].end() :]
+                        if _letters_and_digits(last) >= _MIN_CUT_WORD:
+                            owner.names.add(last)
                 else:
                     owner.names.add(name)
             owner.heads.add(text)

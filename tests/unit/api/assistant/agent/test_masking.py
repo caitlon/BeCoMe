@@ -476,6 +476,21 @@ class TestBlockRows:
             "\nExpert 2 is here; Expert 2 agrees. Quoted: Expert 2 end. The dam was built"
         )
 
+    def test_the_last_word_of_a_strangers_cut_name_is_masked_when_the_cut_left_it_whole(self):
+        """
+        GIVEN a block row of a stranger whose long name the block cuts exactly after a word of
+            four letters or more, and a sentence that begins with that word after the block
+        WHEN the text is masked with the roster
+        THEN the word is masked under the stranger's label
+        """
+        name = "Bartholomew Alexander Montgomery Featherstonehaugh Horvat Svobodova"
+        assert clean_text(name, masking.EXPERT_LIMIT).endswith(" Horvat...")
+        text = render_opinions([_opinion(name)]) + "\nHorvat agreed."
+
+        masked = _hide(text, _roster("Bob Green"))
+
+        assert masked.endswith("\nExpert 2 agreed.")
+
     def test_a_short_name_or_position_that_ends_in_dots_is_not_a_cut_one(self):
         """
         GIVEN a block row of a stranger whose short name and position end in dots
@@ -503,6 +518,20 @@ class TestBlockRows:
         assert mask_participants(_LONG_NAME, roster) == "Expert 1"
         assert roster.label_for(_CUT_NAME) == "Expert 1"
         assert roster.label_for("Someone Else") == "Expert 2"
+
+    def test_two_fetched_experts_whose_cut_names_are_alike_keep_their_own_labels(self):
+        """
+        GIVEN two experts whose long names differ only after the point where a block cuts them
+        WHEN a text names both of them whole and the roster masks it
+        THEN each has its own label, and the two are not taken for one expert
+        """
+        stem = "Bartholomew Alexander Montgomery Featherstonehaugh Horvat"
+        first, second = f"{stem} Svobodova", f"{stem} Novotny"
+        assert clean_text(first, masking.EXPERT_LIMIT) == clean_text(second, masking.EXPERT_LIMIT)
+
+        masked = _hide(f"{first} and {second}", _roster(first, second))
+
+        assert masked == "Expert 1 and Expert 2"
 
     def test_an_expert_with_a_long_name_met_again_with_another_position_keeps_the_label(self):
         """
