@@ -443,7 +443,8 @@ calls of the turn are dropped too, logged at DEBUG. A turn that names no project
 What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a
 position the model translates or paraphrases; a few words of a long position quoted alone (a
 position is found only as a whole phrase); of a stranger's name that a block shows cut, a last
-word of fewer than four letters and the part of a word the cut hid; a name inside an e-mail
+word of fewer than four letters and whatever the cut hid (the rest of a word, or the words after
+it); a name inside an e-mail
 address, where a lower-case word of fewer than five letters stays (a name stored as `Jana` is
 matched only with its capital, so `jana.novakova@example.com` becomes
 `jana.Expert 1@example.com`); a name in the history that belongs to a project the turn did not
