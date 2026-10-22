@@ -24,11 +24,11 @@ of fewer than five letters is found only with the capital it was stored with, so
 as a whole.
 
 A name or a position that a block shows cut with dots is also found in that cut form, with and
-without the dots, as a whole phrase. The words of a stranger's cut name that the cut left whole,
-the ones before the last and the last when it has four letters or more, are also found one by
-one, like a name. A roster registers at most 100 participants. Past that an expert is still
-masked wherever a block shows the name in a row, but the name is not searched for anywhere else
-in the text.
+without the dots, as a whole phrase. A stranger's cut name is also searched word by word, like a
+name: the words before the cut, and the last word as the block shows it when it has four letters
+or more, even if the cut fell inside it. A roster registers at most 100 participants. Past that
+an expert is still masked wherever a block shows the name in a row, but the name is not searched
+for anywhere else in the text.
 """
 
 import re
