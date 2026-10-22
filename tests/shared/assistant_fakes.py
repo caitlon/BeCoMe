@@ -27,6 +27,14 @@ from pydantic import Field, PrivateAttr
 from requests.adapters import HTTPAdapter
 
 from api.assistant.rag.retrieval import RetrievedChunk
+from api.assistant.roles import UpstreamRole, tag_role
+
+
+def tagged[ErrorT: Exception](error: ErrorT, role: UpstreamRole) -> ErrorT:
+    """Return an error carrying the role of the server it is supposed to have come from."""
+    tag_role(error, role)
+    return error
+
 
 
 class NoNetworkAdapter(HTTPAdapter):

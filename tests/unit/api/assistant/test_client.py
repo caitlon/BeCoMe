@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 
 from api.assistant.client import _MAX_PAGES, UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.roles import tagged_role
 from api.pagination import MAX_PAGE_SIZE
 
 
@@ -414,3 +415,29 @@ class TestMalformedSuccessBody:
         with pytest.raises(AssistantUpstreamError, match="not a list"):
             await api_client.get_opinions(str(uuid4()))
         await api_client.aclose()
+
+
+class TestFailureRole:
+    """A failure inside the application's own routes says it came from the application."""
+
+    @pytest.mark.asyncio
+    async def test_an_error_raised_by_the_app_is_tagged_app_api(self):
+        """
+        GIVEN an application whose route fails with an error of the kind a database raises
+        WHEN the client reads through it
+        THEN the error reaches the caller as it is, tagged app_api
+        """
+        # GIVEN
+        app = FastAPI()
+
+        @app.get("/api/v1/projects")
+        async def projects() -> None:
+            raise ConnectionRefusedError("application-db")
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN/THEN
+        with pytest.raises(ConnectionRefusedError) as raised:
+            await api_client.list_projects()
+        await api_client.aclose()
+        assert tagged_role(raised.value) == "app_api"

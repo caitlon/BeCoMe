@@ -18,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.types import ASGIApp
 
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.roles import tag_role
 from api.assistant.views import OpinionView, ProjectBrief, ProjectView, ResultView
 from api.config import get_settings
 from api.pagination import MAX_PAGE_SIZE
@@ -109,8 +110,16 @@ class UserApiClient:
         :raises AssistantNotFoundError: On a 404 response.
         :raises AssistantUpstreamError: On any other non-2xx response, or a 2xx whose
             body is not JSON. The message never carries any of the body.
+        :raises Exception: Whatever the request itself raises, tagged with the role
+            ``app_api``.
         """
-        response = await self._http.get(path, params=params)
+        try:
+            response = await self._http.get(path, params=params)
+        except Exception as exc:
+            # The call runs the application's own route, so a database error raised in it
+            # is the application's, not the assistant's document index.
+            tag_role(exc, "app_api")
+            raise
         if response.status_code == httpx.codes.NOT_FOUND:
             raise AssistantNotFoundError(f"{path} returned 404")
         if response.is_error:

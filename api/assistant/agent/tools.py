@@ -46,7 +46,7 @@ from api.assistant.agent.prompt import (
     render_context_block,
 )
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
-from api.assistant.upstream import UNAVAILABLE_ERRORS
+from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.assistant.views import OpinionView, ProjectBrief, ProjectView
 
 logger = logging.getLogger(__name__)
@@ -352,8 +352,8 @@ def _reply(ctx: AssistantContext, text: str) -> str:
 def _unavailable(tool_name: str, exc: Exception) -> str:
     """Log that a tool could not reach its backend and give the fixed reply.
 
-    The record carries the tool and the exception's class name only: never the
-    message, which can name a host or a path, and never a traceback.
+    The record carries the tool, the exception's class name and the role of the server
+    that failed only: never the message, which can name a host or a path, and never a traceback.
 
     :param tool_name: The tool that failed.
     :param exc: The failure.
@@ -366,6 +366,7 @@ def _unavailable(tool_name: str, exc: Exception) -> str:
             "event": "assistant_tool_unavailable",
             "tool": tool_name,
             "reason": type(exc).__name__,
+            "role": role_of(exc),
         },
     )
     return UNAVAILABLE_REPLY
