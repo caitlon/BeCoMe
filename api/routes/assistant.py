@@ -20,8 +20,7 @@ from api.assistant.deps import (
     PreparedTurnDep,
     enforce_message_limit,
     hold_turn_slot,
-    limit_chat_per_address,
-    limit_stream_per_address,
+    limit_per_address,
 )
 from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
@@ -67,7 +66,7 @@ def get_assistant_config(
     "/chat",
     summary="Ask the assistant about the method or a project",
     dependencies=[
-        Depends(limit_chat_per_address),
+        Depends(limit_per_address),
         Depends(hold_turn_slot),
         Depends(enforce_message_limit),
     ],
@@ -102,7 +101,7 @@ async def chat(
     "/chat/stream",
     summary="Ask the assistant and read the answer as it is written",
     dependencies=[
-        Depends(limit_stream_per_address),
+        Depends(limit_per_address),
         Depends(hold_turn_slot),
         Depends(enforce_message_limit),
     ],
