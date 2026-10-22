@@ -92,5 +92,4 @@ fuzzy number back to one figure when you need to sort or compare.
 **Membership function.** What the vertical axis measures. Membership is 1 at the peak and falls
 linearly to 0 at each bound.
 
-Next: [a worked example](worked-example.md), where these four figures come from a real panel of
-thirteen.
+Next: [the assistant](assistant.md), which can explain a result in plain words.
