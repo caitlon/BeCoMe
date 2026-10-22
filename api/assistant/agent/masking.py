@@ -24,9 +24,11 @@ of fewer than five letters is found only with the capital it was stored with, so
 as a whole.
 
 A name or a position that a block shows cut with dots is also found in that cut form, with and
-without the dots, as a whole phrase. A roster registers at most 100 participants. Past that an
-expert is still masked wherever a block shows the name in a row, but the name is not searched for
-anywhere else in the text.
+without the dots, as a whole phrase. The words of a stranger's cut name that the cut left whole,
+the ones before the last and the last when it has four letters or more, are also found one by
+one, like a name. A roster registers at most 100 participants. Past that an expert is still
+masked wherever a block shows the name in a row, but the name is not searched for anywhere else
+in the text.
 """
 
 import re
@@ -401,7 +403,8 @@ class _Participant:
 
     :ivar number: The label's number.
     :ivar names: The expert's name, cleaned and as written, whole; each is searched for whole
-        and word by word.
+        and word by word. For a stranger met only as a cut row it holds the words before the
+        cut, and the last word when it has at least four letters, in place of the whole name.
     :ivar cuts: The name as a block shows it cut with dots, and without the dots, when it was
         cut; each is searched for as a whole phrase only, so a word cut off at the end of a
         long name (``The``) is not searched for alone.
