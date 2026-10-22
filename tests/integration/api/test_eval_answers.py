@@ -1088,31 +1088,33 @@ class TestPacing:
 
     def test_latency_does_not_include_the_wait(self, assistant_settings, client, tmp_path):
         """
-        GIVEN a limit of 2 a minute, so the second question waits, and a wait that really takes 0.5 s
+        GIVEN a limit of 2 a minute, so the second question waits, and a fake clock that the
+            wait moves by a minute while a turn takes no time on it
         WHEN the runner asks two questions
-        THEN the wait happened and every latency_s is shorter than it
+        THEN the wait happened and every latency_s is zero, so none of it counts as latency
         """
         # GIVEN
         fixtures = _setup(client, _scripted("One.", "Two."))
-        waited: list[float] = []
-
-        async def really_sleep(seconds: float) -> None:
-            waited.append(seconds)
-            await asyncio.sleep(0.5)
+        fake = _FakeTime()
 
         # WHEN
-        with patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "2/minute"):
+        with (
+            patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "2/minute"),
+            patch.object(ea, "time", SimpleNamespace(monotonic=fake.clock)),
+        ):
             _run(
                 client,
                 fixtures,
                 self._questions(2),
                 tmp_path / "out.jsonl",
-                sleep=really_sleep,
+                clock=fake.clock,
+                sleep=fake.sleep,
             )
 
         # THEN
-        assert len(waited) == 1
-        assert all(row["latency_s"] < 0.5 for row in _rows(tmp_path / "out.jsonl"))
+        assert len(fake.sleeps) == 1
+        assert fake.sleeps[0] > 0
+        assert [row["latency_s"] for row in _rows(tmp_path / "out.jsonl")] == [0.0, 0.0]
 
     def test_no_pacing_never_waits(self, assistant_settings, client, tmp_path):
         """
