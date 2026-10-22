@@ -520,6 +520,12 @@ class Settings(BaseSettings):
         """Strip surrounding whitespace and a trailing slash, so the client gets a clean URL."""
         return value.strip().rstrip("/")
 
+    @field_validator("assistant_langsmith_project")
+    @classmethod
+    def _clean_langsmith_project(cls, value: str) -> str:
+        """Strip surrounding whitespace, so the traces land in the project that was named."""
+        return value.strip()
+
     @model_validator(mode="after")
     def _apply_profile_log_level(self) -> "Settings":
         """Fall back to the active profile's log level when ``LOG_LEVEL`` is unset.
@@ -648,7 +654,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 "assistant_langsmith_endpoint must be the EU endpoint on a deployed service"
             )
-        project = self.assistant_langsmith_project.strip()
+        project = self.assistant_langsmith_project
         if not project or project.lower() == _LANGSMITH_LOCAL_PROJECT:
             raise ValueError(
                 "assistant_langsmith_project must be set to a project other than "
