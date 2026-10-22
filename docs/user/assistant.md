@@ -12,7 +12,8 @@ appears when you hover over it.
 On a project's page, both that button and **Explain this result** on the result page open the panel
 for the project, and the panel header shows the project's name. Anywhere else in the app the panel
 is labelled **Method and app**. It has no project to look at there, so it answers questions about
-the method and about using BeCoMe.
+the method and about using BeCoMe. A panel you keep open while moving between pages keeps the scope
+it was opened with until you close it and open it again.
 
 ## What it can answer
 
@@ -36,14 +37,16 @@ minutes to wait.
 
 An answer can take up to a minute.
 
-In a long conversation, older messages are no longer sent with new questions, and the panel marks
-the point where that starts. The assistant stops taking those messages into account, so repeat
-anything it needs to know.
+In a long conversation, older messages are no longer sent with new questions. The panel shows a line
+at the usual point, and very long messages can make the cut come sooner. The assistant stops taking
+those messages into account, so repeat anything it needs to know.
 
 ## When something goes wrong
 
 **Message limit reached.** You have used your 60 messages for this hour. The hour starts with your
 first message. Wait the number of minutes the message shows.
+Sending many messages within one minute can hit a shorter limit with the same message; then wait a
+minute. When no wait time is known, the message says to try again later.
 
 **The assistant is temporarily unavailable.** The assistant is busy or the model is not responding.
 Try again in a few minutes.
@@ -51,6 +54,8 @@ Try again in a few minutes.
 **This project is not available.** The project was deleted, or you are no longer a member. The
 message offers two buttons. **Ask without the project** switches to the **Method and app** panel,
 where you can ask again. **Open projects** closes the panel and takes you to your projects list.
+
+**Something went wrong.** Any other error. Try again; if it keeps happening, try later.
 
 **The connection dropped.** The part of the answer that arrived stays on screen. Pressing **Stop**
 does the same and marks the answer as stopped. Either way the partial answer is not sent with your
@@ -62,8 +67,9 @@ the result page.
 
 ## What is kept
 
-The conversation lives in your browser tab and nowhere else. It is not saved to your account or on
-the server. Closing the tab erases it, and so does signing out. Reloading the tab keeps it.
+The conversation lives in your browser tab. It is not saved to your account or on the server, apart
+from the 14-day trace record that [What the assistant sends](security.md#what-the-assistant-sends)
+describes. Closing the tab erases it, and so does signing out. Reloading the tab keeps it.
 
 Each project has its own conversation, and the **Method and app** panel has a separate one.
 **Clear conversation** erases only the one that is open. A confirmation appears first, because this
