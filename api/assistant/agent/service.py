@@ -17,6 +17,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from typing import Literal
 
 import langsmith as ls
 from langchain_core.language_models import BaseChatModel
@@ -71,6 +72,9 @@ logger = logging.getLogger(__name__)
 # of the prompt the client controls, so the fetched context, the message and the answer
 # are left room by capping it.
 _HISTORY_CHAR_BUDGET = 6000
+
+# Which limit ended a turn: the one on the work before the first byte, or the turn's own.
+TimeoutLimit = Literal["first_byte", "turn"]
 
 # The most seconds the fetch of the opinions for the trace mask may take, in every mode.
 _ROSTER_FETCH_SECONDS = 5.0
@@ -153,8 +157,9 @@ class AssistantService:
 
         The documents are searched with the last message alone, not with the history: a
         follow-up that only makes sense with the earlier turns is searched as it stands,
-        which is a known limit. The fetching runs under ``assistant_turn_timeout_seconds``,
-        so that a caller that streams the answer meets its failures before any byte is sent.
+        which is a known limit. The fetching runs under ``assistant_first_byte_timeout_seconds``
+        (or the turn timeout, when that is shorter), so that a caller that streams the answer
+        meets its failures before any byte is sent, and sends one before a proxy gives up.
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
@@ -175,6 +180,7 @@ class AssistantService:
             for turn in kept
         ]
         deadline_at = started + self._settings.assistant_turn_timeout_seconds
+        first_byte_at, limit = self._first_byte_bound(started, deadline_at)
         trace = start_turn(self._settings, request.message, ctx.roster)
         if trace is not None and ctx.current_project_id is not None:
             # Complete once the current project's opinions are read into it (see below).
@@ -182,7 +188,7 @@ class AssistantService:
         try:
             with tracing_scope(self._settings, parent=trace):
                 try:
-                    async with asyncio.timeout_at(deadline_at) as deadline:
+                    async with asyncio.timeout_at(first_byte_at) as deadline:
                         parts = [] if mode == "agent" else await self._fetch(request, ctx)
                         if trace is not None:
                             await self._register_participants(ctx, deadline_at)
@@ -192,7 +198,7 @@ class AssistantService:
                 except TimeoutError:
                     if not deadline.expired():
                         raise
-                    raise self._timed_out(mode, started) from None
+                    raise self._timed_out(mode, started, limit) from None
                 except UNAVAILABLE_ERRORS as exc:
                     raise self._unavailable(exc, mode) from None
         except BaseException as exc:
@@ -206,8 +212,10 @@ class AssistantService:
         """Answer one turn in the configured mode.
 
         The whole turn, fetching and generation, runs under
-        ``assistant_turn_timeout_seconds``. A check that fails changes the flags of the
-        response and nothing else: the answer is not generated again.
+        ``assistant_first_byte_timeout_seconds``, or ``assistant_turn_timeout_seconds`` when
+        that is shorter, because the answer is one body and its first byte is its last. A check
+        that fails changes the flags of the response and nothing else: the answer is not
+        generated again.
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
@@ -221,9 +229,10 @@ class AssistantService:
         """
         turn = await self.prepare(request, ctx)
         mode = self._settings.assistant_mode
+        bound, limit = self._first_byte_bound(turn.started, turn.deadline_at)
         with ending_turn(turn.trace):
             try:
-                async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                async with asyncio.timeout_at(bound) as deadline:
                     empty_reason = "empty"
                     with tracing_scope(self._settings, parent=turn.trace):
                         try:
@@ -237,7 +246,7 @@ class AssistantService:
             except TimeoutError:
                 if not deadline.expired():
                     raise
-                raise self._timed_out(mode, turn.started) from None
+                raise self._timed_out(mode, turn.started, limit) from None
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None
             response = self._finish(
@@ -322,7 +331,7 @@ class AssistantService:
         except TimeoutError:
             if not deadline.expired():
                 raise
-            raise self._timed_out(mode, turn.started) from None
+            raise self._timed_out(mode, turn.started, "turn") from None
 
     @staticmethod
     def _first_token_ms(known: int | None, loop: asyncio.AbstractEventLoop, started: float) -> int:
@@ -417,13 +426,33 @@ class AssistantService:
             timing=TurnTiming(ttft_ms=ttft_ms, total_ms=duration_ms),
         )
 
+    def _first_byte_bound(self, started: float, deadline_at: float) -> tuple[float, TimeoutLimit]:
+        """Return the time the work before a response's first byte must be done by.
+
+        That is ``assistant_first_byte_timeout_seconds`` after the turn started, unless the
+        turn's own deadline comes first, so the setting can shorten the turn and never extend it.
+
+        :param started: The event loop's clock when the turn began.
+        :param deadline_at: The event loop's clock when the turn runs out of time.
+        :return: The event loop's clock to stop at, and the limit that is.
+        """
+        first_byte_at = started + self._settings.assistant_first_byte_timeout_seconds
+        if first_byte_at < deadline_at:
+            return first_byte_at, "first_byte"
+        return deadline_at, "turn"
+
     @staticmethod
-    def _timed_out(mode: str, started: float) -> AssistantUnavailableError:
-        """Log that the turn outlived its deadline and build the error to raise."""
+    def _timed_out(mode: str, started: float, limit: TimeoutLimit) -> AssistantUnavailableError:
+        """Log that the turn outlived a limit and build the error to raise."""
         duration_ms = round((asyncio.get_running_loop().time() - started) * 1000)
         logger.warning(
             "Assistant turn timed out",
-            extra={"event": "assistant_turn_timeout", "mode": mode, "duration_ms": duration_ms},
+            extra={
+                "event": "assistant_turn_timeout",
+                "mode": mode,
+                "limit": limit,
+                "duration_ms": duration_ms,
+            },
         )
         return AssistantUnavailableError("the assistant turn ran out of time")
 

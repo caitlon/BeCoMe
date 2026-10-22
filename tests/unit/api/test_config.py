@@ -2534,6 +2534,58 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_turn_timeout_seconds"):
             Settings(secret_key="test-secret-key", assistant_turn_timeout_seconds=value)
 
+    def test_first_byte_timeout_defaults_to_ninety_seconds(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the first-byte timeout and no .env file in reach
+        WHEN constructed
+        THEN the work before a response's first byte may take 90 seconds, under the 100 seconds
+             after which Cloudflare answers 524
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_first_byte_timeout_seconds == 90.0
+
+    def test_first_byte_timeout_may_exceed_the_turn_timeout(self, monkeypatch, tmp_path):
+        """
+        GIVEN a first-byte timeout above the turn timeout, as an existing deployment with a
+             short turn timeout would have
+        WHEN Settings is constructed
+        THEN it is accepted, because no deployed value may stop validating
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_turn_timeout_seconds=30.0,
+            assistant_first_byte_timeout_seconds=90.0,
+        )
+
+        # THEN
+        assert settings.assistant_turn_timeout_seconds == 30.0
+        assert settings.assistant_first_byte_timeout_seconds == 90.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_first_byte_timeout(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a first-byte timeout of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because every turn would expire at once
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_first_byte_timeout_seconds"):
+            Settings(secret_key="test-secret-key", assistant_first_byte_timeout_seconds=value)
+
     def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an explicit override and no .env file in reach

@@ -408,6 +408,13 @@ class Settings(BaseSettings):
     # "unavailable", so a stalled server does not hold the request past this deadline.
     # The model's own timeout above only bounds one request inside it.
     assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
+    # The longest the work done before a response's first byte may take, counted from the
+    # start of the turn: the retrieval and project fetch that precede a stream, and the whole
+    # of a /chat turn, whose answer is one JSON body. Keep it under the 100 seconds after
+    # which Cloudflare answers 524 for an origin that has sent nothing. The streamed part of
+    # a turn is not held to it and keeps the full turn timeout above, which this value can
+    # only shorten: a turn timeout below it decides first.
+    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0)
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
     # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
