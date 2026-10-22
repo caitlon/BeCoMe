@@ -27,6 +27,7 @@ through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.exampl
     - [Tracing](#tracing)
 - [Private corpus layer](#private-corpus-layer)
 - [Read-only role for a deployed corpus database](#read-only-role-for-a-deployed-corpus-database)
+    - [Refreshing the corpus on a deployed service](#refreshing-the-corpus-on-a-deployed-service)
 - [Chunk captions](#chunk-captions)
     - [Refreshing captions after a corpus or chunker change](#refreshing-captions-after-a-corpus-or-chunker-change)
 - [Running the pgvector-backed tests locally](#running-the-pgvector-backed-tests-locally)
@@ -516,12 +517,45 @@ ASSISTANT_VECTOR_DB_URL='postgresql+psycopg://<owner>:<password>@<proxy host>:<p
 The private corpus layer goes in with the same command once `ASSISTANT_PRIVATE_CORPUS_MANIFEST`
 and `ASSISTANT_PRIVATE_CORPUS_DIRS` are set as described above.
 
-Restart the backend after a reload. The retriever is built once per process, and it builds
-its BM25 index from the collection's documents on the first search that needs one (`hybrid`,
-the default mode, and `bm25`). Ingest swaps the table under the same name, so dense search in a
-running process sees the new corpus at once. Only the BM25 index keeps the old chunks until
-the restart, and in `hybrid` mode the fused ranking then mixes new vectors with the old BM25
-index.
+Restart the backend after every reload. The order of the whole refresh, and why the restart
+cannot be skipped, is in [Refreshing the corpus on a deployed service](#refreshing-the-corpus-on-a-deployed-service).
+
+### Refreshing the corpus on a deployed service
+
+Nothing does this automatically. No CI job and no deploy step reloads the corpus, so a change to
+the documentation on its own leaves the deployed assistant answering from the old corpus until
+someone follows these steps. The maintainer runs them by hand from a developer machine, once per
+environment. A write to the test or prod corpus database, and a restart of those services, need
+the same approval as any other write to those environments.
+
+When: after a change that alters the corpus reaches the environment's branch. That means a page
+under `docs/` other than `docs/security.md` and `docs/environments.md`, a README listed in
+`PUBLIC_EXTRA_READMES` (`api/assistant/rag/corpus.py`), the private corpus repository, or the
+chunker settings. A new page under `docs/` joins the corpus at the next ingest; no list needs
+editing. On dev, refresh after the merge into `dev` and the backend deploy. On test and prod,
+refresh as part of the promotion that carries the change, after that promotion's backend deploy.
+
+Build each environment's corpus from a checkout of that environment's branch (`dev`, `test` or
+`prod`), so the corpus matches the documentation that environment serves.
+
+1. Caption the new chunks, following [Refreshing captions after a corpus or chunker
+   change](#refreshing-captions-after-a-corpus-or-chunker-change) through the commit of the
+   captions file in the corpus repository. A caption is keyed by the chunk's text, so captions
+   written once serve every environment whose chunks have the same text; a later reload finds
+   nothing missing.
+2. Reload the environment's corpus database with the ingest command above, as the owner, through
+   a temporary proxy. Remove the proxy afterwards.
+3. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
+   built once per process, and it builds its BM25 index from the collection's documents on the
+   first search that needs one (`hybrid`, the default mode, and `bm25`). Ingest swaps the table
+   under the same name, so dense search in a running process sees the new corpus at once. Only
+   the BM25 index keeps the old chunks until the restart, and in `hybrid` mode the fused ranking
+   then mixes new vectors with the old BM25 index.
+4. Check the result:
+    - The `assistant_collections` row shows the new `app_version` and `corpus_version` (the query
+      in [Private corpus layer](#private-corpus-layer), run as the owner).
+    - The ingest output has no `assistant_captions_missing` warning.
+    - A question about the changed page is answered from it.
 
 ## Chunk captions
 
@@ -560,6 +594,8 @@ a warning, by count only, when just some chunks miss one.
    caption matches a fragment.
 5. Commit the updated captions file in the corpus repository.
 6. Rebuild the collection: rerun `ingest.py` (see "Start" above), so the new captions take effect.
+   On a deployed service, follow [Refreshing the corpus on a deployed
+   service](#refreshing-the-corpus-on-a-deployed-service) instead.
 
 ## Running the pgvector-backed tests locally
 
