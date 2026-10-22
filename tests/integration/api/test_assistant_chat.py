@@ -1658,18 +1658,18 @@ class TestConcurrentTurnCap:
         assert deps.get_turn_slots().holders == {}
 
 
-class TestPerAddressRefusalSpendsTheBudget:
-    """The per-address limit is checked inside the route, after the hourly message is spent."""
+class TestPerAddressRefusalSpendsNoMessage:
+    """The per-address limit is checked before the hourly message is spent."""
 
-    def test_a_message_the_limiter_refuses_has_already_spent_an_hourly_message(
+    def test_a_message_the_limiter_refuses_spends_no_hourly_message(
         self, assistant_settings, client, configure
     ):
         """
         GIVEN an hourly budget of 21 messages, and the per-address limiter on
         WHEN one address sends 21 messages, the last of which the limiter refuses, and the
             limiter's own counter is then cleared and a 22nd message is sent
-        THEN the 21st is the limiter's 429, and the 22nd is our hourly 429: the refused message
-            had spent the 21st of the budget
+        THEN the 21st is the limiter's 429, and the 22nd is answered: the refused message
+            left the 21st of the budget unspent
         """
         # GIVEN
         allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
@@ -1692,8 +1692,68 @@ class TestPerAddressRefusalSpendsTheBudget:
         # THEN
         assert [response.status_code for response in first] == [200] * allowed + [429]
         assert "detail" not in first[-1].json()
-        assert after.status_code == 429
-        assert after.json() == {"detail": "Too many assistant messages. Please try again later."}
+        assert after.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_request_without_a_session_counts_and_is_refused_429_over_the_limit(
+        self, assistant_settings, client, endpoint
+    ):
+        """
+        GIVEN the per-address limiter on
+        WHEN one address sends as many requests without a session as the limit allows, and
+            one more
+        THEN the first are 401, which counted against the limit, and the last is the
+            limiter's 429, because the limit is checked before the session
+        """
+        # GIVEN
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+
+        # WHEN
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                statuses = [
+                    client.post(endpoint, json={"message": f"m{i}"}).status_code
+                    for i in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+
+        # THEN
+        assert statuses == [401] * allowed + [429]
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_the_limit_is_checked_before_the_turn_slot_is_taken(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn held by another user, and the per-address limiter on
+        WHEN one address sends as many messages as the limit allows, and one more
+        THEN the first are the full process's 503, and the last is the limiter's 429 and
+            not a 503, because the limit is checked before the slot
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+        token = register_and_login(client, "limit-before-slot@example.com")
+        _use_model(client, _scripted("never used"))
+        assert deps.get_turn_slots().acquire(uuid4()) is None
+
+        # WHEN
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                statuses = [
+                    client.post(
+                        endpoint, json={"message": f"m{i}"}, headers=auth_header(token)
+                    ).status_code
+                    for i in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+
+        # THEN
+        assert statuses == [503] * allowed + [429]
 
 
 _ANSWER_SENTINEL = "SENTINEL-ANSWER-7f3a91c2"

@@ -375,11 +375,11 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   cannot take every slot. A turn that finds no free slot is refused at once, not queued, with `503`,
   the same body as an unreachable model server and `Retry-After: 5`; the record
   `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user, and a
-  refusal writes just that one. The slot is taken before the message limit, so a turn refused for
-  a full process spends no message of the hourly budget, and a message the budget refuses gives
-  its slot back at once. The slot is given back when the response is done, so a streamed answer
-  holds it until the stream ends. The count is per process: with several processes the ceiling is
-  the setting times their number.
+  refusal writes just that one. The slot is taken after the per-address limit and before the message
+  limit, so a turn refused for a full process spends no message of the hourly budget, and a message
+  the budget refuses gives its slot back at once. The slot is given back when the response is done,
+  so a streamed answer holds it until the stream ends. The count is per process: with several
+  processes the ceiling is the setting times their number.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
   like any other invalid request, before the API client is built, before the retriever is built
@@ -388,11 +388,13 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   dependencies after a body error, so the retriever may be built first, and on a cold start with
   the database down such a request answers `503`, not `422`.
 - **Per-address limit.** `LIMIT_ASSISTANT_CHAT` (`20/minute`, `api/middleware/rate_limit.py`)
-  applies to every address on top of that. It is checked inside the route, after the
-  dependencies, so a message it refuses has already spent one hourly message and had an API
-  client built and closed; it makes no model call. Each route has its own counter, so `/chat`
-  and `/chat/stream` each allow `20/minute` per address, while the hourly message limit is
-  shared by both.
+  applies to every address on top of that. It is the first dependency of both routes, checked
+  before the turn slot, the session check and the message limit, so a message it refuses spends
+  no hourly message, takes no slot and builds nothing. A request refused later for another
+  reason, an unauthenticated one included, has already counted against it, and an anonymous
+  request over the limit is answered `429`, not `401`. Each route has its own counter, so
+  `/chat` and `/chat/stream` each allow `20/minute` per address, while the hourly message limit
+  is shared by both.
 - **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
   generation together; a turn that outlives it is answered `503`.
 
