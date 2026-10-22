@@ -450,7 +450,7 @@ class AssistantService:
             extra={
                 "event": "assistant_turn_timeout",
                 "mode": mode,
-                "limit": limit,
+                "timeout_limit": limit,
                 "duration_ms": duration_ms,
             },
         )

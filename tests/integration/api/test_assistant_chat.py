@@ -2824,7 +2824,7 @@ class TestFirstByteLimit:
         assert response.json() == UNAVAILABLE_BODY
         assert retriever.cancelled
         (record,) = _timeout_records(records)
-        assert record.limit == "first_byte"
+        assert record.timeout_limit == "first_byte"
         assert record.duration_ms < 5000
 
     def test_a_chat_turn_slower_than_the_limit_is_a_503_naming_the_limit(
@@ -2851,23 +2851,23 @@ class TestFirstByteLimit:
         assert response.json() == UNAVAILABLE_BODY
         assert model.cancelled
         (record,) = _timeout_records(records)
-        assert record.limit == "first_byte"
+        assert record.timeout_limit == "first_byte"
         assert record.duration_ms < 5000
 
     def test_a_stream_that_runs_past_the_limit_still_completes(
         self, assistant_settings, client, configure
     ):
         """
-        GIVEN a first-byte limit of 0.3 s and a model that writes three pieces 0.2 s apart, so the
-            stream takes twice the limit, inside a turn timeout of 30 s
+        GIVEN a first-byte limit of 1 s and a model that writes two pieces 0.6 s apart, so the
+            stream takes longer than the limit, inside a turn timeout of 30 s
         WHEN the question is posted to the stream route
         THEN the stream ends with its done event and nothing is logged as a timeout
         """
         # GIVEN
-        configure(ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="0.3")
+        configure(ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="1.0")
         token = register_and_login(client, "first-byte-long-stream@example.com")
         model = ScriptedToolCallingModel(
-            responses=[AIMessage(content="One two three")], stream_delay_s=0.2
+            responses=[AIMessage(content="One two")], stream_delay_s=0.6
         )
         _use_model(client, model)
 
@@ -2879,7 +2879,7 @@ class TestFirstByteLimit:
         assert response.status_code == 200
         events = _events(response.text)
         assert events[-1][0] == "done"
-        assert events[-1][1]["answer"] == "One two three"
+        assert events[-1][1]["answer"] == "One two"
         assert _timeout_records(records) == []
 
 
