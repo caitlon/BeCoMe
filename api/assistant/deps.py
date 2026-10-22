@@ -52,6 +52,7 @@ from api.assistant.upstream import UNAVAILABLE_ERRORS
 from api.auth.dependencies import AccessToken, CurrentUser
 from api.config import Settings, get_settings
 from api.exceptions import ValidationError
+from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatRequest
 from api.utils.client_ip import get_client_ip
 
@@ -270,12 +271,12 @@ async def enforce_message_limit(
 ) -> None:
     """Spend one message of the caller's hourly budget and of the global ceiling.
 
-    Listed right after :func:`hold_turn_slot` among the route's dependencies, so a 503 for a
-    full process spends neither, and a refusal answers before the API client, the retriever's
-    store or any model is touched. The user's own budget comes before the ceiling, so an
-    account with a spent budget cannot drain the shared one. ``hit`` is synchronous and may
-    talk to Redis, so it runs in a worker thread, as do ``retry_after`` and the ceiling's
-    calls, which are asked only after a refusal.
+    Listed last among the route's dependencies, after the per-address limit and
+    :func:`hold_turn_slot`, so a request either of them refuses spends neither, and a refusal
+    answers before the API client, the retriever's store or any model is touched. The user's own
+    budget comes before the ceiling, so an account with a spent budget cannot drain the shared one.
+    ``hit`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
+    ``retry_after`` and the ceiling's calls, which are asked only after a refusal.
 
     :param current_user: The authenticated caller.
     :param throttle: The per-user hourly message cap.
@@ -299,18 +300,48 @@ async def enforce_message_limit(
         )
 
 
+@limiter.limit(LIMIT_ASSISTANT_CHAT)
+def limit_chat_per_address(request: Request) -> None:
+    """Refuse a ``/chat`` request from an address that has sent too many this minute.
+
+    The per-address limit is a dependency listed first on the route, not the decorator of the
+    endpoint: slowapi's decorator runs only once FastAPI has resolved every dependency, so a
+    message it refused would already have spent a turn slot or an hourly message and built the
+    API client. A request it refuses reaches none of them. It is a plain function, so FastAPI
+    runs the counter's store call in a worker thread and not on the event loop. The function
+    is separate from :func:`limit_stream_per_address` because slowapi keys the counter by the
+    decorated function's name, and each route keeps a counter of its own.
+
+    :param request: The incoming request, whose address the counter is keyed by.
+    :raises RateLimitExceeded: When this address has used its allowance for the minute; the
+        application's handler turns it into ``429``.
+    """
+
+
+@limiter.limit(LIMIT_ASSISTANT_CHAT)
+def limit_stream_per_address(request: Request) -> None:
+    """Refuse a ``/chat/stream`` request from an address that has sent too many this minute.
+
+    The same limit as :func:`limit_chat_per_address`, with a counter of its own.
+
+    :param request: The incoming request, whose address the counter is keyed by.
+    :raises RateLimitExceeded: When this address has used its allowance for the minute; the
+        application's handler turns it into ``429``.
+    """
+
+
 async def hold_turn_slot(current_user: CurrentUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
     """Hold one of the process's turn slots until the response is done, or refuse at once.
 
-    Listed first on both chat routes, ahead of :func:`enforce_message_limit`: a turn refused
-    for want of a slot spends no message of the hourly budget, and a turn the budget refuses
-    gives its slot back when the dependency exits. A slot is taken without waiting, since a
-    queue of requests behind a slow model server would only hold workers: a turn is refused
-    when the process is answering its limit of turns, or when this user already has
-    :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the response has
-    been sent, so a streamed answer holds its slot for the whole stream. The slot is given
-    back whether the turn answered or failed, and only when this call took it. It
-    writes no record: the handler of :class:`AssistantBusyError` writes the one.
+    Listed right after the per-address limit on both chat routes, ahead of
+    :func:`enforce_message_limit`: a turn refused for want of a slot spends no message of the hourly
+    budget, and a turn the budget refuses gives its slot back when the dependency exits. A slot is
+    taken without waiting, since a queue of requests behind a slow model server would only hold
+    workers: a turn is refused when the process is answering its limit of turns, or when this user
+    already has :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the response
+    has been sent, so a streamed answer holds its slot for the whole stream. The slot is given back
+    whether the turn answered or failed, and only when this call took it. It writes no record: the
+    handler of :class:`AssistantBusyError` writes the one.
 
     :param current_user: The authenticated caller.
     :param slots: The process-wide table from :func:`get_turn_slots`.
