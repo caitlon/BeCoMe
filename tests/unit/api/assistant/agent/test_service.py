@@ -1033,6 +1033,112 @@ class TestStream:
         assert (record.event, record.mode) == ("assistant_turn_timeout", "workflow")
         assert isinstance(record.duration_ms, int)
 
+    async def test_a_prepare_slower_than_the_first_byte_limit_is_unavailable(self):
+        """
+        GIVEN a retriever slower than the first-byte limit but far inside the turn timeout
+        WHEN a turn is prepared
+        THEN AssistantUnavailableError is raised after about the first-byte limit and the
+             timeout record names that limit
+        """
+        ctx = _ctx()
+
+        async def slow(_query: str):
+            await asyncio.sleep(5)
+
+        ctx.retriever.search.side_effect = slow
+        settings = _settings(
+            assistant_turn_timeout_seconds=30.0, assistant_first_byte_timeout_seconds=0.05
+        )
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(settings, _model(_say())).prepare(_request(), ctx)
+
+        (record,) = records
+        assert (record.event, record.limit) == ("assistant_turn_timeout", "first_byte")
+        assert 40 <= record.duration_ms < 2000
+
+    async def test_an_answer_slower_than_the_first_byte_limit_is_unavailable(self):
+        """
+        GIVEN a model slower than the first-byte limit but far inside the turn timeout
+        WHEN a turn is answered, which sends its first byte only when it is done
+        THEN AssistantUnavailableError is raised after about the first-byte limit and the
+             timeout record names that limit
+        """
+        settings = _settings(
+            assistant_turn_timeout_seconds=30.0, assistant_first_byte_timeout_seconds=0.1
+        )
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(settings, _SleepingModel(responses=[])).answer(
+                _request(), _ctx()
+            )
+
+        (record,) = records
+        assert (record.event, record.limit) == ("assistant_turn_timeout", "first_byte")
+        assert 90 <= record.duration_ms < 2000
+
+    async def test_the_turn_timeout_below_the_first_byte_limit_is_named_the_turn_limit(self):
+        """
+        GIVEN a turn timeout shorter than the first-byte limit
+        WHEN a turn is answered by a model that never answers
+        THEN the timeout record names the turn limit, the one that fired
+        """
+        settings = _settings(
+            assistant_turn_timeout_seconds=0.05, assistant_first_byte_timeout_seconds=90.0
+        )
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(settings, _SleepingModel(responses=[])).answer(
+                _request(), _ctx()
+            )
+
+        (record,) = records
+        assert (record.event, record.limit) == ("assistant_turn_timeout", "turn")
+
+    async def test_a_prepared_turn_keeps_the_whole_turn_budget(self):
+        """
+        GIVEN a first-byte limit shorter than the turn timeout
+        WHEN a turn is prepared
+        THEN its deadline is the start plus the turn timeout, not the first-byte limit
+        """
+        settings = _settings(
+            assistant_turn_timeout_seconds=30.0, assistant_first_byte_timeout_seconds=0.05
+        )
+
+        turn = await AssistantService(settings, _model(_say())).prepare(_request(), _ctx())
+
+        assert turn.deadline_at - turn.started == pytest.approx(30.0)
+
+    async def test_a_stream_may_run_past_the_first_byte_limit(self):
+        """
+        GIVEN a model that writes three pieces 100 ms apart, so the stream takes longer than
+            the 50 ms first-byte limit, and a turn timeout of 30 s
+        WHEN the turn is prepared inside the limit and then streamed
+        THEN the stream completes with its response and nothing is logged as a timeout
+        """
+        model = ScriptedToolCallingModel(responses=[_say("One two three")], stream_delay_s=0.1)
+        settings = _settings(
+            assistant_turn_timeout_seconds=30.0, assistant_first_byte_timeout_seconds=0.05
+        )
+        service = AssistantService(settings, model)
+        turn = await service.prepare(_request(), _ctx())
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            items = [item async for item in service.stream(turn)]
+
+        assert isinstance(items[-1], AssistantChatResponse)
+        assert items[-1].answer == "One two three"
+        assert [r for r in records if getattr(r, "event", "") == "assistant_turn_timeout"] == []
+
     async def test_a_timeout_that_is_not_the_deadline_is_not_reported_as_one_when_streamed(self):
         """
         GIVEN a model whose stream raises a TimeoutError of its own, well inside the deadline

@@ -7,6 +7,7 @@ test app itself. Nothing here reaches a real model server, embedding server or v
 database.
 """
 
+import asyncio
 import http.server
 import json
 import logging
@@ -2747,6 +2748,132 @@ class TestStreamRoute:
         assert response.status_code == 200
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
         assert record.request_id == "stream-abc123"
+
+
+class _SlowModel(ScriptedToolCallingModel):
+    """A model whose call outlasts ``delay_s`` and notes that it was cancelled meanwhile.
+
+    :ivar delay_s: Seconds the call waits before it answers like the scripted model.
+    :ivar cancelled: Set when the call was cancelled while it waited.
+    """
+
+    delay_s: float = 30.0
+    cancelled: bool = False
+
+    async def _agenerate(self, *args: Any, **kwargs: Any):
+        try:
+            await asyncio.sleep(self.delay_s)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return await super()._agenerate(*args, **kwargs)
+
+
+class _SlowRetriever:
+    """A retriever whose search outlasts ``delay_s`` and notes that it was cancelled meanwhile."""
+
+    def __init__(self, delay_s: float = 30.0) -> None:
+        self._delay_s = delay_s
+        self.cancelled = False
+
+    async def search(self, query: str) -> list[Any]:
+        try:
+            await asyncio.sleep(self._delay_s)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return []
+
+
+def _timeout_records(records: list[logging.LogRecord]) -> list[logging.LogRecord]:
+    return [r for r in records if getattr(r, "event", "") == "assistant_turn_timeout"]
+
+
+class TestFirstByteLimit:
+    """The work before a response's first byte is held to a limit under Cloudflare's 100 s."""
+
+    def test_a_retrieval_slower_than_the_limit_is_a_plain_503_naming_the_limit(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a first-byte limit of 0.2 s, a turn timeout of 30 s and a retriever that takes 30 s
+        WHEN the question is posted to the stream route
+        THEN the answer is the plain 503 after about the limit, not the turn timeout, the
+            retriever was cancelled, and the timeout record names the first-byte limit
+        """
+        # GIVEN
+        configure(ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="0.2")
+        token = register_and_login(client, "first-byte-stream@example.com")
+        retriever = _SlowRetriever()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: retriever
+        _use_model(client, _scripted("never used"))
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert retriever.cancelled
+        (record,) = _timeout_records(records)
+        assert record.limit == "first_byte"
+        assert record.duration_ms < 5000
+
+    def test_a_chat_turn_slower_than_the_limit_is_a_503_naming_the_limit(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a first-byte limit of 0.2 s, a turn timeout of 30 s and a model that takes 30 s
+        WHEN the question is posted to the chat route, whose answer is one body
+        THEN the answer is the 503 after about the limit, the model call was cancelled, and the
+            timeout record names the first-byte limit
+        """
+        # GIVEN
+        configure(ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="0.2")
+        token = register_and_login(client, "first-byte-chat@example.com")
+        model = _SlowModel(responses=[AIMessage(content="late")])
+        _use_model(client, model)
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert model.cancelled
+        (record,) = _timeout_records(records)
+        assert record.limit == "first_byte"
+        assert record.duration_ms < 5000
+
+    def test_a_stream_that_runs_past_the_limit_still_completes(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a first-byte limit of 0.3 s and a model that writes three pieces 0.2 s apart, so the
+            stream takes twice the limit, inside a turn timeout of 30 s
+        WHEN the question is posted to the stream route
+        THEN the stream ends with its done event and nothing is logged as a timeout
+        """
+        # GIVEN
+        configure(ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="0.3")
+        token = register_and_login(client, "first-byte-long-stream@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three")], stream_delay_s=0.2
+        )
+        _use_model(client, model)
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert events[-1][0] == "done"
+        assert events[-1][1]["answer"] == "One two three"
+        assert _timeout_records(records) == []
 
 
 _SOURCE_TITLE = "Aurora Method Handbook"
