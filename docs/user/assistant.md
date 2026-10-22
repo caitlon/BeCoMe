@@ -12,8 +12,9 @@ appears when you hover over it.
 On a project's page, both that button and **Explain this result** on the result page open the panel
 for the project, and the panel header shows the project's name. Anywhere else in the app the panel
 is labelled **Method and app**. It has no project to look at there, so it answers questions about
-the method and about using BeCoMe. A panel you keep open while moving between pages keeps the scope
-it was opened with until you close it and open it again.
+the method and about using BeCoMe. Moving to another page with the panel open does not change its
+scope. Pressing the assistant button or **Explain this result** again does, whether the panel is
+open or closed.
 
 ## What it can answer
 
@@ -37,16 +38,16 @@ minutes to wait.
 
 An answer can take up to a minute.
 
-In a long conversation, older messages are no longer sent with new questions. The panel shows a line
-at the usual point, and very long messages can make the cut come sooner. The assistant stops taking
-those messages into account, so repeat anything it needs to know.
+In a long conversation, older messages are no longer sent with new questions. At most the last 20
+messages go along, and fewer when the answers are long. The panel shows a line where the 20 end. The
+assistant stops taking older messages into account, so repeat anything it needs to know.
 
 ## When something goes wrong
 
 **Message limit reached.** You have used your 60 messages for this hour. The hour starts with your
 first message. Wait the number of minutes the message shows.
-Sending many messages within one minute can hit a shorter limit with the same message; then wait a
-minute. When no wait time is known, the message says to try again later.
+Asking many questions within one minute hits a shorter limit, and the error looks the same; then
+wait a minute. When no wait time is known, the error says to try again later.
 
 **The assistant is temporarily unavailable.** The assistant is busy or the model is not responding.
 Try again in a few minutes.
