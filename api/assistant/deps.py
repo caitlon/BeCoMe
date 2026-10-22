@@ -264,23 +264,76 @@ TurnSlotsDep = Annotated[TurnSlots, Depends(get_turn_slots)]
 DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
 
 
+def get_chat_request(
+    data: AssistantChatRequest, settings: Annotated[Settings, Depends(get_settings)]
+) -> AssistantChatRequest:
+    """Validate the body and refuse a message longer than the configured length.
+
+    A message longer than ``assistant_max_message_chars`` is an invalid request. The schema's
+    own ceiling stays: the setting can only lower it. :func:`enforce_message_limit` lists this
+    dependency ahead of the retriever, so a message over the configured length is refused before
+    the retriever is built. A body the schema itself rejects is not: FastAPI keeps resolving the
+    sibling dependencies after a body error, so the retriever may be built first, and on a cold
+    start with the database down that request answers 503, not 422.
+
+    :param data: The validated chat request.
+    :param settings: Application settings.
+    :return: The same request.
+    :raises ValidationError: If the message is longer than ``assistant_max_message_chars``.
+    """
+    if len(data.message) > settings.assistant_max_message_chars:
+        raise ValidationError(
+            f"message must not be longer than {settings.assistant_max_message_chars} characters"
+        )
+    return data
+
+
+ChatRequestDep = Annotated[AssistantChatRequest, Depends(get_chat_request)]
+
+
 async def enforce_message_limit(
     current_user: CurrentUser,
     throttle: AssistantThrottleDep,
     global_throttle: AssistantGlobalThrottleDep,
-) -> None:
+    data: ChatRequestDep,
+    retriever: DocsRetrieverDep,
+) -> AssistantChatRequest:
     """Spend one message of the caller's hourly budget and of the global ceiling.
 
-    Listed last among the route's dependencies, after the per-address limit and
-    :func:`hold_turn_slot`, so a request either of them refuses spends neither, and a refusal
-    answers before the API client, the retriever's store or any model is touched. The user's own
-    budget comes before the ceiling, so an account with a spent budget cannot drain the shared one.
+    The order of the checks on a chat turn, which both routes share and which this docstring
+    states in full: the per-address limit (:func:`limit_per_address`), the turn slot
+    (:func:`hold_turn_slot`), the request check and the retriever, then this budget, and only
+    after it the API client and every model. A request refused by an earlier step spends no
+    message. The first two are route dependencies; the rest are resolved through
+    :func:`open_chat_turn`, which the endpoint takes after them.
+
+    The checked request and the retriever are parameters here, which FastAPI resolves before
+    this body runs: a message that is too long or a body the schema rejects (``422``), and a
+    retriever that cannot be built because the vector database is down or not configured
+    (``503``), are refused before any message is spent. The retriever is not used here, and
+    :func:`open_chat_turn` reuses the same one, as FastAPI resolves each dependency once per
+    request. The request is returned, and it reaches :func:`open_chat_turn` only through this
+    function: the body is declared once in the dependency tree, because FastAPI reports a body
+    error once for every dependency that declares it, and a second path to the body would answer
+    ``422`` with every error twice.
+
+    The trade-off is deliberate. The retriever is process-cached, so once it is built a request
+    pays nothing for it. A failed build is not cached, so on a process whose vector database is
+    down, a caller over budget drives one build attempt per request, bounded by the per-address
+    limit and the turn slots, and gets ``503`` where ``429`` came before. The user's own budget
+    comes before the ceiling, so an account with a spent budget cannot drain the shared one.
     ``hit`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
     ``retry_after`` and the ceiling's calls, which are asked only after a refusal.
 
     :param current_user: The authenticated caller.
     :param throttle: The per-user hourly message cap.
     :param global_throttle: The hourly ceiling on all users together.
+    :param data: The checked chat request. It stays behind the throttles in the parameter list,
+        and ahead of the retriever, so a message that is too long is refused before the
+        retriever is built.
+    :param retriever: The documentation retriever; unused, it only has to be available before a
+        message is spent.
+    :return: The same checked request, once both budgets have taken the message.
     :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
         the seconds until the window closes.
     :raises AssistantBusyError: When the global ceiling is already reached; it carries the
@@ -298,6 +351,10 @@ async def enforce_message_limit(
             retry_after=retry_after,
             reason="global",
         )
+    return data
+
+
+CountedChatRequestDep = Annotated[AssistantChatRequest, Depends(enforce_message_limit)]
 
 
 @limiter.limit(LIMIT_ASSISTANT_CHAT)
@@ -321,15 +378,16 @@ def limit_per_address(request: Request) -> None:
 async def hold_turn_slot(current_user: CurrentUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
     """Hold one of the process's turn slots until the response is done, or refuse at once.
 
-    Listed right after the per-address limit on both chat routes, ahead of
-    :func:`enforce_message_limit`: a turn refused for want of a slot spends no message of the hourly
-    budget, and a turn the budget refuses gives its slot back when the dependency exits. A slot is
-    taken without waiting, since a queue of requests behind a slow model server would only hold
-    workers: a turn is refused when the process is answering its limit of turns, or when this user
-    already has :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the response
-    has been sent, so a streamed answer holds its slot for the whole stream. The slot is given back
-    whether the turn answered or failed, and only when this call took it. It writes no record: the
-    handler of :class:`AssistantBusyError` writes the one.
+    A route dependency listed right after the per-address limit on both chat routes; the order
+    of all the checks is in :func:`enforce_message_limit`. A turn refused for want of a slot
+    spends no message of the hourly budget, and a turn refused by a later step gives its slot
+    back when the dependency exits. A slot is taken without waiting, since a queue of requests
+    behind a slow model server would only hold workers: a turn is refused when the process is
+    answering its limit of turns, or when this user already has :data:`MAX_TURNS_PER_USER`
+    running. The code after ``yield`` runs once the response has been sent, so a streamed answer
+    holds its slot for the whole stream. The slot is given back whether the turn answered or
+    failed, and only when this call took it. It writes no record: the handler of
+    :class:`AssistantBusyError` writes the one.
 
     :param current_user: The authenticated caller.
     :param slots: The process-wide table from :func:`get_turn_slots`.
@@ -362,52 +420,24 @@ class PreparedTurn:
     context: AssistantContext
 
 
-def get_chat_request(
-    data: AssistantChatRequest, settings: Annotated[Settings, Depends(get_settings)]
-) -> AssistantChatRequest:
-    """Validate the body and refuse a message longer than the configured length.
-
-    A message longer than ``assistant_max_message_chars`` is an invalid request. The schema's
-    own ceiling stays: the setting can only lower it. This is a dependency of its own, ahead
-    of the retriever in :func:`open_chat_turn`, so a message over the configured length is
-    refused before the retriever is built. A body the schema itself rejects is not: FastAPI
-    keeps resolving the sibling dependencies after a body error, so the retriever may be
-    built first, and on a cold start with the database down that request answers 503, not
-    422.
-
-    :param data: The validated chat request.
-    :param settings: Application settings.
-    :return: The same request.
-    :raises ValidationError: If the message is longer than ``assistant_max_message_chars``.
-    """
-    if len(data.message) > settings.assistant_max_message_chars:
-        raise ValidationError(
-            f"message must not be longer than {settings.assistant_max_message_chars} characters"
-        )
-    return data
-
-
-ChatRequestDep = Annotated[AssistantChatRequest, Depends(get_chat_request)]
-
-
 async def open_chat_turn(
     request: Request,
-    data: ChatRequestDep,
+    data: CountedChatRequestDep,
     access_token: AccessToken,
     retriever: DocsRetrieverDep,
 ) -> AsyncIterator[PreparedTurn]:
     """Build the API client and the context for one chat turn, and close the client after.
 
-    The body is declared once, in :func:`get_chat_request`, which comes first among the
-    parameters: the body is validated once, a message over the configured length is refused
-    before the retriever is built (a body the schema rejects is not, see
-    :func:`get_chat_request`), and the route and the context share the same request. The client
-    is never cached: it carries this caller's own access token. It is closed when the
-    response is done, whether the turn answered or failed. The retriever comes in through
-    ``Depends``, so ``app.dependency_overrides`` can replace it.
+    The request arrives through :func:`enforce_message_limit`, the only path to the body, so the
+    body is validated once and the hourly budget is spent before this function runs; the order
+    of the checks is stated there. The route and the context share that one request. The client
+    is never cached: it carries this caller's own access token. It is closed when the response
+    is done, whether the turn answered or failed. The retriever comes in through ``Depends``, so
+    ``app.dependency_overrides`` can replace it; it is the one already resolved for the budget
+    check.
 
     :param request: The incoming request, for its application and the caller's address.
-    :param data: The checked chat request.
+    :param data: The checked chat request, after the hourly budget has taken the message.
     :param access_token: The caller's own access token, the one the authentication
         dependency checked.
     :param retriever: The documentation retriever for this turn.

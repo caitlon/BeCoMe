@@ -350,17 +350,22 @@ class TestEnforceMessageLimit:
         """
         GIVEN a throttle that allows the message
         WHEN the limit dependency runs
-        THEN it returns and the throttle was asked about that user
+        THEN it returns the checked request it was given and the throttle was asked about
+             that user
         """
         # GIVEN
         throttle = MagicMock()
         throttle.hit.return_value = True
         user = MagicMock(id=uuid4())
+        data = MagicMock()
 
         # WHEN
-        await deps.enforce_message_limit(user, throttle, _open_ceiling())
+        returned = await deps.enforce_message_limit(
+            user, throttle, _open_ceiling(), data=data, retriever=MagicMock()
+        )
 
         # THEN
+        assert returned is data
         throttle.hit.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
@@ -378,7 +383,9 @@ class TestEnforceMessageLimit:
 
         # WHEN/THEN
         with pytest.raises(AssistantRateLimitedError) as caught:
-            await deps.enforce_message_limit(user, throttle, _open_ceiling())
+            await deps.enforce_message_limit(
+                user, throttle, _open_ceiling(), data=MagicMock(), retriever=MagicMock()
+            )
         assert caught.value.retry_after == 1234
         throttle.retry_after.assert_called_once_with(user.id)
 
@@ -399,7 +406,13 @@ class TestEnforceMessageLimit:
                 return True
 
         # WHEN
-        await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle(), _open_ceiling())
+        await deps.enforce_message_limit(
+            MagicMock(id=uuid4()),
+            _Throttle(),
+            _open_ceiling(),
+            data=MagicMock(),
+            retriever=MagicMock(),
+        )
 
         # THEN
         assert threads
@@ -425,7 +438,13 @@ class TestEnforceMessageLimit:
 
         # WHEN
         with pytest.raises(AssistantRateLimitedError):
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle(), _open_ceiling())
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                _Throttle(),
+                _open_ceiling(),
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
 
         # THEN
         assert threads
@@ -445,7 +464,9 @@ class TestEnforceMessageLimit:
         user = MagicMock(id=uuid4())
 
         # WHEN
-        await deps.enforce_message_limit(user, throttle, ceiling)
+        await deps.enforce_message_limit(
+            user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+        )
 
         # THEN
         throttle.hit.assert_called_once_with(user.id)
@@ -467,7 +488,9 @@ class TestEnforceMessageLimit:
 
         # WHEN/THEN
         with pytest.raises(AssistantRateLimitedError):
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle, ceiling)
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
         assert ceiling.mock_calls == []
 
     @pytest.mark.asyncio
@@ -487,7 +510,9 @@ class TestEnforceMessageLimit:
 
         # WHEN/THEN
         with pytest.raises(AssistantBusyError) as caught:
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle, ceiling)
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
         assert caught.value.reason == "global"
         assert caught.value.retry_after == 1800
         ceiling.retry_after_key.assert_called_once_with(GLOBAL_KEY)
@@ -514,7 +539,11 @@ class TestEnforceMessageLimit:
         # WHEN
         with pytest.raises(AssistantBusyError):
             await deps.enforce_message_limit(
-                MagicMock(id=uuid4()), MagicMock(hit=MagicMock(return_value=True)), _Ceiling()
+                MagicMock(id=uuid4()),
+                MagicMock(hit=MagicMock(return_value=True)),
+                _Ceiling(),
+                data=MagicMock(),
+                retriever=MagicMock(),
             )
 
         # THEN
@@ -1112,6 +1141,11 @@ def _mini_app() -> tuple[FastAPI, list[Any]]:
         return MagicMock()
 
     app.dependency_overrides[deps.get_docs_retriever] = _counting_retriever
+
+    def _budget_that_passes(data: deps.ChatRequestDep) -> AssistantChatRequest:
+        return data
+
+    app.dependency_overrides[deps.enforce_message_limit] = _budget_that_passes
 
     @app.post("/turn")
     async def turn_route(turn: deps.PreparedTurnDep) -> dict[str, Any]:
