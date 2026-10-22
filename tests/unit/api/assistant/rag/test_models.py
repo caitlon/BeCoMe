@@ -38,6 +38,67 @@ class TestMakeChatModel:
         assert model.model_name == settings.assistant_llm_model
         assert model.request_timeout == settings.assistant_llm_timeout_seconds
 
+    def test_caps_the_reply_at_the_query_token_setting(self):
+        """
+        GIVEN Settings with a query token cap of 77
+        WHEN make_chat_model builds a client
+        THEN the client caps its reply at 77 tokens, apart from the answer cap
+        """
+        # GIVEN
+        settings = _settings(assistant_query_max_tokens=77)
+
+        # WHEN
+        model = make_chat_model(settings)
+
+        # THEN
+        assert model.max_tokens == 77
+        assert settings.assistant_query_max_tokens != settings.assistant_answer_max_tokens
+
+    @pytest.mark.parametrize(
+        ("make", "setting"),
+        [
+            (make_chat_model, "assistant_query_max_tokens"),
+            (make_answer_model, "assistant_answer_max_tokens"),
+        ],
+    )
+    def test_the_request_payload_carries_the_token_cap(self, make, setting):
+        """
+        GIVEN a chat client whose HTTP transport is a recording fake
+        WHEN it is invoked
+        THEN the outgoing body holds max_completion_tokens equal to the role's setting
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "c",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "m",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
+
+        settings = _settings(assistant_query_max_tokens=77, assistant_answer_max_tokens=123)
+        model = make(settings)
+        model.root_client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        model.invoke("hello")
+
+        # THEN
+        assert json.loads(seen[0].content)["max_completion_tokens"] == getattr(settings, setting)
+
 
 class TestMakeAnswerModel:
     """make_answer_model points a ChatOpenAI client at the local answer llama-server."""
@@ -90,7 +151,7 @@ class TestMakeAnswerModel:
         assert answer.max_tokens == 123
         assert chat.openai_api_base == settings.assistant_llm_base_url
         assert chat.model_name == settings.assistant_llm_model
-        assert chat.max_tokens is None
+        assert chat.max_tokens == settings.assistant_query_max_tokens
 
 
 class TestMakeEmbeddings:

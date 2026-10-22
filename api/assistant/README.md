@@ -51,8 +51,11 @@ through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.exampl
    for query transforms and index building (:8081, `ASSISTANT_LLM_*`), embeddings (:8082),
    rerank (:8083) and the answer model that writes chat answers (:8084,
    `ASSISTANT_ANSWER_LLM_*`, Qwen3.5-9B Q8_0). The answer model adds about 10 GB of memory and
-   downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer and
-   `ASSISTANT_RETRIEVAL_K` is how many passages the chat endpoint's search returns.
+   downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer,
+   `ASSISTANT_QUERY_MAX_TOKENS` (default 2048) caps one reply of the small model, which writes
+   query transforms and also the context sentences and summaries at index time; it bounds a
+   runaway reply, and a model that thinks inline needs a higher value. `ASSISTANT_RETRIEVAL_K`
+   is how many passages the chat endpoint's search returns.
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
    docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
    --overlap-pct 10 --context captions` builds the collection the backend reads by default;
