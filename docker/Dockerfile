@@ -31,10 +31,10 @@ COPY pyproject.toml uv.lock ./
 
 # The assistant extra ships only in an image built with ASSISTANT_ENABLED set. The
 # arg has the runtime setting's name on purpose: Railway passes service variables as
-# build args, so the one ASSISTANT_ENABLED=true on a dev or test service both
-# installs the extra and turns the feature on, while prod never sets it (Settings
-# refuses it there) and keeps the lean image. The truthy words are the ones pydantic
-# reads as true, so a value the app accepts never builds an image without the extra.
+# build args, so the one ASSISTANT_ENABLED=true on a service both installs the extra
+# and turns the feature on, while a service that leaves it unset keeps the lean image.
+# The truthy words are the ones pydantic reads as true, so a value the app accepts
+# never builds an image without the extra.
 # Both uv syncs below read the result: sync is exact, and a second sync without the
 # extra would uninstall what the first one added. The arg stays in this stage; the
 # runtime stage gets only the venv.
