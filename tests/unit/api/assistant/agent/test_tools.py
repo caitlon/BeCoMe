@@ -1015,6 +1015,38 @@ class TestMaskOpinionNames:
         assert "Eva" not in masked
         assert masked == repr(ValueError(mask_opinion_names(block)))
 
+    def test_masks_a_block_whose_newlines_are_escaped_twice(self):
+        """
+        GIVEN an exception whose message is an opinions block, repr'd twice, as when the
+            repr of an error is itself stored as text, so each newline is two backslashes and an n
+        WHEN the text is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+        error = repr(repr(ValueError(block)))
+
+        masked = mask_opinion_names(error)
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == repr(repr(ValueError(mask_opinion_names(block))))
+
+    def test_masks_a_block_after_a_long_run_of_backslashes(self):
+        """
+        GIVEN the repr of an exception with an opinions block, behind four hundred thousand
+            backslashes, so the escaped text holds two hundred thousand tokens that are not
+            line breaks
+        WHEN the text is masked
+        THEN the block is masked and the run in front of it is as it was
+        """
+        run = "\\" * 400_000
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva")])
+
+        masked = mask_opinion_names(run + repr(ValueError(block)))
+
+        assert masked == run + repr(ValueError(mask_opinion_names(block)))
+
     @pytest.mark.parametrize(
         "name",
         ["Jan\\nNovak", "Jan\\\\nNovak", "Jan\\", "\\n"],
