@@ -42,14 +42,18 @@ to an AI model together with up to the last 20 messages of the conversation, a f
 the BeCoMe documentation and published papers, and the data of the project open in the panel. For
 the project that means its name, description, scale and result, and the opinions in it with each
 member's first name, last name, position and values. It covers every member of the project, not
-only you. Your email address, account ID and photo are never sent.
+only you. The one exception is a member who turned on **Hide my opinions from other members'
+assistant**: their opinions are left out for everyone else, as [Your data](assistant.md#your-data)
+explains. Your email address, account ID and photo are never sent.
 
 The model runs at OVHcloud AI Endpoints in the European Union (Gravelines, France). OVHcloud does
 not store questions or answers and does not use them to train models. The conversation stays in
 your browser tab and is erased when you close the tab or sign out.
 
-For 14 days each turn is also recorded in a trace store in the EU, with member names and positions
-replaced by labels. The [Privacy notice](https://www.becomify.app/privacy) has the details.
+For 14 days each turn, the answer included, is also recorded in a trace store in the EU, with
+member names and positions replaced by labels. The store is run by a US company (LangChain), and
+the EU standard contractual clauses cover that transfer. A typo or a nickname in a question can
+slip past the masking. The [Privacy notice](https://www.becomify.app/privacy) has the details.
 
 ## Taking your data out
 
