@@ -548,6 +548,23 @@ class TestBlockRows:
 
         assert masked == "Expert 1 and Expert 2"
 
+    def test_a_cut_row_gives_its_label_to_one_of_two_fetched_experts_with_alike_cut_names(self):
+        """
+        GIVEN a stranger met as a row with a long name cut with dots, and then two experts
+            fetched whose long names share that cut
+        WHEN a text names both of them whole and the roster masks it
+        THEN the first has the label the row got, the second has the next free one
+        """
+        stem = "Bartholomew Alexander Montgomery Featherstonehaugh Horvat"
+        first, second = f"{stem} Svobodova", f"{stem} Novotny"
+        roster = TurnRoster()
+        assert roster.label_for(clean_text(first, masking.EXPERT_LIMIT)) == "Expert 1"
+
+        roster.add([_opinion(first), _opinion(second)])
+
+        assert mask_participants(f"{first} and {second}", roster) == "Expert 1 and Expert 2"
+        assert roster.label_for(clean_text(first, masking.EXPERT_LIMIT)) == "Expert 1"
+
     def test_an_expert_with_a_long_name_met_again_with_another_position_keeps_the_label(self):
         """
         GIVEN an expert with a name that a block shows cut, known to the roster

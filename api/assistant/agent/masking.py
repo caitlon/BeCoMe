@@ -464,7 +464,11 @@ class TurnRoster:
         cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
         # An expert first met as a stranger's row is keyed by the cut name, so look for that too.
         # Only the key: another fetched expert's cut is no proof of the same person.
-        participant = self._by_name.get(name) or (self._by_name.get(cut) if cut != name else None)
+        participant = self._by_name.get(name)
+        if participant is None and cut != name and cut in self._by_name:
+            # Once fetched the expert is keyed by the whole name, so that a second fetched
+            # expert with the same cut does not take the row's label as well.
+            participant = self._by_name[name] = self._by_name.pop(cut)
         if participant is None:
             if len(self._by_name) >= _MAX_REGISTERED:
                 return None
