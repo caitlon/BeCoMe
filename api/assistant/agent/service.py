@@ -54,7 +54,7 @@ from api.assistant.agent.tracing import (
     tracing_scope,
 )
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
-from api.assistant.upstream import UNAVAILABLE_ERRORS
+from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
 from api.schemas.assistant import (
@@ -458,13 +458,14 @@ class AssistantService:
 
     @staticmethod
     def _unavailable(exc: Exception, mode: str) -> AssistantUnavailableError:
-        """Log a server outage by its class name only and build the error to raise."""
+        """Log a server outage by its class name and role only and build the error to raise."""
         logger.warning(
             "Assistant dependency unavailable",
             extra={
                 "event": "assistant_dependency_unavailable",
                 "mode": mode,
                 "reason": type(exc).__name__,
+                "role": role_of(exc),
             },
         )
         return AssistantUnavailableError("a server the assistant needs is unavailable")
@@ -505,7 +506,11 @@ class AssistantService:
         except Exception as exc:
             logger.debug(
                 "Assistant roster could not be fetched",
-                extra={"event": "assistant_roster_unavailable", "reason": type(exc).__name__},
+                extra={
+                    "event": "assistant_roster_unavailable",
+                    "reason": type(exc).__name__,
+                    "role": role_of(exc),
+                },
             )
 
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:

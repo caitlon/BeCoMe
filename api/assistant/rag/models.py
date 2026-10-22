@@ -7,10 +7,16 @@ OpenAI-compatible endpoint (settings ``assistant_*_provider`` set to "api"). The
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
 
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
+from typing import Any
+
 import httpx
+from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
 
+from api.assistant.roles import UpstreamRole, tag_role
 from api.config import Settings
 
 # llama-server ignores the key, but the OpenAI client insists on one.
@@ -18,6 +24,81 @@ _LOCAL_API_KEY = SecretStr("not-needed")
 # The answer model alone sets its retries: the hosted endpoint fails now and then for
 # reasons a retry cures, a dead local server only gets slower with them.
 _API_MAX_RETRIES = 2
+
+# What a client of the OpenAI chat API raises, in the place it reads a reply, when the 200 it
+# got is not shaped like one: a ValueError for an HTML page or an error object, a KeyError
+# for a missing field, a TypeError for a null one, an AttributeError for a null message.
+_REPLY_SHAPE_ERRORS = (ValueError, KeyError, TypeError, AttributeError)
+
+
+class MalformedModelResponseError(Exception):
+    """Raised when a model server answers 200 with a body that is no reply.
+
+    An HTML page from a proxy, an ``error`` object, a body without its
+    ``choices``: the server failed to answer, as much as if it had refused the connection,
+    so it is listed in :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS`. It is not an
+    ``AssistantError``, which the API's error handler would answer by itself. The message
+    never holds any of the body.
+    """
+
+
+@contextmanager
+def _upstream(role: UpstreamRole) -> Iterator[None]:
+    """Write the role on whatever the server's client raises inside.
+
+    :param role: The role of the server the block talks to.
+    """
+    try:
+        yield
+    except Exception as exc:
+        tag_role(exc, role)
+        raise
+
+
+class _RoleTaggedChatOpenAI(ChatOpenAI):
+    """A ChatOpenAI client whose failures say which role's server they came from.
+
+    The client library turns a body that is no completion into a bare ``ValueError``,
+    ``KeyError``, ``TypeError`` or ``AttributeError`` from the one method that reads the
+    body, and that method alone is caught here, so a bug elsewhere in a call stays what it
+    is. Every call style (``invoke``, ``ainvoke``, streaming, and a copy bound to tools or
+    options, which shares this instance) ends in the three methods below. A stream has no
+    body to read: an HTML page yields no chunk, and LangChain would then fail with a bare
+    ``ValueError``, so a stream that ends without one is raised here as malformed.
+
+    :ivar upstream_role: The role written on whatever a call raises.
+    """
+
+    upstream_role: UpstreamRole = "unknown"
+
+    def _create_chat_result(
+        self, response: Any, generation_info: dict[Any, Any] | None = None
+    ) -> ChatResult:
+        try:
+            return super()._create_chat_result(response, generation_info)
+        except _REPLY_SHAPE_ERRORS:
+            raise MalformedModelResponseError(
+                f"the {self.upstream_role} server answered with a body that is not a completion"
+            ) from None
+
+    def _generate(self, *args: Any, **kwargs: Any) -> ChatResult:
+        with _upstream(self.upstream_role):
+            return super()._generate(*args, **kwargs)
+
+    async def _agenerate(self, *args: Any, **kwargs: Any) -> ChatResult:
+        with _upstream(self.upstream_role):
+            return await super()._agenerate(*args, **kwargs)
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        with _upstream(self.upstream_role):
+            yielded = False
+            async for chunk in super()._astream(*args, **kwargs):
+                yielded = True
+                yield chunk
+            if not yielded:
+                raise MalformedModelResponseError(
+                    f"the {self.upstream_role} server streamed no chunk at all"
+                )
 
 
 def _api_chat_extra_body(settings: Settings, hosted: bool) -> dict[str, str] | None:
@@ -60,10 +141,12 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
     context sentence or summary alike.
 
     :param settings: Application settings.
-    :return: A ChatOpenAI client for settings.assistant_llm_base_url.
+    :return: A ChatOpenAI client for settings.assistant_llm_base_url, whose failures
+        carry the role ``query``.
     """
     hosted = settings.assistant_llm_provider == "api"
-    return ChatOpenAI(
+    return _RoleTaggedChatOpenAI(
+        upstream_role="query",
         base_url=settings.assistant_llm_base_url,
         api_key=_api_key(settings, settings.assistant_llm_provider),
         model=settings.assistant_llm_model,
@@ -84,10 +167,12 @@ def make_answer_model(settings: Settings) -> ChatOpenAI:
     the reasoning switch of make_chat_model.
 
     :param settings: Application settings.
-    :return: A ChatOpenAI client for settings.assistant_answer_llm_base_url.
+    :return: A ChatOpenAI client for settings.assistant_answer_llm_base_url, whose
+        failures carry the role ``answer``.
     """
     hosted = settings.assistant_answer_provider == "api"
-    return ChatOpenAI(
+    return _RoleTaggedChatOpenAI(
+        upstream_role="answer",
         base_url=settings.assistant_answer_llm_base_url,
         api_key=_api_key(settings, settings.assistant_answer_provider),
         model=settings.assistant_answer_llm_model,

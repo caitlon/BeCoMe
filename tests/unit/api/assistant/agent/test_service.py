@@ -33,7 +33,7 @@ from api.assistant.errors import (
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
-from api.assistant.rag.models import make_answer_model
+from api.assistant.rag.models import MalformedModelResponseError, make_answer_model
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
 from api.config import Settings
@@ -44,7 +44,7 @@ from api.schemas.assistant import (
     ChatTurn,
     TurnUsage,
 )
-from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.assistant_fakes import ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -188,6 +188,32 @@ def _unavailable_errors() -> list[Exception]:
         InterfaceError("SELECT 1", {}, Exception("connection to secret-host closed")),
         PoolTimeoutError("QueuePool limit reached, connection to secret-host timed out"),
     ]
+
+
+_MALFORMED_COMPLETIONS = {
+    "html": ("text/html", b"<html>oops</html>"),
+    "error object": ("application/json", b'{"error": {"message": "oops"}}'),
+    "no choices": ("application/json", b'{"id": "c", "model": "m"}'),
+}
+
+
+def _real_answer_model(settings: Settings, body: tuple[str, bytes]):
+    """The real answer model, with a server that answers every request 200 with `body`."""
+    content_type, content = body
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": content_type}, content=content)
+
+    model = make_answer_model(settings)
+    client = openai.AsyncOpenAI(
+        api_key="unused",  # pragma: allowlist secret
+        base_url="http://model.test/v1",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        max_retries=0,
+    )
+    model.root_async_client = client
+    model.async_client = client.chat.completions
+    return model
 
 
 class _SleepingModel(ScriptedToolCallingModel):
@@ -718,6 +744,60 @@ class TestFailures:
         assert model.seen == []
 
     @pytest.mark.parametrize(
+        ("error", "role"),
+        [
+            (OperationalError("SELECT 1", {}, Exception("lost")), "vector_db"),
+            (tagged(MalformedModelResponseError("html"), "rerank"), "rerank"),
+            (tagged(openai.APIConnectionError(request=_REQUEST), "embedding"), "embedding"),
+            (tagged(openai.APIConnectionError(request=_REQUEST), "query"), "query"),
+            (httpx.ConnectError("refused"), "unknown"),
+        ],
+        ids=["database", "rerank", "embedding", "query model", "untagged"],
+    )
+    async def test_the_log_names_the_server_a_retriever_failure_came_from(self, error, role):
+        """
+        GIVEN a retriever that fails in the store or in a server tagged at its source
+        WHEN a turn is answered
+        THEN the 503 record carries the role of that server
+        """
+        ctx = _ctx()
+        ctx.retriever.search.side_effect = error
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), _model(_say())).answer(_request(), ctx)
+
+        assert [(r.event, r.role) for r in records] == [("assistant_dependency_unavailable", role)]
+
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid", "agent"])
+    @pytest.mark.parametrize("body", _MALFORMED_COMPLETIONS, ids=_MALFORMED_COMPLETIONS.keys())
+    async def test_an_answer_model_whose_200_is_no_completion_is_unavailable(self, mode, body):
+        """
+        GIVEN the real answer model whose server answers 200 with a page, an error object or
+            a body without choices
+        WHEN a turn is answered in any mode
+        THEN AssistantUnavailableError is raised, and one warning names the dedicated error
+            as the reason, the answer model as the role and holds none of the body
+        """
+        settings = _settings(mode)
+        service = AssistantService(
+            settings, _real_answer_model(settings, _MALFORMED_COMPLETIONS[body])
+        )
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await service.answer(_request(), _ctx())
+
+        (record,) = records
+        assert record.event == "assistant_dependency_unavailable"
+        assert (record.reason, record.role) == ("MalformedModelResponseError", "answer")
+        assert "oops" not in str(vars(record))
+
+    @pytest.mark.parametrize(
         "error", [ValueError("a bug"), IntegrityError("INSERT", {}, Exception("a bug"))]
     )
     async def test_an_error_that_is_not_an_outage_is_not_turned_into_one(self, error):
@@ -948,6 +1028,33 @@ class TestStream:
         assert pieces == ["One"]
         assert [(r.event, r.reason) for r in records] == [
             ("assistant_dependency_unavailable", "APIError")
+        ]
+
+    @pytest.mark.parametrize("body", _MALFORMED_COMPLETIONS, ids=_MALFORMED_COMPLETIONS.keys())
+    async def test_a_stream_whose_200_is_no_completion_is_unavailable(self, body):
+        """
+        GIVEN the real answer model whose streaming server answers 200 with a page, an error
+            object or a body without choices, so that the stream holds no chunk
+        WHEN the turn is streamed
+        THEN no piece is yielded and AssistantUnavailableError is raised, logged for the
+            answer model as the dedicated error
+        """
+        settings = _settings()
+        service = AssistantService(
+            settings, _real_answer_model(settings, _MALFORMED_COMPLETIONS[body])
+        )
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for item in service.stream(turn):
+                if isinstance(item, str):
+                    pieces.append(item)
+        assert pieces == []
+        assert [(r.event, r.reason, r.role) for r in records] == [
+            ("assistant_dependency_unavailable", "MalformedModelResponseError", "answer")
         ]
 
     async def test_closing_the_stream_early_closes_the_model_stream(self):
@@ -2026,14 +2133,15 @@ class TestRoster:
         ctx.client.get_opinions.assert_not_awaited()
 
     @pytest.mark.parametrize(
-        "failure",
+        ("failure", "role"),
         [
-            AssistantNotFoundError("gone"),
-            AssistantUpstreamError("bad"),
-            httpx.ConnectError("refused"),
+            (AssistantNotFoundError("gone"), "unknown"),
+            (AssistantUpstreamError("bad"), "app_api"),
+            (tagged(httpx.ConnectError("refused"), "app_api"), "app_api"),
         ],
+        ids=["not found", "upstream", "tagged by the client"],
     )
-    async def test_a_failing_fetch_for_the_roster_changes_nothing(self, run, failure):
+    async def test_a_failing_fetch_for_the_roster_changes_nothing(self, run, failure, role):
         """
         GIVEN a traced agent turn whose roster fetch fails
         WHEN it is answered
@@ -2053,6 +2161,7 @@ class TestRoster:
             r for r in records if r.__dict__.get("event") == "assistant_roster_unavailable"
         ]
         assert record.__dict__["reason"] == type(failure).__name__
+        assert record.__dict__["role"] == role
 
     async def test_a_slow_roster_fetch_is_cut_off_and_the_turn_still_answers(
         self, run, monkeypatch

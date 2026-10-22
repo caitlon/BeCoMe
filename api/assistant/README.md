@@ -271,8 +271,14 @@ vector database or application answers `503` with a fixed message. On any reques
 retriever has been built once, that covers a vector database that is down, a URL that is not set,
 and a collection that is missing or that the role cannot read. Requests that arrive together on a
 cold process each open an engine and fail or succeed on their own, so a database that is down does
-not queue them; one retriever is kept and the other engines are closed. A spent message budget
-answers `429`.
+not queue them; one retriever is kept and the other engines are closed. A model server that
+answers `200` with a body that is no reply (an HTML page from a proxy, an `error` object, no
+`choices`) is a failing server too. The warning for such a `503`
+(`assistant_dependency_unavailable`, and `assistant_tool_unavailable` for a tool) carries the
+class of the error as `reason` and the server that failed as `role`: `answer`, `query`,
+`embedding`, `rerank`, `vector_db`, `app_api`, or `unknown` when nothing tagged the failure. The
+code that talks to a server writes the role on the exception (`roles.py`); the text of an error is
+never read for it. A spent message budget answers `429`.
 
 ### Modes
 
