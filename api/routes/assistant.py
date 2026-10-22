@@ -18,7 +18,6 @@ from api.assistant.agent.generation import raised_at
 from api.assistant.deps import (
     AssistantServiceDep,
     PreparedTurnDep,
-    enforce_message_limit,
     hold_turn_slot,
     limit_per_address,
 )
@@ -65,11 +64,7 @@ def get_assistant_config(
 @router.post(
     "/chat",
     summary="Ask the assistant about the method or a project",
-    dependencies=[
-        Depends(limit_per_address),
-        Depends(hold_turn_slot),
-        Depends(enforce_message_limit),
-    ],
+    dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
 )
 async def chat(
     turn: PreparedTurnDep,
@@ -77,16 +72,14 @@ async def chat(
 ) -> AssistantChatResponse:
     """Answer one chat turn as the signed-in user.
 
-    The per-address limit is checked first, as a dependency of the route: an address over its
-    allowance for the minute is refused with ``429`` before a slot is taken, a message is spent or
-    anything is built. The turn slot comes next: a process already answering its limit of turns, or
-    a user already running two, is refused with ``503`` and ``Retry-After`` instead of queueing, and
-    spends no message. The message limit follows: it spends one message of the caller's hourly
-    budget, then one of the global hourly ceiling on all users together, before the API client, the
-    retriever or any model is built, and a refusal gives the slot back. A reached ceiling is ``503``
-    with ``Retry-After``, not ``429``. The service turns a dependency outage or a turn that outlives
-    its deadline into ``AssistantUnavailableError``, and a project the caller cannot see into
-    ``ProjectNotFoundError``; both are answered by handlers registered next to this router.
+    The checks run in the order :func:`~api.assistant.deps.enforce_message_limit` states: the
+    per-address limit (``429``), the turn slot (``503`` with ``Retry-After``), the request check
+    and the retriever (``422``, ``503``), then the hourly budget, and only after it the API
+    client and the model. A request refused before the budget spends no message. A reached
+    global ceiling is ``503`` with ``Retry-After``, not ``429``. The service turns a dependency
+    outage or a turn that outlives its deadline into ``AssistantUnavailableError``, and a
+    project the caller cannot see into ``ProjectNotFoundError``; both are answered by handlers
+    registered next to this router.
 
     :param turn: The validated chat request and the context built for it, whose API client
         carries the caller's own access token.
@@ -100,11 +93,7 @@ async def chat(
 @router.post(
     "/chat/stream",
     summary="Ask the assistant and read the answer as it is written",
-    dependencies=[
-        Depends(limit_per_address),
-        Depends(hold_turn_slot),
-        Depends(enforce_message_limit),
-    ],
+    dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
 )
 async def chat_stream(
     turn: PreparedTurnDep,
@@ -115,12 +104,12 @@ async def chat_stream(
     Retrieval runs before the response opens, so a project the caller cannot see, a
     dependency outage before the model is called, a full turn cap, the message limit, the
     global ceiling and the per-address limit are answered as plain HTTP errors, exactly as
-    ``/chat`` answers them; the per-address limit is checked first, ahead of the turn slot.
-    The turn slot is held until the stream ends. Once the stream is open the status is
-    already 200: a failure of the model call is sent as an ``error`` event with the code and
-    text the handlers would have used (any other exception is sent as code 500), and the
-    stream ends. The events are ``token`` (``{"text": ...}``) for each piece of the answer,
-    then ``done`` with the body ``/chat`` returns, or ``error`` (``{"code", "detail"}``).
+    ``/chat`` answers them and in the same order (see :func:`chat`). The turn slot is held
+    until the stream ends. Once the stream is open the status is already 200: a failure of the
+    model call is sent as an ``error`` event with the code and text the handlers would have used
+    (any other exception is sent as code 500), and the stream ends. The events are ``token``
+    (``{"text": ...}``) for each piece of the answer, then ``done`` with the body ``/chat``
+    returns, or ``error`` (``{"code", "detail"}``).
 
     :param turn: The validated chat request and the context built for it.
     :param service: The assistant service for the configured mode.

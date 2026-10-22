@@ -357,10 +357,11 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
 
 - **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
   (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
-  right after the turn slot is taken, before the API client, the retriever or any model is
-  built, so a message it refuses costs no model call; a message with an invalid body still
-  spends one. A Redis error does not lift it: each process then counts in its own memory with the same budget, and the record
-  `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off, for a
+  after the turn slot is taken and the request and the retriever are checked (see "Order of the
+  checks" below), and before the API client or any model is built, so a message it refuses
+  costs no model call. A Redis error does not lift it: each process then counts in its own
+  memory with the same budget, and the record `assistant_throttle_unavailable` is logged at
+  ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
@@ -383,11 +384,21 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   processes the ceiling is the setting times their number.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
-  like any other invalid request, before the API client is built, before the retriever is built
-  and before any model call; it still spends one message of the hourly budget. A body the schema
-  rejects (an unknown field, a message over 4000) is different: FastAPI keeps resolving the other
-  dependencies after a body error, so the retriever may be built first, and on a cold start with
-  the database down such a request answers `503`, not `422`.
+  like any other invalid request, before the retriever is built, before the API client is built
+  and before any model call, and it spends no message of the hourly budget. A body the schema
+  rejects (an unknown field, a message over 4000) spends none either, but it is different in one
+  respect: FastAPI keeps resolving the other dependencies after a body error, so the retriever
+  may be built first, and on a cold start with the database down such a request answers `503`,
+  not `422`.
+- **Order of the checks.** The per-address limit, then the turn slot, then the request check and
+  the retriever, then the hourly budget (the user's, then the global ceiling), and only after
+  that the API client and the models. A request refused by any step before the budget spends no
+  message: that covers `422` for an invalid body or a message that is too long, and `503` for a
+  retriever that cannot be built (the vector database is down or not configured). The retriever
+  is built once per process, so once it exists a request pays nothing for it. A failed build is
+  not cached: on a process whose vector database is down, a caller over budget drives one
+  retriever build attempt per request, bounded by the per-address limit and the turn slots, and
+  gets `503`, not `429`.
 - **Per-address limit.** `LIMIT_ASSISTANT_CHAT` (`20/minute`, `api/middleware/rate_limit.py`)
   applies to every address on top of that. It is the first dependency of both routes, checked
   before the turn slot, the session check and the message limit, so a message it refuses spends

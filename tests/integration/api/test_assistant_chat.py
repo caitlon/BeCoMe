@@ -32,7 +32,7 @@ from sqlalchemy.exc import OperationalError
 from api.assistant import deps
 from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
-from api.assistant.errors import AssistantUpstreamError
+from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
@@ -488,27 +488,6 @@ class TestMessageLength:
         assert too_long.status_code == 422
         assert fits.status_code == 200
         assert built == ["retriever"]
-
-    def test_a_message_that_is_too_long_still_spends_the_hourly_budget(
-        self, assistant_settings, client, configure
-    ):
-        """
-        GIVEN a budget of one message and a length limit of 50 characters
-        WHEN a message of 51 is posted, and then a valid one
-        THEN the first is 422 and the second is 429, as the README says
-        """
-        # GIVEN
-        configure(ASSISTANT_MAX_MESSAGE_CHARS="50", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
-        token = register_and_login(client, "length-budget@example.com")
-        _use_model(client, _scripted("never used"))
-
-        # WHEN
-        too_long = client.post(CHAT, json={"message": "y" * 51}, headers=auth_header(token))
-        valid = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
-
-        # THEN
-        assert too_long.status_code == 422
-        assert valid.status_code == 429
 
     def test_the_default_limit_changes_nothing_for_a_message_of_4000_characters(
         self, assistant_settings, client
@@ -1398,28 +1377,6 @@ class TestMessageLimit:
         assert response.status_code == 429
         assert (len(model_requests), len(clients_built), len(model.seen)) == (1, 1, 1)
 
-    def test_a_message_with_an_invalid_body_still_spends_the_budget(
-        self, assistant_settings, client, configure
-    ):
-        """
-        GIVEN a budget of one message per hour
-        WHEN the user sends a message with an invalid body, and then a valid one
-        THEN the first is 422 and the second is 429: the limit is spent before the body is
-            read, which the assistant README says
-        """
-        # GIVEN
-        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
-        token = register_and_login(client, "invalid-then-valid@example.com")
-        _use_model(client, _scripted("never used"))
-
-        # WHEN
-        invalid = client.post(CHAT, json={"message": ""}, headers=auth_header(token))
-        valid = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
-
-        # THEN
-        assert invalid.status_code == 422
-        assert valid.status_code == 429
-
     def test_a_limit_of_zero_lets_any_number_of_messages_through(
         self, assistant_settings, client, configure
     ):
@@ -1472,6 +1429,236 @@ class TestMessageLimit:
 
         # THEN
         assert statuses == [200] * allowed + [429]
+
+
+@contextmanager
+def _watched_budgets() -> Iterator[tuple[MagicMock, MagicMock]]:
+    """Yield spies on the hourly counters: the per-user ``hit`` and the global ``hit_key``.
+
+    Each spy calls through, so the budget behaves as it would; the call count of a spy is how
+    many messages the requests in the block spent.
+    """
+    user = get_assistant_throttle()
+    everyone = get_assistant_global_throttle()
+    with (
+        patch.object(user, "hit", wraps=user.hit) as user_spy,
+        patch.object(everyone, "hit_key", wraps=everyone.hit_key) as global_spy,
+    ):
+        yield user_spy, global_spy
+
+
+class _CountingRetrieverFactory:
+    """A retriever factory for ``dependency_overrides`` that records how often it runs."""
+
+    def __init__(self) -> None:
+        self.built = 0
+
+    def __call__(self) -> StaticDocsRetriever:
+        self.built += 1
+        return StaticDocsRetriever([])
+
+
+class TestRefusedRequestSpendsNoMessage:
+    """A request refused before the turn starts spends no hourly message, user's or global."""
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_message_that_is_too_long_spends_nothing_and_leaves_the_budget_whole(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a budget of one message per hour and a length limit of 50 characters
+        WHEN a message of 51 is posted, and then a valid one
+        THEN the first is 422 and neither counter was touched, and the second is answered,
+            not 429, because the budget was still whole
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_MAX_MESSAGE_CHARS="50",
+            ASSISTANT_RATE_LIMIT_PER_HOUR="1",
+            ASSISTANT_GLOBAL_TURNS_PER_HOUR="1",
+        )
+        token = register_and_login(client, "length-budget@example.com")
+        _use_model(client, _scripted("fine"))
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            too_long = client.post(endpoint, json={"message": "y" * 51}, headers=auth_header(token))
+
+            # THEN
+            assert too_long.status_code == 422
+            assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+            assert deps.get_turn_slots().holders == {}
+            valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+            assert valid.status_code == 200
+            assert (user_spy.call_count, global_spy.call_count) == (1, 1)
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("body", [{"message": ""}, {"message": "hi", "unknown": 1}, {}])
+    def test_a_body_the_schema_rejects_spends_nothing(
+        self, assistant_settings, client, configure, endpoint, body
+    ):
+        """
+        GIVEN a budget of one message per hour and a global ceiling of one
+        WHEN a body the schema rejects is posted, and then a valid message
+        THEN the first is 422 and neither counter was touched, and the second is answered
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1", ASSISTANT_GLOBAL_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "invalid-then-valid@example.com")
+        _use_model(client, _scripted("fine"))
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            invalid = client.post(endpoint, json=body, headers=auth_header(token))
+
+            # THEN
+            assert invalid.status_code == 422
+            assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+            assert deps.get_turn_slots().holders == {}
+            valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+            assert valid.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_retriever_that_cannot_be_built_is_a_503_and_spends_nothing(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a budget of one message per hour and a retriever factory that fails with the
+            outage error while the vector database is down
+        WHEN a message is posted, and the database comes back and the message is posted again
+        THEN the first is the fixed 503 and neither counter was touched, and the second is
+            answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1", ASSISTANT_GLOBAL_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "retriever-down@example.com")
+        _use_model(client, _scripted("fine"))
+
+        def down() -> StaticDocsRetriever:
+            raise AssistantUnavailableError("the assistant's vector database is down")
+
+        client.app.dependency_overrides[deps.get_docs_retriever] = down
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+
+            # THEN
+            assert refused.status_code == 503
+            assert refused.json() == UNAVAILABLE_BODY
+            assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+            assert deps.get_turn_slots().holders == {}
+            client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
+            answered = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+            assert answered.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_normal_turn_spends_exactly_one_message_of_each_budget(
+        self, assistant_settings, client, endpoint
+    ):
+        """
+        GIVEN the default test settings
+        WHEN one valid message is posted
+        THEN it is answered, and each counter was touched once
+        """
+        # GIVEN
+        token = register_and_login(client, "one-message@example.com")
+        _use_model(client, _scripted("fine"))
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            response = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+            # THEN
+            assert response.status_code == 200
+            assert (user_spy.call_count, global_spy.call_count) == (1, 1)
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_the_retriever_is_built_once_for_a_turn_that_spends_a_message(
+        self, assistant_settings, client, endpoint
+    ):
+        """
+        GIVEN a retriever factory that counts its calls
+        WHEN one valid message is posted
+        THEN it is answered and the factory ran once, so the budget check and the turn share
+            the one retriever
+        """
+        # GIVEN
+        token = register_and_login(client, "shared-retriever@example.com")
+        _use_model(client, _scripted("fine"))
+        factory = _CountingRetrieverFactory()
+        client.app.dependency_overrides[deps.get_docs_retriever] = factory
+
+        # WHEN
+        response = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert factory.built == 1
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_request_the_limiter_refuses_spends_nothing_and_builds_no_retriever(
+        self, assistant_settings, client, endpoint
+    ):
+        """
+        GIVEN the per-address limiter on, the limit already used up by earlier messages, and a
+            retriever factory that counts its calls
+        WHEN one more message is posted
+        THEN it is the limiter's 429, no counter was touched and the factory did not run
+        """
+        # GIVEN
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+        token = register_and_login(client, "limiter-first@example.com")
+        _use_model(client, _scripted(*["ok"] * allowed))
+        factory = _CountingRetrieverFactory()
+        client.app.dependency_overrides[deps.get_docs_retriever] = factory
+
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                for i in range(allowed):
+                    client.post(endpoint, json={"message": f"m{i}"}, headers=auth_header(token))
+                built_before = factory.built
+
+                # WHEN
+                with _watched_budgets() as (user_spy, global_spy):
+                    refused = client.post(
+                        endpoint, json={"message": "over"}, headers=auth_header(token)
+                    )
+
+                    # THEN
+                    assert refused.status_code == 429
+                    assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+                    assert factory.built == built_before
+            finally:
+                limiter.reset()
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_full_process_is_a_503_before_the_retriever_and_the_budget(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn held by another user, and a retriever factory that
+            counts its calls
+        WHEN a message is posted
+        THEN it is the slot's 503, no counter was touched and the factory did not run
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "slot-first@example.com")
+        _use_model(client, _scripted("never used"))
+        factory = _CountingRetrieverFactory()
+        client.app.dependency_overrides[deps.get_docs_retriever] = factory
+        assert deps.get_turn_slots().acquire(uuid4()) is None
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+            # THEN
+            assert refused.status_code == 503
+            assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+            assert factory.built == 0
 
 
 class _SlotProbingModel(ScriptedToolCallingModel):
