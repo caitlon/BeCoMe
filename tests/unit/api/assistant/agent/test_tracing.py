@@ -613,7 +613,8 @@ class TestHeldTurn:
         """
         GIVEN a bound of one held turn and two turns started
         WHEN the first turn ends
-        THEN the runs it held were dropped, and the end that arrives is masked and sent
+        THEN the runs it held were dropped, the end that arrives is masked and sent, and the
+            first turn's roster keeps no built pattern
         """
         roster = TurnRoster()
         roster.add([_opinion("Alice Novak")])
@@ -628,6 +629,8 @@ class TestHeldTurn:
         assert "asks" not in payload
         assert "Expert 1 answers" in payload
         assert "Alice" not in payload
+        client.wait_idle(10)
+        assert roster._matcher is None
         tracing.end_turn(second)
 
     def test_a_refused_run_does_not_stop_the_others(self, built):
