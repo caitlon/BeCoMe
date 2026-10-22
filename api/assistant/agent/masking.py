@@ -529,7 +529,8 @@ class TurnRoster:
                     dotless = name.removesuffix("...")
                     owner.cuts.update((name, dotless))
                     # Only the last word can be cut mid-word, so the words before it are whole,
-                    # and the last one is whole too when it is long enough to be a name.
+                    # and the last one, whole when the cut fell between words, is searched for
+                    # alone when it is long enough not to hit ordinary words.
                     breaks = list(_NAME_SEPARATOR.finditer(dotless))
                     if breaks:
                         owner.names.add(dotless[: breaks[-1].start()])
