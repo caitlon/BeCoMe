@@ -27,7 +27,6 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
-from requests.adapters import HTTPAdapter
 from sqlalchemy.exc import OperationalError
 
 from api.assistant import deps
@@ -48,6 +47,7 @@ from tests.integration.api.conftest import (
     submit_opinion,
 )
 from tests.shared.assistant_fakes import (
+    NoNetworkAdapter,
     ScriptedToolCallingModel,
     StaticDocsRetriever,
     ToolEchoingModel,
@@ -2078,8 +2078,8 @@ class _CapturingClient(tracing.MaskingClient):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(auto_batch_tracing=False, **kwargs)
         self._bodies: list[str] = []
-        self.session.mount("http://", _NoNetworkAdapter())
-        self.session.mount("https://", _NoNetworkAdapter())
+        self.session.mount("http://", NoNetworkAdapter())
+        self.session.mount("https://", NoNetworkAdapter())
 
     @property
     def bodies(self) -> list[str]:
@@ -2091,13 +2091,6 @@ class _CapturingClient(tracing.MaskingClient):
         if data is not None:
             self._bodies.append(data.decode() if isinstance(data, bytes) else str(data))
         return requests.Response()
-
-
-class _NoNetworkAdapter(HTTPAdapter):
-    """A transport adapter that refuses to send anything."""
-
-    def send(self, *args: Any, **kwargs: Any) -> requests.Response:
-        raise requests.ConnectionError("the test allows no network traffic")
 
 
 # What the tests of the trace mask put in the model's way: a member named in the question,

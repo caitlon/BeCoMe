@@ -19,6 +19,7 @@ from api.assistant.agent.masking import TurnRoster
 from api.assistant.agent.tools import render_opinions
 from api.assistant.views import OpinionView
 from api.config import Settings
+from tests.shared.assistant_fakes import NoNetworkAdapter
 from tests.shared.helpers import captured_log_records
 
 _ENDPOINT = "https://eu.api.smith.langchain.com"
@@ -266,6 +267,8 @@ class _CapturingClient(tracing.MaskingClient):
         self.request_threads: list[str] = []
         self.gate = threading.Event()
         self.gate.set()
+        self.session.mount("http://", NoNetworkAdapter())
+        self.session.mount("https://", NoNetworkAdapter())
 
     @property
     def bodies(self) -> list[str]:
