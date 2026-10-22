@@ -525,36 +525,53 @@ cannot be skipped, is in [Refreshing the corpus on a deployed service](#refreshi
 Nothing does this automatically. No CI job and no deploy step reloads the corpus, so a change to
 the documentation on its own leaves the deployed assistant answering from the old corpus until
 someone follows these steps. The maintainer runs them by hand from a developer machine, once per
-environment. A write to the test or prod corpus database, and a restart of those services, need
-the same approval as any other write to those environments.
+environment. They cover an environment that already has its corpus database and reader role; the
+first setup is in the sections above and in `docs/environments.md`.
 
-When: after a change that alters the corpus reaches the environment's branch. That means a page
-under `docs/` other than `docs/security.md` and `docs/environments.md`, a README listed in
-`PUBLIC_EXTRA_READMES` (`api/assistant/rag/corpus.py`), the private corpus repository, or the
-chunker settings. A new page under `docs/` joins the corpus at the next ingest; no list needs
-editing. On dev, refresh after the merge into `dev` and the backend deploy. On test and prod,
-refresh as part of the promotion that carries the change, after that promotion's backend deploy.
+When: after a change to any source that `build_manifest()` in `api/assistant/rag/corpus.py`
+collects reaches the environment's branch. The sources are:
 
-Build each environment's corpus from a checkout of that environment's branch (`dev`, `test` or
-`prod`), so the corpus matches the documentation that environment serves.
+- the pages under `docs/`, except `docs/security.md` and `docs/environments.md`; a new page joins
+  at the next ingest, with no list to edit;
+- the module READMEs those pages include by snippet (`docs/dev/*.md`, for example `api/README.md`
+  and `src/README.md`);
+- the extra READMEs in `PUBLIC_EXTRA_READMES`;
+- the `docs.json` and `faq.json` locale files under `frontend/src/i18n/locales/`;
+- the private corpus repository, and the chunker settings.
+
+On dev, refresh after the merge into `dev` and the backend deploy. On test and prod, refresh as
+part of the promotion that carries the change, after that promotion's backend deploy. Build each
+environment's corpus from a clean checkout that is up to date with `origin/<branch>` (`dev`,
+`test` or `prod`). Then the corpus matches the documentation that environment serves, and
+`app_version` carries no `-dirty` suffix.
 
 1. Caption the new chunks, following [Refreshing captions after a corpus or chunker
    change](#refreshing-captions-after-a-corpus-or-chunker-change) through the commit of the
-   captions file in the corpus repository. A caption is keyed by the chunk's text, so captions
-   written once serve every environment whose chunks have the same text; a later reload finds
-   nothing missing.
-2. Reload the environment's corpus database with the ingest command above, as the owner, through
-   a temporary proxy. Remove the proxy afterwards.
-3. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
+   captions file in the corpus repository, but skip `prune`. It drops the captions whose chunk is
+   absent from the current checkout, which would remove captions that test and prod still need.
+   Run it once, from the `prod` checkout, after the change has reached every environment. A
+   caption is keyed by the chunk's text, so captions written once serve every environment whose
+   chunks have the same text.
+2. In the same checkout, run `uv run python scripts/assistant/captions.py missing --strategy
+   markdown_headers --size 500 --overlap-pct 10` with the flags the ingest will use. It must
+   print `0 of <n> chunks have no caption`; the second number it prints, the captions that match
+   no chunk, is for `prune`. If any chunk is still missing, the ingest builds it with only its
+   title and prints "some chunks have no matching caption".
+3. Reload the environment's corpus database with the ingest command above, as the owner, through
+   a temporary proxy. Keep the proxy until the check in step 5.
+4. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
    built once per process, and it builds its BM25 index from the collection's documents on the
    first search that needs one (`hybrid`, the default mode, and `bm25`). Ingest swaps the table
    under the same name, so dense search in a running process sees the new corpus at once. Only
    the BM25 index keeps the old chunks until the restart, and in `hybrid` mode the fused ranking
    then mixes new vectors with the old BM25 index.
-4. Check the result:
-    - The `assistant_collections` row shows the new `app_version` and `corpus_version` (the query
-      in [Private corpus layer](#private-corpus-layer), run as the owner).
-    - The ingest output has no `assistant_captions_missing` warning.
+5. Check the result, then remove the proxy:
+    - Query the `assistant_collections` row of the deployed database as the owner:
+      `psql 'postgresql://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require'
+      -c "SELECT name, created_at, chunk_count, corpus_hash, app_version, corpus_version FROM
+      assistant_collections"`. `created_at` is the time of the reload, and `corpus_hash` and
+      `chunk_count` change when a chunk's text changed. `app_version` and `corpus_version` name
+      the checkouts, so either stays the same when only the other repository changed.
     - A question about the changed page is answered from it.
 
 ## Chunk captions
