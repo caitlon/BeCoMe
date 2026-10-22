@@ -398,17 +398,16 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   is shared by both.
 - **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
   generation together; a turn that outlives it is answered `503`.
-
-- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90, counted from the
-  start of the turn) bounds the work done before a response's first byte, and is kept under the
-  100 seconds after which Cloudflare answers `524` for an origin that has sent nothing. It applies
-  to the retrieval and project fetch that precede a stream, and to the whole of a `/chat` turn,
-  whose answer is one body; a turn that outlives it is answered `503` like any other, and the
-  record `assistant_turn_timeout` carries `limit` (`first_byte` or `turn`) for the limit that
-  fired. The streamed part of a turn is not held to it and keeps the full turn timeout, so a long
-  answer can still stream to completion. It can only shorten a turn: with a turn timeout below
-  it, the turn timeout fires first. **`/chat` now fails at 90 seconds by default instead of 180**;
-  set the variable above the turn timeout to restore the old limit, where no proxy interferes.
+- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90) bounds the work done
+  before a response's first byte, and is kept under the 100 seconds after which Cloudflare
+  answers `524` for an origin that has sent nothing. It is counted from the start of the turn's
+  preparation, not from the request's arrival. It applies to the retrieval and project fetch that
+  precede a stream and to the whole of a `/chat` turn, whose answer is one body. A turn that
+  outlives it is answered `503` like any other, and the record `assistant_turn_timeout` names the
+  limit that fired in `timeout_limit` (`first_byte` or `turn`). The streamed part of a turn keeps
+  the full turn deadline. The setting can only shorten a turn: with a turn timeout below it, the
+  turn timeout fires first. `/chat` fails at 90 seconds by default; set the variable above the
+  turn timeout to restore the turn timeout as the only limit.
 
 ### Tracing
 
