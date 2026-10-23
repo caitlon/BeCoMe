@@ -49,8 +49,9 @@ async def _wait_for_disconnect(request: Request) -> None:
 
     :param request: The request whose client is watched.
     """
-    while (await request.receive())["type"] != "http.disconnect":
-        pass
+    message = await request.receive()
+    while message["type"] != "http.disconnect":
+        message = await request.receive()
 
 
 async def _run_unless_disconnected[T](
