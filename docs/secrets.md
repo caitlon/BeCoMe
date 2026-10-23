@@ -28,6 +28,7 @@ The backend reads these in `api/config.py` and nowhere else, except the three pa
 variables at the end of the table. Those sit on the database, Redis and corpus services and
 reach the backend only through the references in `MIGRATION_DATABASE_URL`, `REDIS_URL` and
 `ASSISTANT_VECTOR_DB_URL`. The "Verify" column says how to check a value without printing it.
+A check with `curl` reads the key from a file, as the rotation rules below describe.
 `<env>` stands for `dev`, `test` or `prod`.
 
 | Variable | What it protects | Source | Scope | Verify |
@@ -92,9 +93,14 @@ special handling.
 - Set a Railway variable with `railway variable set KEY --stdin --skip-deploys`, so the value
   comes from standard input, stays out of the shell history and the process list, and does
   not start a deploy of its own. `set` deploys by default, which would make every procedure
-  below deploy twice.
+  below deploy twice. Feed `--stdin` from a file or a pipe, for example
+  `pbpaste | railway variable set KEY --stdin ...`, never by pasting into a prompt that
+  echoes what you type.
 - Batch the changes of one environment: set every variable with `--skip-deploys`, then
-  redeploy the backend once with `railway redeploy -s <env>-backend -e <env>`.
+  redeploy the backend once with `railway redeploy -y -s <env>-backend -e <env>`.
+- In a `curl` check, pass the key from a file, never in the arguments: `-H @file` for a
+  header, `--data-urlencode secret@file` for a form field. Arguments show up in the process
+  list and the shell history.
 - Compare an old and a new value by hash, for example `shasum -a 256`, never by eye.
 - Do prod only on the owner's explicit go.
 - `GET /api/v1/health` proves only that the process started. It touches neither the
@@ -114,12 +120,16 @@ holds. The production image has `psycopg2` and `redis`, and no `psycopg` 3, whic
 with the assistant extra. The script prints variable names only.
 
 ```python
-import os, psycopg2, redis
+import os
+import re
+
+import psycopg2
+import redis
 
 for name in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "ASSISTANT_VECTOR_DB_URL"):
     url = os.environ.get(name)
     if url:
-        psycopg2.connect(url.replace("+psycopg", "")).close()
+        psycopg2.connect(re.sub(r"\+psycopg2?", "", url)).close()
         print(name, "ok")
 redis.from_url(os.environ["REDIS_URL"]).ping()
 print("REDIS_URL ok")
@@ -153,8 +163,9 @@ hosts under `becomify.app` are `api` (prod), `api-atelier` (dev) and `api-harbor
 
 The value goes to two places, so it needs a holder that is not the terminal. Create a file
 under `umask 077` and write the generated value into it. Feed the file to Railway on
-standard input and to the rule `PATCH` from the same file. Never echo it, and delete the
-file when the last step is done.
+standard input. Build the rule `PATCH` body from the same file, for example with
+`jq --rawfile`, so the value never appears on the command line. Never echo it, and delete
+the file when the last step is done.
 
 1. Generate a random value into that file.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading the
@@ -172,7 +183,7 @@ gap between steps 3 and 4 short.
 
 The Postgres service is `<env>-db`, with the application role `become_app` and the owner
 `postgres`. The Redis service is `<env>-redis`, Redis 8 started with
-`--requirepass $REDIS_PASSWORD`. Every step below ran on all three environments.
+`--requirepass $REDIS_PASSWORD`.
 [`security.md`](security.md#secrets) describes a zero-downtime alternative for `become_app`
 that adds a second role.
 
@@ -180,7 +191,9 @@ that adds a second role.
 
 1. For each role, generate a password into a file created under `umask 077` and compute its
    SCRAM verifier locally, so the plaintext never reaches the database. The script reads the
-   password on standard input:
+   password on standard input and writes the verifier to standard output, so redirect that
+   into a second file created under `umask 077`. The verifier is not the password, but it
+   allows an offline guess, so handle it like one:
 
    ```python
    import base64, hashlib, hmac, os, sys
@@ -190,8 +203,17 @@ that adds a second role.
    salted = hashlib.pbkdf2_hmac("sha256", password, salt, rounds)
    client_key = hmac.new(salted, b"Client Key", "sha256").digest()
    server_key = hmac.new(salted, b"Server Key", "sha256").digest()
-   b64 = lambda raw: base64.b64encode(raw).decode()
-   print(f"SCRAM-SHA-256${rounds}:{b64(salt)}${b64(hashlib.sha256(client_key).digest())}:{b64(server_key)}")
+
+
+   def b64(raw):
+       return base64.b64encode(raw).decode()
+
+
+   stored_key = hashlib.sha256(client_key).digest()
+   print(
+       f"SCRAM-SHA-256${rounds}:{b64(salt)}${b64(stored_key)}:{b64(server_key)}",
+       end="",
+   )
    ```
 
 2. Open `railway ssh -e <env> -s <env>-db`, then connect over the local socket, which admits
@@ -200,10 +222,13 @@ that adds a second role.
    In the container `PGHOST` points to the internal TCP address and `PGPASSWORD` holds the
    password from container start. That password stops working once the owner's password
    changes, so both are unset.
-3. Run `ALTER ROLE become_app PASSWORD 'SCRAM-SHA-256$...';` and the same for `postgres`,
-   with the verifiers from step 1.
-4. Confirm by comparing `rolpassword` in `pg_authid` with the verifier. The output of
-   `ALTER ROLE` through `railway ssh` is sometimes cut short, so it proves nothing.
+3. Run `ALTER ROLE become_app PASSWORD '<verifier>';` and the same for `postgres`, with the
+   verifiers from the files of step 1.
+4. Confirm by hash. In `psql` run
+   `SELECT encode(sha256(convert_to(rolpassword, 'UTF8')), 'hex') FROM pg_authid WHERE rolname = 'become_app';`
+   and compare the result with `shasum -a 256` of the verifier file, then do the same for
+   `postgres`. The output of `ALTER ROLE` through `railway ssh` is sometimes cut short, so it
+   proves nothing.
 5. Set the backend's `DATABASE_URL`, a literal, to the new `become_app` URL with
    `--stdin --skip-deploys`. Set `POSTGRES_PASSWORD` on `<env>-db` with `--skip-deploys` as
    well, so the database does not restart. `MIGRATION_DATABASE_URL` references it and picks
@@ -213,13 +238,20 @@ that adds a second role.
 
 #### Redis
 
-If Redis is awake, open `railway ssh -e <env> -s <env>-redis` and run `CONFIG SET requirepass`
-with the new password, authenticating with `REDISCLI_AUTH` set from the container's old
-`REDIS_PASSWORD`. Then set `REDIS_PASSWORD` on the Redis service with `--skip-deploys`, so a
+If Redis is awake, open `railway ssh -e <env> -s <env>-redis` and run
+`redis-cli -x CONFIG SET requirepass`, authenticating with `REDISCLI_AUTH` set from the
+container's old `REDIS_PASSWORD`. The `-x` flag reads the last argument from standard input,
+so the new password comes from its file, without a trailing newline, and is never typed.
+Then set `REDIS_PASSWORD` on the Redis service with `--skip-deploys`, so a
 later restart keeps the new password. If Redis is asleep (App Sleep), SSH does not reach the
 container. Change the variable without `--skip-deploys` instead, which restarts Redis with
 the new password. Either way redeploy the backend afterwards, because `REDIS_URL` references
 the Redis service.
+
+Between `CONFIG SET` and the backend running with the new password, new connections to Redis
+are refused. The revocation store fails closed: authenticated requests answer `401`, and
+login, refresh and logout answer `503` (see [`security.md`](security.md)). Redeploy the
+backend right away.
 
 #### Corpus database
 
@@ -239,8 +271,7 @@ container](#checking-credentials-from-the-container) against the new backend con
 2. Set `EMAIL_API_KEY` with `--stdin --skip-deploys` on every environment that uses the old
    key. Dev and test share one, so set both before the next step.
 3. Redeploy the backend of each of those environments once.
-4. Check the new key with `GET https://api.resend.com/domains`. The answer `401`
-   `restricted_api_key` means it is valid and restricted.
+4. Check the new key as in the inventory table.
 5. Delete the old key in Resend.
 
 ### TURNSTILE_SECRET_KEY
@@ -253,8 +284,7 @@ permission.
 2. Set `TURNSTILE_SECRET_KEY` with `--stdin --skip-deploys`. Dev and test share a widget,
    so set both.
 3. Redeploy the backend of each environment once.
-4. Check with `siteverify` and a dummy token. `invalid-input-response` means the secret is
-   right.
+4. Check the new secret as in the inventory table.
 
 The site key `VITE_TURNSTILE_SITE_KEY` stays as it is.
 
@@ -267,10 +297,13 @@ file created under `umask 077`, never to the terminal.
 
 1. Run `railway bucket credentials --reset --yes --json -b <env>-photos -e <env>` with its
    output redirected into such a file. The old pair stops working at once.
-2. Set `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY` on the backend right away from
-   that file, with `--stdin --skip-deploys`, then delete the file. They are literal values
-   there, because a Railway reference to a bucket is not possible.
-3. Redeploy the backend once.
+2. Set `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY` on the backend right away.
+   `--stdin` takes a single key, so this is two `railway variable set KEY --stdin
+   --skip-deploys` calls, each fed with `jq -r` from the matching field of that file. Delete
+   the file afterwards. The values are literals, because a Railway reference to a bucket is
+   not possible.
+3. Redeploy the backend once. Photos fail from the reset until this redeploy finishes, so do
+   steps 1 to 3 without a pause.
 4. Check with `list_objects_v2` using the backend's variables.
 
 ### Assistant keys
@@ -282,8 +315,7 @@ file created under `umask 077`, never to the terminal.
 4. Check with the request in the inventory table.
 5. Revoke the old key at the provider.
 
-The corpus database password is covered under [Database and Redis
-credentials](#corpus-database).
+The corpus database password is covered under [Corpus database](#corpus-database).
 
 ### GitHub Actions secrets
 
