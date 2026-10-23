@@ -398,6 +398,12 @@ event, and the frontend's parser skips it. A keep-alive is sent only between who
   does not keep a connection of the application's pool checked out for the whole turn. Non-streamed
   `/chat` still holds the lookup's session for its whole turn, because the turn runs inside the
   route function; the frontend uses only `/chat/stream`.
+- **Shutdown.** When the application stops with the assistant on, it closes what the process built:
+  the corpus engine, the two chat models' clients and the throttles' Redis clients. Nothing is
+  built only to be closed. A close that fails is recorded as `assistant_shutdown_close_failed`,
+  with the resource and the error class, and the others still run. The embeddings client is not
+  closed, because `OpenAIEmbeddings` gives no public way to close its underlying client. The
+  reranker is not either: it opens a short-lived HTTP client for each call and holds none.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
   like any other invalid request, before the retriever is built, before the API client is built

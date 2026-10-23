@@ -696,6 +696,22 @@ class TestRedisAssistantThrottle:
         assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
         assert client.mock_calls == []
 
+    def test_close_closes_the_redis_client(self):
+        """
+        GIVEN a Redis-backed throttle
+        WHEN it is closed
+        THEN its client is closed
+        """
+        # GIVEN
+        client = MagicMock()
+        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+
+        # WHEN
+        throttle.close()
+
+        # THEN
+        client.close.assert_called_once_with()
+
 
 class TestGetAssistantThrottle:
     """The factory selects the Redis backend only when configured."""
