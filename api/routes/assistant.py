@@ -9,10 +9,10 @@ environment other than dev, test and prod with the flag on, so this module never
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator
-from typing import Annotated
+from collections.abc import AsyncIterator, Coroutine
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from api.assistant.agent.generation import raised_at
@@ -31,6 +31,80 @@ from api.schemas.assistant import AssistantChatResponse, AssistantConfigResponse
 
 router = APIRouter(prefix="/api/v1/assistant", tags=["assistant"])
 logger = logging.getLogger(__name__)
+
+# The status for a request whose client went away before the answer: nginx's "client closed
+# request". Nothing reaches the client, which is gone, so the code only has to be one that the
+# request log and the metrics can tell from a success and from a server fault.
+CLIENT_CLOSED_REQUEST = 499
+
+
+async def _wait_for_disconnect(request: Request) -> None:
+    """Return when the client has gone away.
+
+    The body was read by the route's dependencies, so after it ``receive`` answers nothing until
+    the server reports ``http.disconnect``: uvicorn waits on an event for the next message and
+    the middleware stack passes that wait down (Starlette's ``BaseHTTPMiddleware`` waits on the
+    server's own ``receive`` once the body is consumed). The loop skips any other message, and
+    only that wait keeps it from spinning.
+
+    :param request: The request whose client is watched.
+    """
+    while (await request.receive())["type"] != "http.disconnect":
+        pass
+
+
+async def _run_unless_disconnected[T](
+    request: Request, work: Coroutine[Any, Any, T], route: str
+) -> T | None:
+    """Run the work, and cancel it if the client goes away first.
+
+    Without this a request whose client has left would keep a model call, a retrieval and a
+    turn slot until the turn timeout. The work runs in a task of its own, so cancelling it
+    unwinds it as its own deadline does; an exception it raises is raised here. When the work
+    and the disconnect arrive together, the work wins. Only a watcher that saw the disconnect
+    cancels the work. One that fails (Starlette's middleware raises on a message it did not
+    expect) says nothing about the client, so the failure is logged and the turn runs on without
+    the watch: it still answers, as it did before there was one, instead of failing a turn that
+    nobody left.
+
+    :param request: The request whose client is watched.
+    :param work: What to run.
+    :param route: The route's name, for the record written when the client left.
+    :return: What the work returned, or None when the client left first.
+    """
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    job = asyncio.ensure_future(work)
+    watcher = asyncio.ensure_future(_wait_for_disconnect(request))
+    try:
+        await asyncio.wait({job, watcher}, return_when=asyncio.FIRST_COMPLETED)
+        if not job.done() and (failure := watcher.exception()) is not None:
+            logger.warning(
+                "Assistant disconnect watch failed: %s",
+                type(failure).__name__,
+                extra={
+                    "event": "assistant_disconnect_watch_failed",
+                    "route": route,
+                    "reason": type(failure).__name__,
+                },
+            )
+            await job
+        finished = job.done()
+    finally:
+        watcher.cancel()
+        job.cancel()
+        await asyncio.gather(job, watcher, return_exceptions=True)
+    if finished:
+        return job.result()
+    logger.info(
+        "Assistant client disconnected",
+        extra={
+            "event": "assistant_client_disconnected",
+            "route": route,
+            "duration_ms": round((loop.time() - started) * 1000),
+        },
+    )
+    return None
 
 
 @router.get("/config", summary="Get the assistant's active configuration")
@@ -65,12 +139,16 @@ def get_assistant_config(
 @router.post(
     "/chat",
     summary="Ask the assistant about the method or a project",
+    # Stated because the route may return a bare response (see below), which would otherwise
+    # leave FastAPI no model to describe the body by.
+    response_model=AssistantChatResponse,
     dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
 )
 async def chat(
+    request: Request,
     turn: PreparedTurnDep,
     service: AssistantServiceDep,
-) -> AssistantChatResponse:
+) -> AssistantChatResponse | Response:
     """Answer one chat turn as the signed-in user.
 
     The checks run in the order :func:`~api.assistant.deps.enforce_message_limit` states: the
@@ -82,13 +160,22 @@ async def chat(
     project the caller cannot see into ``ProjectNotFoundError``; both are answered by handlers
     registered next to this router.
 
+    A client that goes away while the turn runs cancels it, and the slot is given back.
+
+    :param request: The incoming request, watched for its client going away.
     :param turn: The validated chat request and the context built for it, whose API client
         carries the caller's own access token.
     :param service: The assistant service for the configured mode.
     :return: The answer, its sources, the tools that ran, the grounding checks and the
-        token usage of the turn.
+        token usage of the turn; for a client that has gone away, an empty ``499`` that nobody
+        receives.
     """
-    return await service.answer(turn.request, turn.context)
+    answer = await _run_unless_disconnected(
+        request, service.answer(turn.request, turn.context), "chat"
+    )
+    if answer is None:
+        return Response(status_code=CLIENT_CLOSED_REQUEST)
+    return answer
 
 
 @router.post(
@@ -97,10 +184,11 @@ async def chat(
     dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
 )
 async def chat_stream(
+    request: Request,
     turn: PreparedTurnDep,
     service: AssistantServiceDep,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> StreamingResponse:
+) -> Response:
     """Answer one chat turn as a stream of server-sent events.
 
     Retrieval runs before the response opens, so a project the caller cannot see, a
@@ -115,19 +203,27 @@ async def chat_stream(
 
     While the stream waits for the model, which in the ``hybrid`` and ``agent`` modes sends nothing
     until the final response, a comment block, ``: keep-alive``, is sent every
-    ``assistant_stream_heartbeat_seconds`` so that a proxy in front sees bytes.
+    ``assistant_stream_heartbeat_seconds`` so that a proxy in front sees bytes. A client that
+    goes away during the retrieval cancels it, and one that goes away during the stream
+    cancels the stream (Starlette watches for the disconnect once the response is open).
 
+    :param request: The incoming request, watched for its client going away.
     :param turn: The validated chat request and the context built for it.
     :param service: The assistant service for the configured mode.
     :param settings: Application settings, for the keep-alive interval.
-    :return: A ``text/event-stream`` response.
+    :return: A ``text/event-stream`` response; for a client that has gone away, an empty
+        ``499`` that nobody receives.
     :raises ProjectNotFoundError: If the request names a project the caller cannot see.
     :raises AssistantUpstreamError: If the project API answers something unusable while the
         project is fetched.
     :raises AssistantUnavailableError: If a dependency is down or the deadline passes before
         the model is called.
     """
-    prepared = await service.prepare(turn.request, turn.context)
+    prepared = await _run_unless_disconnected(
+        request, service.prepare(turn.request, turn.context), "chat_stream"
+    )
+    if prepared is None:
+        return Response(status_code=CLIENT_CLOSED_REQUEST)
 
     async def produce(
         queue: asyncio.Queue[str | AssistantChatResponse | Exception | None],
