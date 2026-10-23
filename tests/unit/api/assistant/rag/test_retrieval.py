@@ -1290,7 +1290,7 @@ class TestDocsRetrieverBm25Search:
         GIVEN a bm25 index whose build and scoring record the thread they run in
         WHEN search() runs for the first time, with mode="bm25"
         THEN both the build and the scoring ran in a worker thread, not in the loop's own,
-            and the ranking is the same as before
+            and the one chunk that mentions the term ranks first with a positive BM25 score
         """
         # GIVEN
         threads: dict[str, int] = {}
@@ -1312,9 +1312,10 @@ class TestDocsRetrieverBm25Search:
             [
                 _doc("The median is robust to outliers.", title="Median"),
                 _doc("The frontend uses React.", title="Frontend"),
+                _doc("The database stores every opinion.", title="Database"),
             ]
         )
-        config = RetrievalConfig(mode="bm25", k=2, query_transform="none")
+        config = RetrievalConfig(mode="bm25", k=3, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -1324,7 +1325,9 @@ class TestDocsRetrieverBm25Search:
         loop_thread = threading.get_ident()
         assert threads["build"] != loop_thread
         assert threads["score"] != loop_thread
-        assert [chunk.title for chunk in results] == ["Median", "Frontend"]
+        assert results[0].title == "Median"
+        assert results[0].score > 0
+        assert [chunk.score for chunk in results[1:]] == [0.0, 0.0]
 
     @pytest.mark.asyncio
     async def test_two_concurrent_cold_searches_build_the_index_once(self, monkeypatch):
@@ -1365,6 +1368,46 @@ class TestDocsRetrieverBm25Search:
         assert len(builds) == 1
         assert [chunk.title for chunk in first] == ["Median"]
         assert [chunk.title for chunk in second] == ["Median"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_build_releases_the_lock_and_a_later_search_retries(self):
+        """
+        GIVEN a store whose first fetch fails, as when the database is down
+        WHEN a bm25 search fails and the same retriever is searched again
+        THEN the lock was released, the second search fetches again and builds the index,
+            and its answer is the ranked one
+        """
+        # GIVEN
+        store = InMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        await store.aadd_documents(
+            [
+                _doc("The median and the mean.", title="Median"),
+                _doc("The frontend uses React.", title="Frontend"),
+                _doc("The database stores every opinion.", title="Database"),
+            ]
+        )
+        original_fetch = store.asimilarity_search_with_score
+        fetches: list[int] = []
+
+        async def _fails_once(*args, **kwargs):
+            fetches.append(1)
+            if len(fetches) == 1:
+                raise ConnectionError("database down")
+            return await original_fetch(*args, **kwargs)
+
+        store.asimilarity_search_with_score = _fails_once
+        config = RetrievalConfig(mode="bm25", k=1, query_transform="none")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        with pytest.raises(ConnectionError):
+            await retriever.search("median")
+        assert not retriever._bm25_lock.locked()
+        results = await asyncio.wait_for(retriever.search("median"), timeout=5)
+
+        # THEN
+        assert len(fetches) == 2
+        assert [chunk.title for chunk in results] == ["Median"]
 
     @pytest.mark.asyncio
     async def test_an_empty_collection_raises_a_clear_value_error(self):

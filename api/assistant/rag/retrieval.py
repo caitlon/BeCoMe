@@ -451,7 +451,8 @@ class DocsRetriever:
                     f"of {_BM25_FETCH_LIMIT} chunks, so some chunks may be missing; raise "
                     "_BM25_FETCH_LIMIT"
                 )
-            # Tokenizing a few thousand chunks is seconds of CPU: off the event loop.
+            # Measured at about 0.27 s for 5000 chunks of 250 tokens: short, but long enough
+            # to hold up every other request on the loop, and it grows with the corpus.
             index = await asyncio.to_thread(_build_bm25_index, documents)
             self._bm25_documents = documents
             self._bm25_index = index
