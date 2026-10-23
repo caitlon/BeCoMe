@@ -129,7 +129,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | Variable | dev | test | prod |
 |----------|-----|------|------|
 | `APP_ENV` | `dev` | `test` | `prod` |
-| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
+| `SECRET_KEY` | strong value (`secrets.token_urlsafe(64)`) | strong value | strong value |
 | `DATABASE_URL` | dev `become_app` role | test `become_app` role | prod `become_app` role |
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
 | `CORS_ORIGINS` | dev origins | test origins | prod origins |
@@ -140,7 +140,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
 | `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | test values | prod values |
-| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
+| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | literal values from `dev-photos` | literal values from `test-photos` | literal values from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
 
