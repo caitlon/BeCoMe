@@ -1,5 +1,6 @@
 """Unit tests for the body of the streaming chat route, driven without the HTTP stack."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock
 
@@ -38,6 +39,14 @@ def _turn() -> PreparedTurn:
     return PreparedTurn(request=AssistantChatRequest(message="hi", history=[]), context=context)
 
 
+class _QuietRequest:
+    """Stands in for a request whose client stays: ``receive`` never answers."""
+
+    async def receive(self) -> dict[str, str]:
+        await asyncio.Event().wait()
+        return {"type": "http.disconnect"}
+
+
 @pytest.mark.asyncio
 class TestEventsBody:
     """The body of the stream is closed with the response, and takes the model's call with it."""
@@ -58,7 +67,12 @@ class TestEventsBody:
         model = ScriptedToolCallingModel(
             responses=[AIMessage(content="One two")], stream_delay_s=30
         )
-        response = await chat_stream(_turn(), AssistantService(settings, model), settings)
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
         body = response.body_iterator
         assert await anext(body) == KEEP_ALIVE
 

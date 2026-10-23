@@ -365,6 +365,15 @@ Cloudflare answers `524` after 100 seconds without a byte. A block with no `even
 event, and the frontend's parser skips it. A keep-alive is sent only between whole events, and the
 `done` or `error` that ends the stream is unchanged.
 
+A client that goes away stops the work its request started. During `/chat` and during the retrieval
+that precedes a stream, the call in flight is cancelled and one `assistant_client_disconnected`
+record at INFO names the route (`chat` or `chat_stream`) and the time in milliseconds; the turn
+slot is given back, and no timeout or failure is logged. The response written for the vanished
+client is an empty `499`, nginx's "client closed request", which nobody receives. Once a stream is
+open the server cancels it when the client disconnects, with no record of this module. If the
+watch for the disconnect itself fails, the turn runs on without it and
+`assistant_disconnect_watch_failed` is logged at WARNING with the exception's class in `reason`.
+
 ### Limits
 
 - **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour

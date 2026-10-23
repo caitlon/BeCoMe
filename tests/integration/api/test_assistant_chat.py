@@ -3233,6 +3233,215 @@ class TestStreamHeartbeat:
         assert "done" not in [name for name, _ in events]
 
 
+class _Exchange:
+    """What one request driven straight through the ASGI app came to.
+
+    :ivar status: The status of the response the app started, or None if it started none.
+    :ivar receive_calls: How many times the app asked for the next message.
+    """
+
+    def __init__(self) -> None:
+        self.status: int | None = None
+        self.receive_calls = 0
+
+
+async def _drive(app, path: str, token: str, *, disconnect_after: float | None) -> _Exchange:
+    """Send one chat request to the ASGI app, with a client that may vanish.
+
+    httpx's ASGITransport cannot simulate a disconnect, so this plays the server: it delivers
+    the body at once, and then, like uvicorn, makes ``receive`` wait until the client has gone
+    (``disconnect_after`` seconds after the request, never when it is None) or the response is
+    complete, and answer ``http.disconnect`` from then on.
+
+    :param app: The ASGI application.
+    :param path: The request path.
+    :param token: The caller's access token.
+    :param disconnect_after: Seconds until the client vanishes, or None if it stays.
+    :return: The exchange.
+    """
+    body = json.dumps({"message": "hi"}).encode()
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+            (b"authorization", f"Bearer {token}".encode()),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+    exchange = _Exchange()
+    client_gone = asyncio.Event()
+    response_complete = asyncio.Event()
+    if disconnect_after is not None:
+        asyncio.get_running_loop().call_later(disconnect_after, client_gone.set)
+    body_delivered = False
+
+    async def receive():
+        nonlocal body_delivered
+        exchange.receive_calls += 1
+        if not body_delivered:
+            body_delivered = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        waiting = [
+            asyncio.ensure_future(client_gone.wait()),
+            asyncio.ensure_future(response_complete.wait()),
+        ]
+        try:
+            await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for waiter in waiting:
+                waiter.cancel()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            exchange.status = message["status"]
+        elif message["type"] == "http.response.body" and not message.get("more_body", False):
+            response_complete.set()
+
+    await asyncio.wait_for(app(scope, receive, send), timeout=15)
+    return exchange
+
+
+def _disconnect_records(records: list[logging.LogRecord]) -> list[logging.LogRecord]:
+    return [r for r in records if getattr(r, "event", "") == "assistant_client_disconnected"]
+
+
+class TestClientDisconnect:
+    """A client that goes away stops the work its request started, and gives its slot back."""
+
+    @pytest.mark.asyncio
+    async def test_a_chat_turn_is_cancelled_when_the_client_goes_away(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a /chat turn whose model is still working and a client that vanishes after 0.3 s
+        WHEN the request is driven through the application
+        THEN the model call is cancelled at once, not after its 30 s, one info record names the
+            route and the time, no timeout or failure is logged, and the turn slot is free
+        """
+        # GIVEN
+        token = register_and_login(client, "gone-chat@example.com")
+        model = _SlowModel(responses=[AIMessage(content="late")])
+        _use_model(client, model)
+
+        # WHEN
+        with (
+            captured_log_records("api.routes.assistant") as route_records,
+            captured_log_records("api.assistant.agent.service") as service_records,
+        ):
+            exchange = await _drive(client.app, CHAT, token, disconnect_after=0.3)
+
+        # THEN
+        assert exchange.status == 499
+        assert model.cancelled
+        (record,) = _disconnect_records(route_records)
+        assert record.levelno == logging.INFO
+        assert record.route == "chat"
+        assert 100 <= record.duration_ms < 5000
+        assert _timeout_records(service_records) == []
+        assert [r for r in route_records if r.levelno >= logging.ERROR] == []
+        assert deps.get_turn_slots().holders == {}
+
+    @pytest.mark.asyncio
+    async def test_the_retrieval_before_a_stream_is_cancelled_when_the_client_goes_away(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a /chat/stream turn whose retrieval is still working and a client that vanishes
+            after 0.3 s
+        WHEN the request is driven through the application
+        THEN the retrieval is cancelled at once, one info record names the stream route, no
+            timeout is logged, and the turn slot is free
+        """
+        # GIVEN
+        token = register_and_login(client, "gone-prepare@example.com")
+        retriever = _SlowRetriever()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: retriever
+        _use_model(client, _scripted("never used"))
+
+        # WHEN
+        with (
+            captured_log_records("api.routes.assistant") as route_records,
+            captured_log_records("api.assistant.agent.service") as service_records,
+        ):
+            exchange = await _drive(client.app, STREAM, token, disconnect_after=0.3)
+
+        # THEN
+        assert exchange.status == 499
+        assert retriever.cancelled
+        (record,) = _disconnect_records(route_records)
+        assert record.route == "chat_stream"
+        assert 100 <= record.duration_ms < 5000
+        assert _timeout_records(service_records) == []
+        assert deps.get_turn_slots().holders == {}
+
+    @pytest.mark.asyncio
+    async def test_a_stream_in_progress_is_cancelled_when_the_client_goes_away(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a stream that would run for about 3 s and a client that vanishes after 0.5 s
+        WHEN the request is driven through the application
+        THEN the model's stream is closed before it finished, the request ends long before 3 s,
+            and the turn slot is free
+        """
+        # GIVEN
+        configure(ASSISTANT_STREAM_HEARTBEAT_SECONDS="0.05")
+        token = register_and_login(client, "gone-stream@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a b c d e f g h i j k l m n o")], stream_delay_s=0.2
+        )
+        _use_model(client, model)
+        started = asyncio.get_running_loop().time()
+
+        # WHEN
+        await _drive(client.app, STREAM, token, disconnect_after=0.5)
+
+        # THEN
+        assert asyncio.get_running_loop().time() - started < 2.5
+        assert model.closed_early
+        assert deps.get_turn_slots().holders == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path", [CHAT, STREAM])
+    async def test_a_client_that_stays_is_answered_and_the_watcher_stays_quiet(
+        self, assistant_settings, client, path
+    ):
+        """
+        GIVEN a turn that takes 0.5 s and a client that never goes away
+        WHEN the request is driven through the application
+        THEN the answer is a 200, nothing is cancelled or logged as a disconnect, and the app
+            asked for the next message only a handful of times, so the watcher does not spin
+        """
+        # GIVEN
+        token = register_and_login(client, "stays@example.com")
+        model = _SlowModel(
+            responses=[AIMessage(content="on time")], delay_s=0.5, stream_delay_s=0.25
+        )
+        _use_model(client, model)
+
+        # WHEN
+        with captured_log_records("api.routes.assistant") as records:
+            exchange = await _drive(client.app, path, token, disconnect_after=None)
+
+        # THEN
+        assert exchange.status == 200
+        assert not model.cancelled
+        assert _disconnect_records(records) == []
+        assert exchange.receive_calls < 20
+
+
 _SOURCE_TITLE = "Aurora Method Handbook"
 _SOURCE_SECTION = "Chapter Seven"
 _SOURCE_EXCERPT = "The compromise is the midpoint of the zebra median."
