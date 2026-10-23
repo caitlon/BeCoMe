@@ -50,14 +50,15 @@ class TestExcludedPublic:
 class TestPublicDocsWalk:
     """build_manifest walks docs/** for markdown, skipping EXCLUDED_PUBLIC."""
 
-    def test_walks_docs_tree_and_skips_excluded(self, tmp_path):
+    @pytest.mark.parametrize("excluded_path", EXCLUDED_PUBLIC)
+    def test_walks_docs_tree_and_skips_excluded(self, tmp_path, excluded_path):
         """
-        GIVEN a docs/ tree with a security.md and an ordinary page
+        GIVEN a docs/ tree with an excluded document and an ordinary page
         WHEN build_manifest walks it
-        THEN the ordinary page is a public CorpusSource and security.md is absent
+        THEN the ordinary page is a public CorpusSource and the excluded document is absent
         """
         # GIVEN
-        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only.")
+        _touch(tmp_path / excluded_path, "# Internal\nInternal only.")
         _touch(tmp_path / "docs" / "user" / "what-it-does.md", "# What BeCoMe does\nText.")
 
         # WHEN
@@ -67,7 +68,7 @@ class TestPublicDocsWalk:
         # opens source.path directly, with no repo_root of its own to resolve a relative
         # one against.
         target = tmp_path / "docs" / "user" / "what-it-does.md"
-        excluded = tmp_path / "docs" / "security.md"
+        excluded = tmp_path / excluded_path
         paths = {source.path for source in manifest}
         assert target in paths
         assert excluded not in paths
