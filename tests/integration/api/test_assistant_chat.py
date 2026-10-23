@@ -29,6 +29,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
 from sqlalchemy.exc import OperationalError
+from sqlmodel import Session
 
 from api.assistant import deps
 from api.assistant.agent import tracing
@@ -1689,6 +1690,68 @@ class _SlotProbingModel(ScriptedToolCallingModel):
         async for chunk in super()._astream(*args, **kwargs):
             yield chunk
             self._probe()
+
+
+class _SpySession(Session):
+    """A database session that remembers whether it has been closed."""
+
+    closed = False
+
+    def close(self) -> None:
+        self.closed = True
+        super().close()
+
+
+class _SessionProbingModel(ScriptedToolCallingModel):
+    """A scripted model that records which database sessions were closed while it streams.
+
+    :ivar opened: The sessions the request opened, appended to by the test's override.
+    :ivar probes: One entry per look, before the first piece and after each one: the
+        ``closed`` flag of every session in ``opened`` at that moment.
+    """
+
+    opened: list[Any] = Field(default_factory=list)
+    probes: list[list[bool]] = Field(default_factory=list)
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        self.probes.append([session.closed for session in self.opened])
+        async for chunk in super()._astream(*args, **kwargs):
+            yield chunk
+            self.probes.append([session.closed for session in self.opened])
+
+
+class TestSessionNotHeldWhileStreaming:
+    """The database session that looked the caller up is released before the stream opens."""
+
+    def test_the_users_session_is_closed_while_the_stream_is_open(
+        self, assistant_settings, client, test_engine
+    ):
+        """
+        GIVEN a model that looks at the request's database sessions while it streams
+        WHEN one turn is streamed to the end
+        THEN the request opened one session for all the dependencies that need the caller,
+            and it was already closed before the first piece and during every later one
+        """
+        # GIVEN
+        token = register_and_login(client, "session-stream@example.com")
+        model = _SessionProbingModel(responses=[AIMessage(content="a streamed answer")])
+        _use_model(client, model)
+
+        def spying_session():
+            with _SpySession(test_engine) as session:
+                model.opened.append(session)
+                yield session
+
+        client.app.dependency_overrides[get_session] = spying_session
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert len(model.opened) == 1
+        assert len(model.probes) > 2
+        assert all(probe == [True] for probe in model.probes)
 
 
 class TestConcurrentTurnCap:

@@ -392,6 +392,12 @@ event, and the frontend's parser skips it. A keep-alive is sent only between who
   the budget refuses gives its slot back at once. The slot is given back when the response is done,
   so a streamed answer holds it until the stream ends. The count is per process: with several
   processes the ceiling is the setting times their number.
+- **Database session.** The chat routes look the caller up through their own dependency
+  (`get_assistant_user` in `api/assistant/deps.py`), whose database session closes when the route
+  function returns, before the body of a stream is sent. On a user-cache miss a stream therefore
+  does not keep a connection of the application's pool checked out for the whole turn. Non-streamed
+  `/chat` still holds the lookup's session for its whole turn, because the turn runs inside the
+  route function; the frontend uses only `/chat/stream`.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
   like any other invalid request, before the retriever is built, before the API client is built
