@@ -102,7 +102,7 @@ uv run --extra docs python scripts/docs/toc.py --write   # rewrite them
 
 The build already catches a renamed heading, failing on the entry that now points at nothing.
 The check covers what it cannot: a heading added with no entry, where nothing breaks and the map
-is only incomplete, and the two documents that never reach the site at all.
+is only incomplete, and the three documents that never reach the site at all.
 With no paths it works on every tracked document over 100 lines or over 6 sections, so one that
 grows into needing a map gets picked up on its own.
 
