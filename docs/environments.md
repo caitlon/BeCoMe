@@ -178,7 +178,7 @@ A deployed service with the assistant enabled refuses to start unless `ASSISTANT
 
 ## Photo storage
 
-Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. The backend reads `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY`, set on the service as literal values copied from the bucket's credentials (`railway bucket credentials --json`), because a variable reference to a bucket is not possible. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
+Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. The backend reads `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY`, set on the service as literal values copied from the bucket's credentials, because a variable reference to a bucket is not possible. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
 
 ## Email delivery
 
