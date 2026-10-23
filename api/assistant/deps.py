@@ -125,9 +125,10 @@ def get_query_model() -> BaseChatModel:
     return make_chat_model(get_settings())
 
 
-# The retriever and the engine behind its store, built together under the lock. A plain holder
-# and not ``lru_cache``: FastAPI resolves this in its threadpool, and two cold requests would
-# each build an engine, one of them never closed. Shutdown reads the engine from here.
+# The retriever and the engine behind its store. A plain holder and not ``lru_cache``:
+# FastAPI resolves the dependency in its threadpool, and two cold requests would each build an
+# engine, one of them never closed. The lock guards only publishing, never the build, which
+# reaches the network. Shutdown reads the engine from here.
 _docs_lock = threading.Lock()
 _docs_resources: tuple[DocsRetriever, PGEngine] | None = None
 
@@ -142,8 +143,10 @@ def get_docs_retriever() -> DocsRetriever:
     Opening the store reaches the vector database, so the first request of a process can
     meet a database that is down, or a collection that is missing: that, and a missing
     ``ASSISTANT_VECTOR_DB_URL``, are ``AssistantUnavailableError``. A missing URL is logged
-    by setting name only. A build that fails closes its engine first. Threads asking at the
-    same time on a cold process wait for one build; a failed build is not kept.
+    by setting name only. A build that fails closes its engine first and is not kept. Threads
+    asking at the same time on a cold process each build, outside any lock, so a database that is
+    down fails them all at once; the first build to finish is published, and every other thread
+    closes its own engine and returns the published retriever.
 
     :return: A retriever over the configured collection.
     :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
@@ -152,11 +155,30 @@ def get_docs_retriever() -> DocsRetriever:
     global _docs_resources
     built = _docs_resources
     if built is None:
+        fresh = _build_docs_retriever()
         with _docs_lock:
             built = _docs_resources
             if built is None:
-                built = _docs_resources = _build_docs_retriever()
+                built = _docs_resources = fresh
+        if built is not fresh:
+            _close_engine(fresh[1])
     return built[0]
+
+
+def _close_engine(engine: PGEngine) -> None:
+    """Close an engine that no one will use, recording a failed close without raising it.
+
+    Runs in a worker thread, with no event loop of its own to reuse.
+
+    :param engine: The engine to dispose of.
+    """
+    try:
+        asyncio.run(engine.close())
+    except Exception as exc:
+        logger.warning(
+            "Assistant engine close failed",
+            extra={"event": "assistant_engine_close_failed", "reason": type(exc).__name__},
+        )
 
 
 def _build_docs_retriever() -> tuple[DocsRetriever, PGEngine]:
@@ -196,16 +218,7 @@ def _build_docs_retriever() -> tuple[DocsRetriever, PGEngine]:
             # A failed build is not cached, so every request would build another pool:
             # release this one before the error goes on, and let a failing close not
             # replace that error, only be recorded.
-            try:
-                asyncio.run(engine.close())
-            except Exception as close_exc:
-                logger.warning(
-                    "Assistant engine close failed",
-                    extra={
-                        "event": "assistant_engine_close_failed",
-                        "reason": type(close_exc).__name__,
-                    },
-                )
+            _close_engine(engine)
             raise
 
 

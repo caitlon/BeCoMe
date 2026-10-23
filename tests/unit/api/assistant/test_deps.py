@@ -23,6 +23,7 @@ from api.assistant.errors import (
     AssistantRateLimitedError,
     AssistantUnavailableError,
 )
+from api.assistant.rag.models import make_answer_model, make_chat_model
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.rag.store import CollectionUnavailableError
 from api.assistant.rate_limit import (
@@ -327,9 +328,15 @@ class TestCloseAssistantResources:
     """Shutdown closes what was built, builds nothing, and one failure stops nobody."""
 
     @staticmethod
-    def _build_everything(engine: MagicMock, answer: MagicMock, query: MagicMock) -> MagicMock:
-        """Build the models, the retriever and a Redis-backed throttle; return the Redis client."""
-        redis_client = MagicMock(name="redis_client")
+    def _build_everything(
+        engine: MagicMock, answer: MagicMock, query: MagicMock
+    ) -> tuple[MagicMock, MagicMock]:
+        """Build the models, the retriever and both Redis-backed throttles.
+
+        :return: The Redis clients of the per-user throttle and of the global one.
+        """
+        user_client = MagicMock(name="user_redis_client")
+        global_client = MagicMock(name="global_redis_client")
         settings = _settings(redis_url="redis://cache:6379/0")
         with (
             patch.object(deps, "get_settings", return_value=settings),
@@ -340,13 +347,14 @@ class TestCloseAssistantResources:
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "DocsRetriever", side_effect=lambda **_: MagicMock()),
             patch.object(rate_limit, "get_settings", return_value=settings),
-            patch.object(rate_limit.redis, "from_url", return_value=redis_client),
+            patch.object(rate_limit.redis, "from_url", side_effect=[user_client, global_client]),
         ):
             deps.get_answer_model()
             deps.get_query_model()
             deps.get_docs_retriever()
             get_assistant_throttle()
-        return redis_client
+            get_assistant_global_throttle()
+        return user_client, global_client
 
     @pytest.fixture(autouse=True)
     def _fresh_throttles(self):
@@ -359,14 +367,14 @@ class TestCloseAssistantResources:
     @pytest.mark.asyncio
     async def test_it_closes_every_resource_that_was_built(self):
         """
-        GIVEN both models, the retriever and the per-user throttle built
+        GIVEN both models, the retriever and both throttles built
         WHEN the resources are closed
-        THEN the engine, each model's two clients and the throttle's Redis client are closed,
+        THEN the engine, each model's two clients and each throttle's Redis client are closed,
              and the caches are empty afterwards
         """
         # GIVEN
         engine, answer, query = _engine(), _chat_model(), _chat_model()
-        redis_client = self._build_everything(engine, answer, query)
+        user_client, global_client = self._build_everything(engine, answer, query)
 
         # WHEN
         await deps.close_assistant_resources()
@@ -376,10 +384,27 @@ class TestCloseAssistantResources:
         for model in (answer, query):
             model.root_async_client.close.assert_awaited_once()
             model.root_client.close.assert_called_once_with()
-        redis_client.close.assert_called_once_with()
+        user_client.close.assert_called_once_with()
+        global_client.close.assert_called_once_with()
         assert deps.get_answer_model.cache_info().currsize == 0
         assert get_assistant_throttle.cache_info().currsize == 0
+        assert get_assistant_global_throttle.cache_info().currsize == 0
         assert deps._docs_resources is None
+
+    @pytest.mark.parametrize("factory", [make_chat_model, make_answer_model])
+    def test_the_real_chat_models_expose_the_clients_that_shutdown_closes(self, factory):
+        """
+        GIVEN a chat model built by the real factory, which makes no network call
+        WHEN its two root clients are looked up by the names shutdown uses
+        THEN both exist and can be closed, so a renamed attribute in a later langchain-openai
+             fails here and does not leak silently
+        """
+        # WHEN
+        model = factory(_settings())
+
+        # THEN
+        for attribute in ("root_async_client", "root_client"):
+            assert callable(getattr(getattr(model, attribute, None), "close", None)), attribute
 
     @pytest.mark.asyncio
     async def test_it_builds_nothing_that_was_never_built(self):
@@ -414,7 +439,7 @@ class TestCloseAssistantResources:
         engine, answer, query = _engine(), _chat_model(), _chat_model()
         engine.close.side_effect = ConnectionError("down at secret-host")
         answer.root_async_client.close.side_effect = RuntimeError("secret-host")
-        redis_client = self._build_everything(engine, answer, query)
+        user_client, global_client = self._build_everything(engine, answer, query)
 
         # WHEN
         with captured_log_records("api.assistant.deps") as records:
@@ -431,7 +456,8 @@ class TestCloseAssistantResources:
         answer.root_client.close.assert_called_once_with()
         query.root_async_client.close.assert_awaited_once()
         query.root_client.close.assert_called_once_with()
-        redis_client.close.assert_called_once_with()
+        user_client.close.assert_called_once_with()
+        global_client.close.assert_called_once_with()
 
 
 class TestGetAssistantService:
@@ -1279,22 +1305,24 @@ class TestBuildFailures:
         assert (record.event, record.reason) == ("assistant_engine_close_failed", "ConnectionError")
         assert not any("secret-host" in str(value) for value in vars(record).values())
 
-    def test_concurrent_cold_requests_build_one_retriever(self):
+    def test_concurrent_cold_requests_publish_one_retriever_and_close_the_rest(self):
         """
         GIVEN a slow engine build and several threads asking for the retriever at once
         WHEN they all start together on a cold process
-        THEN one engine is made and every thread gets the same retriever
+        THEN every thread gets the same retriever, the engine published with it stays open,
+             and every other engine that was built is closed
         """
         # GIVEN
         threads_count = 4
-        start = threading.Barrier(threads_count)
-        built: list[int] = []
+        start = threading.Barrier(threads_count, timeout=10)
+        engines: list[MagicMock] = []
         results: list[Any] = []
 
         def _slow_engine(*args: Any, **kwargs: Any) -> MagicMock:
-            built.append(1)
             time.sleep(0.05)
-            return _engine()
+            engine = _engine()
+            engines.append(engine)
+            return engine
 
         def _ask() -> None:
             start.wait()
@@ -1313,12 +1341,86 @@ class TestBuildFailures:
             for worker in workers:
                 worker.start()
             for worker in workers:
-                worker.join()
+                worker.join(timeout=10)
 
         # THEN
-        assert len(built) == 1
+        assert not any(worker.is_alive() for worker in workers)
         assert len(results) == threads_count
         assert all(result is results[0] for result in results)
+        assert deps._docs_resources is not None
+        published = deps._docs_resources[1]
+        assert published in engines
+        published.close.assert_not_awaited()
+        for engine in engines:
+            if engine is not published:
+                engine.close.assert_awaited_once()
+
+    def test_a_losing_engine_that_fails_to_close_is_logged(self, records):
+        """
+        GIVEN a retriever already published by another thread, and a build that finishes after
+            it, on an engine whose close fails
+        WHEN the late build is published
+        THEN the published retriever is returned, and one warning records the failed close
+        """
+        # GIVEN
+        winner = (MagicMock(name="published"), _engine())
+        loser_engine = _engine()
+        loser_engine.close.side_effect = ConnectionError("close failed at secret-host")
+
+        def _late_build() -> tuple[Any, Any]:
+            deps._docs_resources = winner
+            return MagicMock(name="late"), loser_engine
+
+        # WHEN
+        with patch.object(deps, "_build_docs_retriever", side_effect=_late_build):
+            retriever = deps.get_docs_retriever()
+
+        # THEN
+        assert retriever is winner[0]
+        winner[1].close.assert_not_awaited()
+        (record,) = records
+        assert (record.event, record.reason) == ("assistant_engine_close_failed", "ConnectionError")
+
+    def test_failing_builds_are_not_serialised(self):
+        """
+        GIVEN the vector database down, and two threads that each need the other's build to
+            overlap with its own to finish
+        WHEN both ask for the retriever at once
+        THEN both fail with the outage, so neither waited for the other's build to end
+        """
+        # GIVEN
+        overlap = threading.Barrier(2, timeout=10)
+        outcomes: list[str] = []
+
+        def _store_down(*args: Any, **kwargs: Any) -> None:
+            overlap.wait()
+            raise ConnectionRefusedError("down")
+
+        def _ask() -> None:
+            try:
+                deps.get_docs_retriever()
+            except AssistantUnavailableError:
+                outcomes.append("unavailable")
+            except Exception as exc:
+                outcomes.append(type(exc).__name__)
+
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "make_engine", side_effect=lambda *a, **k: _engine()),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", side_effect=_store_down),
+        ):
+            # WHEN
+            workers = [threading.Thread(target=_ask) for _ in range(2)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=10)
+
+        # THEN
+        assert not any(worker.is_alive() for worker in workers)
+        assert outcomes == ["unavailable", "unavailable"]
+        assert deps._docs_resources is None
 
 
 def _mini_app() -> tuple[FastAPI, list[Any]]:
