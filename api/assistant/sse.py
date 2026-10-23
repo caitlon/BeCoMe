@@ -26,3 +26,11 @@ def format_event(name: str, payload: Any) -> str:
     for character, escape in _LINE_BREAKS.items():
         data = data.replace(character, escape)
     return f"event: {name}\ndata: {data}\n\n"
+
+
+# A keep-alive: a comment block that carries no event. A line that starts with a colon is a
+# comment in the event-stream format, and a block with no ``event:`` line is skipped by the
+# frontend's parser (see ``parseBlock`` in ``frontend/src/components/assistant/sse.ts``). It
+# exists to put bytes on the wire while the answer is still being worked on, so a proxy does
+# not close an idle connection.
+KEEP_ALIVE = ": keep-alive\n\n"

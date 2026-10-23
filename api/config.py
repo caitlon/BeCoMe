@@ -423,6 +423,10 @@ class Settings(BaseSettings):
     # a turn is not held to it and keeps the full turn timeout above, which this value can
     # only shorten: a turn timeout below it decides first.
     assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0)
+    # How often a waiting /chat/stream sends a keep-alive comment, in seconds, so that
+    # a proxy sees bytes while the model is still working (the agent modes send nothing
+    # until the final response). Below 100, the idle time after which Cloudflare answers 524.
+    assistant_stream_heartbeat_seconds: float = Field(default=15.0, gt=0, lt=100)
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
     # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private

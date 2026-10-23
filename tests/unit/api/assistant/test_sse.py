@@ -2,7 +2,7 @@
 
 import json
 
-from api.assistant.sse import format_event
+from api.assistant.sse import KEEP_ALIVE, format_event
 
 
 class TestFormatEvent:
@@ -67,3 +67,27 @@ class TestFormatEvent:
         assert name_line == "event: token"
         assert blank_line == ""
         assert json.loads(data_line[len("data: ") :]) == {"text": text}
+
+
+class TestKeepAlive:
+    """A keep-alive is a comment block that carries no event."""
+
+    def test_the_block_is_a_comment_line_and_a_blank_line(self):
+        """
+        GIVEN the keep-alive block
+        WHEN its text is read
+        THEN it is one comment line and the blank line that ends the block
+        """
+        assert KEEP_ALIVE == ": keep-alive\n\n"
+
+    def test_the_block_has_no_event_or_data_line(self):
+        """
+        GIVEN the keep-alive block
+        WHEN its lines are read
+        THEN none starts with event: or data:, so a client skips the block
+        """
+        # WHEN
+        lines = KEEP_ALIVE.splitlines()
+
+        # THEN
+        assert not [line for line in lines if line.startswith(("event:", "data:"))]
