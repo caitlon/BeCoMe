@@ -33,9 +33,14 @@ _API_MAX_RETRIES = 2
 _REPLY_SHAPE_ERRORS = (ValueError, TypeError, AttributeError)
 
 # What decoding a reply that is not JSON raises, before the place above is reached: a
-# JSONDecodeError for an empty, HTML or cut-off body, a UnicodeDecodeError for a body cut in
-# the middle of a multi-byte character.
+# JSONDecodeError for an empty, HTML or cut-off body or stream line, a UnicodeDecodeError for
+# one cut in the middle of a multi-byte character.
 _UNDECODABLE_REPLY = (json.JSONDecodeError, UnicodeDecodeError)
+
+# What the library raises when it parses one chunk of a stream that is not a completion chunk,
+# in ``_convert_chunk_to_generation_chunk``: a TypeError for a field of the wrong type, an
+# AttributeError for a field that is not an object.
+_CHUNK_SHAPE_ERRORS = (TypeError, AttributeError)
 
 
 class MalformedModelResponseError(Exception):
@@ -50,7 +55,7 @@ class MalformedModelResponseError(Exception):
 
 
 @contextmanager
-def _upstream(role: UpstreamRole, malformed: tuple[type[Exception], ...] = ()) -> Iterator[None]:
+def _upstream(role: UpstreamRole, malformed: tuple[type[Exception], ...]) -> Iterator[None]:
     """Write the role on whatever the server's client raises inside, and name a bad body.
 
     :param role: The role of the server the block talks to.
@@ -77,7 +82,12 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
     ``TypeError`` or ``AttributeError`` from the one method that reads the body, and a body
     that cannot be decoded into a ``json.JSONDecodeError`` or ``UnicodeDecodeError`` before
     that method runs. Those, and only those, are caught here, so a bug elsewhere in a call
-    stays what it is. Every call the assistant makes (``invoke``, ``ainvoke``, ``astream``, and
+    stays what it is. A stream is read chunk by chunk: a line that cannot be decoded is
+    caught the same way, and a chunk of the wrong shape is caught where the library parses
+    it (``_convert_chunk_to_generation_chunk``). The request is built and the callbacks run
+    inside the same iteration, so nothing else is caught around it. A chunk that is JSON
+    but not an object fails in the library's loop, before that method, and is not caught.
+    Every call the assistant makes (``invoke``, ``ainvoke``, ``astream``, and
     a copy bound to tools or options, which shares this instance) ends in the three methods
     below; the synchronous ``_stream`` is not overridden, since nothing in ``api/`` streams
     synchronously. A stream has no body to read: an HTML page yields no chunk, and LangChain
@@ -115,8 +125,20 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
         with _upstream(self.upstream_role, _UNDECODABLE_REPLY):
             return await super()._agenerate(*args, **kwargs)
 
+    def _convert_chunk_to_generation_chunk(
+        self, chunk: dict[Any, Any], default_chunk_class: type, base_generation_info: Any
+    ) -> ChatGenerationChunk | None:
+        try:
+            return super()._convert_chunk_to_generation_chunk(
+                chunk, default_chunk_class, base_generation_info
+            )
+        except _CHUNK_SHAPE_ERRORS:
+            raise MalformedModelResponseError(
+                f"the {self.upstream_role} server streamed a chunk that is not a completion"
+            ) from None
+
     async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
-        with _upstream(self.upstream_role):
+        with _upstream(self.upstream_role, _UNDECODABLE_REPLY):
             yielded = False
             async for chunk in super()._astream(*args, **kwargs):
                 yielded = True
