@@ -448,6 +448,19 @@ _EMBEDDING_BODIES = {
 }
 
 
+_EMBEDDING_BODIES.update(
+    {
+        "item without embedding": httpx.Response(200, json={"data": [{"index": 0}]}),
+        "item with null embedding": httpx.Response(
+            200, json={"data": [{"index": 0, "embedding": None}]}
+        ),
+        "item with empty embedding": httpx.Response(
+            200, json={"data": [{"index": 0, "embedding": []}]}
+        ),
+    }
+)
+
+
 @pytest.mark.parametrize("response", _EMBEDDING_BODIES.values(), ids=_EMBEDDING_BODIES.keys())
 class TestEmbeddingsMalformedBody:
     """A 200 from the embedding server that holds no vectors is the server's fault."""
@@ -539,6 +552,52 @@ class TestRerankerMalformedBody:
             asyncio.run(reranker.rerank("q", ["a", "b"]))
 
         assert tagged_role(raised.value) == "rerank"
+
+    @pytest.mark.parametrize(
+        "results",
+        [
+            [1],
+            [{"relevance_score": 0.5}],
+            [{"index": "0", "relevance_score": 0.5}],
+            [{"index": True, "relevance_score": 0.5}],
+            [{"index": 0, "relevance_score": None}],
+            [{"index": 0, "relevance_score": "0.5"}],
+        ],
+        ids=[
+            "item not an object",
+            "no index",
+            "string index",
+            "bool index",
+            "null score",
+            "string score",
+        ],
+    )
+    def test_an_item_of_the_wrong_shape_is_malformed(self, monkeypatch, results):
+        """
+        GIVEN a reranker whose server answers 200 with a result item of the wrong shape
+        WHEN texts are scored
+        THEN MalformedModelResponseError is raised, tagged rerank
+        """
+        reranker = _reranker(monkeypatch, httpx.Response(200, json={"results": results}))
+
+        with pytest.raises(MalformedModelResponseError) as raised:
+            asyncio.run(reranker.rerank("q", ["a"]))
+
+        assert tagged_role(raised.value) == "rerank"
+
+    def test_an_index_out_of_range_stays_a_plain_value_error(self, monkeypatch):
+        """
+        GIVEN a reranker whose server scores an index that is no text's
+        WHEN texts are scored
+        THEN a plain ValueError is raised, not the dedicated error
+        """
+        body = {"results": [{"index": 5, "relevance_score": 0.5}]}
+        reranker = _reranker(monkeypatch, httpx.Response(200, json=body))
+
+        with pytest.raises(ValueError, match="out of range") as raised:
+            asyncio.run(reranker.rerank("q", ["a"]))
+
+        assert not isinstance(raised.value, MalformedModelResponseError)
 
     def test_an_unreachable_server_keeps_its_error_and_carries_the_role(self, monkeypatch):
         """
