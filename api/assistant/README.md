@@ -368,7 +368,10 @@ that precedes a stream, the call in flight is cancelled and one `assistant_clien
 record at INFO names the route (`chat` or `chat_stream`) and the time in milliseconds; the turn
 slot is given back, and no timeout or failure is logged. The response written for the vanished
 client is an empty `499`, nginx's "client closed request", which nobody receives. Once a stream is
-open the server cancels it when the client disconnects, with no record of this module. If the
+open the server cancels it when the client disconnects, with no record of this module. This relies
+on the server reporting ASGI spec 2.3 (uvicorn 0.54 does, so Starlette's `StreamingResponse` listens
+for the disconnect); on a server reporting 2.4 the vanished client is noticed at the next write, a
+keep-alive at the latest. If the
 watch for the disconnect itself fails, the turn runs on without it and
 `assistant_disconnect_watch_failed` is logged at WARNING with the exception's class in `reason`.
 

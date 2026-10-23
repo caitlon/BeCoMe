@@ -145,7 +145,7 @@ class TestRunUnlessDisconnected:
     async def test_a_watcher_that_fails_does_not_cancel_the_work(self):
         """
         GIVEN a request whose receive fails after 10 ms, as Starlette's middleware does on an
-            unexpected message, and work that finishes after 100 ms
+            unexpected message, and work that finishes after 500 ms
         WHEN it is run
         THEN the work is not cancelled and its result is returned, no disconnect is logged, and
             one warning names the route and the exception class but not its text
@@ -156,7 +156,7 @@ class TestRunUnlessDisconnected:
         async def work() -> str:
             nonlocal cancelled
             try:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 cancelled = True
                 raise
