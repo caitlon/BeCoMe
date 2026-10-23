@@ -1168,11 +1168,11 @@ class TestUnavailableLogging:
         ("failure", "role"),
         [
             (OperationalError("SELECT 1", {}, Exception("lost")), "vector_db"),
-            (tagged(MalformedModelResponseError("html"), "rerank"), "rerank"),
-            (tagged(openai.APIConnectionError(request=_REQUEST), "embedding"), "embedding"),
+            (tagged(openai.APIConnectionError(request=_REQUEST), "query"), "query"),
+            (MalformedModelResponseError("html"), "unknown"),
             (httpx.ConnectError("refused"), "unknown"),
         ],
-        ids=["database", "rerank", "embedding", "untagged"],
+        ids=["database", "query model", "untagged malformed reply", "untagged"],
     )
     async def test_a_failing_search_logs_the_role_of_the_server_that_failed(self, failure, role):
         """

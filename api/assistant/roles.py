@@ -7,16 +7,13 @@ log reads it back. The module has no imports beyond the standard library, so the
 the model factories and the log sites can all use it.
 """
 
-from typing import Final, Literal, get_args
+from typing import Final, Literal
 
-#: The servers a turn depends on: the model that writes answers, the one that translates
-#: queries, the embedding and rerank servers, the document index and the application's own
-#: API. ``unknown`` is what a log record says when nothing tagged the failure.
-type UpstreamRole = Literal[
-    "answer", "query", "embedding", "rerank", "vector_db", "app_api", "unknown"
-]
+#: The servers a turn can name as the failing one: the model that writes answers, the one that
+#: translates queries, the document index and the application's own API. ``unknown`` is what a
+#: log record says when nothing tagged the failure.
+type UpstreamRole = Literal["answer", "query", "vector_db", "app_api", "unknown"]
 
-_ROLES: Final = frozenset(get_args(UpstreamRole.__value__))
 _ATTRIBUTE: Final = "upstream_role"
 
 
@@ -38,7 +35,4 @@ def tagged_role(exc: BaseException) -> UpstreamRole | None:
     :param exc: Any exception.
     :return: The role it was tagged with, or None when nothing tagged it.
     """
-    role = getattr(exc, _ATTRIBUTE, None)
-    if role in _ROLES:
-        return role
-    return None
+    return getattr(exc, _ATTRIBUTE, None)

@@ -950,9 +950,9 @@ class TestBuildFailures:
             (
                 tagged(
                     openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
-                    "embedding",
+                    "query",
                 ),
-                "embedding",
+                "query",
             ),
             (CollectionUnavailableError("collection 'secret_table' cannot be opened"), "vector_db"),
         ],
