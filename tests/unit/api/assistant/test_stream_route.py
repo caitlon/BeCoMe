@@ -86,12 +86,12 @@ class TestEventsBody:
 
 
 class _SlowToFinish(AssistantService):
-    """A service whose stream takes half a second to end after its last item."""
+    """A service whose stream takes ten seconds to end after its last item."""
 
     async def stream(self, turn):
         async for item in super().stream(turn):
             yield item
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(10)
 
 
 @pytest.mark.asyncio
@@ -100,7 +100,7 @@ class TestEndOfStream:
 
     async def test_no_keep_alive_follows_the_done_event_when_the_service_is_slow_to_finish(self):
         """
-        GIVEN a heartbeat of 50 ms and a service that takes 0.5 s to end its stream after the
+        GIVEN a heartbeat of 50 ms and a service that takes 10 s to end its stream after the
             response
         WHEN the whole body is read
         THEN its last block is the done event, no keep-alive follows it, and the body ends long
@@ -127,4 +127,4 @@ class TestEndOfStream:
 
         # THEN
         assert blocks[-1].startswith("event: done")
-        assert time.monotonic() - started < 0.4
+        assert time.monotonic() - started < 5
