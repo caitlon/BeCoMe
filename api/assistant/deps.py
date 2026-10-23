@@ -301,54 +301,83 @@ def clear_caches() -> None:
     get_turn_slots.cache_clear()
 
 
-async def close_assistant_resources() -> None:
-    """Close what the process built for the assistant, then drop the caches.
+def _model_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close calls of the chat models' clients that exist; build no model.
 
-    For application shutdown. Only what was built is closed, and nothing is built to be
-    closed: the cached getters are asked only when their cache holds an object. That is the
-    corpus engine, the two chat models' clients and the Redis clients of the throttles. The
-    reranker opens a client per call and the embeddings client has no public way to close, so
-    neither is touched. A close that fails is recorded, by the resource and the error's class
-    only, and the others still run.
+    :return: One (resource name, close callable) pair per client of a built model.
+    """
+    closers: list[tuple[str, Callable[[], object]]] = []
+    for name, getter in (("answer_model", get_answer_model), ("query_model", get_query_model)):
+        if not getter.cache_info().currsize:
+            continue
+        model = getter()
+        for suffix, attribute in (("async_client", "root_async_client"), ("client", "root_client")):
+            client = getattr(model, attribute, None)
+            if client is not None:
+                closers.append((f"{name}_{suffix}", client.close))
+    return closers
+
+
+def _throttle_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close calls of the throttles that hold a Redis client; build no throttle.
+
+    :return: One (resource name, close callable) pair per built Redis-backed throttle.
+    """
+    built = [
+        ("assistant_throttle", get_assistant_throttle),
+        ("assistant_global_throttle", get_assistant_global_throttle),
+    ]
+    throttles = [(name, getter()) for name, getter in built if getter.cache_info().currsize]
+    return [
+        (name, throttle.close)
+        for name, throttle in throttles
+        if isinstance(throttle, RedisAssistantThrottle)
+    ]
+
+
+def _built_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close call of everything the process has built, and build nothing.
+
+    :return: One (resource name, close callable) pair per built resource, in closing order.
     """
     closers: list[tuple[str, Callable[[], object]]] = []
     if _docs_resources is not None:
         closers.append(("docs_engine", _docs_resources[1].close))
-    for name, model_getter in (
-        ("answer_model", get_answer_model),
-        ("query_model", get_query_model),
-    ):
-        if model_getter.cache_info().currsize:
-            model = model_getter()
-            for suffix, attribute in (
-                ("async_client", "root_async_client"),
-                ("client", "root_client"),
-            ):
-                client = getattr(model, attribute, None)
-                if client is not None:
-                    closers.append((f"{name}_{suffix}", client.close))
-    for name, throttle_getter in (
-        ("assistant_throttle", get_assistant_throttle),
-        ("assistant_global_throttle", get_assistant_global_throttle),
-    ):
-        if throttle_getter.cache_info().currsize:
-            throttle = throttle_getter()
-            if isinstance(throttle, RedisAssistantThrottle):
-                closers.append((name, throttle.close))
-    for resource, close in closers:
-        try:
-            outcome = close()
-            if inspect.isawaitable(outcome):
-                await outcome
-        except Exception as exc:
-            logger.warning(
-                "Assistant resource close failed at shutdown",
-                extra={
-                    "event": "assistant_shutdown_close_failed",
-                    "resource": resource,
-                    "reason": type(exc).__name__,
-                },
-            )
+    return closers + _model_closers() + _throttle_closers()
+
+
+async def _close_one(resource: str, close: Callable[[], object]) -> None:
+    """Run one close call, awaiting its result if it is awaitable; record a failure, not raise it.
+
+    :param resource: The name written in the record of a failed close.
+    :param close: The close call.
+    """
+    try:
+        outcome = close()
+        if inspect.isawaitable(outcome):
+            await outcome
+    except Exception as exc:
+        logger.warning(
+            "Assistant resource close failed at shutdown",
+            extra={
+                "event": "assistant_shutdown_close_failed",
+                "resource": resource,
+                "reason": type(exc).__name__,
+            },
+        )
+
+
+async def close_assistant_resources() -> None:
+    """Close what the process built for the assistant, then drop the caches.
+
+    For application shutdown. Only what was built is closed, and nothing is built to be
+    closed. That is the corpus engine, the two chat models' clients and the Redis clients of the
+    throttles. The reranker opens a client per call and the embeddings client has no public way
+    to close, so neither is touched. A close that fails is recorded, by the resource and the
+    error's class only, and the others still run.
+    """
+    for resource, close in _built_closers():
+        await _close_one(resource, close)
     clear_caches()
     get_assistant_throttle.cache_clear()
     get_assistant_global_throttle.cache_clear()
