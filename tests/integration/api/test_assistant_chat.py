@@ -35,6 +35,7 @@ from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
+from api.assistant.sse import KEEP_ALIVE
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
 from api.db.session import get_session
@@ -3063,6 +3064,110 @@ class TestFirstByteLimit:
         assert events[-1][0] == "done"
         assert events[-1][1]["answer"] == "One two"
         assert _timeout_records(records) == []
+
+
+def _event_blocks(body: str) -> list[str]:
+    """Split a server-sent-event body into its blocks, each without the blank line."""
+    return [block for block in body.split("\n\n") if block]
+
+
+class TestStreamHeartbeat:
+    """A stream that is waiting sends a keep-alive comment between whole events."""
+
+    def test_a_waiting_stream_sends_keep_alives_and_the_events_are_unchanged(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a heartbeat of 0.05 s and a model that pauses 0.25 s before each of three pieces
+        WHEN the question is posted to the stream route
+        THEN the body holds keep-alive blocks, every block is a whole event or a whole
+            keep-alive, and the events alone are the token events and the done event as ever
+        """
+        # GIVEN
+        configure(ASSISTANT_STREAM_HEARTBEAT_SECONDS="0.05")
+        token = register_and_login(client, "heartbeat@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three")], stream_delay_s=0.25
+        )
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert response.text.count(KEEP_ALIVE) >= 3
+        blocks = _event_blocks(response.text)
+        assert all(block == KEEP_ALIVE.strip() or block.startswith("event: ") for block in blocks)
+        events = _events(response.text.replace(KEEP_ALIVE, ""))
+        names = [name for name, _ in events]
+        assert names[-1] == "done"
+        assert set(names[:-1]) == {"token"}
+        text = "".join(payload["text"] for _, payload in events[:-1])
+        assert text == events[-1][1]["answer"] == "One two three"
+
+    @pytest.mark.parametrize("mode", ["hybrid", "agent"])
+    def test_the_modes_without_text_are_kept_alive_until_their_only_event(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN the hybrid or the agent mode, which send nothing but the final response, a
+            heartbeat of 0.05 s and a model that pauses 0.3 s
+        WHEN the question is posted to the stream route
+        THEN keep-alive blocks come first and the one event, done, comes last
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode, ASSISTANT_STREAM_HEARTBEAT_SECONDS="0.05")
+        token = register_and_login(client, f"heartbeat-{mode}@example.com")
+        model = _SlowModel(responses=[AIMessage(content="Done.")], delay_s=0.3)
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert response.text.startswith(KEEP_ALIVE)
+        assert [name for name, _ in _events(response.text.replace(KEEP_ALIVE, ""))] == ["done"]
+
+    @pytest.mark.parametrize(
+        ("failure", "code", "detail"),
+        [
+            (None, 503, UNAVAILABLE_BODY["detail"]),
+            (RuntimeError("boom"), 500, "Internal server error"),
+        ],
+    )
+    def test_a_failure_after_keep_alives_still_ends_with_its_error_event(
+        self, assistant_settings, client, configure, failure, code, detail
+    ):
+        """
+        GIVEN a heartbeat of 0.05 s and a model that pauses 0.2 s, writes one piece and then
+            fails with an outage (503) or with a bug (500)
+        WHEN the question is posted to the stream route
+        THEN keep-alives were sent, the stream is already 200, and it ends with the same error
+            event a stream without keep-alives sends
+        """
+        # GIVEN
+        configure(ASSISTANT_STREAM_HEARTBEAT_SECONDS="0.05")
+        token = register_and_login(client, f"heartbeat-fail-{code}@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")],
+            fail_after_chunks=1,
+            failure=failure,
+            stream_delay_s=0.2,
+        )
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert KEEP_ALIVE in response.text
+        events = _events(response.text.replace(KEEP_ALIVE, ""))
+        assert events[0][0] == "token"
+        assert events[-1] == ("error", {"code": code, "detail": detail})
+        assert "done" not in [name for name, _ in events]
 
 
 _SOURCE_TITLE = "Aurora Method Handbook"

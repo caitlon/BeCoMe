@@ -2613,6 +2613,68 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_first_byte_timeout_seconds"):
             Settings(secret_key="test-secret-key", assistant_first_byte_timeout_seconds=value)
 
+    def test_stream_heartbeat_defaults_to_fifteen_seconds(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the stream heartbeat and no .env file in reach
+        WHEN constructed
+        THEN a waiting stream sends a keep-alive comment every 15 seconds
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_STREAM_HEARTBEAT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_stream_heartbeat_seconds == 15.0
+
+    @pytest.mark.parametrize("value", [100.0, 150])
+    def test_rejects_a_stream_heartbeat_at_the_proxys_idle_cutoff_or_above(
+        self, value, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a stream heartbeat of 100 seconds or more, the idle time after which Cloudflare
+             answers 524
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because the keep-alive would come too late
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_stream_heartbeat_seconds"):
+            Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=value)
+
+    def test_accepts_a_stream_heartbeat_just_under_the_cutoff(self, monkeypatch, tmp_path):
+        """
+        GIVEN a stream heartbeat of 99 seconds
+        WHEN Settings is constructed
+        THEN it is accepted and keeps that value
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=99.0)
+
+        # THEN
+        assert settings.assistant_stream_heartbeat_seconds == 99.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_stream_heartbeat(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a stream heartbeat of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because the stream would send nothing else
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_stream_heartbeat_seconds"):
+            Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=value)
+
     def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an explicit override and no .env file in reach

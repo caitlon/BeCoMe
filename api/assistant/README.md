@@ -356,6 +356,13 @@ unusable project API), and any other exception (`500`, `Internal server error`, 
 and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
 start of the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.
 
+While the stream waits for the model's next piece, which in the `hybrid` and `agent` modes is
+until the final response, it sends the comment block `: keep-alive` every
+`ASSISTANT_STREAM_HEARTBEAT_SECONDS` (default 15, below 100), so that a proxy in front sees traffic;
+Cloudflare answers `524` after 100 seconds without a byte. A block with no `event:` line carries no
+event, and the frontend's parser skips it. A keep-alive is sent only between whole events, and the
+`done` or `error` that ends the stream is unchanged.
+
 ### Limits
 
 - **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
