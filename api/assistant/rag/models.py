@@ -7,6 +7,7 @@ OpenAI-compatible endpoint (settings ``assistant_*_provider`` set to "api"). The
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
 
+import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -26,9 +27,15 @@ _LOCAL_API_KEY = SecretStr("not-needed")
 _API_MAX_RETRIES = 2
 
 # What a client of the OpenAI chat API raises, in the place it reads a reply, when the 200 it
-# got is not shaped like one: a ValueError for an HTML page or an error object, a KeyError
-# for a missing field, a TypeError for a null one, an AttributeError for a null message.
-_REPLY_SHAPE_ERRORS = (ValueError, KeyError, TypeError, AttributeError)
+# got is not shaped like one: a ValueError for an HTML page or an error object, a TypeError
+# for a null field, an AttributeError for a null message. A KeyError is not on the list: the
+# library parses the reply into a model that always has the key, so no probe reached one.
+_REPLY_SHAPE_ERRORS = (ValueError, TypeError, AttributeError)
+
+# What decoding a reply that is not JSON raises, before the place above is reached: a
+# JSONDecodeError for an empty, HTML or cut-off body, a UnicodeDecodeError for a body cut in
+# the middle of a multi-byte character.
+_UNDECODABLE_REPLY = (json.JSONDecodeError, UnicodeDecodeError)
 
 
 class MalformedModelResponseError(Exception):
@@ -43,13 +50,21 @@ class MalformedModelResponseError(Exception):
 
 
 @contextmanager
-def _upstream(role: UpstreamRole) -> Iterator[None]:
-    """Write the role on whatever the server's client raises inside.
+def _upstream(role: UpstreamRole, malformed: tuple[type[Exception], ...] = ()) -> Iterator[None]:
+    """Write the role on whatever the server's client raises inside, and name a bad body.
 
     :param role: The role of the server the block talks to.
+    :param malformed: The errors that, raised inside the block, mean the server's body was
+        not a reply. They are raised again as :class:`MalformedModelResponseError`, and
+        the original is not chained to it, so that nothing of the body reaches a log.
+    :raises MalformedModelResponseError: For an error listed in ``malformed``.
     """
     try:
         yield
+    except malformed:
+        error = MalformedModelResponseError(f"the {role} server answered with a malformed body")
+        tag_role(error, role)
+        raise error from None
     except Exception as exc:
         tag_role(exc, role)
         raise
@@ -59,11 +74,12 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
     """A ChatOpenAI client whose failures say which role's server they came from.
 
     The client library turns a body that is no completion into a bare ``ValueError``,
-    ``KeyError``, ``TypeError`` or ``AttributeError`` from the one method that reads the
-    body, and that method alone is caught here, so a bug elsewhere in a call stays what it
-    is. Every call the assistant makes (``invoke``, ``ainvoke``, ``astream``, and a copy
-    bound to tools or options, which shares this instance) ends in the three methods below;
-    the synchronous ``_stream`` is not overridden, since nothing in ``api/`` streams
+    ``TypeError`` or ``AttributeError`` from the one method that reads the body, and a body
+    that cannot be decoded into a ``json.JSONDecodeError`` or ``UnicodeDecodeError`` before
+    that method runs. Those, and only those, are caught here, so a bug elsewhere in a call
+    stays what it is. Every call the assistant makes (``invoke``, ``ainvoke``, ``astream``, and
+    a copy bound to tools or options, which shares this instance) ends in the three methods
+    below; the synchronous ``_stream`` is not overridden, since nothing in ``api/`` streams
     synchronously. A stream has no body to read: an HTML page yields no chunk, and LangChain
     would then fail with a bare ``ValueError``, so a stream that ends without one is raised
     here as malformed.
@@ -92,11 +108,11 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
         return result
 
     def _generate(self, *args: Any, **kwargs: Any) -> ChatResult:
-        with _upstream(self.upstream_role):
+        with _upstream(self.upstream_role, _UNDECODABLE_REPLY):
             return super()._generate(*args, **kwargs)
 
     async def _agenerate(self, *args: Any, **kwargs: Any) -> ChatResult:
-        with _upstream(self.upstream_role):
+        with _upstream(self.upstream_role, _UNDECODABLE_REPLY):
             return await super()._agenerate(*args, **kwargs)
 
     async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
