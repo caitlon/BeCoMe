@@ -12,6 +12,7 @@ import httpx
 import openai
 import pytest
 from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 
 from api.assistant.rag.models import (
     MalformedModelResponseError,
@@ -27,6 +28,7 @@ _MALFORMED_BODIES = {
     "error object": httpx.Response(200, json={"error": {"message": "boom"}}),
     "no choices": httpx.Response(200, json={"id": "c", "model": "m"}),
     "null choices": httpx.Response(200, json={"id": "c", "choices": None}),
+    "empty choices": httpx.Response(200, json={"id": "c", "choices": []}),
     "choice without message": httpx.Response(200, json={"id": "c", "choices": [{"index": 0}]}),
 }
 
@@ -187,6 +189,36 @@ class TestChatModelOtherFailures:
             await model.ainvoke("hi")
 
         assert not isinstance(raised.value, MalformedModelResponseError)
+
+    @pytest.mark.asyncio
+    async def test_an_error_that_is_not_a_body_shape_error_passes_through_untouched(
+        self, monkeypatch
+    ):
+        """
+        GIVEN a model whose reading of the body fails with a RuntimeError, which no server
+            body can cause
+        WHEN it is invoked
+        THEN the RuntimeError reaches the caller as it is, not as the dedicated error
+        """
+        model = _wire(make_answer_model(_settings()), _HTML)
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("bug")
+
+        monkeypatch.setattr(ChatOpenAI, "_create_chat_result", broken)
+
+        with pytest.raises(RuntimeError, match="bug"):
+            await model.ainvoke("hi")
+
+    def test_the_runs_keep_the_name_of_the_library_class(self, role_model):
+        """
+        GIVEN a chat model built by either factory
+        WHEN its runnable name is read, which is the name of its runs in a trace
+        THEN it is ChatOpenAI, not the name of the subclass
+        """
+        make, _ = role_model
+
+        assert make(_settings()).get_name() == "ChatOpenAI"
 
     @pytest.mark.asyncio
     async def test_a_stream_that_is_html_is_malformed(self, role_model):
