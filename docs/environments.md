@@ -129,7 +129,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | Variable | dev | test | prod |
 |----------|-----|------|------|
 | `APP_ENV` | `dev` | `test` | `prod` |
-| `SECRET_KEY` | strong value (`secrets.token_urlsafe(64)`) | strong value | strong value |
+| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
 | `DATABASE_URL` | dev `become_app` role | test `become_app` role | prod `become_app` role |
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
 | `CORS_ORIGINS` | dev origins | test origins | prod origins |
