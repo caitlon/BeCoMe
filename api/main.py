@@ -50,8 +50,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         from api.assistant.agent.tracing import shutdown_tracing
         from api.assistant.deps import close_assistant_resources
 
-        shutdown_tracing()
-        await close_assistant_resources()
+        try:
+            shutdown_tracing()
+        finally:
+            await close_assistant_resources()
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 

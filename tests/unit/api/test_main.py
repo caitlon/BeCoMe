@@ -597,9 +597,12 @@ class TestAssistantShutdown:
         get_settings.cache_clear()
 
     @staticmethod
-    def _run_app(monkeypatch, tmp_path, *, enabled: bool) -> tuple[MagicMock, list[int]]:
+    def _run_app(
+        monkeypatch, tmp_path, *, enabled: bool, shutdown_error: Exception | None = None
+    ) -> tuple[MagicMock, list[int]]:
         """Start and stop the app with the assistant switched as asked.
 
+        :param shutdown_error: What the tracing shutdown raises, if anything.
         :return: The mock standing in for the tracing shutdown, and the number of times it
             had been called while the app was running.
         """
@@ -617,7 +620,9 @@ class TestAssistantShutdown:
         with (
             patch("api.main.create_db_and_tables"),
             patch("api.main.warm_up_connection_pool"),
-            patch("api.assistant.agent.tracing.shutdown_tracing") as shutdown,
+            patch(
+                "api.assistant.agent.tracing.shutdown_tracing", side_effect=shutdown_error
+            ) as shutdown,
         ):
             app = create_app()
             with TestClient(app):
@@ -651,6 +656,26 @@ class TestAssistantShutdown:
         with patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close:
             # WHEN
             self._run_app(monkeypatch, tmp_path, enabled=True)
+
+        # THEN
+        close.assert_awaited_once_with()
+
+    def test_the_resources_are_closed_even_when_the_tracing_shutdown_fails(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on and a tracing shutdown that raises
+        WHEN the app starts and then stops
+        THEN the error still reaches the caller, and the assistant's resources were closed
+        """
+        # WHEN
+        with (
+            patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close,
+            pytest.raises(RuntimeError, match="flush failed"),
+        ):
+            self._run_app(
+                monkeypatch, tmp_path, enabled=True, shutdown_error=RuntimeError("flush failed")
+            )
 
         # THEN
         close.assert_awaited_once_with()

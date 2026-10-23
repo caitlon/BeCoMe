@@ -266,8 +266,10 @@ request is answered `200`, and a tool asked for such a project tells the model `
 and nothing else, so the answer says it found nothing. A failing model server, embedding server,
 vector database or application answers `503` with a fixed message. On any request until the
 retriever has been built once, that covers a vector database that is down, a URL that is not set,
-and a collection that is missing or that the role cannot read. A spent message budget answers
-`429`.
+and a collection that is missing or that the role cannot read. Requests that arrive together on a
+cold process each open an engine and fail or succeed on their own, so a database that is down does
+not queue them; one retriever is kept and the other engines are closed. A spent message budget
+answers `429`.
 
 ### Modes
 
