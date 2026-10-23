@@ -11,6 +11,8 @@ from typing import Any
 import httpx
 import openai
 import pytest
+from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import BaseMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
@@ -41,6 +43,21 @@ _MALFORMED_BODIES = {
     "truncated json": _json_bytes(b'{"id":"c","choices":[{"index":0,"mess'),
     "json cut inside a character": _json_bytes(
         '{"choices":[{"message":{"content":"Př'.encode()[:-1]
+    ),
+}
+
+_CHUNK = (
+    'data: {"id":"c","object":"chat.completion.chunk","created":0,"model":"m",'
+    '"choices":[{"index":0,"delta":{"role":"assistant","content":"One "}}]}\n\n'
+)
+_BAD_STREAMS = {
+    "html": "data: <html>bad gateway</html>\n\n",
+    "choices that is a string": 'data: {"choices":"x"}\n\n',
+    "a delta that is a string": 'data: {"choices":[{"index":0,"delta":"x"}]}\n\n',
+    "a good chunk, then html": _CHUNK + "data: <html>\n\n",
+    "a good chunk, then a string choices": _CHUNK + 'data: {"choices":"x"}\n\n',
+    "a chunk cut inside a character": (
+        'data: {"choices":[{"index":0,"delta":{"content":"Př'.encode()[:-1] + b"\n\n"
     ),
 }
 
@@ -231,6 +248,130 @@ class TestChatModelOtherFailures:
         make, _ = role_model
 
         assert make(_settings()).get_name() == "ChatOpenAI"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("stream", _BAD_STREAMS.values(), ids=_BAD_STREAMS.keys())
+    async def test_a_stream_with_a_bad_chunk_is_malformed(self, role_model, stream):
+        """
+        GIVEN a chat model whose streaming server sends a chunk that is not a completion
+            chunk, first or after a good one
+        WHEN it is streamed
+        THEN MalformedModelResponseError is raised, tagged with the role, whatever the
+            library raised for that chunk
+        """
+        make, role = role_model
+        reply = httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=stream if isinstance(stream, bytes) else stream.encode(),
+        )
+        model = _wire(make(_settings()), reply)
+
+        with pytest.raises(MalformedModelResponseError) as raised:
+            [piece async for piece in model.astream("hi")]
+
+        assert tagged_role(raised.value) == role
+
+    @pytest.mark.asyncio
+    async def test_a_value_error_of_our_own_in_a_stream_is_not_turned_into_the_dedicated_error(
+        self, monkeypatch
+    ):
+        """
+        GIVEN a model that fails with a ValueError while it builds a streamed request
+        WHEN it is streamed
+        THEN the ValueError reaches the caller as it is
+        """
+        model = _wire(make_answer_model(_settings()), _HTML)
+
+        def broken(*args, **kwargs):
+            raise ValueError("bug")
+
+        monkeypatch.setattr(type(model), "_get_request_payload", broken)
+
+        with pytest.raises(ValueError, match="bug") as raised:
+            [piece async for piece in model.astream("hi")]
+
+        assert not isinstance(raised.value, MalformedModelResponseError)
+
+    @pytest.mark.asyncio
+    async def test_a_message_the_library_cannot_send_is_not_a_malformed_reply(self, role_model):
+        """
+        GIVEN a streamed call whose input holds a message of a type the library cannot turn
+            into a request, so that it fails with a TypeError before any request is sent
+        WHEN it is streamed
+        THEN the TypeError reaches the caller as it is
+        """
+        make, _ = role_model
+        model = _wire(make(_settings()), _json_bytes(b"{}"))
+        odd = BaseMessage(content="hi", type="odd")
+
+        with pytest.raises(TypeError) as raised:
+            [piece async for piece in model.astream([odd])]
+
+        assert not isinstance(raised.value, MalformedModelResponseError)
+
+    @pytest.mark.asyncio
+    async def test_an_attribute_error_while_the_request_is_built_is_not_a_malformed_reply(
+        self, monkeypatch
+    ):
+        """
+        GIVEN a streamed call whose request building fails with an AttributeError, which is
+            also what a chunk that is not an object makes the library raise
+        WHEN it is streamed
+        THEN the AttributeError reaches the caller as it is
+        """
+        model = _wire(make_answer_model(_settings()), _json_bytes(b"{}"))
+
+        def broken(*args, **kwargs):
+            raise AttributeError("a bug")
+
+        monkeypatch.setattr(type(model), "_get_request_payload", broken)
+
+        with pytest.raises(AttributeError, match="a bug"):
+            [piece async for piece in model.astream("hi")]
+
+    @pytest.mark.asyncio
+    async def test_a_callback_that_raises_is_not_a_malformed_reply(self, role_model):
+        """
+        GIVEN a streamed call, with a good reply, whose callback raises an AttributeError
+            when it is handed a token
+        WHEN it is streamed
+        THEN the AttributeError reaches the caller as it is
+        """
+
+        class Failing(AsyncCallbackHandler):
+            raise_error = True
+
+            async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+                raise AttributeError("a bug in the callback")
+
+        make, _ = role_model
+        good = httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=_CHUNK.encode()
+        )
+        model = _wire(make(_settings()), good)
+
+        with pytest.raises(AttributeError, match="a bug in the callback"):
+            [piece async for piece in model.astream("hi", config={"callbacks": [Failing()]})]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "stream", ["data: [1]\n\n", _CHUNK + "data: [1]\n\n"], ids=["first", "after a good one"]
+    )
+    async def test_a_chunk_that_is_json_but_not_an_object_is_not_caught(self, role_model, stream):
+        """
+        GIVEN a streaming server that sends a chunk that is valid JSON but not an object
+        WHEN it is streamed
+        THEN the library's own AttributeError reaches the caller: this shape is not caught
+        """
+        make, _ = role_model
+        reply = httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=stream.encode()
+        )
+        model = _wire(make(_settings()), reply)
+
+        with pytest.raises(AttributeError):
+            [piece async for piece in model.astream("hi")]
 
     @pytest.mark.asyncio
     async def test_a_stream_that_is_html_is_malformed(self, role_model):
