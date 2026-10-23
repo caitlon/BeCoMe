@@ -718,7 +718,7 @@ there is never a window where the application cannot connect:
 1. Create a replacement login with the same grants: `CREATE ROLE become_app_v2 LOGIN ...`,
 then apply the `scripts/db/roles.sql` grants to it.
 2. Point the environment's `DATABASE_URL` at `become_app_v2` in Railway and redeploy.
-3. Confirm health is `200` and that `pg_stat_activity` shows connections from the new role.
+3. Confirm the new container started and that `pg_stat_activity` shows connections from the new role.
 4. Drop the old role: `DROP ROLE become_app;`. Rename `become_app_v2` back during a later
 quiet window if you want the canonical name restored.
 
