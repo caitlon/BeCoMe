@@ -86,8 +86,9 @@ def _outage_as_unavailable(settings: Settings) -> Iterator[None]:
     and a model server that is down is met at generation time, inside the service. The
     record is the service's own: the event, the mode, the exception's class name and the
     role of the server that failed (the document index unless the error was tagged at
-    another source), never its text. An error outside :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not
-    touched. A failed build is not cached, so the next request tries again.
+    another source), never its text. An error outside
+    :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not touched. A failed build is not
+    cached, so the next request tries again.
 
     :param settings: Application settings, for the mode written in the record.
     :raises AssistantUnavailableError: If a listed backend failure is raised inside.

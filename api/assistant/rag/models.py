@@ -61,25 +61,35 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
     The client library turns a body that is no completion into a bare ``ValueError``,
     ``KeyError``, ``TypeError`` or ``AttributeError`` from the one method that reads the
     body, and that method alone is caught here, so a bug elsewhere in a call stays what it
-    is. Every call style (``invoke``, ``ainvoke``, streaming, and a copy bound to tools or
-    options, which shares this instance) ends in the three methods below. A stream has no
-    body to read: an HTML page yields no chunk, and LangChain would then fail with a bare
-    ``ValueError``, so a stream that ends without one is raised here as malformed.
+    is. Every call the assistant makes (``invoke``, ``ainvoke``, ``astream``, and a copy
+    bound to tools or options, which shares this instance) ends in the three methods below;
+    the synchronous ``_stream`` is not overridden, since nothing in ``api/`` streams
+    synchronously. A stream has no body to read: an HTML page yields no chunk, and LangChain
+    would then fail with a bare ``ValueError``, so a stream that ends without one is raised
+    here as malformed.
 
     :ivar upstream_role: The role written on whatever a call raises.
+    :ivar name: The name of the model's runs in a trace, kept as the library class's so that
+        a subclass does not rename them.
     """
 
     upstream_role: UpstreamRole = "unknown"
+    name: str | None = "ChatOpenAI"
 
     def _create_chat_result(
         self, response: Any, generation_info: dict[Any, Any] | None = None
     ) -> ChatResult:
+        malformed = MalformedModelResponseError(
+            f"the {self.upstream_role} server answered with a body that is not a completion"
+        )
         try:
-            return super()._create_chat_result(response, generation_info)
+            result = super()._create_chat_result(response, generation_info)
         except _REPLY_SHAPE_ERRORS:
-            raise MalformedModelResponseError(
-                f"the {self.upstream_role} server answered with a body that is not a completion"
-            ) from None
+            raise malformed from None
+        if not result.generations:
+            # ``"choices": []`` parses, and the caller would then fail on an IndexError.
+            raise malformed
+        return result
 
     def _generate(self, *args: Any, **kwargs: Any) -> ChatResult:
         with _upstream(self.upstream_role):
