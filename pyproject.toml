@@ -95,7 +95,7 @@ assistant = [
     "langsmith==0.14.1",
     "openai==3.20.0",
     "psycopg[binary]==3.3.6",
-    "pypdf==6.21.1",  # security fixes
+    "pypdf==6.21.2",  # security fixes
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
