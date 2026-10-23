@@ -1514,6 +1514,8 @@ class TestRefusedRequestSpendsNoMessage:
 
             # THEN
             assert invalid.status_code == 422
+            locations = [tuple(error["loc"]) for error in invalid.json()["detail"]]
+            assert len(locations) == len(set(locations))
             assert (user_spy.call_count, global_spy.call_count) == (0, 0)
             assert deps.get_turn_slots().holders == {}
             valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))

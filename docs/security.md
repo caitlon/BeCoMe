@@ -412,9 +412,10 @@ the global hourly ceiling counted for everyone, and the concurrent turns per pro
 through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs first, so a
 request it refuses takes no slot, spends no message and builds no API client; the `hold_turn_slot`
 dependency follows, so a request refused for a full process spends no message of the hourly budget,
-and the `enforce_message_limit` dependency comes last. It lists the checked request body and the
-documentation retriever as parameters, so a message that is too long or an invalid body (`422`) and
-a retriever that cannot be built (`503`) are refused before a message is spent.
+and the message limit comes last. It is no longer a route dependency: `open_chat_turn` calls
+`enforce_message_limit` after the request body check and the documentation retriever, so a message
+that is too long or an invalid body (`422`) and a retriever that cannot be built (`503`) are
+refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
 memory otherwise. A deployed service refuses to start with the per-user or the global hourly
 limit at `0`, so neither cap can be switched off there.
