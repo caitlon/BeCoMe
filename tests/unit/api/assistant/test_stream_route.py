@@ -83,3 +83,48 @@ class TestEventsBody:
         # THEN
         assert time.monotonic() - started < 1
         assert model.closed_early
+
+
+class _SlowToFinish(AssistantService):
+    """A service whose stream takes half a second to end after its last item."""
+
+    async def stream(self, turn):
+        async for item in super().stream(turn):
+            yield item
+        await asyncio.sleep(0.5)
+
+
+@pytest.mark.asyncio
+class TestEndOfStream:
+    """The body ends with the done event, whatever the service does after it."""
+
+    async def test_no_keep_alive_follows_the_done_event_when_the_service_is_slow_to_finish(self):
+        """
+        GIVEN a heartbeat of 50 ms and a service that takes 0.5 s to end its stream after the
+            response
+        WHEN the whole body is read
+        THEN its last block is the done event, no keep-alive follows it, and the body ends long
+            before the service does
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+            assistant_stream_heartbeat_seconds=0.05,
+        )
+        model = ScriptedToolCallingModel(responses=[AIMessage(content="One two")])
+        service = _SlowToFinish(settings, model)
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            service,
+            settings,
+        )
+
+        # WHEN
+        started = time.monotonic()
+        blocks = [block async for block in response.body_iterator]
+
+        # THEN
+        assert blocks[-1].startswith("event: done")
+        assert time.monotonic() - started < 0.4

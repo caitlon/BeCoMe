@@ -9,7 +9,7 @@ environment other than dev, test and prod with the flag on, so this module never
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncGenerator, AsyncIterator, Coroutine
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -105,6 +105,128 @@ async def _run_unless_disconnected[T](
         },
     )
     return None
+
+
+# What the producer queues: a piece of the answer, the final response, the exception that ended
+# the stream, or None when it has ended.
+type _Queued = str | AssistantChatResponse | Exception | None
+
+
+async def _produce(
+    items: AsyncGenerator[str | AssistantChatResponse], queue: asyncio.Queue[_Queued]
+) -> None:
+    """Run the service's stream from its first item to its last, queueing what it yields.
+
+    One task does this for the whole turn. The stream holds context managers across its yields,
+    and a context variable can only be reset by the context that set it, so the stream must not
+    be advanced from a new task each time. A failure is queued for :func:`_frame` to map, which
+    keeps the mapping to error events in one place; None marks the end, whatever ended it. The
+    queue is unbounded on purpose: it holds at most one answer, and the turn deadline bounds how
+    long that takes, so a client that reads slowly no longer slows the model, as a bounded
+    queue's backpressure would.
+
+    :param items: The service's stream for the turn.
+    :param queue: Where the items go.
+    """
+    try:
+        # Closes the service's stream and the model's explicitly on exit, rather than leaving
+        # that to the garbage collector.
+        async with contextlib.aclosing(items):
+            async for item in items:
+                queue.put_nowait(item)
+    except Exception as exc:
+        queue.put_nowait(exc)
+    finally:
+        queue.put_nowait(None)
+
+
+def _error_frame(exc: Exception) -> str:
+    """Frame the ``error`` event for a failure of the stream, and log it where nothing else did.
+
+    :param exc: What ended the stream.
+    :return: The ``error`` event: the code and text the handlers would have used.
+    """
+    if isinstance(exc, AssistantUnavailableError):
+        # The service has logged the failure already.
+        code, detail = status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE_DETAIL
+    elif isinstance(exc, AssistantUpstreamError):
+        # Nothing below logs this one, so the record is written here, at the level and under
+        # the event name the /chat handler uses, so error tracking sees both routes.
+        logger.error(
+            "assistant upstream error: %s",
+            type(exc).__name__,
+            extra={"event": "assistant_upstream_error", "reason": type(exc).__name__},
+        )
+        code, detail = status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE_DETAIL
+    else:
+        # The 200 is sent already, so a failure the service did not map still has to end the
+        # stream with an event; the record names the exception type and where it was raised,
+        # never its text.
+        logger.error(
+            "assistant stream failed: %s",
+            type(exc).__name__,
+            extra={
+                "event": "assistant_stream_failed",
+                "reason": type(exc).__name__,
+                "where": raised_at(exc),
+            },
+        )
+        code, detail = status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error"
+    return format_event("error", {"code": code, "detail": detail})
+
+
+def _frame(item: str | AssistantChatResponse | Exception) -> tuple[str, bool]:
+    """Frame one queued item as a server-sent event.
+
+    :param item: A piece of the answer, the final response, or the exception that ended the
+        stream.
+    :return: The event, and whether it is the last: the response and an error end the stream.
+    """
+    try:
+        if isinstance(item, Exception):
+            raise item
+        if isinstance(item, AssistantChatResponse):
+            return format_event("done", item.model_dump(mode="json")), True
+        return format_event("token", {"text": item}), False
+    except Exception as exc:
+        return _error_frame(exc), True
+
+
+async def _event_frames(
+    items: AsyncGenerator[str | AssistantChatResponse], heartbeat_seconds: float
+) -> AsyncIterator[str]:
+    """Turn the service's stream into the body of the response.
+
+    The stream is run by one producer task and read through a queue, so that a wait for its
+    next item can time out without cancelling it. Each time the wait takes
+    ``heartbeat_seconds`` a keep-alive is sent, which is always between whole events. The body
+    ends with the event that ends the stream, without waiting for the service to finish
+    closing, and the producer is cancelled and awaited when the body is closed, however it ends.
+
+    :param items: The service's stream for the turn.
+    :param heartbeat_seconds: How long to wait for an item before sending a keep-alive.
+    :return: The events and keep-alives, as text.
+    """
+    queue: asyncio.Queue[_Queued] = asyncio.Queue()
+    producer = asyncio.ensure_future(_produce(items, queue))
+    try:
+        while True:
+            try:
+                # Cancelling a wait on the queue loses no item; cancelling the stream's next
+                # step would end the stream.
+                item = await asyncio.wait_for(queue.get(), heartbeat_seconds)
+            except TimeoutError:
+                yield KEEP_ALIVE
+                continue
+            if item is None:
+                break
+            frame, last = _frame(item)
+            yield frame
+            if last:
+                break
+    finally:
+        producer.cancel()
+        await asyncio.gather(producer, return_exceptions=True)
 
 
 @router.get("/config", summary="Get the assistant's active configuration")
@@ -225,84 +347,8 @@ async def chat_stream(
     if prepared is None:
         return Response(status_code=CLIENT_CLOSED_REQUEST)
 
-    async def produce(
-        queue: asyncio.Queue[str | AssistantChatResponse | Exception | None],
-    ) -> None:
-        # One task runs the service's stream from first item to last. The stream holds context
-        # managers across its yields, and a context variable can only be reset by the context
-        # that set it, so it must not be advanced from a new task each time. A failure is queued
-        # for events() to raise, which keeps the mapping to error events in one place; None
-        # marks the end, whatever ended it. The queue is unbounded on purpose: it holds at most
-        # one answer, and the turn deadline bounds how long that takes, so a client that reads
-        # slowly no longer slows the model, as a bounded queue's backpressure would.
-        try:
-            # Closes the service's stream and the model's explicitly on exit, rather than
-            # leaving that to the garbage collector.
-            async with contextlib.aclosing(service.stream(prepared)) as items:
-                async for item in items:
-                    queue.put_nowait(item)
-        except Exception as exc:
-            queue.put_nowait(exc)
-        finally:
-            queue.put_nowait(None)
-
-    async def events() -> AsyncIterator[str]:
-        queue: asyncio.Queue[str | AssistantChatResponse | Exception | None] = asyncio.Queue()
-        producer = asyncio.ensure_future(produce(queue))
-        try:
-            while True:
-                try:
-                    # Cancelling a wait on the queue loses no item; cancelling the stream's
-                    # next step would end the stream.
-                    item = await asyncio.wait_for(
-                        queue.get(), settings.assistant_stream_heartbeat_seconds
-                    )
-                except TimeoutError:
-                    yield KEEP_ALIVE
-                    continue
-                if item is None:
-                    break
-                if isinstance(item, Exception):
-                    raise item
-                if isinstance(item, AssistantChatResponse):
-                    yield format_event("done", item.model_dump(mode="json"))
-                else:
-                    yield format_event("token", {"text": item})
-        except AssistantUnavailableError:
-            # The service has logged the failure already.
-            code = status.HTTP_503_SERVICE_UNAVAILABLE
-            yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
-        except AssistantUpstreamError as exc:
-            # Nothing below logs this one, so the record is written here, at the level and
-            # under the event name the /chat handler uses, so error tracking sees both routes.
-            logger.error(
-                "assistant upstream error: %s",
-                type(exc).__name__,
-                extra={"event": "assistant_upstream_error", "reason": type(exc).__name__},
-            )
-            code = status.HTTP_503_SERVICE_UNAVAILABLE
-            yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
-        except Exception as exc:
-            # The 200 is sent already, so a failure the service did not map still has to end
-            # the stream with an event; the record names the exception type and where it was
-            # raised, never its text.
-            logger.error(
-                "assistant stream failed: %s",
-                type(exc).__name__,
-                extra={
-                    "event": "assistant_stream_failed",
-                    "reason": type(exc).__name__,
-                    "where": raised_at(exc),
-                },
-            )
-            code = status.HTTP_500_INTERNAL_SERVER_ERROR
-            yield format_event("error", {"code": code, "detail": "Internal server error"})
-        finally:
-            producer.cancel()
-            await asyncio.gather(producer, return_exceptions=True)
-
     return StreamingResponse(
-        events(),
+        _event_frames(service.stream(prepared), settings.assistant_stream_heartbeat_seconds),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
