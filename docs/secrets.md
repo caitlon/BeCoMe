@@ -25,7 +25,9 @@ variables of each environment are in [`environments.md`](environments.md).
 The backend reads these in `api/config.py` and nowhere else, except the three password
 variables at the end of the table. Those sit on the database, Redis and corpus services and
 reach the backend only through the references in `MIGRATION_DATABASE_URL`, `REDIS_URL` and
-`ASSISTANT_VECTOR_DB_URL`. The "Verify" column says how to check a value without printing it.
+`ASSISTANT_VECTOR_DB_URL`. `migrations/env.py` also reads `ALEMBIC_DATABASE_URL`, which
+overrides `MIGRATION_DATABASE_URL` ([`environments.md`](environments.md)), so keep it unset
+on deployed services. The "Verify" column says how to check a value without printing it.
 A check with `curl` reads the key from a file, as the rotation rules below describe.
 `<env>` stands for `dev`, `test` or `prod`.
 
@@ -41,7 +43,7 @@ A check with `curl` reads the key from a file, as the rotation rules below descr
 | `BUCKET_ACCESS_KEY_ID`, `BUCKET_SECRET_ACCESS_KEY` | Read and write access to the profile-photo bucket | Railway Bucket `<env>-photos` | One per environment | S3 `list_objects_v2` with the backend's own variables |
 | `BETTERSTACK_SOURCE_TOKEN` | Writing logs to a Better Stack source | Better Stack log source of the environment, EU region | One per environment | Logs from the current container arrive |
 | `SENTRY_DSN` | Sending backend events to Sentry. The key can only write events | Sentry, the backend project, client key | Per Sentry project | Events from the backend arrive in Sentry |
-| `ASSISTANT_API_KEY_OVH` | Hosted model calls on OVHcloud AI Endpoints | OVHcloud | Dev and test share one. Prod will have its own | `GET https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models` with the bearer key answers `200` |
+| `ASSISTANT_API_KEY_OVH` | Hosted model calls on OVHcloud AI Endpoints | OVHcloud | Dev and test share one. Prod will have its own | `GET https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models` with the bearer key answers `200`. The endpoint also answers `200` with no key, so the result counts only next to a control request with a wrong key that answers `403` |
 | `ASSISTANT_LANGSMITH_API_KEY` | Sending assistant traces to LangSmith (EU) | LangSmith | Needed only where tracing is on | `GET https://eu.api.smith.langchain.com/api/v1/sessions?limit=1` with the `x-api-key` header answers `200` |
 | `ASSISTANT_VECTOR_DB_URL` | Password of the read-only `corpus_reader` role on the corpus database | Reference to `CORPUS_READER_PASSWORD` on the `<env>-vector` service | One per environment that has a corpus service | In-container connection with the backend's own `ASSISTANT_VECTOR_DB_URL` |
 | `POSTGRES_PASSWORD` | Password of the owner role `postgres` on the `<env>-db` service. `MIGRATION_DATABASE_URL` references it | Railway Postgres of the environment | One per environment, set on the database service | Same check as `MIGRATION_DATABASE_URL` |
@@ -117,23 +119,55 @@ special handling.
 
 After the redeploy, save the script below as `check.py` and run it inside the new backend
 container with `railway ssh -e <env> -s <env>-backend python - < check.py`. It connects with
-the variables the container itself holds and prints variable names only. The production
-image has `psycopg2` and `redis`, and no `psycopg` 3, which arrives with the assistant extra.
+the variables the container itself holds and prints variable names and, on a failure, the
+exception type only, because the message of a malformed URL can echo the password. The
+production image has `psycopg2`, `redis` and `boto3`, and no `psycopg` 3, which arrives with
+the assistant extra.
 
 ```python
 import os
 import re
 
+import boto3
 import psycopg2
 import redis
+from botocore.config import Config
+
+
+def check(name, probe, *args):
+    try:
+        probe(*args)
+    except Exception as e:
+        print(name, "failed", type(e).__name__)
+    else:
+        print(name, "ok")
+
+
+def connect(name):
+    psycopg2.connect(re.sub(r"\+psycopg2?", "", os.environ[name])).close()
+
+
+def ping():
+    redis.from_url(os.environ["REDIS_URL"]).ping()
+
+
+def list_bucket():
+    boto3.client(
+        "s3",
+        endpoint_url=os.environ["BUCKET_ENDPOINT"],
+        aws_access_key_id=os.environ["BUCKET_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["BUCKET_SECRET_ACCESS_KEY"],
+        region_name=os.environ.get("BUCKET_REGION", "auto"),
+        config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+    ).list_objects_v2(Bucket=os.environ["BUCKET_NAME"], MaxKeys=1)
+
 
 for name in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "ASSISTANT_VECTOR_DB_URL"):
-    url = os.environ.get(name)
-    if url:
-        psycopg2.connect(re.sub(r"\+psycopg2?", "", url)).close()
-        print(name, "ok")
-redis.from_url(os.environ["REDIS_URL"]).ping()
-print("REDIS_URL ok")
+    if os.environ.get(name):
+        check(name, connect, name)
+check("REDIS_URL", ping)
+if os.environ.get("BUCKET_NAME"):
+    check("BUCKET_NAME", list_bucket)
 ```
 
 Two weaker signals support it. The new container's log has the `db_warmup` event and not
@@ -177,8 +211,8 @@ the file when the last step is done.
 5. Compare the hash of the variable with the hash of the rule value, then delete the file.
 
 On a mismatch requests are not rejected. Every request is keyed under one shared constant
-for rate limiting instead, so a mismatch quietly degrades the limits for everyone. Keep the
-gap between steps 3 and 4 short.
+for rate limiting instead, so all callers share one rate-limit bucket, which shows up as `429`
+responses on a busy site. Keep the gap between steps 3 and 4 short.
 
 ### Database and Redis credentials
 
@@ -220,12 +254,14 @@ that adds a second role.
    ```
 
 2. Write `roles.sql` under `umask 077` from the verifier files. The database logs DDL
-   statements ([`security.md`](security.md#audit-logging)), and the first line switches that off
-   for the session, so the verifiers stay out of the logs:
+   statements ([`security.md`](security.md#audit-logging)). The first line switches that off
+   for the session. The second stops a failing statement from being logged with its text,
+   verifier included. Postgres 16 does that when `log_statement` is `ddl`:
 
    ```sh
    {
      printf '%s\n' "SET log_statement = 'none';"
+     printf '%s\n' "SET log_min_error_statement = 'panic';"
      printf "ALTER ROLE become_app PASSWORD '%s';\n" "$(cat become_app.verifier)"
      printf "ALTER ROLE postgres PASSWORD '%s';\n" "$(cat postgres.verifier)"
    } > roles.sql
@@ -247,7 +283,7 @@ that adds a second role.
    of the matching verifier file. The output of `ALTER ROLE` through `railway ssh` is
    sometimes cut short, so it proves nothing.
 5. Build the new `become_app` URL in a file, from the password file and the non-secret parts
-   of the current `DATABASE_URL` (scheme, host, port, database and any query string):
+   of the current `DATABASE_URL` (host, port, database and any query string):
 
    ```sh
    printf '%s%s@%s' 'postgresql://become_app:' "$(cat become_app.password)" \
@@ -271,14 +307,18 @@ that adds a second role.
 
    ```sh
    railway ssh -e <env> -s <env>-redis \
-     sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -x CONFIG SET requirepass' < redis.password
+     'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -x CONFIG SET requirepass' < redis.password
    ```
+
+   `railway ssh` joins its arguments into one command string for the remote shell, so the
+   whole remote command is one quoted argument and `$REDIS_PASSWORD` expands in the container.
 
    If Redis is asleep (App Sleep), SSH does not reach the container. Skip this step and omit
    `--skip-deploys` in the next one, which restarts Redis with the new password.
 3. Set `REDIS_PASSWORD` on the Redis service with `--stdin --skip-deploys`, so a later
    restart keeps the new password.
 4. Redeploy the backend, because `REDIS_URL` references the Redis service.
+5. Delete `redis.password`.
 
 Between step 2 and the backend running with the new password, new connections to Redis
 are refused. The revocation store fails closed: authenticated requests answer `401`, and
@@ -287,10 +327,20 @@ backend right away.
 
 #### Corpus database
 
-Where the environment has a corpus service, repeat the Postgres steps on `<env>-vector` for
-`corpus_reader` and the owner role. Set `CORPUS_READER_PASSWORD` on that service with
-`--stdin --skip-deploys`. `ASSISTANT_VECTOR_DB_URL` references it, so the backend redeploy picks it
-up.
+Where the environment has a corpus service, follow the Postgres steps with these changes:
+
+1. The service is `<env>-vector`. The roles are `corpus_reader` and the service's owner, the
+   user named by its `POSTGRES_USER` variable. A user name is not a secret, so read it from
+   the variable.
+2. In the `psql` command, pass the owner as `-U` and the database named by `POSTGRES_DB` of
+   that service as `-d`, in place of `postgres` and `railway`.
+3. Skip the `DATABASE_URL` step. `ASSISTANT_VECTOR_DB_URL` references
+   `CORPUS_READER_PASSWORD`, so the backend redeploy picks it up.
+4. Set `CORPUS_READER_PASSWORD` and the service's `POSTGRES_PASSWORD` with
+   `--stdin --skip-deploys`.
+5. The next ingest connects as the owner
+   ([`api/assistant/README.md`](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md#read-only-role-for-a-deployed-corpus-database)),
+   so use the new owner password in the `ASSISTANT_VECTOR_DB_URL` of that run.
 
 #### Verify
 
@@ -335,7 +385,9 @@ file created under `umask 077`, never to the terminal.
    the file afterwards. The backend holds them as literal values.
 3. Redeploy the backend once. Photos fail from the reset until this redeploy finishes, so do
    steps 1 to 3 without a pause.
-4. Check with `list_objects_v2` using the backend's variables.
+4. Run the in-container check from [Checking credentials from the
+   container](#checking-credentials-from-the-container). It lists one object with the
+   backend's own bucket variables.
 
 ### GitHub Actions secrets
 
