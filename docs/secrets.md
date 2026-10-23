@@ -12,6 +12,14 @@ variables of each environment are in [`environments.md`](environments.md).
 - [Variables that are not secrets](#variables-that-are-not-secrets)
 - [Rotation rules](#rotation-rules)
 - [Rotation procedures](#rotation-procedures)
+    - [SECRET_KEY](#secret_key)
+    - [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret)
+    - [Database and Redis credentials](#database-and-redis-credentials)
+    - [EMAIL_API_KEY](#email_api_key)
+    - [TURNSTILE_SECRET_KEY](#turnstile_secret_key)
+    - [Bucket credentials](#bucket-credentials)
+    - [Assistant keys](#assistant-keys)
+    - [GitHub Actions secrets](#github-actions-secrets)
 
 ## Inventory
 
@@ -173,7 +181,7 @@ Railway can also change a bucket's secret on its own. The symptom is photos fail
 Change the password on that service and the role together, then redeploy the backend. This
 order is untested.
 
-### CI secrets
+### GitHub Actions secrets
 
 Replace the value in the repository's Actions secrets, then re-run the job that uses it.
 Revoke the old token at the provider afterwards.
