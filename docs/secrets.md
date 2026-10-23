@@ -261,13 +261,15 @@ The site key `VITE_TURNSTILE_SITE_KEY` stays as it is.
 ### Bucket credentials
 
 Railway can also change a bucket's secret on its own. The symptom is photos failing with
-`SignatureDoesNotMatch`. Compare the backend variables with `railway bucket credentials --json`.
+`SignatureDoesNotMatch`. Compare the backend variables with the output of
+`railway bucket credentials --json` by hash. Both print the keys, so send the output to a
+file created under `umask 077`, never to the terminal.
 
-1. Run `railway bucket credentials --reset --yes --json -b <env>-photos -e <env>`. The old
-   pair stops working at once.
-2. Set `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY` on the backend right away,
-   with `--stdin --skip-deploys`. They are literal values there, because a Railway
-   reference to a bucket is not possible.
+1. Run `railway bucket credentials --reset --yes --json -b <env>-photos -e <env>` with its
+   output redirected into such a file. The old pair stops working at once.
+2. Set `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY` on the backend right away from
+   that file, with `--stdin --skip-deploys`, then delete the file. They are literal values
+   there, because a Railway reference to a bucket is not possible.
 3. Redeploy the backend once.
 4. Check with `list_objects_v2` using the backend's variables.
 
