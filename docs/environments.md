@@ -17,6 +17,7 @@ The backend runs under one of three profiles, chosen by the `APP_ENV` variable: 
 - [Development workflow](#development-workflow)
 - [Railway deployment](#railway-deployment)
 - [Database schema and access](#database-schema-and-access)
+    - [Assistant corpus database](#assistant-corpus-database)
 - [Photo storage](#photo-storage)
 - [Email delivery](#email-delivery)
 - [Current status](#current-status)
@@ -95,6 +96,8 @@ APP_ENV=prod uv run uvicorn api.main:app
 
 The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
 
+The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. When it reads as true (`1`, `true`, `t`, `yes`, `y` or `on`, in any case, the same words pydantic accepts), the builder installs the `assistant` extra on top of `api`; otherwise the image is the lean one. The arg shares the name of the runtime setting so that Railway, which passes service variables as build args, builds and enables the assistant from one variable. Compose forwards it from your shell with `${ASSISTANT_ENABLED:-false}`, but only as a build arg: the `api` container does not receive it, so the assistant stays off in Compose unless you also add `ASSISTANT_ENABLED` and the other `ASSISTANT_*` settings to the service's `environment`.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
@@ -121,7 +124,7 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
+The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev and test backends, it also installs the `assistant` extra at build time, and prod does not set it yet.
 
 | Variable | dev | test | prod |
 |----------|-----|------|------|
@@ -136,7 +139,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | test values | prod values |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | test values | prod values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
@@ -149,6 +152,14 @@ Log format follows the deploy, not the profile. `api/logging_config.py` emits hu
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
+`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod leaves it unset, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
+
+The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question (for `ASSISTANT_LLM_MODEL`, the first question the language check does not take for English, since only the default `translate_en` query transform uses it; the check looks for a word such as "the" or "how"). Set each one explicitly on `dev` and `test`:
+
+- `ASSISTANT_ANSWER_LLM_MODEL`: the model that writes chat answers, `Qwen3.5-9B` on OVHcloud.
+- `ASSISTANT_LLM_MODEL`: the query model, `Qwen3.5-9B` on OVHcloud.
+- `ASSISTANT_EMBEDDING_MODEL`: the embedding model, `bge-m3` on OVHcloud.
+
 ## Database schema and access
 
 **Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On any other PostgreSQL database, local or deployed, it is a no-op and Alembic stays in charge.
@@ -156,6 +167,14 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases (a laptop run on a loopback or socket database uses `prefer`), tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
 On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
+
+### Assistant corpus database
+
+The assistant retrieves from a pgvector database that is separate from the application's. On the Railway `dev` environment it is its own service, created from Railway's standard PostgreSQL template (`postgres-ssl:18`), which serves TLS. Railway's documentation says its default templates carry no extensions, but the image current in October 2026 ships `postgresql-18-pgvector` (0.8.7). If a later image drops it, ingest fails at `CREATE EXTENSION vector` and the assistant answers 503, so check `pg_available_extensions` after every redeploy of the corpus service. It is reachable over the private network only, and prod has no such service yet; it is created when the assistant is enabled there.
+
+The backend reads the corpus as a read-only role, through `ASSISTANT_VECTOR_DB_URL` with `sslmode=require`. The grants are in [`api/assistant/README.md`](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md#read-only-role-for-a-deployed-corpus-database). Ingest runs from a developer machine, as the database owner, through a temporary TCP proxy on the service that is removed once the run ends. The order of a refresh after the documentation changes, for each environment, is in the same README under [Refreshing the corpus on a deployed service](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md#refreshing-the-corpus-on-a-deployed-service).
+
+A deployed service with the assistant enabled refuses to start unless `ASSISTANT_VECTOR_DB_URL` is set, is a `postgresql+psycopg://` URL that names its database and puts host, port and database in the URL itself (a `host`, `hostaddr`, `port`, `dbname` or `service` query parameter is refused, since libpq lets it override the URL), names a different database than `DATABASE_URL` and `MIGRATION_DATABASE_URL` (compared by host, port and database name), and carries `sslmode=require`, `verify-ca` or `verify-full` once. A laptop and a CI runner are not held to this.
 
 ## Photo storage
 

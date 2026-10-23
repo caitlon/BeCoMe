@@ -4,28 +4,39 @@ Kept out of ``api/dependencies.py`` on purpose: that module loads in every deplo
 process, and nothing there may import langchain or openai. This one is imported only by
 code that loads when ``settings.assistant_enabled`` is true.
 
-What lives for the whole process is cached here: the two chat models and the
-documentation retriever, which owns a BM25 index and the vector store's engine.
-:func:`clear_caches` drops all of them at once. What belongs to one request is not
-cached: the API client carries the caller's own access token, and sharing it would hand
-one user's token to another user's turn.
+What lives for the whole process is cached here: the two chat models, the
+documentation retriever, which owns a BM25 index and the vector store's engine, and the
+table of turn slots. :func:`clear_caches` drops all of them at once, and
+:func:`close_assistant_resources` closes them first at shutdown. What belongs to one
+request is not cached: the API client carries the caller's own access token, and sharing it
+would hand one user's token to another user's turn.
 """
 
+import asyncio
+import inspect
 import logging
-from collections.abc import AsyncIterator, Iterator
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from langchain_core.language_models import BaseChatModel
+from langchain_postgres import PGEngine
+from sqlmodel import Session
 
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.service import AssistantService
 from api.assistant.client import UserApiClient
-from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
+from api.assistant.errors import (
+    AssistantBusyError,
+    AssistantRateLimitedError,
+    AssistantUnavailableError,
+)
 from api.assistant.rag.models import (
     LlamaServerReranker,
     make_answer_model,
@@ -34,15 +45,35 @@ from api.assistant.rag.models import (
 )
 from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig
 from api.assistant.rag.store import make_engine, open_store
-from api.assistant.rate_limit import AssistantThrottle, get_assistant_throttle
-from api.assistant.upstream import UNAVAILABLE_ERRORS
-from api.auth.dependencies import AccessToken, CurrentUser
+from api.assistant.rate_limit import (
+    GLOBAL_KEY,
+    AssistantThrottle,
+    RedisAssistantThrottle,
+    get_assistant_global_throttle,
+    get_assistant_throttle,
+)
+from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
+from api.auth.dependencies import AccessToken, get_current_user
+from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.config import Settings, get_settings
+from api.db.models import User
+from api.db.session import get_session
 from api.exceptions import ValidationError
+from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatRequest
+from api.services.user_cache import UserCacheStore, get_user_cache
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
+
+# The cap on one statement of the retriever's searches, in milliseconds (see make_engine).
+_STATEMENT_TIMEOUT_MS = 30000
+
+# The most turns one user may have running at once, so one account cannot hold every slot.
+MAX_TURNS_PER_USER = 2
+
+# What a turn refused for want of a free slot is told to wait, in seconds.
+TURN_SLOT_RETRY_SECONDS = 5
 
 
 @contextmanager
@@ -53,9 +84,11 @@ def _outage_as_unavailable(settings: Settings) -> Iterator[None]:
     by a dependency, before the service runs, and opening its store is the one place a
     dependency reaches a backend: the model clients are built without touching the network,
     and a model server that is down is met at generation time, inside the service. The
-    record is the service's own: the event, the mode and the exception's class name, never
-    its text. An error outside :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not
-    touched. A failed build is not cached, so the next request tries again.
+    record is the service's own: the event, the mode, the exception's class name and the
+    role of the server that failed (the document index unless the error was tagged at
+    another source), never its text. An error outside
+    :data:`~api.assistant.upstream.UNAVAILABLE_ERRORS` is not touched. A failed build is not
+    cached, so the next request tries again.
 
     :param settings: Application settings, for the mode written in the record.
     :raises AssistantUnavailableError: If a listed backend failure is raised inside.
@@ -69,6 +102,7 @@ def _outage_as_unavailable(settings: Settings) -> Iterator[None]:
                 "event": "assistant_dependency_unavailable",
                 "mode": settings.assistant_mode,
                 "reason": type(exc).__name__,
+                "role": role_of(exc, default="vector_db"),
             },
         )
         raise AssistantUnavailableError("a server the assistant needs is unavailable") from None
@@ -94,7 +128,14 @@ def get_query_model() -> BaseChatModel:
     return make_chat_model(get_settings())
 
 
-@lru_cache
+# The retriever and the engine behind its store. A plain holder and not ``lru_cache``:
+# FastAPI resolves the dependency in its threadpool, and two cold requests would each build an
+# engine, one of them never closed. The lock guards only publishing, never the build, which
+# reaches the network. Shutdown reads the engine from here.
+_docs_lock = threading.Lock()
+_docs_resources: tuple[DocsRetriever, PGEngine] | None = None
+
+
 def get_docs_retriever() -> DocsRetriever:
     """Return the process-wide documentation retriever, built once from settings.
 
@@ -103,11 +144,52 @@ def get_docs_retriever() -> DocsRetriever:
     model are built only when the config asks for them.
 
     Opening the store reaches the vector database, so the first request of a process can
-    meet a database that is down: that, and a missing ``ASSISTANT_VECTOR_DB_URL``, are
-    ``AssistantUnavailableError``. A missing URL is logged by setting name only.
+    meet a database that is down, or a collection that is missing: that, and a missing
+    ``ASSISTANT_VECTOR_DB_URL``, are ``AssistantUnavailableError``. A missing URL is logged
+    by setting name only. A build that fails closes its engine first and is not kept. Threads
+    asking at the same time on a cold process each build, outside any lock, so a database that is
+    down fails them all at once; the first build to finish is published, and every other thread
+    closes its own engine and returns the published retriever.
 
     :return: A retriever over the configured collection.
-    :raises AssistantUnavailableError: If the vector database is down, or its URL is not set.
+    :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
+        opened, or the URL is not set.
+    """
+    global _docs_resources
+    built = _docs_resources
+    if built is None:
+        fresh = _build_docs_retriever()
+        with _docs_lock:
+            built = _docs_resources
+            if built is None:
+                built = _docs_resources = fresh
+        if built is not fresh:
+            _close_engine(fresh[1])
+    return built[0]
+
+
+def _close_engine(engine: PGEngine) -> None:
+    """Close an engine that no one will use, recording a failed close without raising it.
+
+    Runs in a worker thread, with no event loop of its own to reuse.
+
+    :param engine: The engine to dispose of.
+    """
+    try:
+        asyncio.run(engine.close())
+    except Exception as exc:
+        logger.warning(
+            "Assistant engine close failed",
+            extra={"event": "assistant_engine_close_failed", "reason": type(exc).__name__},
+        )
+
+
+def _build_docs_retriever() -> tuple[DocsRetriever, PGEngine]:
+    """Build the retriever and open its engine; the body of :func:`get_docs_retriever`.
+
+    :return: The retriever and the engine its store uses.
+    :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
+        opened, or the URL is not set.
     """
     settings = get_settings()
     if not settings.assistant_vector_db_url:
@@ -118,30 +200,190 @@ def get_docs_retriever() -> DocsRetriever:
         raise AssistantUnavailableError("the assistant's vector database is not configured")
     with _outage_as_unavailable(settings):
         config = RetrievalConfig(k=settings.assistant_retrieval_k)
-        engine = make_engine(settings.assistant_vector_db_url)
-        store = open_store(engine, settings.assistant_collection, make_embeddings(settings))
-        reranker = (
-            LlamaServerReranker(
-                settings.assistant_rerank_base_url,
-                settings.assistant_rerank_model,
-                settings.assistant_llm_timeout_seconds,
-            )
-            if config.rerank
-            else None
+        engine = make_engine(
+            settings.assistant_vector_db_url, statement_timeout_ms=_STATEMENT_TIMEOUT_MS
         )
-        llm = get_query_model() if config.query_transform != "none" else None
-        return DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
+        try:
+            store = open_store(engine, settings.assistant_collection, make_embeddings(settings))
+            reranker = (
+                LlamaServerReranker(
+                    settings.assistant_rerank_base_url,
+                    settings.assistant_rerank_model,
+                    settings.assistant_llm_timeout_seconds,
+                )
+                if config.rerank
+                else None
+            )
+            llm = get_query_model() if config.query_transform != "none" else None
+            retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
+            return retriever, engine
+        except Exception:
+            # A failed build is not cached, so every request would build another pool:
+            # release this one before the error goes on, and let a failing close not
+            # replace that error, only be recorded.
+            _close_engine(engine)
+            raise
+
+
+class TurnSlots:
+    """Count the turns a process is answering, in all and per user, without ever waiting.
+
+    The routes call it from the event loop, so the lock is not needed there; it is kept as
+    cheap safety in case a worker thread ever calls it.
+
+    :param max_total: The most turns the process answers at once.
+    :param max_per_user: The most turns one user has running at once.
+    :ivar max_total: The most turns the process answers at once.
+    :ivar max_per_user: The most turns one user has running at once.
+    :ivar holders: Turns running now, by user id; a user with none has no entry.
+    """
+
+    def __init__(self, max_total: int, max_per_user: int) -> None:
+        self.max_total = max_total
+        self.max_per_user = max_per_user
+        self.holders: dict[UUID, int] = {}
+        self._total = 0
+        self._lock = threading.Lock()
+
+    def acquire(self, user_id: UUID) -> Literal["process", "user"] | None:
+        """Take a slot for this user if both limits leave room.
+
+        :param user_id: The user whose turn asks.
+        :return: ``None`` when the slot was taken, else the limit that refused it: the
+            process-wide one is named first when both are reached.
+        """
+        with self._lock:
+            if self._total >= self.max_total:
+                return "process"
+            if self.holders.get(user_id, 0) >= self.max_per_user:
+                return "user"
+            self._total += 1
+            self.holders[user_id] = self.holders.get(user_id, 0) + 1
+            return None
+
+    def release(self, user_id: UUID) -> None:
+        """Give back a slot this user took with :meth:`acquire`.
+
+        A user who holds no slot changes nothing: the count is left as it was.
+
+        :param user_id: The user whose turn is done.
+        """
+        with self._lock:
+            held = self.holders.get(user_id)
+            if held is None:
+                return
+            self._total -= 1
+            if held == 1:
+                del self.holders[user_id]
+            else:
+                self.holders[user_id] = held - 1
+
+
+@lru_cache
+def get_turn_slots() -> TurnSlots:
+    """Return the process-wide table of turn slots, sized from settings when first built.
+
+    :return: A table allowing ``assistant_max_concurrent_turns`` turns at once, and
+        :data:`MAX_TURNS_PER_USER` for one user.
+    """
+    return TurnSlots(get_settings().assistant_max_concurrent_turns, MAX_TURNS_PER_USER)
 
 
 def clear_caches() -> None:
     """Drop every process-wide object this module keeps, so the next call builds anew.
 
-    For tests and for a run that changes the settings; the models and the retriever
-    read them once, when they are built.
+    For tests and for a run that changes the settings; the models, the retriever and the
+    turn slots read them once, when they are built. It closes nothing: see
+    :func:`close_assistant_resources`.
     """
+    global _docs_resources
     get_answer_model.cache_clear()
     get_query_model.cache_clear()
-    get_docs_retriever.cache_clear()
+    with _docs_lock:
+        _docs_resources = None
+    get_turn_slots.cache_clear()
+
+
+def _model_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close calls of the chat models' clients that exist; build no model.
+
+    :return: One (resource name, close callable) pair per client of a built model.
+    """
+    closers: list[tuple[str, Callable[[], object]]] = []
+    for name, getter in (("answer_model", get_answer_model), ("query_model", get_query_model)):
+        if not getter.cache_info().currsize:
+            continue
+        model = getter()
+        for suffix, attribute in (("async_client", "root_async_client"), ("client", "root_client")):
+            client = getattr(model, attribute, None)
+            if client is not None:
+                closers.append((f"{name}_{suffix}", client.close))
+    return closers
+
+
+def _throttle_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close calls of the throttles that hold a Redis client; build no throttle.
+
+    :return: One (resource name, close callable) pair per built Redis-backed throttle.
+    """
+    built = [
+        ("assistant_throttle", get_assistant_throttle),
+        ("assistant_global_throttle", get_assistant_global_throttle),
+    ]
+    throttles = [(name, getter()) for name, getter in built if getter.cache_info().currsize]
+    return [
+        (name, throttle.close)
+        for name, throttle in throttles
+        if isinstance(throttle, RedisAssistantThrottle)
+    ]
+
+
+def _built_closers() -> list[tuple[str, Callable[[], object]]]:
+    """List the close call of everything the process has built, and build nothing.
+
+    :return: One (resource name, close callable) pair per built resource, in closing order.
+    """
+    closers: list[tuple[str, Callable[[], object]]] = []
+    if _docs_resources is not None:
+        closers.append(("docs_engine", _docs_resources[1].close))
+    return closers + _model_closers() + _throttle_closers()
+
+
+async def _close_one(resource: str, close: Callable[[], object]) -> None:
+    """Run one close call, awaiting its result if it is awaitable; record a failure, not raise it.
+
+    :param resource: The name written in the record of a failed close.
+    :param close: The close call.
+    """
+    try:
+        outcome = close()
+        if inspect.isawaitable(outcome):
+            await outcome
+    except Exception as exc:
+        logger.warning(
+            "Assistant resource close failed at shutdown",
+            extra={
+                "event": "assistant_shutdown_close_failed",
+                "resource": resource,
+                "reason": type(exc).__name__,
+            },
+        )
+
+
+async def close_assistant_resources() -> None:
+    """Close what the process built for the assistant, then drop the caches.
+
+    For application shutdown. Only what was built is closed, and nothing is built to be
+    closed. That is the corpus engine, the two chat models' clients and the Redis clients of the
+    throttles. The reranker opens a client per call and the embeddings client has no public way
+    to close, so neither is touched. A close that fails is recorded, by the resource and the
+    error's class only, and the others still run.
+    """
+    for resource, close in _built_closers():
+        await _close_one(resource, close)
+    clear_caches()
+    get_assistant_throttle.cache_clear()
+    get_assistant_global_throttle.cache_clear()
 
 
 def get_assistant_service(
@@ -157,37 +399,39 @@ def get_assistant_service(
     return AssistantService(settings, answer_model)
 
 
+async def get_assistant_user(
+    token: AccessToken,
+    session: Annotated[Session, Depends(get_session, scope="function")],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    cache: Annotated[UserCacheStore, Depends(get_user_cache)],
+) -> User:
+    """Return the authenticated caller of a chat route, without holding a database session.
+
+    The same lookup as :func:`~api.auth.dependencies.get_current_user`, called as a function. Its
+    session has the ``function`` scope, so it is closed when the route function returns, before
+    the body of a streamed response is sent. ``get_current_user``'s own session lasts until the
+    stream ends, and on a user-cache miss would keep a pool connection checked out for the whole
+    turn. This dependency is separate, and not a change to that one, because the other routes
+    share the request's session through the dependency cache. The chat dependencies that need the
+    caller all take this one, so they all get the same user. A user loaded on a cache miss is
+    detached once the session closes, and its loaded fields stay readable.
+
+    :param token: JWT access token.
+    :param session: Database session, used only on a user-cache miss.
+    :param store: Revocation store consulted during token validation.
+    :param cache: User profile cache.
+    :return: The authenticated user.
+    :raises HTTPException: 401 if the token is invalid or the user is not found.
+    """
+    return await get_current_user(token, session, store, cache)
+
+
+AssistantUser = Annotated[User, Depends(get_assistant_user)]
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
 AssistantThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_throttle)]
+AssistantGlobalThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_global_throttle)]
+TurnSlotsDep = Annotated[TurnSlots, Depends(get_turn_slots)]
 DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
-
-
-async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantThrottleDep) -> None:
-    """Spend one message of the caller's hourly budget, before anything else is built.
-
-    Listed first among the route's dependencies, so a spent budget answers before the
-    API client, the retriever's store or any model is touched. ``hit`` is synchronous
-    and may talk to Redis, so it runs in a worker thread.
-
-    :param current_user: The authenticated caller.
-    :param throttle: The hourly message cap.
-    :raises AssistantRateLimitedError: When this hour's budget is already spent.
-    """
-    if not await run_in_threadpool(throttle.hit, current_user.id):
-        raise AssistantRateLimitedError("the hourly assistant message budget is spent")
-
-
-@dataclass(frozen=True)
-class PreparedTurn:
-    """The parsed request and the context built for it.
-
-    :ivar request: The validated chat request.
-    :ivar context: The per-turn context, whose ``current_project_id`` and ``locale`` come
-        from that same request.
-    """
-
-    request: AssistantChatRequest
-    context: AssistantContext
 
 
 def get_chat_request(
@@ -196,12 +440,11 @@ def get_chat_request(
     """Validate the body and refuse a message longer than the configured length.
 
     A message longer than ``assistant_max_message_chars`` is an invalid request. The schema's
-    own ceiling stays: the setting can only lower it. This is a dependency of its own, ahead
-    of the retriever in :func:`open_chat_turn`, so a message over the configured length is
-    refused before the retriever is built. A body the schema itself rejects is not: FastAPI
-    keeps resolving the sibling dependencies after a body error, so the retriever may be
-    built first, and on a cold start with the database down that request answers 503, not
-    422.
+    own ceiling stays: the setting can only lower it. :func:`enforce_message_limit` lists this
+    dependency ahead of the retriever, so a message over the configured length is refused before
+    the retriever is built. A body the schema itself rejects is not: FastAPI keeps resolving the
+    sibling dependencies after a body error, so the retriever may be built first, and on a cold
+    start with the database down that request answers 503, not 422.
 
     :param data: The validated chat request.
     :param settings: Application settings.
@@ -218,24 +461,153 @@ def get_chat_request(
 ChatRequestDep = Annotated[AssistantChatRequest, Depends(get_chat_request)]
 
 
+async def enforce_message_limit(
+    current_user: AssistantUser,
+    throttle: AssistantThrottleDep,
+    global_throttle: AssistantGlobalThrottleDep,
+    data: ChatRequestDep,
+    retriever: DocsRetrieverDep,
+) -> AssistantChatRequest:
+    """Spend one message of the caller's hourly budget and of the global ceiling.
+
+    The order of the checks on a chat turn, which both routes share and which this docstring
+    states in full: the per-address limit (:func:`limit_per_address`), the turn slot
+    (:func:`hold_turn_slot`), the request check and the retriever, then this budget, and only
+    after it the API client and every model. A request refused by an earlier step spends no
+    message. The first two are route dependencies; the rest are resolved through
+    :func:`open_chat_turn`, which the endpoint takes after them.
+
+    The checked request and the retriever are parameters here, which FastAPI resolves before
+    this body runs: a message that is too long or a body the schema rejects (``422``), and a
+    retriever that cannot be built because the vector database is down or not configured
+    (``503``), are refused before any message is spent. The retriever is not used here, and
+    :func:`open_chat_turn` reuses the same one, as FastAPI resolves each dependency once per
+    request. The request is returned, and it reaches :func:`open_chat_turn` only through this
+    function: the body is declared once in the dependency tree, because FastAPI reports a body
+    error once for every dependency that declares it, and a second path to the body would answer
+    ``422`` with every error twice.
+
+    The trade-off is deliberate. The retriever is process-cached, so once it is built a request
+    pays nothing for it. A failed build is not cached, so on a process whose vector database is
+    down, a caller over budget drives one build attempt per request, bounded by the per-address
+    limit and the turn slots, and gets ``503`` where ``429`` came before. The user's own budget
+    comes before the ceiling, so an account with a spent budget cannot drain the shared one.
+    ``hit`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
+    ``retry_after`` and the ceiling's calls, which are asked only after a refusal.
+
+    :param current_user: The authenticated caller.
+    :param throttle: The per-user hourly message cap.
+    :param global_throttle: The hourly ceiling on all users together.
+    :param data: The checked chat request. It stays behind the throttles in the parameter list,
+        and ahead of the retriever, so a message that is too long is refused before the
+        retriever is built.
+    :param retriever: The documentation retriever; unused, it only has to be available before a
+        message is spent.
+    :return: The same checked request, once both budgets have taken the message.
+    :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
+        the seconds until the window closes.
+    :raises AssistantBusyError: When the global ceiling is already reached; it carries the
+        seconds until its window closes and the reason ``"global"``.
+    """
+    if not await run_in_threadpool(throttle.hit, current_user.id):
+        retry_after = await run_in_threadpool(throttle.retry_after, current_user.id)
+        raise AssistantRateLimitedError(
+            "the hourly assistant message budget is spent", retry_after=retry_after
+        )
+    if not await run_in_threadpool(global_throttle.hit_key, GLOBAL_KEY):
+        retry_after = await run_in_threadpool(global_throttle.retry_after_key, GLOBAL_KEY)
+        raise AssistantBusyError(
+            "the global hourly assistant message ceiling is reached",
+            retry_after=retry_after,
+            reason="global",
+        )
+    return data
+
+
+CountedChatRequestDep = Annotated[AssistantChatRequest, Depends(enforce_message_limit)]
+
+
+@limiter.limit(LIMIT_ASSISTANT_CHAT)
+def limit_per_address(request: Request) -> None:
+    """Refuse a chat request from an address that has sent too many this minute.
+
+    The per-address limit is a dependency listed first on the route, not the decorator of the
+    endpoint: slowapi's decorator runs only once FastAPI has resolved every dependency, so a
+    message it refused would already have spent a turn slot or an hourly message and built the
+    API client. A request it refuses reaches none of them. It is a plain function, so FastAPI
+    runs the counter's store call in a worker thread and not on the event loop. One function
+    serves both chat routes, and each route still keeps a counter of its own, because slowapi
+    scopes the counter by the request's path.
+
+    :param request: The incoming request, whose address the counter is keyed by.
+    :raises RateLimitExceeded: When this address has used its allowance for the minute; the
+        application's handler turns it into ``429``.
+    """
+
+
+async def hold_turn_slot(current_user: AssistantUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
+    """Hold one of the process's turn slots until the response is done, or refuse at once.
+
+    A route dependency listed right after the per-address limit on both chat routes; the order
+    of all the checks is in :func:`enforce_message_limit`. A turn refused for want of a slot
+    spends no message of the hourly budget, and a turn refused by a later step gives its slot
+    back when the dependency exits. A slot is taken without waiting, since a queue of requests
+    behind a slow model server would only hold workers: a turn is refused when the process is
+    answering its limit of turns, or when this user already has :data:`MAX_TURNS_PER_USER`
+    running. The code after ``yield`` runs once the response has been sent, so a streamed answer
+    holds its slot for the whole stream. The slot is given back whether the turn answered or
+    failed, and only when this call took it. It writes no record: the handler of
+    :class:`AssistantBusyError` writes the one.
+
+    :param current_user: The authenticated caller.
+    :param slots: The process-wide table from :func:`get_turn_slots`.
+    :raises AssistantBusyError: If no slot is free for this turn; it carries
+        :data:`TURN_SLOT_RETRY_SECONDS` and the limit that refused.
+    """
+    refused_by = slots.acquire(current_user.id)
+    if refused_by is not None:
+        raise AssistantBusyError(
+            "no assistant turn slot is free",
+            retry_after=TURN_SLOT_RETRY_SECONDS,
+            reason=refused_by,
+        )
+    try:
+        yield
+    finally:
+        slots.release(current_user.id)
+
+
+@dataclass(frozen=True)
+class PreparedTurn:
+    """The parsed request and the context built for it.
+
+    :ivar request: The validated chat request.
+    :ivar context: The per-turn context, whose ``current_project_id`` and ``locale`` come
+        from that same request.
+    """
+
+    request: AssistantChatRequest
+    context: AssistantContext
+
+
 async def open_chat_turn(
     request: Request,
-    data: ChatRequestDep,
+    data: CountedChatRequestDep,
     access_token: AccessToken,
     retriever: DocsRetrieverDep,
 ) -> AsyncIterator[PreparedTurn]:
     """Build the API client and the context for one chat turn, and close the client after.
 
-    The body is declared once, in :func:`get_chat_request`, which comes first among the
-    parameters: the body is validated once, a message over the configured length is refused
-    before the retriever is built (a body the schema rejects is not, see
-    :func:`get_chat_request`), and the route and the context share the same request. The client
-    is never cached: it carries this caller's own access token. It is closed when the
-    response is done, whether the turn answered or failed. The retriever comes in through
-    ``Depends``, so ``app.dependency_overrides`` can replace it.
+    The request arrives through :func:`enforce_message_limit`, the only path to the body, so the
+    body is validated once and the hourly budget is spent before this function runs; the order
+    of the checks is stated there. The route and the context share that one request. The client
+    is never cached: it carries this caller's own access token. It is closed when the response
+    is done, whether the turn answered or failed. The retriever comes in through ``Depends``, so
+    ``app.dependency_overrides`` can replace it; it is the one already resolved for the budget
+    check.
 
     :param request: The incoming request, for its application and the caller's address.
-    :param data: The checked chat request.
+    :param data: The checked chat request, after the hourly budget has taken the message.
     :param access_token: The caller's own access token, the one the authentication
         dependency checked.
     :param retriever: The documentation retriever for this turn.

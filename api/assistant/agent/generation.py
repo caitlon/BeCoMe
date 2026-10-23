@@ -1,14 +1,16 @@
 """The ways an answer is generated from the messages of a turn.
 
 An :class:`AnswerGenerator` takes the conversation the chat service assembled and the
-turn's context, and returns the answer text with the names of the tools that ran. There
-are two: :class:`DirectGenerator` makes one model call with no tools, and
-:class:`AgentGenerator` lets the model call the assistant's tools in a bounded loop.
-Both send :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT` unchanged.
+turn's context, and returns the answer text, the names of the tools that ran and the
+tokens the model used (:class:`~api.schemas.assistant.TurnUsage`). There are two:
+:class:`DirectGenerator` makes one model call with no tools, and :class:`AgentGenerator`
+lets the model call the assistant's tools in a bounded loop. Both send :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT` unchanged.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -24,6 +26,7 @@ from langchain.agents.middleware import (
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    AIMessageChunk,
     AnyMessage,
     BaseMessage,
     HumanMessage,
@@ -34,8 +37,9 @@ from langchain_core.messages import (
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
 from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
-from api.assistant.rag.models import has_unclosed_think_block, strip_think_block
+from api.assistant.rag.models import THINK_OPEN, has_unclosed_think_block, strip_think_block
 from api.assistant.rag.retrieval import question_language
+from api.schemas.assistant import TurnUsage
 
 logger = logging.getLogger(__name__)
 
@@ -61,20 +65,43 @@ class CutOffAnswerError(Exception):
     """
 
 
+@dataclass(frozen=True)
+class Generated:
+    """What a generator produced for one turn: the text, the tools that ran, the usage."""
+
+    text: str
+    tools_used: list[str]
+    usage: TurnUsage
+
+
 class AnswerGenerator(Protocol):
     """Turns the messages of one turn into an answer."""
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Generate the answer of one turn.
 
         :param messages: The conversation: the kept history, then the user message of
             this turn. The system prompt is the generator's own to add.
         :param ctx: The turn's context.
         :param question: The user's own message, as asked, without any context around it.
-        :return: The answer text, and the names of the tools that ran, each once, in the
-            order they first ran.
+        :return: The answer text, the names of the tools that ran, each once, in the order
+            they first ran, and the usage of the model's replies in the turn.
+        """
+        ...
+
+    def stream(
+        self, messages: list[AnyMessage], ctx: AssistantContext, question: str
+    ) -> AsyncGenerator[str | Generated]:
+        """Generate the answer of one turn, yielding its text as it arrives.
+
+        :param messages: The conversation: the kept history, then the user message of
+            this turn. The system prompt is the generator's own to add.
+        :param ctx: The turn's context.
+        :param question: The user's own message, as asked, without any context around it.
+        :return: Pieces of answer text, then one :class:`Generated` as the last item. The
+            pieces join to the text of the :class:`Generated`.
         """
         ...
 
@@ -133,6 +160,50 @@ def _answer_of(message: BaseMessage) -> str:
     return answer_text(message)
 
 
+def _usage_of(replies: Sequence[BaseMessage]) -> TurnUsage:
+    """Sum the token usage the model reported over its replies of one turn.
+
+    A reply that reports no usage adds nothing to the sums and makes the result incomplete,
+    but is still one call.
+
+    :param replies: The messages the model wrote this turn; anything else in the sequence
+        is skipped.
+    :return: The summed usage.
+    :raises ValueError: If there is no model reply in the sequence, which a generator that
+        got an answer never has.
+    """
+    messages = [message for message in replies if isinstance(message, AIMessage)]
+    if not messages:
+        raise ValueError("a turn's usage needs at least one model reply")
+    reported = [message.usage_metadata for message in messages if message.usage_metadata]
+    return TurnUsage(
+        input_tokens=sum(usage["input_tokens"] for usage in reported),
+        output_tokens=sum(usage["output_tokens"] for usage in reported),
+        total_tokens=sum(usage["total_tokens"] for usage in reported),
+        llm_calls=len(messages),
+        complete=len(reported) == len(messages),
+    )
+
+
+def _visible(buffer: str) -> str:
+    """Say which part of a partial reply may be shown.
+
+    The reasoning block is withheld, including while it is still open, and so is a
+    trailing fragment that could be the start of its opening tag, since the tag may
+    arrive split across chunks.
+
+    :param buffer: The reply so far.
+    :return: The answer text so far, never ending in a prefix of ``<think>``.
+    """
+    if has_unclosed_think_block(buffer):
+        return ""
+    shown = strip_think_block(buffer)
+    for length in range(min(len(THINK_OPEN) - 1, len(shown)), 0, -1):
+        if THINK_OPEN.startswith(shown[-length:]):
+            return shown[:-length].rstrip()
+    return shown
+
+
 class DirectGenerator(AnswerGenerator):
     """One model call and no tools: the way the workflow mode answers.
 
@@ -145,20 +216,59 @@ class DirectGenerator(AnswerGenerator):
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Answer with a single call over the system prompt and the messages.
 
         :param messages: The conversation, ending with this turn's user message.
         :param ctx: Unused: no tool runs, and nothing is fetched here.
         :param question: Unused: the user message already carries it.
-        :return: The answer text and an empty list, since no tool ran.
+        :return: The answer text, an empty list since no tool ran, and the usage of the reply.
         :raises CutOffAnswerError: If the reply ends inside a reasoning block.
         """
         response = await self._model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *messages])
-        return _answer_of(response), []
+        return _answer_of(response), [], _usage_of([response])
+
+    async def stream(
+        self, messages: list[AnyMessage], ctx: AssistantContext, question: str
+    ) -> AsyncGenerator[str | Generated]:
+        """Answer with a single streamed call, yielding the text as it arrives.
+
+        The reply is accumulated as it streams, and only the part outside any reasoning
+        block is yielded. The finished reply is read the same way :meth:`generate` reads
+        it, and what that adds to the pieces already yielded (a withheld ``<`` that was
+        not a tag, the final strip) is yielded last, so the pieces join to the text of the
+        final item, which is what the non-streamed call would have returned.
+
+        :param messages: The conversation, ending with this turn's user message.
+        :param ctx: Unused: no tool runs, and nothing is fetched here.
+        :param question: Unused: the user message already carries it.
+        :return: Pieces of answer text, then one :class:`Generated`.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+        """
+        full = AIMessageChunk(content="")
+        emitted = 0
+        # Closing this generator early closes the model's stream at once, not whenever the
+        # garbage collector gets to it. ``astream`` is typed as an iterator, but every chat
+        # model's is an async generator, which has ``aclose``.
+        stream = cast(
+            "AsyncGenerator[AIMessageChunk]",
+            self._model.astream([SystemMessage(content=SYSTEM_PROMPT), *messages]),
+        )
+        async with aclosing(stream) as chunks:
+            async for chunk in chunks:
+                full += chunk
+                visible = _visible(full.text)
+                if len(visible) > emitted:
+                    yield visible[emitted:]
+                    emitted = len(visible)
+        reply = AIMessage(content=full.text, usage_metadata=full.usage_metadata)
+        final = _answer_of(reply)
+        if len(final) > emitted:
+            yield final[emitted:]
+        yield Generated(final, [], _usage_of([reply]))
 
 
-def _raised_at(exc: BaseException) -> str:
+def raised_at(exc: BaseException) -> str:
     """Say where an exception was raised, without its message or a traceback.
 
     :param exc: The exception.
@@ -183,7 +293,7 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
 
     The tools catch the outages themselves, so what arrives here is a bug, and it is
     logged at ERROR so error tracking sees it whatever the mode. The record carries the
-    tool, the exception's class name and where it was raised (see :func:`_raised_at`):
+    tool, the exception's class name and where it was raised (see :func:`raised_at`):
     never the message, which can name a host or a path, and never a traceback. The tool
     name comes from the model's call, so it is written only when it is one of the
     assistant's tools, and as ``unknown`` otherwise. In the installed library a call to a
@@ -203,7 +313,7 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
             "event": "assistant_tool_failed",
             "tool": name,
             "reason": type(exc).__name__,
-            "where": _raised_at(exc),
+            "where": raised_at(exc),
         },
     )
     ctx = cast(AssistantContext, request.runtime.context)
@@ -265,7 +375,7 @@ class AgentGenerator(AnswerGenerator):
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Run the loop, and fall back to one direct call when it ends on its limit.
 
         The model-call limit ends a run by adding a message of its own that says the
@@ -273,26 +383,39 @@ class AgentGenerator(AnswerGenerator):
         run from one that ended with an answer. What does tell them apart is the count of
         model replies the run added: a run that ended by itself holds at most
         ``run_limit`` of them, and a run the limit ended holds that many and the limit's
-        own message.
+        own message, which no model wrote and so is left out of the usage.
 
         :param messages: The conversation, ending with this turn's user message.
         :param ctx: The turn's context, passed to the tools.
         :param question: The user's own message, for the fallback call.
-        :return: The answer text, and the names of the tools that ran.
+        :return: The answer text, the names of the tools that ran, and the usage of the
+            loop's replies and, when it ran, of the fallback call.
         """
         state: InputAgentState = {"messages": [*messages]}
         result = await self._agent.ainvoke(state, context=ctx)
         produced: list[BaseMessage] = result["messages"][len(messages) :]
         replies = sum(isinstance(message, AIMessage) for message in produced)
         if replies > self._model_call_limit:
-            text = await self._answer_from_gathered(messages, ctx, question)
-        else:
-            text = _answer_of(produced[-1])
-        return text, _tools_that_ran(produced)
+            text, fallback = await self._answer_from_gathered(messages, ctx, question)
+            return text, _tools_that_ran(produced), _usage_of([*produced[:-1], fallback])
+        return _answer_of(produced[-1]), _tools_that_ran(produced), _usage_of(produced)
+
+    async def stream(
+        self, messages: list[AnyMessage], ctx: AssistantContext, question: str
+    ) -> AsyncGenerator[str | Generated]:
+        """Run the loop and yield its result in one piece: the agent mode does not stream.
+
+        :param messages: The conversation, ending with this turn's user message.
+        :param ctx: The turn's context, passed to the tools.
+        :param question: The user's own message, for the fallback call.
+        :return: One :class:`Generated`, after the whole run.
+        """
+        text, tools_used, usage = await self.generate(messages, ctx, question)
+        yield Generated(text, tools_used, usage)
 
     async def _answer_from_gathered(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> str:
+    ) -> tuple[str, AIMessage]:
         """Answer with one call, and no tools, over everything the run gathered.
 
         The user message is built as the workflow mode builds its own: the excerpts of
@@ -307,7 +430,7 @@ class AgentGenerator(AnswerGenerator):
         :param messages: The conversation the run started from.
         :param ctx: The turn's context, holding the sources and the tool replies.
         :param question: The user's own message.
-        :return: The answer text.
+        :return: The answer text and the model's reply it was read from.
         :raises CutOffAnswerError: If the reply ends inside a reasoning block.
         """
         excerpts = render_context_block(ctx.sources.numbered(), None)
@@ -316,4 +439,4 @@ class AgentGenerator(AnswerGenerator):
         response = await self._model.ainvoke(
             [SystemMessage(content=SYSTEM_PROMPT), *messages[:-1], HumanMessage(content=content)]
         )
-        return _answer_of(response)
+        return _answer_of(response), response

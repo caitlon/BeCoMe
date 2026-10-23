@@ -34,6 +34,104 @@ def _add_expert(client, owner_token, project_id, email):
     return expert_token, accept.json()["user_id"]
 
 
+class TestAssistantObjection:
+    """The profile switch that keeps a user's opinions from other members' assistant."""
+
+    def test_flag_defaults_to_false_on_both_profile_endpoints(self, client):
+        """A fresh account has not objected."""
+        # GIVEN
+        token = register_and_login(client, "fresh-objection@example.com")
+
+        # WHEN
+        users_me = client.get("/api/v1/users/me", headers=auth_header(token))
+        auth_me = client.get("/api/v1/auth/me", headers=auth_header(token))
+
+        # THEN
+        assert users_me.json()["assistant_objection"] is False
+        assert auth_me.json()["assistant_objection"] is False
+
+    def test_put_sets_and_clears_the_flag(self, client):
+        """PUT /users/me writes the flag, and the next reads show it, cached or not."""
+        # GIVEN: a warm profile cache
+        token = register_and_login(client, "toggle-objection@example.com")
+        client.get("/api/v1/users/me", headers=auth_header(token))
+
+        # WHEN: set
+        put = client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert put.status_code == status.HTTP_200_OK
+        assert put.json()["assistant_objection"] is True
+        assert client.get("/api/v1/users/me", headers=auth_header(token)).json()[
+            "assistant_objection"
+        ]
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).json()[
+            "assistant_objection"
+        ]
+
+        # WHEN: cleared
+        cleared = client.put(
+            "/api/v1/users/me", json={"assistant_objection": False}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert cleared.json()["assistant_objection"] is False
+        assert (
+            client.get("/api/v1/users/me", headers=auth_header(token)).json()["assistant_objection"]
+            is False
+        )
+
+    def test_put_without_the_field_keeps_it(self, client):
+        """A name edit does not reset the objection."""
+        # GIVEN
+        token = register_and_login(client, "keep-objection@example.com")
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me", json={"first_name": "Renamed"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.json()["assistant_objection"] is True
+
+    def test_put_with_a_null_flag_keeps_it(self, client):
+        """An explicit null is not a clear: the objection stays set."""
+        # GIVEN
+        token = register_and_login(client, "null-objection@example.com")
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me", json={"assistant_objection": None}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["assistant_objection"] is True
+
+    def test_unknown_fields_are_still_rejected(self, client):
+        """The request keeps extra=forbid next to the new field."""
+        # GIVEN
+        token = register_and_login(client, "extra-objection@example.com")
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"assistant_objection": True, "is_demo": True},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 class TestDeleteAccount:
     """Tests for DELETE /api/v1/users/me endpoint."""
 
@@ -261,7 +359,7 @@ class TestDeleteAccountDispositions:
         )
 
         # THEN the disposition is rejected as invalid
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_transfer_to_demo_account_rejected(self, client):
         """A transfer naming a demo account as the erasure disposition is rejected.
@@ -303,7 +401,7 @@ class TestDeleteAccountDispositions:
         )
 
         # THEN the disposition is rejected as invalid
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class TestChangePasswordRevokesSessions:
@@ -355,5 +453,56 @@ class TestChangePasswordRevokesSessions:
         login = client.post(
             "/api/v1/auth/login",
             data={"username": "storefault@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        assert login.status_code == status.HTTP_200_OK
+
+
+class TestChangePasswordWithWrongCurrentPassword:
+    """A mistyped current password is a 400 the session survives, never a 401."""
+
+    def test_wrong_current_password_is_a_400_with_a_code(self, client):
+        """The refusal is a 400 with its own code and no bearer challenge."""
+        # GIVEN a logged-in user
+        token = register_and_login(client, "wrongcurrent@example.com")
+
+        # WHEN the current password is mistyped
+        resp = client.put(
+            "/api/v1/users/me/password",
+            headers=auth_header(token),
+            json={
+                "current_password": "NotThePassword1!",  # pragma: allowlist secret
+                "new_password": "NewSecurePass456!",
+            },
+        )
+
+        # THEN it is a 400 the SPA can tell apart, with no WWW-Authenticate challenge
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.json() == {
+            "detail": "Current password is incorrect",
+            "code": "current_password_incorrect",
+        }
+        assert "www-authenticate" not in resp.headers
+
+    def test_session_and_password_survive_a_wrong_current_password(self, client):
+        """The refusal revokes nothing and changes nothing."""
+        # GIVEN a logged-in user who mistypes the current password
+        token = register_and_login(client, "keepsession@example.com")
+        client.put(
+            "/api/v1/users/me/password",
+            headers=auth_header(token),
+            json={
+                "current_password": "NotThePassword1!",  # pragma: allowlist secret
+                "new_password": "NewSecurePass456!",
+            },
+        )
+
+        # WHEN the same token is used again
+        me = client.get("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN the session still works and the old password still signs in
+        assert me.status_code == status.HTTP_200_OK
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "keepsession@example.com", "password": DEFAULT_TEST_PASSWORD},
         )
         assert login.status_code == status.HTTP_200_OK

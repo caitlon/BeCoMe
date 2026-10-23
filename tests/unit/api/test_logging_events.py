@@ -9,6 +9,7 @@ just compared, a throttle record must not carry the account it throttled. Those 
 assertions worth keeping when the code around them changes.
 """
 
+import json
 import logging
 from time import perf_counter
 from unittest.mock import MagicMock, patch
@@ -77,6 +78,10 @@ class TestCsrfRejectionLogging:
         assert extra["method"] == "DELETE"
         assert extra["path"] == "/api/v1/projects/abc"
         assert response.status_code == 403
+        assert json.loads(response.body) == {
+            "detail": "CSRF token missing or invalid",
+            "code": "csrf_invalid",
+        }
 
     def test_rejection_does_not_log_the_token(self):
         """
@@ -491,7 +496,7 @@ class TestProjectQueryLogging:
 
 
 class TestRouteRefusalLogging:
-    """Route-level refusals are raised as HTTPException, so they log here or nowhere."""
+    """Route-level refusals are logged by the route, since the handler records only the type."""
 
     def test_invitation_rejection_tags_the_address(self):
         """

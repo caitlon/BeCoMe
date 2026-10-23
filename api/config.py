@@ -1,5 +1,6 @@
 """Application configuration using Pydantic Settings."""
 
+import ipaddress
 import os
 from enum import StrEnum
 from functools import lru_cache
@@ -7,8 +8,16 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import (
+    BeforeValidator,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 
 try:
     _version = version("become")
@@ -94,6 +103,50 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
 
+# Each assistant model role that can run hosted: its provider setting, and the base URL
+# setting a hosted role sends its requests to.
+_ASSISTANT_PROVIDER_ROLES = (
+    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
+    ("assistant_llm_provider", "assistant_llm_base_url"),
+    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+)
+
+# Railway environments the assistant may run in: the three real ones. An allowlist, so it
+# fails closed: before 2026-09-12 the names were production and staging, and a renamed or
+# preview environment (pr-123) must be refused rather than allowed.
+_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test", "prod"})
+
+# The one LangSmith endpoint a deployed service may send traces to: the EU region.
+_LANGSMITH_EU_ENDPOINT = "https://eu.api.smith.langchain.com"
+# The project a laptop traces into by default; a deployed service must name its own.
+_LANGSMITH_LOCAL_PROJECT = "become-assistant-local"
+# What counts as "on" for a LangSmith library switch. The library takes only "true";
+# the wider set refuses what a later library version or a habit might read as on.
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+
+# sslmode values under which libpq refuses to fall back to a connection in clear text.
+_TLS_REQUIRING_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
+
+_POSTGRES_DEFAULT_PORT = 5432
+_VECTOR_DB_DRIVERNAME = "postgresql+psycopg"
+# libpq takes these from the query string ahead of the URL's own host, port and database.
+_LIBPQ_TARGET_PARAMETERS = frozenset({"host", "hostaddr", "port", "dbname", "service"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return whether a URL host is "localhost" or any loopback IP address.
+
+    :param host: Hostname as ``urlparse`` returns it (no brackets around an IPv6 address).
+    :return: True for localhost and for every address in 127.0.0.0/8 or ::1.
+    """
+    host = host.rstrip(".")
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
 
 def _has_remote_cors_origin(origins: list[str]) -> bool:
     """Return whether any CORS origin targets a non-loopback (deployed) host.
@@ -102,6 +155,52 @@ def _has_remote_cors_origin(origins: list[str]) -> bool:
     :return: True if at least one origin points at a remote host.
     """
     return any((urlparse(origin).hostname or "") not in LOOPBACK_HOSTS for origin in origins)
+
+
+def _parse_postgres_url(url: str) -> URL | None:
+    """Parse a database URL, accepting any PostgreSQL driver in its scheme.
+
+    :param url: SQLAlchemy URL, such as ``postgresql+psycopg://...`` or ``postgresql://...``.
+    :return: The parsed URL, or None when it is empty, malformed or not PostgreSQL.
+        SQLAlchemy raises a plain ``ValueError`` for some malformed URLs (a password read
+        as a port), and its text can carry the password, so both errors end here.
+    """
+    try:
+        parsed = make_url(url)
+    except (ArgumentError, ValueError):
+        return None
+    return parsed if parsed.get_backend_name() == "postgresql" else None
+
+
+def _same_postgres_database(first: URL, second: URL) -> bool:
+    """Compare two PostgreSQL URLs by the database they name, not by their spelling.
+
+    The driver, the credentials and the query are ignored. The host is lower-cased and
+    stripped of a trailing dot, and a missing port is 5432.
+
+    :param first: Parsed PostgreSQL URL.
+    :param second: Parsed PostgreSQL URL.
+    :return: True when host, port and database name all match.
+    """
+
+    def identity(url: URL) -> tuple[str, int, str | None]:
+        return (
+            (url.host or "").lower().rstrip("."),
+            url.port or _POSTGRES_DEFAULT_PORT,
+            url.database,
+        )
+
+    return identity(first) == identity(second)
+
+
+def _demands_tls(url: URL) -> bool:
+    """Return whether a URL's ``sslmode`` stops libpq from falling back to clear text.
+
+    :param url: Parsed PostgreSQL URL.
+    :return: True for ``require``, ``verify-ca`` and ``verify-full``. A repeated parameter
+        reaches libpq as a tuple it rejects, so it never counts as demanding TLS.
+    """
+    return url.query.get("sslmode") in _TLS_REQUIRING_SSLMODES
 
 
 class Settings(BaseSettings):
@@ -234,17 +333,31 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = ""
     turnstile_hostnames: list[str] = []
 
-    # Local AI assistant (RAG + read-only project explainer). Off everywhere by
-    # default; _validate_assistant_local_only refuses to start any deployed profile
-    # with it on, so turning it on is only ever a developer's own choice on their own
-    # machine. api/routes/assistant.py is registered only when this is true (see
-    # api.main.create_app), so a deployed service answers 404 for the whole prefix
-    # regardless of this validator.
+    # AI assistant (RAG + read-only project explainer). Off everywhere by default;
+    # _validate_assistant_deploy refuses to start a Railway environment other than dev,
+    # test and prod with it on, and on a deploy, the prod profile included, it demands
+    # every model role be api. api/routes/assistant.py is registered only when this is true
+    # (see api.main.create_app), so a service that leaves it off answers 404 for the whole
+    # prefix.
     assistant_enabled: bool = False
+    # Whether a chat answer reaches the client with its sources, excerpts and [n] markers.
+    # Off by default: the client then gets an empty sources list and an answer without
+    # markers, in /chat and in every event of /chat/stream. Switched on by an environment
+    # variable on the dev and test services only. The assistant_turn log record lists the
+    # sources a turn used either way.
+    assistant_show_sources: bool = False
     # The model for query transforms and index building: small and fast, so search stays
     # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
     assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    # The token cap of one reply of that model, which also writes the context sentences and
+    # summaries at index time. It bounds a runaway reply, not a normal one: a translation of
+    # a 4000-character Czech message is about 1300 tokens, and a cut query would search for
+    # the wrong thing. A model that thinks inline needs a higher value, because an unclosed
+    # <think> block is not stripped on the query and index-time paths. A hosted reasoning
+    # model with reasoning on would spend the whole budget on thinking and return no text,
+    # which is why the hosted chat models send assistant_api_reasoning_effort below.
+    assistant_query_max_tokens: int = Field(default=2048, gt=0)
     # The model that writes the chat answers, on its own llama-server. The token cap bounds
     # one reply. The retrieval k is how many passages the chat endpoint's search returns (the
     # retrieval evaluation keeps its own k, RetrievalConfig.k).
@@ -254,6 +367,20 @@ class Settings(BaseSettings):
     assistant_retrieval_k: int = Field(default=3, gt=0)
     assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
     assistant_embedding_model: str = "BAAI/bge-m3"
+    # Where each of the three model roles runs: "local" is the llama-server named by the
+    # role's base URL above, "api" is a hosted OpenAI-compatible endpoint at that same base
+    # URL, paid for with assistant_api_key_ovh (OVHcloud, an EU provider). The roles switch
+    # independently; the reranker has no hosted counterpart and always stays local.
+    # _validate_assistant_providers refuses an api role with no key, a non-https URL or a
+    # loopback host.
+    assistant_answer_provider: Literal["local", "api"] = "local"
+    assistant_llm_provider: Literal["local", "api"] = "local"
+    assistant_embedding_provider: Literal["local", "api"] = "local"
+    assistant_api_key_ovh: SecretStr | None = None
+    # The value the hosted chat models send as reasoning_effort. "none" is what OVHcloud's
+    # Qwen needs to answer at all; None sends nothing, for a provider that rejects the parameter.
+    # An empty environment value means None.
+    assistant_api_reasoning_effort: Literal["none", "low", "medium", "high"] | None = "none"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
     # No default: a URL here would hard-code a password or reach a database that has none.
@@ -273,14 +400,33 @@ class Settings(BaseSettings):
     # a test keeps them equal.
     assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
     assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
-    # Chat messages per user per fixed hour; 0 turns the limit off.
+    # Chat messages per user per fixed hour; 0 turns the limit off, on a laptop only: a
+    # deployed service refuses 0.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
+    # Chat messages per fixed hour across all users together; 0 turns the ceiling off, on a
+    # laptop only: a deployed service refuses 0.
+    assistant_global_turns_per_hour: int = Field(default=600, ge=0)
+    # The most chat turns one process answers at once, and above zero: a turn that finds no
+    # free slot is refused with a 503 instead of waiting. A streamed answer holds its slot
+    # until the stream ends.
+    assistant_max_concurrent_turns: int = Field(default=8, gt=0)
     assistant_llm_timeout_seconds: float = 120.0
     # The longest one chat turn may take, fetching and generation together. When it runs
     # out, the call in flight is cancelled with the turn and the turn answers
     # "unavailable", so a stalled server does not hold the request past this deadline.
     # The model's own timeout above only bounds one request inside it.
     assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
+    # The longest the work done before a response's first byte may take, counted from the
+    # start of the turn: the retrieval and project fetch that precede a stream, and the whole
+    # of a /chat turn, whose answer is one JSON body. Keep it under the 100 seconds after
+    # which Cloudflare answers 524 for an origin that has sent nothing. The streamed part of
+    # a turn is not held to it and keeps the full turn timeout above, which this value can
+    # only shorten: a turn timeout below it decides first.
+    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0)
+    # How often a waiting /chat/stream sends a keep-alive comment, in seconds, so that
+    # a proxy sees bytes while the model is still working (the agent modes send nothing
+    # until the final response). Below 100, the idle time after which Cloudflare answers 524.
+    assistant_stream_heartbeat_seconds: float = Field(default=15.0, gt=0, lt=100)
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
     # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
@@ -295,13 +441,25 @@ class Settings(BaseSettings):
     # so its version is part of corpus_version. A relative path resolves from the
     # repository root. None means no captions file, and a "captions" build then fails.
     assistant_captions_file: str | None = None
-    # LangSmith tracing of the assistant, switched on by hand for local work. With it on,
-    # the full text of questions, tool replies and answers goes to the endpoint below, so
-    # it needs a key (_validate_assistant_langsmith) and defaults to the EU endpoint.
+    # LangSmith tracing of the assistant, switched on by assistant_langsmith_enabled alone. With
+    # it on, the full text of questions, tool replies and answers goes to the endpoint below,
+    # so it needs a key (_validate_assistant_langsmith). It defaults to the EU endpoint, and
+    # a deployed service may use only that one (_validate_assistant_deploy).
     assistant_langsmith_enabled: bool = False
-    assistant_langsmith_api_key: str | None = None
-    assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
-    assistant_langsmith_project: str = "become-assistant-local"
+    assistant_langsmith_api_key: SecretStr | None = None
+    assistant_langsmith_endpoint: str = _LANGSMITH_EU_ENDPOINT
+    assistant_langsmith_project: str = _LANGSMITH_LOCAL_PROJECT
+    # The LangSmith library's own environment settings, read only so that a deployed service
+    # can refuse them: the library honours them for any traced call, bypassing
+    # assistant_langsmith_enabled. It reads the first non-blank of the four tracing switches
+    # and sends a run to every destination in the two RUNS_ENDPOINTS lists, so each name is
+    # kept apart rather than aliased: an alias would stop at a blank first name.
+    langsmith_tracing_v2: str = ""
+    langchain_tracing_v2: str = ""
+    langsmith_tracing: str = ""
+    langchain_tracing: str = ""
+    langsmith_runs_endpoints: str = ""
+    langchain_runs_endpoints: str = ""
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
@@ -367,6 +525,26 @@ class Settings(BaseSettings):
             and (self.environment is Environment.TEST or self.railway_environment_name is not None)
         )
 
+    @field_validator("assistant_api_reasoning_effort", mode="before")
+    @classmethod
+    def _empty_reasoning_effort_is_none(cls, value: object) -> object:
+        """Map an empty or whitespace-only value to None, so the environment can send nothing."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("assistant_langsmith_endpoint")
+    @classmethod
+    def _clean_langsmith_endpoint(cls, value: str) -> str:
+        """Strip surrounding whitespace and a trailing slash, so the client gets a clean URL."""
+        return value.strip().rstrip("/")
+
+    @field_validator("assistant_langsmith_project")
+    @classmethod
+    def _clean_langsmith_project(cls, value: str) -> str:
+        """Strip surrounding whitespace, so the traces land in the project that was named."""
+        return value.strip()
+
     @model_validator(mode="after")
     def _apply_profile_log_level(self) -> "Settings":
         """Fall back to the active profile's log level when ``LOG_LEVEL`` is unset.
@@ -386,32 +564,213 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_assistant_local_only(self) -> "Settings":
-        """Refuse to start with the assistant switched on anywhere but a laptop.
+    def _validate_assistant_deploy(self) -> "Settings":
+        """Refuse an unknown Railway environment; on a deploy require hosted roles and a corpus DB.
 
-        The assistant reads project data as the signed-in user and calls a locally
-        running LLM; neither belongs on a service that serves real traffic. Keeping
-        the guard here, right before _validate_deploy_invariants, means a deploy that
-        somehow set ASSISTANT_ENABLED fails on this message first, rather than on
-        whichever deploy invariant happens to be missing.
+        The assistant reads project data as the signed-in user and calls an LLM, so it may
+        run on a laptop and on the dev, test and prod services. The Railway name is checked
+        against an allowlist of those three, so an unknown or renamed environment
+        (``production``, ``staging``, a preview) is refused. The prod profile is a deploy
+        like the other two and is held to every rule below. A deployed service has no
+        llama-server to reach, so every model role there must be api; a laptop and a CI
+        runner keep local roles. A zero message limit
+        switches that cap off, so a deployed service may set neither the per-user nor the
+        global limit to zero. LangSmith tracing
+        sends the text of questions, tool replies and answers, which is project data read
+        as the signed-in user, to a third-party endpoint, so a deployed service may trace
+        only to the EU endpoint, into a named project other than the local default, and only
+        through assistant_langsmith_enabled: the library's own switches (``LANGSMITH_TRACING``
+        and its variants) and its ``RUNS_ENDPOINTS`` lists are refused there. The corpus
+        database must be its own: a non-empty
+        assistant_vector_db_url, a ``postgresql+psycopg`` URL that names one host and a
+        database, carries no host, hostaddr, port, dbname or service query override,
+        names neither database_url nor migration_database_url, and has a single sslmode
+        of require, verify-ca or verify-full, so the retrieval role cannot be pointed at
+        the application's data or reach the corpus in clear text. The messages leave the
+        URL out, because it carries a password. Keeping the guard here, right before
+        _validate_deploy_invariants, means a deploy that sets ASSISTANT_ENABLED wrongly
+        fails on this message first, rather than on whichever deploy invariant happens
+        to be missing.
 
         is_deploy alone would not catch every case: it is False whenever TESTING is
         set, which is the pytest profile, so a Railway process that also carried
         TESTING=1 would pass the is_deploy check while still running on a deployed
         service. Checking railway_environment_name directly closes that gap -- a
-        process on Railway must never run the assistant, whatever else is set
-        alongside it.
+        process on Railway is held to both rules, whatever else is set alongside it.
 
         :return: The validated settings instance.
-        :raises ValueError: If assistant_enabled is true while this process is
-            either a deployed service or running on Railway.
+        :raises ValueError: If assistant_enabled is true on a Railway environment outside
+            the allowlist, or on a deployed service while
+            assistant_rate_limit_per_hour or assistant_global_turns_per_hour is 0, a model
+            role is still local, assistant_langsmith_enabled is true with an endpoint other
+            than the EU one or a blank or local-default project, a library tracing switch is on, a
+            ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty, not a
+            ``postgresql+psycopg`` URL, without a database or a single host, carrying a
+            host, hostaddr, port, dbname or service override, naming the same database as
+            database_url or migration_database_url, or without a single sslmode of require,
+            verify-ca or verify-full.
         """
-        if self.assistant_enabled and (self.is_deploy or self.railway_environment_name is not None):
+        if not self.assistant_enabled:
+            return self
+        on_railway = self.railway_environment_name is not None
+        railway_name = (self.railway_environment_name or "").strip().lower()
+        if on_railway and railway_name not in _ASSISTANT_RAILWAY_ENVIRONMENTS:
             raise ValueError(
-                "assistant_enabled must stay false on a deployed service (the "
-                f"{self.environment.value} profile here); the assistant runs only on "
-                "a developer machine"
+                "assistant_enabled must stay false in any Railway environment other than "
+                f"dev, test and prod (the {self.environment.value} profile here, Railway "
+                f"environment {self.railway_environment_name!r})"
             )
+        if self.is_deploy or on_railway:
+            for limit_name in ("assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"):
+                if getattr(self, limit_name) == 0:
+                    raise ValueError(
+                        f"{limit_name} must be above zero on a deployed service; 0 switches "
+                        "the limit off"
+                    )
+            local_roles = [
+                provider_name
+                for provider_name, _ in _ASSISTANT_PROVIDER_ROLES
+                if getattr(self, provider_name) != "api"
+            ]
+            if local_roles:
+                raise ValueError(
+                    f"{', '.join(local_roles)} must be api on a deployed service; a local "
+                    "model server is not reachable there"
+                )
+            self._validate_assistant_langsmith_deploy()
+            self._validate_assistant_corpus_database()
+        return self
+
+    def _validate_assistant_langsmith_deploy(self) -> None:
+        """Hold LangSmith tracing on a deployed service to the EU endpoint and one switch.
+
+        A library switch counts as on when it reads true, 1, yes or on, whatever its case.
+        Messages name the field and never carry a key.
+
+        :raises ValueError: If a library tracing switch is on, a ``RUNS_ENDPOINTS`` list is
+            set, or tracing is on with an endpoint other than the EU one or a blank or
+            local-default project.
+        """
+        switches = (
+            self.langsmith_tracing_v2,
+            self.langchain_tracing_v2,
+            self.langsmith_tracing,
+            self.langchain_tracing,
+        )
+        if any(value.strip().lower() in _TRUE_VALUES for value in switches):
+            raise ValueError(
+                "LANGSMITH_TRACING and its LANGCHAIN_ variants must not be true on a "
+                "deployed service; use ASSISTANT_LANGSMITH_ENABLED instead"
+            )
+        if self.langsmith_runs_endpoints.strip() or self.langchain_runs_endpoints.strip():
+            raise ValueError(
+                "LANGSMITH_RUNS_ENDPOINTS and LANGCHAIN_RUNS_ENDPOINTS must not be set on a "
+                "deployed service; they send traces to destinations outside the settings"
+            )
+        if not self.assistant_langsmith_enabled:
+            return
+        if self.assistant_langsmith_endpoint.lower() != _LANGSMITH_EU_ENDPOINT:
+            raise ValueError(
+                "assistant_langsmith_endpoint must be the EU endpoint on a deployed service"
+            )
+        project = self.assistant_langsmith_project
+        if not project or project.lower() == _LANGSMITH_LOCAL_PROJECT:
+            raise ValueError(
+                "assistant_langsmith_project must be set to a project other than "
+                f"{_LANGSMITH_LOCAL_PROJECT} when tracing is on on a deployed service"
+            )
+
+    def _validate_assistant_corpus_database(self) -> None:
+        """Require a separate, TLS-protected corpus database on a deployed service.
+
+        Messages never carry the URL or a part of it, since it holds the role's password.
+
+        :raises ValueError: If assistant_vector_db_url is empty, not a
+            ``postgresql+psycopg`` URL (the driver the vector store's engine needs),
+            without a database name, carrying a libpq host, hostaddr, port, dbname or
+            service parameter, without a host or with several, the same database as
+            database_url or migration_database_url, or without a single ``sslmode`` of
+            require, verify-ca or verify-full.
+        """
+        if not self.assistant_vector_db_url.strip():
+            raise ValueError(
+                "assistant_vector_db_url must be set on a deployed service; the corpus "
+                "lives in its own PostgreSQL database with pgvector, not the application's"
+            )
+        vector_url = _parse_postgres_url(self.assistant_vector_db_url)
+        if vector_url is None or vector_url.drivername != _VECTOR_DB_DRIVERNAME:
+            raise ValueError(
+                f"assistant_vector_db_url must be a {_VECTOR_DB_DRIVERNAME}:// URL naming the "
+                "corpus database, with sslmode=require; the vector store's async engine "
+                "connects through psycopg 3 only"
+            )
+        if not vector_url.database:
+            raise ValueError(
+                "assistant_vector_db_url must name the corpus database, as the path after "
+                "the host and port"
+            )
+        if _LIBPQ_TARGET_PARAMETERS & vector_url.query.keys():
+            raise ValueError(
+                "assistant_vector_db_url must not carry host, hostaddr, port, dbname or "
+                "service query parameters, which libpq lets override the URL; put the host, "
+                "port and database in the URL itself"
+            )
+        if not vector_url.host or "," in vector_url.host:
+            raise ValueError(
+                "assistant_vector_db_url must name the corpus database host, one host, in "
+                "the URL; libpq would otherwise fill it in from the environment or try "
+                "several in turn"
+            )
+        for other in (self.database_url, self.migration_database_url or ""):
+            other_url = _parse_postgres_url(other)
+            if other_url is not None and _same_postgres_database(vector_url, other_url):
+                raise ValueError(
+                    "assistant_vector_db_url must not point at the database named by "
+                    "database_url or migration_database_url; the corpus needs a database "
+                    "of its own so the retrieval role never reaches application data"
+                )
+        if not _demands_tls(vector_url):
+            raise ValueError(
+                "assistant_vector_db_url must require TLS on a deployed service; add "
+                "sslmode=require (or verify-ca, verify-full) to the URL once"
+            )
+
+    @model_validator(mode="after")
+    def _validate_assistant_providers(self) -> "Settings":
+        """Refuse a model role set to the hosted API that cannot safely reach it.
+
+        A role in api mode sends every prompt, and the key, to its base URL. With no key
+        the first request would fail with a 401 nobody reads at start-up. The URL must be
+        https, so neither the key nor a prompt crosses the network in clear text; that also
+        rules out every plain-http spelling of a local server in one check. A loopback host
+        is refused on top of that, because an https loopback address would send the key to a
+        local server that ignores it while the role looks hosted. A blank key counts as
+        missing: ``ASSISTANT_API_KEY_OVH=`` in an env file arrives as an empty string. A
+        role in local mode needs neither.
+
+        :return: The validated settings instance.
+        :raises ValueError: If a role is in api mode and assistant_api_key_ovh is missing
+            or blank, or that role's base URL is not an https URL with a host, or its host
+            is a loopback address.
+        """
+        key = self.assistant_api_key_ovh.get_secret_value() if self.assistant_api_key_ovh else ""
+        for provider_name, url_name in _ASSISTANT_PROVIDER_ROLES:
+            if getattr(self, provider_name) != "api":
+                continue
+            if not key.strip():
+                raise ValueError(f"assistant_api_key_ovh must be set when {provider_name} is api")
+            parsed = urlparse(getattr(self, url_name))
+            if not parsed.scheme or not parsed.hostname:
+                raise ValueError(
+                    f"{url_name} must be an https:// URL with a host, the provider's "
+                    f"OpenAI-compatible endpoint, when {provider_name} is api"
+                )
+            if parsed.scheme != "https":
+                raise ValueError(f"{url_name} must use https when {provider_name} is api")
+            if _is_loopback_host(parsed.hostname):
+                raise ValueError(
+                    f"{url_name} must not be a loopback address when {provider_name} is api"
+                )
         return self
 
     @model_validator(mode="after")
@@ -428,10 +787,8 @@ class Settings(BaseSettings):
         :raises ValueError: If assistant_langsmith_enabled is true and
             assistant_langsmith_api_key is missing or blank.
         """
-        if (
-            self.assistant_langsmith_enabled
-            and not (self.assistant_langsmith_api_key or "").strip()
-        ):
+        key = self.assistant_langsmith_api_key
+        if self.assistant_langsmith_enabled and not (key.get_secret_value() if key else "").strip():
             raise ValueError(
                 "assistant_langsmith_api_key must be set when assistant_langsmith_enabled is true"
             )

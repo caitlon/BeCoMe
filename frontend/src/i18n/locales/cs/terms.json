@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "Podmínky užívání",
+    "subtitle": "Pravidla používání BeCoMe, jednoduše.",
+    "updated": "Aktualizováno 21. října 2026"
+  },
+  "operator": {
+    "heading": "Kdo službu provozuje",
+    "body": "BeCoMe provozuje Ekaterina Kuzmina. Služba je zdarma. Vytvořením účtu tyto podmínky přijímáte. S jakýmkoli dotazem se obraťte na níže uvedenou adresu.",
+    "email": "caiton@pm.me"
+  },
+  "results": {
+    "heading": "Co znamená výsledek",
+    "body": "BeCoMe spojí názory, které zadají vaši experti, do jedné kompromisní hodnoty. Ta vám pomáhá rozhodnout se. Není to rada, ať už finanční, právní, zdravotní, nebo jakákoli jiná. Je jen tak dobrá jako názory, ze kterých vznikla. Rozhodujete vy a váš tým a za rozhodnutí odpovídáte."
+  },
+  "assistant": {
+    "heading": "Asistent je umělá inteligence",
+    "body": "Asistent je systém umělé inteligence, jazykový model, ne člověk. Odpovědi píše automaticky a mohou být chybné, neúplné nebo zastaralé, i když znějí jistě. Cokoli důležitého ověřte na stránce výsledku a v dokumentaci a nerozhodujte se jen podle jeho odpovědi. Co asistent dostává, popisují Zásady ochrany osobních údajů."
+  },
+  "rules": {
+    "heading": "Pravidla používání",
+    "intro": "Při používání služby souhlasíte, že:",
+    "items": [
+      "ji budete používat jen k zákonným účelům;",
+      "zadáte jen údaje, které smíte sdílet, a pozvete jen lidi, kteří o pozvání vědí;",
+      "nebudete zadávat citlivé údaje, například o zdraví nebo kontakty na jiné lidi;",
+      "heslo si necháte pro sebe a jeden člověk bude mít jeden účet;",
+      "nebudete službu narušovat, přetěžovat ani obcházet její ochranu: omezení počtu požadavků, ochranu proti robotům ani přístup k projektům, jejichž nejste členem;",
+      "nebudete skripty hromadně zakládat účty ani posílat požadavky."
+    ]
+  },
+  "account": {
+    "heading": "Váš účet a váš obsah",
+    "body": "Co zadáte, zůstává vaše. Službě dovolujete obsah uchovávat a zpracovávat jen v rozsahu, který potřebuje ke svému chodu. Účet můžete kdykoli smazat ve svém profilu. Účet, který porušuje tato pravidla, může být pozastaven nebo smazán. Služba může měnit své funkce nebo skončit. Než skončí, budete mít čas si svá data stáhnout."
+  },
+  "warranty": {
+    "heading": "Bez záruk",
+    "body": "Služba je zdarma a poskytuje se tak, jak je. Nikdo neslibuje, že bude vždy dostupná, bez chyb nebo vhodná pro váš účel. V rozsahu, který český právní řád dovoluje, provozovatel neodpovídá za škody vzniklé použitím výsledku nebo odpovědi asistenta. Odpovědnost, kterou zákon vyloučit nedovoluje, zůstává, například za škodu způsobenou úmyslně nebo z hrubé nedbalosti."
+  },
+  "law": {
+    "heading": "Jaké právo platí",
+    "body": "Tyto podmínky se řídí českým právem a spory rozhodují české soudy. Jste-li spotřebitel v jiné zemi EU, ochrana, kterou vám dává její právo, vám zůstává. Když se podmínky změní, nová verze vyjde zde s novým datem. Pokud ji nepřijmete, můžete svůj účet smazat."
+  },
+  "privacy": {
+    "heading": "Vaše údaje",
+    "body": "Jak služba zachází s osobními údaji, včetně toho, co asistent posílá modelu umělé inteligence, popisují Zásady ochrany osobních údajů.",
+    "link": "Přečíst Zásady ochrany osobních údajů"
+  }
+}

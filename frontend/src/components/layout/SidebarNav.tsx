@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import { List, type LucideIcon } from "lucide-react";
 
 interface SidebarNavItem {
   readonly id: string;
-  readonly label: string;
+  readonly label: ReactNode;
   readonly icon: LucideIcon;
 }
 

@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from sqlmodel import col, select
+from sqlmodel import col, or_, select
 
 from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
@@ -17,7 +17,12 @@ class OpinionService(BaseService):
     """Service for expert opinion operations."""
 
     def get_opinions_for_project(
-        self, project_id: UUID, limit: int | None = None, offset: int = 0
+        self,
+        project_id: UUID,
+        limit: int | None = None,
+        offset: int = 0,
+        *,
+        assistant_viewer_id: UUID | None = None,
     ) -> list[OpinionWithUser]:
         """Get opinions for a project with user details.
 
@@ -25,6 +30,10 @@ class OpinionService(BaseService):
         :param limit: Max rows to return; ``None`` returns every opinion (the
             aggregation and export paths need to see all experts).
         :param offset: Rows to skip when a limit is set.
+        :param assistant_viewer_id: When set, the list is what the assistant may show
+            this user: opinions of users who objected to the assistant are left out,
+            except the viewer's own. The filter runs in SQL, before ``limit`` and
+            ``offset``, so pages stay full and consistent.
         :return: List of OpinionWithUser instances ordered by creation date
         """
         statement = (
@@ -33,6 +42,10 @@ class OpinionService(BaseService):
             .where(ExpertOpinion.project_id == project_id)
             .order_by(col(ExpertOpinion.created_at))
         )
+        if assistant_viewer_id is not None:
+            statement = statement.where(
+                or_(col(User.assistant_objection).is_(False), User.id == assistant_viewer_id)
+            )
         if limit is not None:
             statement = statement.limit(limit).offset(offset)
         results = self._session.exec(statement).all()

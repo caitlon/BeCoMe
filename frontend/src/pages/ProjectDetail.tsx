@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useAssistantProjectScope } from "@/components/assistant";
 import { NotFoundState } from "@/components/NotFoundState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -44,6 +45,7 @@ import {
   useOpinionForm,
 } from "@/components/project";
 import { api, HttpError } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { queryKeys } from "@/lib/queryKeys";
 import { Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -78,6 +80,8 @@ const ProjectDetail = () => {
   /* v8 ignore next -- defensive fallback: id always provided by route params */
   const projectId = id ?? "";
 
+  useAssistantProjectScope(id);
+
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId),
     queryFn: () => api.getProject(projectId),
@@ -98,30 +102,34 @@ const ProjectDetail = () => {
     queryFn: () => api.getMembers(projectId),
     enabled: !!id,
   });
+  // The invitation list is admin-only on the API; the role is unknown until the
+  // project resolves, so the query stays disabled until then.
+  const isAdmin = projectQuery.data?.role === "admin";
   const invitationsQuery = useQuery({
     queryKey: queryKeys.projectInvitations(projectId),
     queryFn: () =>
       api.getProjectInvitations(projectId).catch((error: unknown) => {
-        // Experts may not list invitations; treat forbidden as "none".
+        // The role can change after the project was read (e.g. ownership
+        // transferred); a forbidden response then means "none".
         if (error instanceof HttpError && error.status === 403) {
           return [] as ProjectInvitation[];
         }
         throw error;
       }),
-    enabled: !!id,
+    enabled: !!id && isAdmin,
   });
 
   const project = projectQuery.data ?? null;
   const opinions = opinionsQuery.data ?? [];
   const result = resultQuery.data ?? null;
   const members = membersQuery.data ?? [];
-  const pendingInvitations = invitationsQuery.data ?? [];
+  const pendingInvitations = isAdmin ? (invitationsQuery.data ?? []) : [];
   const isLoading =
     projectQuery.isPending ||
     opinionsQuery.isPending ||
     resultQuery.isPending ||
     membersQuery.isPending ||
-    invitationsQuery.isPending;
+    (isAdmin && invitationsQuery.isPending);
   // isLoadingError only: a failed background refetch keeps cached data on
   // screen and must not eject the user from the page.
   const hasLoadError =
@@ -147,7 +155,6 @@ const ProjectDetail = () => {
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
   const opinionForm = useOpinionForm(project, myOpinion);
   const otherOpinions = opinions.filter((o) => o.user_id !== user?.id);
-  const isAdmin = project?.role === "admin";
   const profileOpinion = profileMember
     ? opinions.find((o) => o.user_id === profileMember.user_id) ?? null
     : null;
@@ -170,7 +177,7 @@ const ProjectDetail = () => {
     onError: (error) => {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.saveFailed"),
+        description: describeError(error, tCommon, t("toast.saveFailed")),
         variant: "destructive",
       });
     },

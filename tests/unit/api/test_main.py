@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -65,7 +65,7 @@ class TestDocsExposure:
 
 
 class TestCorsExposedHeaders:
-    """The browser is allowed to read the CSRF token header off a cross-origin reply."""
+    """The browser is allowed to read the CSRF token and Retry-After headers cross-origin."""
 
     def test_csrf_token_header_is_readable_cross_origin(self, monkeypatch, tmp_path):
         """A cross-origin response names X-CSRF-Token in Access-Control-Expose-Headers.
@@ -95,6 +95,30 @@ class TestCorsExposedHeaders:
 
         assert response.status_code == 200
         assert "X-CSRF-Token" in response.headers["access-control-expose-headers"]
+
+    def test_retry_after_header_is_readable_cross_origin(self, monkeypatch, tmp_path):
+        """A cross-origin response names Retry-After in Access-Control-Expose-Headers.
+
+        The 429 answers carry the wait in that header, and the SPA's retry timer reads it;
+        a cross-origin script sees it only when CORS exposes it.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+            response = client.get("/api/v1/health", headers={"Origin": "https://app.example.com"})
+        finally:
+            get_settings.cache_clear()
+
+        assert "Retry-After" in response.headers["access-control-expose-headers"]
 
 
 class TestCorsAllowedHeaders:
@@ -248,7 +272,7 @@ class TestBotCheckStartupRecord:
 
 
 class TestAssistantRouterGating:
-    """The assistant router exists only when the local-only flag is on."""
+    """The assistant router exists only when the ASSISTANT_ENABLED flag is on."""
 
     def test_config_endpoint_is_absent_by_default(self, monkeypatch, tmp_path):
         """
@@ -283,13 +307,15 @@ class TestAssistantRouterGating:
         self, monkeypatch, tmp_path
     ):
         """
-        GIVEN the dev profile with the assistant switched on
+        GIVEN the dev profile with the assistant switched on and a signed-in user
         WHEN the app is built and its config endpoint is requested
         THEN it answers 200 with the answer model, mode, and collection
         """
         from fastapi.testclient import TestClient
 
+        from api.auth.dependencies import get_current_user
         from api.config import get_settings
+        from api.db.models import User
         from api.main import create_app
 
         # GIVEN
@@ -300,7 +326,11 @@ class TestAssistantRouterGating:
         monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
         get_settings.cache_clear()
         try:
-            client = TestClient(create_app())
+            app = create_app()
+            app.dependency_overrides[get_current_user] = lambda: User(
+                email="user@example.com", hashed_password="x", first_name="Test", last_name="User"
+            )
+            client = TestClient(app)
 
             # WHEN
             response = client.get("/api/v1/assistant/config")
@@ -314,6 +344,9 @@ class TestAssistantRouterGating:
             "model": "Qwen/Qwen3.5-9B",
             "mode": "workflow",
             "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
+            "answer_provider": "local",
+            "query_provider": "local",
+            "embedding_provider": "local",
         }
 
     @pytest.mark.parametrize(
@@ -376,7 +409,7 @@ class TestAssistantRouterGating:
 
 
 class TestAssistantExceptionHandlerGating:
-    """The assistant's error handlers exist only when the local-only flag is on."""
+    """The assistant's error handlers exist only when the ASSISTANT_ENABLED flag is on."""
 
     @pytest.fixture(autouse=True)
     def _clear_settings_cache_after(self):
@@ -415,6 +448,7 @@ class TestAssistantExceptionHandlerGating:
         # THEN
         registered = {exc.__name__ for exc in app.exception_handlers if isinstance(exc, type)}
         assert not registered & {
+            "AssistantBusyError",
             "AssistantRateLimitedError",
             "AssistantUnavailableError",
             "AssistantUpstreamError",
@@ -428,6 +462,7 @@ class TestAssistantExceptionHandlerGating:
                 429,
                 "Too many assistant messages. Please try again later.",
             ),
+            ("AssistantBusyError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUnavailableError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUpstreamError", 503, "The assistant is temporarily unavailable"),
         ],
@@ -448,8 +483,13 @@ class TestAssistantExceptionHandlerGating:
         app = self._build_app(monkeypatch, tmp_path, enabled=True)
         error = getattr(errors, error_name)
 
+        waits = error_name in {"AssistantRateLimitedError", "AssistantBusyError"}
+        extra: dict[str, object] = {"retry_after": 5} if waits else {}
+        if error_name == "AssistantBusyError":
+            extra["reason"] = "process"
+
         def boom() -> None:
-            raise error("internal detail that must not leak")
+            raise error("internal detail that must not leak", **extra)
 
         app.add_api_route("/__raise", boom)
         client = TestClient(app, raise_server_exceptions=False)
@@ -461,6 +501,7 @@ class TestAssistantExceptionHandlerGating:
         assert response.status_code == status_code
         assert "internal detail" not in response.text
         assert response.json() == {"detail": detail}
+        assert response.headers.get("Retry-After") == ("5" if waits else None)
 
 
 _ASSISTANT_LIBRARIES = (
@@ -556,9 +597,12 @@ class TestAssistantShutdown:
         get_settings.cache_clear()
 
     @staticmethod
-    def _run_app(monkeypatch, tmp_path, *, enabled: bool) -> tuple[MagicMock, list[int]]:
+    def _run_app(
+        monkeypatch, tmp_path, *, enabled: bool, shutdown_error: Exception | None = None
+    ) -> tuple[MagicMock, list[int]]:
         """Start and stop the app with the assistant switched as asked.
 
+        :param shutdown_error: What the tracing shutdown raises, if anything.
         :return: The mock standing in for the tracing shutdown, and the number of times it
             had been called while the app was running.
         """
@@ -576,7 +620,9 @@ class TestAssistantShutdown:
         with (
             patch("api.main.create_db_and_tables"),
             patch("api.main.warm_up_connection_pool"),
-            patch("api.assistant.agent.tracing.shutdown_tracing") as shutdown,
+            patch(
+                "api.assistant.agent.tracing.shutdown_tracing", side_effect=shutdown_error
+            ) as shutdown,
         ):
             app = create_app()
             with TestClient(app):
@@ -597,6 +643,56 @@ class TestAssistantShutdown:
         # THEN
         assert calls_while_running == [0]
         shutdown.assert_called_once_with()
+
+    def test_the_assistants_resources_are_closed_when_the_app_stops_with_it_on(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN the app starts and then stops
+        THEN its resources were closed once
+        """
+        # GIVEN
+        with patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close:
+            # WHEN
+            self._run_app(monkeypatch, tmp_path, enabled=True)
+
+        # THEN
+        close.assert_awaited_once_with()
+
+    def test_the_resources_are_closed_even_when_the_tracing_shutdown_fails(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on and a tracing shutdown that raises
+        WHEN the app starts and then stops
+        THEN the error still reaches the caller, and the assistant's resources were closed
+        """
+        # WHEN
+        with (
+            patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close,
+            pytest.raises(RuntimeError, match="flush failed"),
+        ):
+            self._run_app(
+                monkeypatch, tmp_path, enabled=True, shutdown_error=RuntimeError("flush failed")
+            )
+
+        # THEN
+        close.assert_awaited_once_with()
+
+    def test_no_resources_are_closed_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN the assistant switched off
+        WHEN the app starts and then stops
+        THEN nothing of the assistant was closed
+        """
+        # GIVEN
+        with patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close:
+            # WHEN
+            self._run_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        close.assert_not_awaited()
 
     def test_nothing_is_flushed_with_the_assistant_off(self, monkeypatch, tmp_path):
         """

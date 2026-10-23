@@ -74,7 +74,8 @@ class TestDeriveVerdict:
         # THEN
         assert isinstance(verdict, LikertVerdict)
         assert verdict.value == 75
-        assert verdict.decision
+        assert verdict.decision == "Rather agree"
+        assert verdict.recommendation == "Policy is recommended with minor adjustments"
 
     def test_follows_the_compromise_rather_than_the_project(self):
         """

@@ -1,9 +1,9 @@
 import { ReactNode } from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth, registerSignOutListener } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
 import { UnauthorizedError, ForbiddenError, ServerError, NetworkError } from '@/lib/errors'
@@ -158,6 +158,29 @@ describe('AuthContext', () => {
     })
 
     expect(result.current.status).toBe('authenticated')
+  })
+
+  it('setCurrentUser replaces the user without a request or a status change', async () => {
+    const mockUser = createUser({ id: '1', assistant_objection: false })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: AuthTestProviders,
+    })
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('authenticated')
+    })
+    vi.mocked(api.getCurrentUser).mockClear()
+
+    const updated = { ...mockUser, assistant_objection: true }
+    act(() => {
+      result.current.setCurrentUser(updated)
+    })
+
+    expect(result.current.user).toEqual(updated)
+    expect(result.current.status).toBe('authenticated')
+    expect(api.getCurrentUser).not.toHaveBeenCalled()
   })
 
   it('login calls api.login and refreshes user', async () => {
@@ -376,6 +399,190 @@ describe('AuthContext', () => {
         description: 'Your session has expired. Please sign in again.',
         variant: 'destructive',
       })
+    })
+  })
+
+  describe('registerSignOutListener', () => {
+    // Listeners live in a module-level set, so any a test leaves behind would fire in later tests.
+    const unsubscribers: Array<() => void> = []
+    const track = (unsubscribe: () => void) => unsubscribers.push(unsubscribe)
+
+    afterEach(() => {
+      unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe())
+    })
+
+    it('fires on logout', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const listener = vi.fn()
+      track(registerSignOutListener(listener))
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      expect(listener).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires when the session expires', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      const listener = vi.fn()
+      track(registerSignOutListener(listener))
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.calls[0][0]
+      act(() => {
+        onSessionExpired?.()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires when the session probe is refused with 401 or 403', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
+      const listener = vi.fn()
+      track(registerSignOutListener(listener))
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.status).toBe('unauthenticated')
+      })
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new ForbiddenError('nope'))
+      await act(async () => {
+        await result.current.refreshUser()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(2)
+    })
+
+    it('stays silent when the probe fails for a non-auth reason', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValue(new ServerError('boom'))
+      const listener = vi.fn()
+      track(registerSignOutListener(listener))
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.status).toBe('serviceUnavailable')
+      })
+
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('stops calling a listener once it is unsubscribed', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const listener = vi.fn()
+      registerSignOutListener(listener)()
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('keeps notifying the rest, and lets logout resolve, when one listener throws', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const throwing = vi.fn(() => {
+        throw new Error('listener blew up')
+      })
+      const healthy = vi.fn()
+      track(registerSignOutListener(throwing))
+      track(registerSignOutListener(healthy))
+
+      try {
+        const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+        await waitFor(() => {
+          expect(result.current.isAuthenticated).toBe(true)
+        })
+
+        await act(async () => {
+          await expect(result.current.logout()).resolves.toBeUndefined()
+        })
+
+        expect(throwing).toHaveBeenCalledTimes(1)
+        expect(healthy).toHaveBeenCalledTimes(1)
+        expect(result.current.status).toBe('unauthenticated')
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
+
+    it('logs a listener that throws a non-Error value by its string form', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      track(
+        registerSignOutListener(() => {
+          throw 'plain string failure'
+        })
+      )
+
+      try {
+        const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+        await waitFor(() => {
+          expect(result.current.isAuthenticated).toBe(true)
+        })
+
+        await act(async () => {
+          await result.current.logout()
+        })
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith('[ERROR] Sign-out listener failed', {
+          error: 'plain string failure',
+        })
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
+
+    it('notifies only after the query cache is cleared', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <I18nextProvider i18n={i18n}>
+            <AuthProvider>{children}</AuthProvider>
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+      let cacheSeenByListener: unknown = 'not called'
+      track(
+        registerSignOutListener(() => {
+          cacheSeenByListener = queryClient.getQueryData(['projects'])
+        })
+      )
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(cacheSeenByListener).toBeUndefined()
     })
   })
 })

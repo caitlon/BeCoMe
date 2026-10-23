@@ -45,6 +45,10 @@ class User(SQLModel, table=True):
     # are excluded from every lookup that resolves an email address, so nobody can
     # invite one into a real project or claim one through registration.
     is_demo: bool = Field(default=False)
+    # GDPR Art. 21 objection to the assistant reading this user's opinions on behalf
+    # of other project members. One flag for every project; the user's own assistant
+    # still sees their own rows.
+    assistant_objection: bool = Field(default=False)
 
     owned_projects: list["Project"] = Relationship(
         back_populates="admin",

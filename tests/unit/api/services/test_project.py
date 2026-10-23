@@ -6,7 +6,12 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import MemberRole, Project, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
+from api.exceptions import (
+    MemberNotFoundError,
+    ProjectNotFoundError,
+    ScaleExcludesOpinionsError,
+    ScaleRangeError,
+)
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 from api.services.project_service import ProjectService
@@ -207,6 +212,7 @@ class TestProjectServiceUpdateProject:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = project
+        mock_session.exec.return_value.first.return_value = None
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_min=10)  # Valid: 10 < 100
 
@@ -230,6 +236,7 @@ class TestProjectServiceUpdateProject:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = project
+        mock_session.exec.return_value.first.return_value = None
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_max=200)  # Valid: 0 < 200
 
@@ -239,6 +246,45 @@ class TestProjectServiceUpdateProject:
         # THEN
         assert result.scale_min == 0  # Unchanged
         assert result.scale_max == 200
+
+    def test_refuses_scale_that_excludes_opinions_and_applies_nothing(self):
+        """ScaleExcludesOpinionsError is raised before any field of the request is applied."""
+        # GIVEN a project with one opinion outside the requested scale
+        project_id = uuid4()
+        project = Project(
+            id=project_id,
+            name="Original",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        mock_session.exec.return_value.first.return_value = uuid4()
+        service = ProjectService(mock_session)
+        data = ProjectUpdate(name="Renamed", scale_max=50)
+
+        # WHEN/THEN
+        with pytest.raises(ScaleExcludesOpinionsError, match=r"outside the scale 0\.\.50\.0"):
+            service.update_project(project_id, data)
+        assert project.name == "Original"
+        assert project.scale_max == 100
+        mock_session.commit.assert_not_called()
+
+    def test_does_not_count_opinions_when_the_scale_is_untouched(self):
+        """A request without scale fields never queries the opinions."""
+        # GIVEN
+        project_id = uuid4()
+        project = Project(id=project_id, name="Test", admin_id=uuid4(), scale_min=0, scale_max=100)
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        service = ProjectService(mock_session)
+
+        # WHEN
+        service.update_project(project_id, ProjectUpdate(name="Renamed"))
+
+        # THEN
+        mock_session.exec.assert_not_called()
 
     def test_updates_scale_unit_only(self):
         """Only scale_unit is updated when provided."""

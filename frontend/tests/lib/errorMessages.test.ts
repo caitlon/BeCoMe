@@ -8,6 +8,17 @@ import {
   ForbiddenError,
   HttpError,
   TURNSTILE_REFUSED_CODE,
+  CSRF_INVALID_CODE,
+  INVITEE_NOT_FOUND_CODE,
+  ALREADY_INVITED_CODE,
+  ALREADY_MEMBER_CODE,
+  EXAMPLE_PROJECT_NOT_INVITABLE_CODE,
+  INVITATION_NOT_FOUND_CODE,
+  PHOTO_TYPE_NOT_ALLOWED_CODE,
+  PHOTO_TOO_LARGE_CODE,
+  PHOTO_CONTENT_MISMATCH_CODE,
+  PHOTO_UNREADABLE_CODE,
+  PHOTO_DIMENSIONS_TOO_LARGE_CODE,
 } from '@/lib/errors';
 
 // Identity translator: makes assertions read as "which key was picked",
@@ -66,6 +77,72 @@ describe('describeError', () => {
     );
     expect(describeError(refused, t, 'fallback')).toBe('errors.turnstileRefused');
   });
+
+  it.each([
+    [INVITEE_NOT_FOUND_CODE, 404, 'errors.inviteeNotFound'],
+    [ALREADY_INVITED_CODE, 409, 'errors.alreadyInvited'],
+    [ALREADY_MEMBER_CODE, 409, 'errors.alreadyMember'],
+    [EXAMPLE_PROJECT_NOT_INVITABLE_CODE, 409, 'errors.exampleProjectNotInvitable'],
+    [INVITATION_NOT_FOUND_CODE, 404, 'errors.invitationNotFound'],
+    [PHOTO_TYPE_NOT_ALLOWED_CODE, 400, 'errors.photoTypeNotAllowed'],
+    [PHOTO_TOO_LARGE_CODE, 400, 'errors.photoTooLarge'],
+    [PHOTO_CONTENT_MISMATCH_CODE, 400, 'errors.photoContentMismatch'],
+    [PHOTO_UNREADABLE_CODE, 400, 'errors.photoUnreadable'],
+    [PHOTO_DIMENSIONS_TOO_LARGE_CODE, 400, 'errors.photoDimensionsTooLarge'],
+    [CSRF_INVALID_CODE, 403, 'errors.sessionChanged'],
+  ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
+    expect(
+      describeError(new HttpError('English server detail', status, code), t, 'fallback')
+    ).toBe(key);
+  });
+
+  it('keeps the wire value of each refusal code in step with the API', () => {
+    expect([
+      INVITEE_NOT_FOUND_CODE,
+      ALREADY_INVITED_CODE,
+      ALREADY_MEMBER_CODE,
+      EXAMPLE_PROJECT_NOT_INVITABLE_CODE,
+      INVITATION_NOT_FOUND_CODE,
+      PHOTO_TYPE_NOT_ALLOWED_CODE,
+      PHOTO_TOO_LARGE_CODE,
+      PHOTO_CONTENT_MISMATCH_CODE,
+      PHOTO_UNREADABLE_CODE,
+      PHOTO_DIMENSIONS_TOO_LARGE_CODE,
+      CSRF_INVALID_CODE,
+    ]).toEqual([
+      'invitee_not_found',
+      'already_invited',
+      'already_member',
+      'example_project_not_invitable',
+      'invitation_not_found',
+      'photo_type_not_allowed',
+      'photo_too_large',
+      'photo_content_mismatch',
+      'photo_unreadable',
+      'photo_dimensions_too_large',
+      'csrf_invalid',
+    ]);
+  });
+
+  it('lets a service failure or rate limit win over a code carried by the same error', () => {
+    expect(
+      describeError(new ServerError('boom', 500, INVITEE_NOT_FOUND_CODE), t, 'fallback')
+    ).toBe('errors.serviceUnavailable');
+    expect(
+      describeError(
+        new RateLimitError('slow down', undefined, PHOTO_TOO_LARGE_CODE),
+        t,
+        'fallback'
+      )
+    ).toBe('errors.tooManyAttempts');
+  });
+
+  it.each(['something_else', 'constructor'])(
+    'keeps the server message for an HttpError whose code (%s) is not a known refusal',
+    (code) => {
+      expect(describeError(new HttpError('Conflict', 409, code), t, 'fallback')).toBe('Conflict');
+    }
+  );
 
   it('leaves a 403 with no code alone, so the unverified-account text still shows', () => {
     expect(describeError(new ForbiddenError('Email not verified'), t, 'fallback')).toBe(

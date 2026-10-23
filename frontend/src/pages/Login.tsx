@@ -19,6 +19,7 @@ import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { ForbiddenError, isTurnstileRefusal } from "@/lib/errors";
 import { isTurnstileRequired } from "@/lib/turnstile";
+import { buildEmailSchema, visibleEmailError } from "@/lib/validation";
 
 type LoginFormData = {
   email: string;
@@ -51,7 +52,7 @@ const Login = () => {
   const loginSchema = useMemo(
     () =>
       z.object({
-        email: z.email(t("validation.emailInvalid")),
+        email: buildEmailSchema(t),
         password: z.string().min(1, t("validation.passwordRequired")),
       }),
     [t]
@@ -60,7 +61,7 @@ const Login = () => {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitted },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     mode: "onTouched",
@@ -127,7 +128,7 @@ const Login = () => {
           type="email"
           autoComplete="email"
           placeholder={t("login.emailPlaceholder")}
-          error={errors.email}
+          error={visibleEmailError(errors.email, isSubmitted)}
           {...register("email")}
         />
 

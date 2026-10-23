@@ -34,6 +34,7 @@ class CachedUserData:
     photo_url: str | None
     created_at: datetime
     email_verified_at: datetime | None
+    assistant_objection: bool
 
     @classmethod
     def from_user(cls, user: User) -> CachedUserData:
@@ -50,6 +51,7 @@ class CachedUserData:
             photo_url=user.photo_url,
             created_at=user.created_at,
             email_verified_at=user.email_verified_at,
+            assistant_objection=user.assistant_objection,
         )
 
     def to_json(self) -> str:
@@ -70,6 +72,7 @@ class CachedUserData:
                     if self.email_verified_at is not None
                     else None
                 ),
+                "assistant_objection": self.assistant_objection,
             }
         )
 
@@ -101,6 +104,7 @@ class CachedUserData:
                     if email_verified_at is not None
                     else None
                 ),
+                assistant_objection=data["assistant_objection"],
             )
         except (KeyError, TypeError, AttributeError) as e:
             raise ValueError(f"invalid cached user data: {e}") from e
@@ -122,6 +126,7 @@ class CachedUserData:
             photo_url=self.photo_url,
             created_at=self.created_at,
             email_verified_at=self.email_verified_at,
+            assistant_objection=self.assistant_objection,
         )
 
 

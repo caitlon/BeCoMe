@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from api.data.example_project import EXAMPLE_EXPERTS
-from api.db.models import MemberRole, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember
 from api.services.project_membership_service import ProjectMembershipService
 from tests.integration.api.conftest import (
     app_session,
@@ -111,6 +111,32 @@ class TestCreateProject:
 
         # THEN
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_create_project_non_finite_scale_fails(self, client, field, literal):
+        """Project creation fails when a scale bound is NaN or infinite on the wire."""
+        # GIVEN
+        token = register_and_login(client)
+        bounds = {"scale_min": "0", "scale_max": "100", field: literal}
+        body = (
+            f'{{"name": "Non-finite", "scale_min": {bounds["scale_min"]}, '
+            f'"scale_max": {bounds["scale_max"]}}}'
+        )
+
+        # WHEN
+        response = client.post(
+            "/api/v1/projects",
+            content=body,
+            headers={**auth_header(token), "Content-Type": "application/json"},
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert any(
+            error["type"] == "finite_number" and error["loc"][-1] == field
+            for error in response.json()["detail"]
+        )
 
     def test_create_project_without_auth(self, client):
         """Project creation fails without authentication."""
@@ -359,6 +385,33 @@ class TestUpdateProject:
         # THEN
         assert response.status_code == 422
 
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_update_project_non_finite_scale_fails(self, client, field, literal):
+        """Update fails when a scale bound is NaN or infinite on the wire."""
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 0, "scale_max": 100},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            content=f'{{"{field}": {literal}}}',
+            headers={**auth_header(token), "Content-Type": "application/json"},
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert any(
+            error["type"] == "finite_number" and error["loc"][-1] == field
+            for error in response.json()["detail"]
+        )
+
     @pytest.mark.parametrize("field", ["name", "scale_min", "scale_max", "scale_unit"])
     def test_update_project_rejects_explicit_null(self, client, field):
         """An explicit null for a non-nullable column is refused, not crashed on.
@@ -544,6 +597,43 @@ class TestListMembers:
         )
         assert len(second.json()) == 1
         assert first.json()[0]["user_id"] != second.json()[0]["user_id"]
+
+    @staticmethod
+    def _emails_by_user(client, token, project_id):
+        response = client.get(f"/api/v1/projects/{project_id}/members", headers=auth_header(token))
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 2
+        assert all("email" in row for row in rows)
+        return {row["user_id"]: row["email"] for row in rows}
+
+    def test_list_members_admin_sees_every_email(self, client):
+        """The project admin gets the address of every member."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        _expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        emails = self._emails_by_user(client, owner, project["id"])
+
+        # THEN
+        assert sorted(emails.values()) == ["expert@example.com", "owner@example.com"]
+        assert expert_id in emails
+
+    def test_list_members_expert_sees_only_their_own_email(self, client):
+        """An expert gets null for the other members and their own address on their row."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        emails = self._emails_by_user(client, expert, project["id"])
+
+        # THEN
+        assert emails.pop(expert_id) == "expert@example.com"
+        assert list(emails.values()) == [None]
 
 
 class TestRemoveMember:
@@ -786,3 +876,138 @@ class TestTransferOwnership:
 
         # THEN
         assert response.status_code == 204
+
+
+class TestUpdateProjectScaleWithOpinions:
+    """A scale change on PATCH /api/v1/projects/{id} must keep every opinion inside it."""
+
+    @pytest.mark.parametrize(
+        "change",
+        [{"scale_max": 50.0}, {"scale_min": 50.0}, {"scale_min": 41.0, "scale_max": 79.0}],
+        ids=["max-below-upper-bound", "min-above-lower-bound", "both-ends-inside-the-opinion"],
+    )
+    def test_narrowing_past_an_opinion_is_refused(self, client, change):
+        """A new scale that would leave an opinion outside it answers 409 and changes nothing."""
+        # GIVEN a project on 0..100 with one opinion spanning 40..80
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin narrows the scale past that opinion
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json=change,
+            headers=auth_header(token),
+        )
+
+        # THEN the change is refused and the stored scale is unchanged
+        assert response.status_code == 409
+        assert response.json()["code"] == "scale_excludes_opinions"
+        project = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token)).json()
+        assert project["scale_min"] == 0.0
+        assert project["scale_max"] == 100.0
+
+    def test_a_refused_request_applies_none_of_its_fields(self, client):
+        """A refused scale change that also renames the project leaves the name alone."""
+        # GIVEN a project with one opinion reaching 80
+        token = register_and_login(client)
+        project_id = create_project(client, token, name="Original")["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin renames it and narrows the scale past the opinion in one request
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"name": "Renamed", "scale_max": 50.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the request is refused and the name is unchanged
+        assert response.status_code == 409
+        project = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token)).json()
+        assert project["name"] == "Original"
+
+    def test_narrowing_onto_the_opinion_bounds_keeps_the_result(self, client):
+        """A scale that still contains every opinion, bounds included, is accepted."""
+        # GIVEN a project on 0..100 with one opinion 40/60/80 and its calculated result
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+        result_url = f"/api/v1/projects/{project_id}/result"
+        before = client.get(result_url, headers=auth_header(token)).json()
+
+        # WHEN the admin narrows the scale to exactly 40..80
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"scale_min": 40.0, "scale_max": 80.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the scale is updated and the aggregation numbers are the same as before
+        assert response.status_code == 200
+        assert response.json()["scale_min"] == 40.0
+        assert response.json()["scale_max"] == 80.0
+        after = client.get(result_url, headers=auth_header(token)).json()
+        for field in ("best_compromise", "arithmetic_mean", "median"):
+            assert after[field] == before[field]
+
+    def test_widening_with_opinions_is_accepted(self, client):
+        """Widening the scale never excludes an opinion."""
+        # GIVEN a project on 0..100 with one opinion
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin widens the scale to -50..200
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"scale_min": -50.0, "scale_max": 200.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the change is applied
+        assert response.status_code == 200
+        assert response.json()["scale_min"] == -50.0
+        assert response.json()["scale_max"] == 200.0
+
+    def test_opinions_of_another_project_do_not_block_the_change(self, client):
+        """Only the edited project's own opinions are checked against its new scale."""
+        # GIVEN project B holding an opinion 40/60/80 and project A with none
+        token = register_and_login(client)
+        project_a = create_project(client, token, name="A")["id"]
+        project_b = create_project(client, token, name="B")["id"]
+        submit_opinion(client, token, project_b, 40.0, 60.0, 80.0)
+
+        # WHEN the admin narrows project A's scale below that opinion's upper bound
+        response = client.patch(
+            f"/api/v1/projects/{project_a}",
+            json={"scale_max": 50.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the change is applied
+        assert response.status_code == 200
+        assert response.json()["scale_max"] == 50.0
+
+    def test_echoing_an_unchanged_scale_with_a_rename_is_accepted(self, client):
+        """A project already holding out-of-range opinions still accepts an unchanged scale."""
+        # GIVEN a project whose stored scale 0..70 sits below an existing 40/60/80 opinion
+        token = register_and_login(client)
+        project = create_project(client, token, name="Original")
+        project_id = project["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+        with app_session(client) as session:
+            row = session.get(Project, UUID(project_id))
+            row.scale_max = 70.0
+            session.add(row)
+            session.commit()
+
+        # WHEN the admin renames it and sends the same scale back
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"name": "Renamed", "scale_min": 0.0, "scale_max": 70.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the request is accepted and the name is updated
+        assert response.status_code == 200
+        assert response.json()["name"] == "Renamed"

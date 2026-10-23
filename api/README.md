@@ -33,7 +33,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 
 ```text
 api/
-├── assistant/          # Local-only chat assistant (agent, RAG, model clients); see its README
+├── assistant/          # Chat assistant (agent, RAG, model clients); see its README
 ├── auth/               # Authentication & authorization
 │   ├── jwt.py              # Token creation/validation (rotation family / sid)
 │   ├── password.py         # Password hashing (bcrypt)
@@ -54,7 +54,7 @@ api/
 │   ├── body_size.py        # Request body size limit (413)
 │   ├── security_headers.py # Security response headers
 │   ├── request_logging.py  # Request/response logging + X-Request-ID
-│   └── exception_handlers.py  # Centralized errors + catch-all 500
+│   └── exception_handlers.py  # Centralized errors, request-validation 422, catch-all 500
 ├── routes/             # HTTP endpoints
 │   ├── auth.py             # /api/v1/auth/*
 │   ├── users.py            # /api/v1/users/*
@@ -62,7 +62,7 @@ api/
 │   ├── opinions.py         # /api/v1/projects/{id}/opinions
 │   ├── invitations.py      # /api/v1/invitations/*
 │   ├── calculate.py        # /api/v1/calculate
-│   ├── assistant.py        # /api/v1/assistant/* (local-only, registered when ASSISTANT_ENABLED)
+│   ├── assistant.py        # /api/v1/assistant/* (registered when ASSISTANT_ENABLED)
 │   └── health.py           # /api/v1/health
 ├── schemas/            # Pydantic DTOs
 │   ├── auth.py             # Login, register, tokens
@@ -98,11 +98,13 @@ api/
 
 ## API endpoints
 
-The sections below cover the routes of a deployed service. The assistant's two routes,
-`GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`, are not listed here. They exist
-only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
-so on a deployed service every request that reaches routing answers 404 for the whole
-`/api/v1/assistant` prefix. Their behavior is in the
+The sections below cover the routes of a deployed service. The assistant's three routes,
+`GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
+`POST /api/v1/assistant/chat/stream`, are not listed here. They exist
+only when `ASSISTANT_ENABLED=true`. Any Railway environment other than `dev`, `test` and `prod` refuses to start with that setting
+on, and a deployed service needs all three model roles set to `api`. A service that leaves
+it off answers 404 for the whole `/api/v1/assistant` prefix. All three routes need a signed-in
+session and answer 401 without one. Their behavior is in the
 [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ### Authentication
@@ -169,7 +171,8 @@ for why each branch behaves as it does.
 `/api/v1/auth`) plus a readable `csrf_token` cookie. The response body carries the same tokens,
 so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must send that value back
-in an `X-CSRF-Token` header. Bearer-header requests are exempt. `/auth/refresh` reads the
+in an `X-CSRF-Token` header; a missing or wrong value is a 403 with code `csrf_invalid`.
+Bearer-header requests are exempt. `/auth/refresh` reads the
 refresh token from the cookie or the body, and logout revokes the session and clears the
 cookies.
 
@@ -198,9 +201,9 @@ widened with a `Domain` instead, and for what this does not cover.
 |--------|----------|-------------|
 | GET | `/api/v1/users/me` | Get profile |
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
-| PUT | `/api/v1/users/me` | Update profile |
-| PUT | `/api/v1/users/me/password` | Change password |
-| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
+| PUT | `/api/v1/users/me` | Update profile: names and `assistant_objection` (GDPR Art. 21, see Opinions) |
+| PUT | `/api/v1/users/me/password` | Change password; a wrong `current_password` is a 400 with code `current_password_incorrect`, never a 401, which clients read as a lost session. A successful change signs out every session, this one included |
+| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB, 8192 px per side and about 16.8 megapixels in total); a refused file is a 400 with code `photo_type_not_allowed`, `photo_too_large`, `photo_content_mismatch`, `photo_unreadable` or `photo_dimensions_too_large` |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | GET | `/api/v1/users/{id}/photo` | Serve a profile photo from the private bucket (public) |
 | DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
@@ -240,13 +243,15 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects` | List user's projects |
 | POST | `/api/v1/projects` | Create project |
 | GET | `/api/v1/projects/{id}` | Get project details |
-| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422) |
+| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422; a scale change that would leave an existing opinion outside the new range is a 409 with code `scale_excludes_opinions`) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
-| POST | `/api/v1/projects/{id}/invite` | Invite user |
-| GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations |
+| POST | `/api/v1/projects/{id}/invite` | Invite user; refusals carry a code: 404 `invitee_not_found`, 409 `already_invited`, `already_member` or `example_project_not_invitable` |
+| GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
+
+The members list (`email`) and the opinions list (`user_email`) return an address only to the project admin and on the caller's own row; every other row has `null` in that field.
 
 ### Opinions
 
@@ -256,13 +261,18 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | POST | `/api/v1/projects/{id}/opinions` | Submit opinion |
 | DELETE | `/api/v1/projects/{id}/opinions` | Delete own opinion |
 
+`GET /api/v1/projects/{id}/opinions?for_assistant=true` is the list the assistant reads: it
+leaves out opinions of users whose profile has `assistant_objection` set, except the caller's
+own, and applies the filter before `limit` and `offset`. Without the parameter the list is
+complete and carries no objection flag. The flag is also part of the GDPR export's `profile`.
+
 ### Invitations
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/invitations` | List pending invitations |
-| POST | `/api/v1/invitations/{id}/accept` | Accept invitation |
-| POST | `/api/v1/invitations/{id}/decline` | Decline invitation |
+| POST | `/api/v1/invitations/{id}/accept` | Accept invitation; 404 `invitation_not_found` (missing and not yours look the same), 409 `already_member` or `example_project_not_invitable` |
+| POST | `/api/v1/invitations/{id}/decline` | Decline invitation; 404 `invitation_not_found` (missing and not yours look the same) |
 
 An invitation is not emailed. The invitee finds it in their list of pending invitations.
 
@@ -301,7 +311,7 @@ Environment variables (a `.env` file works too):
 | `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. On a developer machine the local assistant's hourly counter uses it too when it is set |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. The assistant's hourly counter uses it too when it is enabled and the variable is set |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
@@ -326,7 +336,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
-| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
+| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` on a Railway environment other than `dev`, `test` and `prod`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is

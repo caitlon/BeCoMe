@@ -43,6 +43,7 @@ vi.mock('@/pages/About', () => ({ default: () => <div data-testid="about" /> }))
 vi.mock('@/pages/Documentation', () => ({ default: () => <div data-testid="documentation" /> }));
 vi.mock('@/pages/FAQ', () => ({ default: () => <div data-testid="faq" /> }));
 vi.mock('@/pages/Privacy', () => ({ default: () => <div data-testid="privacy" /> }));
+vi.mock('@/pages/Terms', () => ({ default: () => <div data-testid="terms" /> }));
 vi.mock('@/pages/Onboarding', () => ({ default: () => <div data-testid="onboarding" /> }));
 vi.mock('@/pages/NotFound', () => ({ default: () => <div data-testid="not-found" /> }));
 
@@ -84,6 +85,7 @@ const unauthenticatedAuth = {
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 };
 
 const authenticatedAuth = {
@@ -97,11 +99,13 @@ const authenticatedAuth = {
     first_name: 'Test',
     last_name: null,
     photo_url: null,
+    assistant_objection: false,
     created_at: '2024-01-01T00:00:00Z',
   },
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 };
 
 describe('App - public routes', () => {
@@ -197,6 +201,15 @@ describe('App - public routes', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('privacy')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Terms page at /terms', async () => {
+    routeRef.value = '/terms';
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('terms')).toBeInTheDocument();
     });
   });
 

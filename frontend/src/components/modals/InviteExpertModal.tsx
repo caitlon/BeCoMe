@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { FormField, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
+import { buildEmailSchema, visibleEmailError } from "@/lib/validation";
 import { useToast } from "@/hooks/use-toast";
 
 type InviteFormData = {
@@ -35,6 +37,7 @@ export function InviteExpertModal({
   projectName,
 }: InviteExpertModalProps) {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -43,7 +46,11 @@ export function InviteExpertModal({
   const inviteSchema = useMemo(
     () =>
       z.object({
-        email: z.email(t("invite.validation.emailInvalid")),
+        email: buildEmailSchema(
+          t,
+          "invite.validation.emailInvalid",
+          "invite.validation.emailRequired"
+        ),
       }),
     [t]
   );
@@ -52,7 +59,7 @@ export function InviteExpertModal({
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitted },
   } = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
     mode: "onTouched",
@@ -78,8 +85,7 @@ export function InviteExpertModal({
     } catch (error) {
       toast({
         title: t("invite.errorTitle"),
-        description:
-          error instanceof Error ? error.message : t("invite.errorMessage"),
+        description: describeError(error, tCommon, t("invite.errorMessage")),
         variant: "destructive",
       });
     } finally {
@@ -142,7 +148,7 @@ export function InviteExpertModal({
             label={`${t("invite.email")} *`}
             type="email"
             placeholder={t("invite.emailPlaceholder")}
-            error={errors.email}
+            error={visibleEmailError(errors.email, isSubmitted)}
             {...register("email")}
           />
 

@@ -14,6 +14,7 @@ export function createUser(overrides: Partial<User> = {}): User {
     first_name: 'Test',
     last_name: 'User',
     photo_url: null,
+    assistant_objection: false,
     created_at: '2024-01-01T00:00:00Z',
     ...overrides,
   };

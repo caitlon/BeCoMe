@@ -111,6 +111,21 @@ describe('Register', () => {
     expect(getSubmitButton()).toBeInTheDocument();
   });
 
+  it('links the terms and the privacy notice under the submit button, with no consent checkbox', () => {
+    render(<Register />);
+
+    const terms = screen.getByRole('link', { name: /^Terms ?, opens in new tab$/ });
+    const privacy = screen.getByRole('link', { name: /^Privacy notice ?, opens in new tab$/ });
+
+    expect(terms).toHaveAttribute('href', '/terms');
+    expect(privacy).toHaveAttribute('href', '/privacy');
+    for (const link of [terms, privacy]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link.getAttribute('rel')).toContain('noopener');
+    }
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('sets autocomplete attributes so password managers fill the right field', () => {
     render(<Register />);
 
@@ -119,6 +134,28 @@ describe('Register', () => {
     expect(getConfirmPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
     expect(getFirstNameInput()).toHaveAttribute('autocomplete', 'given-name');
     expect(getLastNameInput()).toHaveAttribute('autocomplete', 'family-name');
+  });
+
+  it('asks for the email when the empty field is left on blur', async () => {
+    const user = userEvent.setup();
+    render(<Register />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText('Invalid email address')).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('shows validation error for an invalid email format', async () => {
+    const user = userEvent.setup();
+    render(<Register />);
+
+    await user.type(getEmailInput(), 'not-an-email');
+    await user.tab();
+
+    expect(await screen.findByText('Invalid email address')).toBeInTheDocument();
   });
 
   it('shows email requirements checklist when email entered', async () => {

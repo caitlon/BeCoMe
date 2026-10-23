@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
+import { HttpError } from '@/lib/errors';
 import Projects from '@/pages/Projects';
 import { createProjectWithRole, createInvitation } from '@tests/factories/project';
 
@@ -307,6 +309,16 @@ describe('Projects', () => {
       });
     });
 
+    it('shows the expert count on the invitation card', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ current_experts_count: 3 })]);
+
+      await openInvitationsTab();
+
+      await waitFor(() => {
+        expect(screen.getByText('3 experts')).toBeInTheDocument();
+      });
+    });
+
     it('renders the invited date through the shared formatDate helper', async () => {
       mockApi.getInvitations.mockResolvedValue([
         createInvitation({ invited_at: '2024-03-15T12:00:00Z' }),
@@ -439,6 +451,51 @@ describe('Projects', () => {
       });
     });
 
+    it.each([
+      ['accept', /accept/i, 'acceptInvitation'],
+      ['decline', /decline/i, 'declineInvitation'],
+    ] as const)(
+      'refetches the invitations after a failed %s',
+      async (_action, buttonName, apiMethod) => {
+        mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-stale' })]);
+        mockApi[apiMethod].mockRejectedValue(
+          new HttpError('Invitation not found', 404, 'invitation_not_found')
+        );
+
+        await openInvitationsTab();
+        const callsBefore = mockApi.getInvitations.mock.calls.length;
+        await screen.getByRole('button', { name: buttonName }).click();
+
+        await waitFor(() => {
+          expect(mockApi.getInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+      }
+    );
+
+    it('shows the Czech text, not the English API detail, when the invitation is gone', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-gone' })]);
+      mockApi.acceptInvitation.mockRejectedValue(
+        new HttpError('Invitation not found', 404, 'invitation_not_found')
+      );
+
+      await openInvitationsTab();
+      await i18n.changeLanguage('cs');
+      try {
+        await screen.getByRole('button', { name: 'Přijmout pozvánku' }).click();
+
+        await waitFor(() => {
+          expect(mockToast).toHaveBeenCalledWith(
+            expect.objectContaining({
+              description: 'Tato pozvánka už neexistuje.',
+              variant: 'destructive',
+            })
+          );
+        });
+      } finally {
+        await i18n.changeLanguage('en');
+      }
+    });
+
     it('shows error toast when decline invitation fails', async () => {
       mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-err2' })]);
       mockApi.declineInvitation.mockRejectedValue(new Error('Decline failed'));
@@ -515,12 +572,16 @@ describe('Projects', () => {
 
   describe('Dropdown Menu', () => {
     /** Render a project with given role, wait for load, and open its dropdown. */
-    async function openProjectDropdown(role: 'admin' | 'expert' = 'admin') {
+    async function openProjectDropdown(
+      role: 'admin' | 'expert' = 'admin',
+      isExample = false
+    ) {
       const user = userEvent.setup();
       const project = createProjectWithRole({
         id: 'proj-dd',
         name: 'Dropdown Project',
         role,
+        is_example: isExample,
       });
       mockApi.getProjects.mockResolvedValue([project]);
 
@@ -583,6 +644,29 @@ describe('Projects', () => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
         expect(screen.getByText(/invite an expert to/i)).toBeInTheDocument();
       });
+    });
+
+    it('disables Invite Expert on the example project and says why', async () => {
+      const user = await openProjectDropdown('admin', true);
+
+      const inviteItem = screen.getByRole('menuitem', { name: /invite expert/i });
+      expect(inviteItem).toHaveAttribute('aria-disabled', 'true');
+      expect(inviteItem).toHaveTextContent(/example project already has its thirteen experts/i);
+
+      await user.click(inviteItem);
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /delete project/i })).not.toHaveAttribute(
+        'aria-disabled'
+      );
+    });
+
+    it('keeps Invite Expert enabled on a regular admin project', async () => {
+      await openProjectDropdown('admin');
+
+      const inviteItem = screen.getByRole('menuitem', { name: /invite expert/i });
+      expect(inviteItem).not.toHaveAttribute('aria-disabled');
+      expect(inviteItem).not.toHaveTextContent(/example project/i);
     });
 
     it('clicking Delete opens DeleteConfirmModal', async () => {

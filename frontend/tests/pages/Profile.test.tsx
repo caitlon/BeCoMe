@@ -5,6 +5,7 @@ import { render, framerMotionMock } from '@tests/utils';
 import i18n from '@/i18n';
 import Profile from '@/pages/Profile';
 import { createUser } from '@tests/factories/user';
+import { HttpError } from '@/lib/errors';
 
 // Mock useNavigate
 const mockNavigate = vi.fn();
@@ -85,6 +86,14 @@ describe('Profile', () => {
     const nameElements = screen.getAllByText('John Doe');
     expect(nameElements.length).toBeGreaterThan(0);
     expect(screen.getByText('john@example.com')).toBeInTheDocument();
+  });
+
+  it('does not show the assistant privacy card in a build without the assistant', () => {
+    render(<Profile />);
+
+    expect(screen.getByText('Edit Profile')).toBeInTheDocument();
+    expect(screen.queryByText('Assistant Privacy')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('renders user initials in avatar', () => {
@@ -432,6 +441,37 @@ describe('Profile - Photo Upload', () => {
     });
   });
 
+  it('shows the Czech text, not the English API detail, when the image has too many pixels', async () => {
+    const user = userEvent.setup();
+    mockApi.uploadPhoto.mockRejectedValueOnce(
+      new HttpError('Image dimensions too large', 400, 'photo_dimensions_too_large')
+    );
+
+    render(<Profile />);
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
+    await act(async () => {
+      await i18n.changeLanguage('cs');
+    });
+
+    try {
+      await user.upload(fileInput, new File(['data'], 'pic.png', { type: 'image/png' }));
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description:
+              'Obrázek je příliš velký. Každá strana smí mít nejvýš 8192 pixelů a celý obrázek zhruba 16 megapixelů (například 4096 × 4096).',
+            variant: 'destructive',
+          })
+        );
+      });
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
   it('shows fallback error toast when upload throws non-Error', async () => {
     const user = userEvent.setup();
     mockApi.uploadPhoto.mockRejectedValueOnce('unknown');
@@ -644,6 +684,50 @@ describe('Profile - Password Change Success/Error', () => {
       expect((screen.getByLabelText('New Password') as HTMLInputElement).value).toBe('');
       expect((screen.getByLabelText('Confirm New Password') as HTMLInputElement).value).toBe('');
     });
+  });
+
+  it('explains the sign-out and re-checks the session after a successful change', async () => {
+    const user = userEvent.setup();
+    mockApi.changePassword.mockResolvedValueOnce({});
+
+    render(<Profile />);
+
+    await user.type(screen.getByLabelText('Current Password'), 'OldPassword1!@#');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1!@#');
+
+    await user.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    // The change revokes every session, this one included, so the toast says so and
+    // the session probe sends the user to sign in without a "Session expired" toast.
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Password updated',
+        description: expect.stringContaining('signed out'),
+      });
+    });
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('shows a wrong current password under its field, without a toast or a sign-out', async () => {
+    const user = userEvent.setup();
+    mockApi.changePassword.mockRejectedValueOnce(
+      new HttpError('Current password is incorrect', 400, 'current_password_incorrect')
+    );
+
+    render(<Profile />);
+
+    await user.type(screen.getByLabelText('Current Password'), 'OldPassword1!@#');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1!@#');
+
+    await user.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    expect(await screen.findByText('Current password is incorrect')).toBeInTheDocument();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockRefreshUser).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
   });
 
   it('shows error toast when password change API fails with Error', async () => {

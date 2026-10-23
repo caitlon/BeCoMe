@@ -6,15 +6,20 @@ requires only adding a new entry to EXCEPTION_MAP, not modifying route handlers.
 """
 
 import logging
+import math
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.auth.logging import log_login_failure, log_password_change_failure
 from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
+    AlreadyInvitedError,
     BeCoMeAPIError,
+    CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
     ExampleProjectInvitationError,
@@ -28,13 +33,20 @@ from api.exceptions import (
     MemberNotFoundError,
     NotFoundError,
     OpinionNotFoundError,
+    PhotoContentMismatchError,
+    PhotoDimensionsTooLargeError,
+    PhotoTooLargeError,
+    PhotoTypeNotAllowedError,
+    PhotoUnreadableError,
     ProjectNotFoundError,
     ResetTokenExpiredError,
+    ScaleExcludesOpinionsError,
     ScaleRangeError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
     UserAlreadyMemberError,
     UserExistsError,
+    UserNotFoundForInvitationError,
     ValidationError,
     ValuesOutOfRangeError,
     VerificationPasswordMismatchError,
@@ -78,6 +90,44 @@ TURNSTILE_REFUSED_DETAIL = "Could not confirm you are human. Reload the page and
 # presented, which part of the check failed, or whether an account exists.
 TURNSTILE_REFUSED_CODE = "turnstile_refused"
 
+# The machine-readable half of the 409 a scale change gets when an existing opinion would
+# fall outside the new range. PATCH /projects/{id} has no other 409, but a client acting on
+# this one (offer to widen the range, point at the opinions) should not have to match the
+# English sentence to tell it apart.
+SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
+
+# The machine-readable half of the 400 a password change gets when the current password is
+# wrong. It is a 400 and not a 401 because on an authenticated request a 401 means "no
+# session": the SPA refreshes the token, retries, and signs the user out. The session here
+# is fine, so the answer carries a code the form can show beside the field instead.
+CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105  # pragma: allowlist secret
+
+# The machine-readable halves of the invitation refusals, so the SPA can translate them by
+# code and the English sentence can be reworded without breaking a screen. One code per
+# exception, and each exception has exactly one status and sentence.
+INVITEE_NOT_FOUND_CODE = "invitee_not_found"
+ALREADY_INVITED_CODE = "already_invited"
+ALREADY_MEMBER_CODE = "already_member"
+EXAMPLE_PROJECT_NOT_INVITABLE_CODE = "example_project_not_invitable"
+# One code for a missing invitation and for one that belongs to someone else: they share a
+# body, so a code that told them apart would reopen the question that body closes.
+INVITATION_NOT_FOUND_CODE = "invitation_not_found"
+
+# The machine-readable halves of the five 400s a profile photo upload can get, one per check
+# that refuses the file, so the form can say what to change.
+PHOTO_TYPE_NOT_ALLOWED_CODE = "photo_type_not_allowed"
+PHOTO_TOO_LARGE_CODE = "photo_too_large"
+PHOTO_CONTENT_MISMATCH_CODE = "photo_content_mismatch"
+PHOTO_UNREADABLE_CODE = "photo_unreadable"
+PHOTO_DIMENSIONS_TOO_LARGE_CODE = "photo_dimensions_too_large"
+
+# The machine-readable half of the 403 the CSRF middleware sends. That answer is built in the
+# middleware, outside these handlers, so it takes the code from here and does not go through
+# ERROR_CODES. One value for both refusals (header absent, header wrong), as they share a body.
+# The SPA shows a "reload the page" message for it: the usual cause is a sign-in in another
+# tab, after which this tab still holds the token of the old session.
+CSRF_INVALID_CODE = "csrf_invalid"
+
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
 # None as detail means: use exception message
@@ -93,6 +143,9 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "You have not submitted an opinion for this project",
     ),
     InvitationNotFoundError: (status.HTTP_404_NOT_FOUND, "Invitation not found"),
+    # Fixed copy on purpose: the exception message names the address that was invited, and
+    # the response must not repeat it.
+    UserNotFoundForInvitationError: (status.HTTP_404_NOT_FOUND, "No user found with this email"),
     # 400 Bad Request
     InvitationExpiredError: (status.HTTP_400_BAD_REQUEST, "Invitation has expired"),
     InvitationAlreadyUsedError: (
@@ -122,6 +175,29 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_400_BAD_REQUEST,
         "We could not find that domain. Check for a typo.",
     ),
+    CurrentPasswordIncorrectError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Current password is incorrect",
+    ),
+    # Profile-photo upload refusals (POST /users/me/photo).
+    PhotoTypeNotAllowedError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+    ),
+    PhotoTooLargeError: (status.HTTP_400_BAD_REQUEST, "File too large. Maximum size is 5 MB"),
+    PhotoContentMismatchError: (
+        status.HTTP_400_BAD_REQUEST,
+        "File content does not match declared type",
+    ),
+    PhotoUnreadableError: (
+        status.HTTP_400_BAD_REQUEST,
+        "The image could not be read. Try saving it again as JPEG or PNG.",
+    ),
+    PhotoDimensionsTooLargeError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Image dimensions are too large. Maximum is 8192 pixels per side "
+        "and about 16.8 megapixels in total",
+    ),
     # 401 Unauthorized
     InvalidCredentialsError: (
         status.HTTP_401_UNAUTHORIZED,
@@ -145,13 +221,19 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "Cannot delete your account while you are the admin of one or more projects. "
         "Transfer ownership or delete those projects first.",
     ),
+    ScaleExcludesOpinionsError: (
+        status.HTTP_409_CONFLICT,
+        "Existing opinions fall outside the new scale. "
+        "Widen the range, or ask the experts to change their opinions first.",
+    ),
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (
         status.HTTP_409_CONFLICT,
         "You are already a member of this project",
     ),
-    # The invite route catches this itself so it can log the rejection; the entry here is
-    # what covers the accept route, which has no reason to log and no try/except.
+    AlreadyInvitedError: (status.HTTP_409_CONFLICT, "User already has a pending invitation"),
+    # The invite route catches this to log the rejection and re-raises it, so the invite and
+    # accept routes answer through this one entry.
     ExampleProjectInvitationError: (
         status.HTTP_409_CONFLICT,
         "The example project cannot take invitations",
@@ -179,6 +261,18 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
 # mistake for one of these - the omission is loud rather than silent.
 ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     TurnstileVerificationError: TURNSTILE_REFUSED_CODE,
+    ScaleExcludesOpinionsError: SCALE_EXCLUDES_OPINIONS_CODE,
+    CurrentPasswordIncorrectError: CURRENT_PASSWORD_INCORRECT_CODE,
+    UserNotFoundForInvitationError: INVITEE_NOT_FOUND_CODE,
+    AlreadyInvitedError: ALREADY_INVITED_CODE,
+    UserAlreadyMemberError: ALREADY_MEMBER_CODE,
+    ExampleProjectInvitationError: EXAMPLE_PROJECT_NOT_INVITABLE_CODE,
+    InvitationNotFoundError: INVITATION_NOT_FOUND_CODE,
+    PhotoTypeNotAllowedError: PHOTO_TYPE_NOT_ALLOWED_CODE,
+    PhotoTooLargeError: PHOTO_TOO_LARGE_CODE,
+    PhotoContentMismatchError: PHOTO_CONTENT_MISMATCH_CODE,
+    PhotoUnreadableError: PHOTO_UNREADABLE_CODE,
+    PhotoDimensionsTooLargeError: PHOTO_DIMENSIONS_TOO_LARGE_CODE,
 }
 
 # Default mappings for base exception classes
@@ -240,12 +334,12 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     headers = None
     if isinstance(exc, InvalidCredentialsError):
         headers = {"WWW-Authenticate": "Bearer"}
+        if exc.email:
+            log_login_failure(exc.email, exc.reason, request)
+    elif isinstance(exc, CurrentPasswordIncorrectError):
         # A wrong current password is a distinct security event from a failed
         # login, so it does not pollute brute-force alerting on login_failure.
-        if exc.reason == "invalid_current_password":
-            log_password_change_failure(request)
-        elif exc.email:
-            log_login_failure(exc.email, exc.reason, request)
+        log_password_change_failure(request)
 
     content: dict[str, str] = {"detail": detail}
     code = ERROR_CODES.get(type(exc))
@@ -310,6 +404,27 @@ def revocation_store_unavailable_handler(request: Request, exc: Exception) -> JS
     )
 
 
+def _finite_or_str(value: float) -> float | str:
+    """Return a finite float unchanged and the string form of ``nan``, ``inf`` or ``-inf``."""
+    return value if math.isfinite(value) else str(value)
+
+
+def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return 422 for a failed request validation, in FastAPI's default body shape.
+
+    ``JSONResponse`` cannot render a non-finite float, and Pydantic echoes the rejected
+    input back in the error, so the default handler turned a rejected NaN into a 500.
+
+    :param request: FastAPI request
+    :param exc: The request validation error
+    :return: 422 JSON response with ``{"detail": [...]}``, non-finite inputs as strings
+    """
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": jsonable_encoder(exc.errors(), custom_encoder={float: _finite_or_str})},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all exception handlers with the FastAPI app.
 
@@ -318,5 +433,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     :param app: FastAPI application instance
     """
     app.add_exception_handler(BeCoMeAPIError, become_api_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RevocationStoreError, revocation_store_unavailable_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

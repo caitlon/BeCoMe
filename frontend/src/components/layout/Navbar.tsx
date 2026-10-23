@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AssistantHeaderSlot } from "@/components/assistant";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
@@ -17,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { CSRF_INVALID_CODE, HttpError } from "@/lib/errors";
 
 export function Navbar() {
   const { t } = useTranslation();
@@ -39,14 +41,17 @@ export function Navbar() {
   const handleLogout = async () => {
     try {
       await logout();
-    } catch {
+    } catch (err) {
       // The local session is already cleared at this point (AuthContext's job);
       // only the server-side revoke failed. Stay on the page instead of
-      // navigating home, so the user knows to try again rather than seeing what
+      // navigating home, so the user knows what happened rather than seeing what
       // looks like a normal sign-out while the session may still be alive.
+      // A CSRF refusal means another tab replaced this session: retrying cannot
+      // help, a reload picks up the current one.
+      const sessionReplaced = err instanceof HttpError && err.code === CSRF_INVALID_CODE;
       toast({
         title: t("errors.logoutFailedTitle"),
-        description: t("errors.logoutFailed"),
+        description: t(sessionReplaced ? "errors.sessionChanged" : "errors.logoutFailed"),
         variant: "destructive",
       });
       return;
@@ -170,12 +175,14 @@ export function Navbar() {
             </>
           )}
 
+          <AssistantHeaderSlot />
           <LanguageSwitcher />
           <ThemeToggle />
         </div>
 
         {/* Mobile Menu Button */}
         <div className="xl:hidden flex items-center gap-2">
+          <AssistantHeaderSlot />
           <LanguageSwitcher />
           <ThemeToggle />
           {!isAuthPage && (

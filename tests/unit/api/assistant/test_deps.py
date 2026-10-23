@@ -2,10 +2,11 @@
 
 import logging
 import threading
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -15,13 +16,25 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-from api.assistant import deps
+from api.assistant import deps, rate_limit
 from api.assistant.agent.context import AssistantContext
-from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
+from api.assistant.errors import (
+    AssistantBusyError,
+    AssistantRateLimitedError,
+    AssistantUnavailableError,
+)
+from api.assistant.rag.models import make_answer_model, make_chat_model
 from api.assistant.rag.retrieval import RetrievalConfig
+from api.assistant.rag.store import CollectionUnavailableError
+from api.assistant.rate_limit import (
+    GLOBAL_KEY,
+    get_assistant_global_throttle,
+    get_assistant_throttle,
+)
 from api.config import Settings
 from api.exceptions import ValidationError
 from api.schemas.assistant import AssistantChatRequest
+from tests.shared.assistant_fakes import tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -43,6 +56,11 @@ def _settings(**overrides: Any) -> Settings:
         "assistant_vector_db_url": "postgresql+psycopg://x@127.0.0.1:1/x",
     }
     return Settings(**{**fields, **overrides})
+
+
+def _engine() -> MagicMock:
+    """Stand in for a PGEngine whose close is awaitable."""
+    return MagicMock(name="engine", close=AsyncMock())
 
 
 def _request(client_host: str = "203.0.113.5") -> Request:
@@ -160,8 +178,8 @@ class TestGetDocsRetriever:
         """
         GIVEN settings naming a vector database and a collection
         WHEN the retriever is built
-        THEN the engine is made from that URL and the store opened on that collection with
-             the embeddings client
+        THEN the engine is made from that URL, capped at 30 seconds a statement, and the
+             store opened on that collection with the embeddings client
         """
         # GIVEN
         settings = _settings(assistant_collection="some_collection")
@@ -170,7 +188,9 @@ class TestGetDocsRetriever:
         built = self._build(settings)
 
         # THEN
-        built.make_engine.assert_called_once_with(settings.assistant_vector_db_url)
+        built.make_engine.assert_called_once_with(
+            settings.assistant_vector_db_url, statement_timeout_ms=30000
+        )
         built.open_store.assert_called_once_with(
             built.make_engine.return_value,
             "some_collection",
@@ -300,6 +320,147 @@ class TestClearCaches:
         assert all(new is not old for new, old in zip(after, before, strict=True))
 
 
+def _chat_model() -> MagicMock:
+    """Stand in for a ChatOpenAI whose two root clients close."""
+    return MagicMock(name="chat_model", root_async_client=AsyncMock(), root_client=MagicMock())
+
+
+class TestCloseAssistantResources:
+    """Shutdown closes what was built, builds nothing, and one failure stops nobody."""
+
+    @staticmethod
+    def _build_everything(
+        engine: MagicMock, answer: MagicMock, query: MagicMock
+    ) -> tuple[MagicMock, MagicMock]:
+        """Build the models, the retriever and both Redis-backed throttles.
+
+        :return: The Redis clients of the per-user throttle and of the global one.
+        """
+        user_client = MagicMock(name="user_redis_client")
+        global_client = MagicMock(name="global_redis_client")
+        settings = _settings(redis_url="redis://cache:6379/0")
+        with (
+            patch.object(deps, "get_settings", return_value=settings),
+            patch.object(deps, "make_answer_model", return_value=answer),
+            patch.object(deps, "make_chat_model", return_value=query),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "open_store"),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "DocsRetriever", side_effect=lambda **_: MagicMock()),
+            patch.object(rate_limit, "get_settings", return_value=settings),
+            patch.object(rate_limit.redis, "from_url", side_effect=[user_client, global_client]),
+        ):
+            deps.get_answer_model()
+            deps.get_query_model()
+            deps.get_docs_retriever()
+            get_assistant_throttle()
+            get_assistant_global_throttle()
+        return user_client, global_client
+
+    @pytest.fixture(autouse=True)
+    def _fresh_throttles(self):
+        get_assistant_throttle.cache_clear()
+        get_assistant_global_throttle.cache_clear()
+        yield
+        get_assistant_throttle.cache_clear()
+        get_assistant_global_throttle.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_it_closes_every_resource_that_was_built(self):
+        """
+        GIVEN both models, the retriever and both throttles built
+        WHEN the resources are closed
+        THEN the engine, each model's two clients and each throttle's Redis client are closed,
+             and the caches are empty afterwards
+        """
+        # GIVEN
+        engine, answer, query = _engine(), _chat_model(), _chat_model()
+        user_client, global_client = self._build_everything(engine, answer, query)
+
+        # WHEN
+        await deps.close_assistant_resources()
+
+        # THEN
+        engine.close.assert_awaited_once()
+        for model in (answer, query):
+            model.root_async_client.close.assert_awaited_once()
+            model.root_client.close.assert_called_once_with()
+        user_client.close.assert_called_once_with()
+        global_client.close.assert_called_once_with()
+        assert deps.get_answer_model.cache_info().currsize == 0
+        assert get_assistant_throttle.cache_info().currsize == 0
+        assert get_assistant_global_throttle.cache_info().currsize == 0
+        assert deps._docs_resources is None
+
+    @pytest.mark.parametrize("factory", [make_chat_model, make_answer_model])
+    def test_the_real_chat_models_expose_the_clients_that_shutdown_closes(self, factory):
+        """
+        GIVEN a chat model built by the real factory, which makes no network call
+        WHEN its two root clients are looked up by the names shutdown uses
+        THEN both exist and can be closed, so a renamed attribute in a later langchain-openai
+             fails here and does not leak silently
+        """
+        # WHEN
+        model = factory(_settings())
+
+        # THEN
+        for attribute in ("root_async_client", "root_client"):
+            assert callable(getattr(getattr(model, attribute, None), "close", None)), attribute
+
+    @pytest.mark.asyncio
+    async def test_it_builds_nothing_that_was_never_built(self):
+        """
+        GIVEN a process that built none of the resources
+        WHEN the resources are closed
+        THEN no model, engine or Redis client is made
+        """
+        # WHEN
+        with (
+            patch.object(deps, "make_answer_model") as make_answer,
+            patch.object(deps, "make_chat_model") as make_chat,
+            patch.object(deps, "make_engine") as make_engine,
+            patch.object(rate_limit.redis, "from_url") as from_url,
+        ):
+            await deps.close_assistant_resources()
+
+        # THEN
+        for factory in (make_answer, make_chat, make_engine, from_url):
+            factory.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_close_is_logged_and_the_rest_still_close(self):
+        """
+        GIVEN resources built, an engine whose close fails and an answer model whose async
+            client fails
+        WHEN the resources are closed
+        THEN every other resource is still closed, and each failure leaves one warning with the
+             resource and the error class only, never the error's text
+        """
+        # GIVEN
+        engine, answer, query = _engine(), _chat_model(), _chat_model()
+        engine.close.side_effect = ConnectionError("down at secret-host")
+        answer.root_async_client.close.side_effect = RuntimeError("secret-host")
+        user_client, global_client = self._build_everything(engine, answer, query)
+
+        # WHEN
+        with captured_log_records("api.assistant.deps") as records:
+            await deps.close_assistant_resources()
+
+        # THEN
+        assert [(r.event, r.resource, r.reason) for r in records] == [
+            ("assistant_shutdown_close_failed", "docs_engine", "ConnectionError"),
+            ("assistant_shutdown_close_failed", "answer_model_async_client", "RuntimeError"),
+        ]
+        assert not any(
+            "secret-host" in str(value) for record in records for value in vars(record).values()
+        )
+        answer.root_client.close.assert_called_once_with()
+        query.root_async_client.close.assert_awaited_once()
+        query.root_client.close.assert_called_once_with()
+        user_client.close.assert_called_once_with()
+        global_client.close.assert_called_once_with()
+
+
 class TestGetAssistantService:
     """The service is built per request from the settings and the answer model."""
 
@@ -322,25 +483,37 @@ class TestGetAssistantService:
         assert service is service_cls.return_value
 
 
+def _open_ceiling() -> MagicMock:
+    """Return a global throttle that allows every message."""
+    ceiling = MagicMock()
+    ceiling.hit_key.return_value = True
+    return ceiling
+
+
 class TestEnforceMessageLimit:
-    """The hourly cap is spent through the throttle, off the event loop."""
+    """The hourly caps are spent through the throttles, off the event loop."""
 
     @pytest.mark.asyncio
     async def test_a_message_within_budget_passes(self):
         """
         GIVEN a throttle that allows the message
         WHEN the limit dependency runs
-        THEN it returns and the throttle was asked about that user
+        THEN it returns the checked request it was given and the throttle was asked about
+             that user
         """
         # GIVEN
         throttle = MagicMock()
         throttle.hit.return_value = True
         user = MagicMock(id=uuid4())
+        data = MagicMock()
 
         # WHEN
-        await deps.enforce_message_limit(user, throttle)
+        returned = await deps.enforce_message_limit(
+            user, throttle, _open_ceiling(), data=data, retriever=MagicMock()
+        )
 
         # THEN
+        assert returned is data
         throttle.hit.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
@@ -348,15 +521,21 @@ class TestEnforceMessageLimit:
         """
         GIVEN a throttle that refuses the message
         WHEN the limit dependency runs
-        THEN AssistantRateLimitedError is raised
+        THEN AssistantRateLimitedError is raised carrying the seconds the throttle reports
         """
         # GIVEN
         throttle = MagicMock()
         throttle.hit.return_value = False
+        throttle.retry_after.return_value = 1234
+        user = MagicMock(id=uuid4())
 
         # WHEN/THEN
-        with pytest.raises(AssistantRateLimitedError):
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle)
+        with pytest.raises(AssistantRateLimitedError) as caught:
+            await deps.enforce_message_limit(
+                user, throttle, _open_ceiling(), data=MagicMock(), retriever=MagicMock()
+            )
+        assert caught.value.retry_after == 1234
+        throttle.retry_after.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
     async def test_the_throttle_runs_in_a_worker_thread(self):
@@ -375,11 +554,388 @@ class TestEnforceMessageLimit:
                 return True
 
         # WHEN
-        await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle())
+        await deps.enforce_message_limit(
+            MagicMock(id=uuid4()),
+            _Throttle(),
+            _open_ceiling(),
+            data=MagicMock(),
+            retriever=MagicMock(),
+        )
 
         # THEN
         assert threads
         assert threads[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_retry_after_runs_in_a_worker_thread(self):
+        """
+        GIVEN a refusing throttle that records the thread retry_after is called on
+        WHEN the limit dependency runs on the event loop
+        THEN retry_after ran on another thread, so a Redis round trip cannot stall the loop
+        """
+        # GIVEN
+        threads: list[int] = []
+
+        class _Throttle:
+            def hit(self, user_id: UUID) -> bool:
+                return False
+
+            def retry_after(self, user_id: UUID) -> int:
+                threads.append(threading.get_ident())
+                return 5
+
+        # WHEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                _Throttle(),
+                _open_ceiling(),
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
+
+        # THEN
+        assert threads
+        assert threads[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_the_global_ceiling_is_spent_under_its_own_key_after_the_users_budget(self):
+        """
+        GIVEN a user within budget and a global throttle that allows the message
+        WHEN the limit dependency runs
+        THEN the user's budget was hit once and the ceiling once, under the global key
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = True
+        ceiling = _open_ceiling()
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        await deps.enforce_message_limit(
+            user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+        )
+
+        # THEN
+        throttle.hit.assert_called_once_with(user.id)
+        ceiling.hit_key.assert_called_once_with(GLOBAL_KEY)
+
+    @pytest.mark.asyncio
+    async def test_a_spent_user_budget_leaves_the_global_ceiling_untouched(self):
+        """
+        GIVEN a user whose own budget is spent
+        WHEN the limit dependency runs
+        THEN the 429 is raised and the global ceiling was never hit, so an account with a
+             spent budget cannot drain the shared one
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = False
+        throttle.retry_after.return_value = 60
+        ceiling = _open_ceiling()
+
+        # WHEN/THEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+        assert ceiling.mock_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_reached_ceiling_raises_busy_with_the_seconds_until_its_window_closes(self):
+        """
+        GIVEN a user within budget and a global ceiling that is reached
+        WHEN the limit dependency runs
+        THEN AssistantBusyError is raised for the global reason, carrying the seconds the
+             ceiling reports under the global key
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = True
+        ceiling = MagicMock()
+        ceiling.hit_key.return_value = False
+        ceiling.retry_after_key.return_value = 1800
+
+        # WHEN/THEN
+        with pytest.raises(AssistantBusyError) as caught:
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+        assert caught.value.reason == "global"
+        assert caught.value.retry_after == 1800
+        ceiling.retry_after_key.assert_called_once_with(GLOBAL_KEY)
+
+    @pytest.mark.asyncio
+    async def test_the_ceiling_runs_in_a_worker_thread(self):
+        """
+        GIVEN a refusing global throttle that records the threads it is called on
+        WHEN the limit dependency runs on the event loop
+        THEN hit_key and retry_after_key both ran on another thread
+        """
+        # GIVEN
+        threads: list[int] = []
+
+        class _Ceiling:
+            def hit_key(self, key: str) -> bool:
+                threads.append(threading.get_ident())
+                return False
+
+            def retry_after_key(self, key: str) -> int:
+                threads.append(threading.get_ident())
+                return 5
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                MagicMock(hit=MagicMock(return_value=True)),
+                _Ceiling(),
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
+
+        # THEN
+        assert len(threads) == 2
+        assert threading.get_ident() not in threads
+
+
+class TestTurnSlots:
+    """The slot table counts turns in the process and per user, and never waits."""
+
+    def test_turns_within_both_caps_are_admitted(self):
+        """
+        GIVEN a table of three slots with two allowed per user
+        WHEN two users take a slot each
+        THEN both are admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=3, max_per_user=2)
+
+        # WHEN/THEN
+        assert slots.acquire(uuid4()) is None
+        assert slots.acquire(uuid4()) is None
+
+    def test_a_full_process_refuses_whoever_asks(self):
+        """
+        GIVEN a table of two slots, both taken by different users
+        WHEN a third user asks
+        THEN the refusal names the process cap
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=2, max_per_user=2)
+        slots.acquire(uuid4())
+        slots.acquire(uuid4())
+
+        # WHEN/THEN
+        assert slots.acquire(uuid4()) == "process"
+
+    def test_one_user_cannot_hold_more_than_their_share_while_others_get_in(self):
+        """
+        GIVEN a table of four slots with two allowed per user, and one user holding two
+        WHEN that user asks again, then another user asks
+        THEN the first is refused with the user cap and the second is admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=4, max_per_user=2)
+        greedy = uuid4()
+        slots.acquire(greedy)
+        slots.acquire(greedy)
+
+        # WHEN/THEN
+        assert slots.acquire(greedy) == "user"
+        assert slots.acquire(uuid4()) is None
+
+    def test_a_refusal_takes_nothing(self):
+        """
+        GIVEN a table of one slot that is taken
+        WHEN a refused turn asks and the holder then releases
+        THEN the slot is free again, so the refusal had not counted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        holder = uuid4()
+        slots.acquire(holder)
+        assert slots.acquire(uuid4()) == "process"
+
+        # WHEN
+        slots.release(holder)
+
+        # THEN
+        assert slots.acquire(uuid4()) is None
+
+    def test_release_frees_the_process_slot_and_the_users_share(self):
+        """
+        GIVEN a user who reached their cap of one
+        WHEN they release and ask again
+        THEN they are admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=5, max_per_user=1)
+        user = uuid4()
+        slots.acquire(user)
+        assert slots.acquire(user) == "user"
+
+        # WHEN
+        slots.release(user)
+
+        # THEN
+        assert slots.acquire(user) is None
+
+    def test_a_users_entry_is_dropped_when_it_reaches_zero(self):
+        """
+        GIVEN two users holding one slot each
+        WHEN both release
+        THEN the table keeps no entry for either, so it does not grow with the users it has seen
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=5, max_per_user=2)
+        first, second = uuid4(), uuid4()
+        slots.acquire(first)
+        slots.acquire(second)
+
+        # WHEN
+        slots.release(first)
+        slots.release(second)
+
+        # THEN
+        assert slots.holders == {}
+
+    def test_releasing_a_slot_never_taken_changes_nothing(self):
+        """
+        GIVEN a table of two slots with one held by another user
+        WHEN a user who holds none releases
+        THEN nothing is raised, no entry appears, and the process still has exactly one slot
+             free, so the total was not corrupted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=2, max_per_user=2)
+        holder = uuid4()
+        slots.acquire(holder)
+
+        # WHEN
+        slots.release(uuid4())
+
+        # THEN
+        assert slots.holders == {holder: 1}
+        assert slots.acquire(uuid4()) is None
+        assert slots.acquire(uuid4()) == "process"
+
+    def test_it_is_sized_from_settings_and_rebuilt_after_clear_caches(self):
+        """
+        GIVEN a cap of three turns in the settings
+        WHEN the cached table is asked for twice, and again after clear_caches
+        THEN the first two are the same object sized from the settings, and the third is new
+        """
+        # GIVEN
+        settings = _settings(assistant_max_concurrent_turns=3)
+        with patch.object(deps, "get_settings", return_value=settings):
+            # WHEN
+            first = deps.get_turn_slots()
+            second = deps.get_turn_slots()
+            deps.clear_caches()
+            third = deps.get_turn_slots()
+
+        # THEN
+        assert first is second
+        assert first.max_total == 3
+        assert first.max_per_user == deps.MAX_TURNS_PER_USER
+        assert third is not first
+
+
+class TestHoldTurnSlot:
+    """The dependency holds a slot for the turn and refuses at once when none is free."""
+
+    @pytest.fixture
+    def records(self):
+        with captured_log_records("api.assistant.deps") as captured:
+            yield captured
+
+    @pytest.mark.asyncio
+    async def test_the_slot_is_held_inside_and_released_after_a_normal_exit(self):
+        """
+        GIVEN a table of one slot
+        WHEN the dependency runs and the response completes
+        THEN the slot was taken while it ran, and is free after
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+            held = slots.acquire(uuid4())
+
+        # THEN
+        assert held == "process"
+        assert slots.acquire(uuid4()) is None
+
+    @pytest.mark.asyncio
+    async def test_the_slot_is_released_when_the_turn_raises(self):
+        """
+        GIVEN a table of one slot
+        WHEN the turn raises inside the dependency
+        THEN the error goes on and the slot is free again
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="turn failed"):
+            async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+                raise RuntimeError("turn failed")
+
+        # THEN
+        assert slots.holders == {}
+        assert slots.acquire(uuid4()) is None
+
+    @pytest.mark.asyncio
+    async def test_a_full_process_is_refused_with_the_wait_and_the_reason_and_no_record(
+        self, records
+    ):
+        """
+        GIVEN a table of one slot that another user holds
+        WHEN the dependency runs
+        THEN AssistantBusyError carries the retry wait and the process reason, the holder's slot
+             is untouched, and the dependency writes no record: the handler writes the one
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        holder = uuid4()
+        slots.acquire(holder)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        with pytest.raises(AssistantBusyError) as caught:
+            async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+                pytest.fail("a refused turn must not run")
+
+        # THEN
+        assert caught.value.retry_after == deps.TURN_SLOT_RETRY_SECONDS == 5
+        assert caught.value.reason == "process"
+        assert slots.holders == {holder: 1}
+        assert records == []
+
+    @pytest.mark.asyncio
+    async def test_a_user_at_their_share_is_refused_while_the_process_has_room(self):
+        """
+        GIVEN a table of ten slots and a user already holding their two
+        WHEN the dependency runs for that user, and then for another
+        THEN the first is refused with the user reason, and the second runs
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=10, max_per_user=2)
+        greedy = MagicMock(id=uuid4())
+        slots.acquire(greedy.id)
+        slots.acquire(greedy.id)
+
+        # WHEN/THEN
+        with pytest.raises(AssistantBusyError) as caught:
+            async with asynccontextmanager(deps.hold_turn_slot)(greedy, slots):
+                pytest.fail("a refused turn must not run")
+        async with asynccontextmanager(deps.hold_turn_slot)(MagicMock(id=uuid4()), slots):
+            pass
+        assert caught.value.reason == "user"
 
 
 class _FakeClient:
@@ -560,30 +1116,43 @@ class TestBuildFailures:
             yield captured
 
     @pytest.mark.parametrize(
-        "failure",
+        ("failure", "role"),
         [
-            OperationalError("SELECT 1", {}, Exception("connection refused by secret-host")),
-            ConnectionRefusedError("secret-host refused"),
-            openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
+            (
+                OperationalError("SELECT 1", {}, Exception("connection refused by secret-host")),
+                "vector_db",
+            ),
+            (ConnectionRefusedError("secret-host refused"), "vector_db"),
+            (
+                tagged(
+                    openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
+                    "query",
+                ),
+                "query",
+            ),
+            (CollectionUnavailableError("collection 'secret_table' cannot be opened"), "vector_db"),
         ],
         ids=lambda e: type(e).__name__,
     )
     def test_the_retriever_being_built_against_a_down_backend_is_unavailable(
-        self, failure, records
+        self, failure, role, records
     ):
         """
         GIVEN a store that cannot be opened because its backend is down
         WHEN the retriever is requested
-        THEN AssistantUnavailableError is raised and one warning records the event, the mode
-             and the error class, never the error's text
+        THEN AssistantUnavailableError is raised, the engine's pool is closed, and one
+             warning records the event, the mode, the error class and the role of the
+             server (the document index unless the error was tagged at another source),
+             never the error's text
         """
         # GIVEN
         settings = _settings()
+        engine = _engine()
 
         # WHEN
         with (
             patch.object(deps, "get_settings", return_value=settings),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", return_value=engine),
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "open_store", side_effect=failure),
             pytest.raises(AssistantUnavailableError),
@@ -591,6 +1160,7 @@ class TestBuildFailures:
             deps.get_docs_retriever()
 
         # THEN
+        engine.close.assert_awaited_once()
         (record,) = records
         assert record.levelno == logging.WARNING
         assert (record.event, record.mode, record.reason) == (
@@ -598,7 +1168,11 @@ class TestBuildFailures:
             settings.assistant_mode,
             type(failure).__name__,
         )
-        assert not any("secret-host" in str(value) for value in vars(record).values())
+        assert record.role == role
+        assert not any(
+            "secret-host" in str(value) or "secret_table" in str(value)
+            for value in vars(record).values()
+        )
 
     def test_an_error_outside_the_list_still_surfaces_as_itself(self):
         """
@@ -609,7 +1183,7 @@ class TestBuildFailures:
         # WHEN/THEN
         with (
             patch.object(deps, "get_settings", return_value=_settings()),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", return_value=_engine()),
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "open_store", side_effect=RuntimeError("bug")),
             pytest.raises(RuntimeError, match="bug"),
@@ -648,14 +1222,15 @@ class TestBuildFailures:
         GIVEN a retriever that failed to build because the database was down
         WHEN the database is back and the retriever is requested again, without clearing
              any cache
-        THEN it is built, so one outage does not outlive the database's recovery
+        THEN it is built on a fresh engine, and the failed attempt's engine was closed
         """
         # GIVEN
         settings = _settings()
+        first, second = _engine(), _engine()
         with (
             patch.object(deps, "get_settings", return_value=settings),
             patch.object(deps, "get_query_model", return_value=MagicMock()),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", side_effect=[first, second]),
             patch.object(deps, "make_embeddings"),
             patch.object(
                 deps, "open_store", side_effect=[ConnectionRefusedError("down"), MagicMock()]
@@ -670,6 +1245,195 @@ class TestBuildFailures:
 
         # THEN
         assert retriever is not None
+        first.close.assert_awaited_once()
+        second.close.assert_not_awaited()
+
+    def test_a_failure_after_the_store_opened_still_closes_the_engine(self):
+        """
+        GIVEN a store that opened, and a retriever that fails to build after it
+        WHEN the retriever is requested
+        THEN the engine is closed and the error goes on, unchanged
+        """
+        # GIVEN
+        engine = _engine()
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "get_query_model", return_value=MagicMock()),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", return_value=MagicMock()),
+            patch.object(deps, "DocsRetriever", side_effect=RuntimeError("bad config")),
+            # WHEN/THEN
+            pytest.raises(RuntimeError, match="bad config"),
+        ):
+            deps.get_docs_retriever()
+
+        engine.close.assert_awaited_once()
+
+    def test_a_failing_close_does_not_replace_the_original_error(self):
+        """
+        GIVEN a database that is down and an engine whose close fails too
+        WHEN the retriever is requested
+        THEN the outage is what is reported, not the failure to close
+        """
+        # GIVEN
+        engine = _engine()
+        engine.close.side_effect = RuntimeError("close failed")
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", side_effect=ConnectionRefusedError("down")),
+            # WHEN/THEN
+            pytest.raises(AssistantUnavailableError),
+        ):
+            deps.get_docs_retriever()
+
+        engine.close.assert_awaited_once()
+
+    def test_a_failing_close_is_logged_and_the_original_error_still_propagates(self, records):
+        """
+        GIVEN a store that fails to open with a programming error and an engine whose close fails
+        WHEN the retriever is requested
+        THEN the programming error is what propagates, and one warning records the failed close
+             with the error class only, never its text
+        """
+        # GIVEN
+        engine = _engine()
+        engine.close.side_effect = ConnectionError("close failed at secret-host")
+
+        # WHEN
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", side_effect=RuntimeError("bug")),
+            pytest.raises(RuntimeError, match="bug"),
+        ):
+            deps.get_docs_retriever()
+
+        # THEN
+        (record,) = records
+        assert record.levelno == logging.WARNING
+        assert (record.event, record.reason) == ("assistant_engine_close_failed", "ConnectionError")
+        assert not any("secret-host" in str(value) for value in vars(record).values())
+
+    def test_concurrent_cold_requests_publish_one_retriever_and_close_the_rest(self):
+        """
+        GIVEN a slow engine build and several threads asking for the retriever at once
+        WHEN they all start together on a cold process
+        THEN every thread gets the same retriever, the engine published with it stays open,
+             and every other engine that was built is closed
+        """
+        # GIVEN
+        threads_count = 4
+        start = threading.Barrier(threads_count, timeout=10)
+        engines: list[MagicMock] = []
+        results: list[Any] = []
+
+        def _slow_engine(*args: Any, **kwargs: Any) -> MagicMock:
+            time.sleep(0.05)
+            engine = _engine()
+            engines.append(engine)
+            return engine
+
+        def _ask() -> None:
+            start.wait()
+            results.append(deps.get_docs_retriever())
+
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "get_query_model", return_value=MagicMock()),
+            patch.object(deps, "make_engine", side_effect=_slow_engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", return_value=MagicMock()),
+            patch.object(deps, "DocsRetriever", side_effect=lambda **_: MagicMock()),
+        ):
+            # WHEN
+            workers = [threading.Thread(target=_ask) for _ in range(threads_count)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=10)
+
+        # THEN
+        assert not any(worker.is_alive() for worker in workers)
+        assert len(results) == threads_count
+        assert all(result is results[0] for result in results)
+        assert deps._docs_resources is not None
+        published = deps._docs_resources[1]
+        assert published in engines
+        published.close.assert_not_awaited()
+        for engine in engines:
+            if engine is not published:
+                engine.close.assert_awaited_once()
+
+    def test_a_losing_engine_that_fails_to_close_is_logged(self, records):
+        """
+        GIVEN a retriever already published by another thread, and a build that finishes after
+            it, on an engine whose close fails
+        WHEN the late build is published
+        THEN the published retriever is returned, and one warning records the failed close
+        """
+        # GIVEN
+        winner = (MagicMock(name="published"), _engine())
+        loser_engine = _engine()
+        loser_engine.close.side_effect = ConnectionError("close failed at secret-host")
+
+        def _late_build() -> tuple[Any, Any]:
+            deps._docs_resources = winner
+            return MagicMock(name="late"), loser_engine
+
+        # WHEN
+        with patch.object(deps, "_build_docs_retriever", side_effect=_late_build):
+            retriever = deps.get_docs_retriever()
+
+        # THEN
+        assert retriever is winner[0]
+        winner[1].close.assert_not_awaited()
+        (record,) = records
+        assert (record.event, record.reason) == ("assistant_engine_close_failed", "ConnectionError")
+
+    def test_failing_builds_are_not_serialised(self):
+        """
+        GIVEN the vector database down, and two threads that each need the other's build to
+            overlap with its own to finish
+        WHEN both ask for the retriever at once
+        THEN both fail with the outage, so neither waited for the other's build to end
+        """
+        # GIVEN
+        overlap = threading.Barrier(2, timeout=10)
+        outcomes: list[str] = []
+
+        def _store_down(*args: Any, **kwargs: Any) -> None:
+            overlap.wait()
+            raise ConnectionRefusedError("down")
+
+        def _ask() -> None:
+            try:
+                deps.get_docs_retriever()
+            except AssistantUnavailableError:
+                outcomes.append("unavailable")
+            except Exception as exc:
+                outcomes.append(type(exc).__name__)
+
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "make_engine", side_effect=lambda *a, **k: _engine()),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", side_effect=_store_down),
+        ):
+            # WHEN
+            workers = [threading.Thread(target=_ask) for _ in range(2)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join(timeout=10)
+
+        # THEN
+        assert not any(worker.is_alive() for worker in workers)
+        assert outcomes == ["unavailable", "unavailable"]
+        assert deps._docs_resources is None
 
 
 def _mini_app() -> tuple[FastAPI, list[Any]]:
@@ -681,6 +1445,11 @@ def _mini_app() -> tuple[FastAPI, list[Any]]:
         return MagicMock()
 
     app.dependency_overrides[deps.get_docs_retriever] = _counting_retriever
+
+    def _budget_that_passes(data: deps.ChatRequestDep) -> AssistantChatRequest:
+        return data
+
+    app.dependency_overrides[deps.enforce_message_limit] = _budget_that_passes
 
     @app.post("/turn")
     async def turn_route(turn: deps.PreparedTurnDep) -> dict[str, Any]:

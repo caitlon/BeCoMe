@@ -34,10 +34,12 @@ class LikertVerdict:
 
     :ivar value: Closest Likert point, one of 0, 25, 50, 75, 100
     :ivar decision: Human-readable text for that point
+    :ivar recommendation: Action sentence for that point
     """
 
     value: int
     decision: str
+    recommendation: str
 
 
 def is_likert_scale(project: Project) -> bool:
@@ -78,4 +80,8 @@ def derive_verdict(
     decision = _INTERPRETER.interpret(
         FuzzyTriangleNumber(lower_bound=lower, peak=peak, upper_bound=upper)
     )
-    return LikertVerdict(value=decision.likert_value, decision=decision.decision_text)
+    return LikertVerdict(
+        value=decision.likert_value,
+        decision=decision.decision_text,
+        recommendation=decision.recommendation,
+    )

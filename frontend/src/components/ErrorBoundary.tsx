@@ -7,6 +7,8 @@ interface ErrorBoundaryProps {
   readonly children: ReactNode;
   /** Rendered instead of the default full-page recovery screen when the boundary catches. */
   readonly fallback?: ReactNode;
+  /** Called after the error is logged, so the owner of a silent fallback can drop what pointed at it. */
+  readonly onError?: () => void;
 }
 
 interface ErrorBoundaryState {
@@ -38,6 +40,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     Sentry.captureException(error, {
       contexts: { react: { componentStack: info.componentStack } },
     });
+    this.props.onError?.();
   }
 
   private readonly handleReload = (): void => {

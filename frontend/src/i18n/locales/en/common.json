@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Cancel",
+  "send": "Send",
   "switchToLanguage": "{{code}}, switch to {{language}}",
   "deleteModal": {
     "permanentlyDelete": "This will permanently delete:",
@@ -47,7 +48,8 @@
     "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
     "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
-    "privacy": "Privacy"
+    "privacy": "Privacy",
+    "terms": "Terms"
   },
   "common": {
     "loading": "Loading..."
@@ -109,10 +111,12 @@
     "meanLine": "Mean (Γ)",
     "medianLine": "Median (Ω)",
     "compromiseLine": "Best Compromise (ΓΩMean)",
-    "srSummary": "{{count}} experts, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}."
+    "srSummary_one": "{{count}} expert, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}.",
+    "srSummary_other": "{{count}} experts, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}."
   },
   "landscapeChart": {
-    "srSummary": "{{count}} expert opinions spread from {{min}} to {{max}}; the best compromise sits at {{compromise}}.",
+    "srSummary_one": "{{count}} expert opinion spread from {{min}} to {{max}}; the best compromise sits at {{compromise}}.",
+    "srSummary_other": "{{count}} expert opinions spread from {{min}} to {{max}}; the best compromise sits at {{compromise}}.",
     "srSummaryEmpty": "No expert opinions yet; the best compromise sits at {{compromise}}."
   },
   "pageTitle": {
@@ -133,7 +137,8 @@
     "faq": "FAQ",
     "caseStudies": "Case Studies",
     "notFound": "Page Not Found",
-    "privacy": "Privacy"
+    "privacy": "Privacy",
+    "terms": "Terms of use"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -147,6 +152,17 @@
     "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
     "tooManyAttemptsRetry": "Too many attempts. Please try again in {{seconds}}s.",
     "turnstileRefused": "We couldn't confirm you are human. Please try again.",
+    "inviteeNotFound": "No account uses this email. Ask the expert to sign up first.",
+    "alreadyInvited": "This person already has a pending invitation to the project.",
+    "alreadyMember": "This account is already a member of the project.",
+    "exampleProjectNotInvitable": "The example project cannot take invitations.",
+    "invitationNotFound": "This invitation no longer exists.",
+    "photoTypeNotAllowed": "Use a JPEG, PNG, GIF or WebP image.",
+    "photoTooLarge": "File too large. Maximum size is 5 MB",
+    "photoContentMismatch": "The file's content does not match its type. Save it again as JPEG or PNG.",
+    "photoUnreadable": "The image could not be read. Save it again as JPEG or PNG.",
+    "photoDimensionsTooLarge": "The image is too large. Each side can be at most 8192 pixels and the whole image about 16 megapixels (for example 4096 × 4096).",
+    "sessionChanged": "Your session has changed, for example after signing in again in another tab. Reload the page to continue.",
     "retry": "Try again",
     "logoutFailedTitle": "Sign-out failed",
     "logoutFailed": "Sign-out did not go through. Your session may still be active. Please try again."

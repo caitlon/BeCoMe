@@ -1199,8 +1199,31 @@ class TestProfileLogLevelDefault:
         assert settings.log_level == "ERROR"
 
 
+_PROVIDER_ROLES = [
+    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
+    ("assistant_llm_provider", "assistant_llm_base_url"),
+    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+]
+_REMOTE_URL = "https://models.example.test/v1"
+_LANGSMITH_LIBRARY_SWITCHES = [
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING",
+]
+_LANGSMITH_RUNS_ENDPOINTS = ["LANGSMITH_RUNS_ENDPOINTS", "LANGCHAIN_RUNS_ENDPOINTS"]
+_FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
+_DEPLOYED_DATABASE_URL = "postgresql://user:pass@host:5432/db"
+_DEPLOYED_MIGRATION_URL = "postgresql://migrator:pass@host:5432/db"
+_VECTOR_PASSWORD = "vec-reader-pw"  # pragma: allowlist secret
+_VECTOR_URL = (
+    f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db.railway.internal:5432"
+    "/corpus?sslmode=require"
+)
+
+
 class TestAssistantSettings:
-    """The local assistant is refused everywhere except a developer's own machine."""
+    """The assistant runs on a laptop and on dev, test and prod with hosted roles."""
 
     def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
         """
@@ -1217,6 +1240,38 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_enabled is False
+
+    def test_assistant_sources_are_hidden_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_show_sources defaults to False
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_SHOW_SOURCES", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_show_sources is False
+
+    def test_assistant_sources_are_shown_when_the_variable_says_true(self, monkeypatch, tmp_path):
+        """
+        GIVEN ASSISTANT_SHOW_SOURCES=true in the environment
+        WHEN Settings is constructed
+        THEN assistant_show_sources is True
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ASSISTANT_SHOW_SOURCES", "true")
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_show_sources is True
 
     def test_local_dev_allows_the_assistant_switched_on(self, monkeypatch, tmp_path):
         """
@@ -1237,66 +1292,1035 @@ class TestAssistantSettings:
         # THEN
         assert settings.assistant_enabled is True
 
-    def test_rejects_assistant_enabled_in_production(self, monkeypatch, tmp_path):
-        """
-        GIVEN a fully configured production profile
-        WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, naming the field
-        """
-        # GIVEN
-        _configure_prod(monkeypatch, tmp_path)
-        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+    @staticmethod
+    def _configure_deployed_assistant(
+        monkeypatch, tmp_path, *, profile: str, railway_name: str | None, testing: bool = False
+    ) -> None:
+        """Set a fully valid deployed service with the assistant on and every role hosted.
 
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
-            Settings()
-
-    def test_rejects_assistant_enabled_on_a_deployed_dev_service(self, monkeypatch, tmp_path):
+        Every deploy invariant is set explicitly, because Settings loads the real .env
+        locally and CI runs clean. Each test then changes the one part it is about.
         """
-        GIVEN the dev profile running on Railway (a deployed service, not a laptop)
-        WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, since is_deploy is true there too
-        """
-        # GIVEN
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("TESTING", raising=False)
-        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
-        monkeypatch.setenv("APP_ENV", "dev")
+        if testing:
+            monkeypatch.setenv("TESTING", "1")
+        else:
+            monkeypatch.delenv("TESTING", raising=False)
+        if railway_name is None:
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        else:
+            monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway_name)
+        monkeypatch.setenv("APP_ENV", profile)
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
-        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
-        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("DATABASE_URL", _DEPLOYED_DATABASE_URL)
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", _DEPLOYED_MIGRATION_URL)
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
-        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
-        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+        monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
+        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "60")
+        monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "600")
+        for name in [*_LANGSMITH_LIBRARY_SWITCHES, *_LANGSMITH_RUNS_ENDPOINTS]:
+            monkeypatch.delenv(name, raising=False)
+        for provider, url in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "api")
+            monkeypatch.setenv(url.upper(), _REMOTE_URL)
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"),
+        [
+            ("dev", "dev"),
+            ("test", "test"),
+            ("prod", "prod"),
+            ("prod", None),
+            ("prod", "dev"),
+            ("dev", "prod"),
+            ("test", "prod"),
+            ("dev", " Dev "),
+            ("test", "TEST"),
+            ("dev", "PROD"),
+            ("dev", " prod "),
+        ],
+    )
+    def test_allows_the_assistant_on_the_dev_test_and_prod_services(
+        self, monkeypatch, tmp_path, profile, railway_name
+    ):
+        """
+        GIVEN a fully configured deployed service, the prod profile and the Railway prod
+            environment included, with every model role hosted
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes, the Railway name compared stripped and case-insensitively
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.is_deploy
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"),
+        [
+            ("dev", "production"),
+            ("dev", "PRODUCTION"),
+            ("dev", "staging"),
+            ("dev", "pr-123"),
+            ("dev", "prod-eu"),
+            ("dev", ""),
+            ("prod", "production"),
+            ("prod", "staging"),
+            ("test", "pr-123"),
+        ],
+    )
+    def test_rejects_the_assistant_on_an_unknown_railway_environment(
+        self, monkeypatch, tmp_path, profile, railway_name
+    ):
+        """
+        GIVEN a fully configured service whose Railway environment is none of dev, test and
+            prod (a retired or preview name, or an empty one), under any profile
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming the field and the allowed environments
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
+        with pytest.raises(
+            ValidationError, match=r"assistant_enabled must stay false.*dev, test and prod"
+        ):
             Settings()
 
-    def test_rejects_assistant_enabled_on_railway_even_with_testing_set(
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("prod", None), ("prod", "prod"), ("dev", "prod")]
+    )
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ({"ASSISTANT_ANSWER_PROVIDER": "local"}, "assistant_answer_provider must be api"),
+            ({"ASSISTANT_LLM_PROVIDER": "local"}, "assistant_llm_provider must be api"),
+            ({"ASSISTANT_EMBEDDING_PROVIDER": "local"}, "assistant_embedding_provider must be api"),
+            ({"ASSISTANT_VECTOR_DB_URL": ""}, "assistant_vector_db_url must be set"),
+            ({"ASSISTANT_RATE_LIMIT_PER_HOUR": "0"}, "assistant_rate_limit_per_hour must be above"),
+            (
+                {"ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0"},
+                "assistant_global_turns_per_hour must be above",
+            ),
+            (
+                {
+                    "ASSISTANT_LANGSMITH_ENABLED": "true",
+                    "ASSISTANT_LANGSMITH_API_KEY": "lsv2_test",  # pragma: allowlist secret
+                    "ASSISTANT_LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
+                    "ASSISTANT_LANGSMITH_PROJECT": "become-assistant-prod",
+                },
+                "assistant_langsmith_endpoint must be the EU",
+            ),
+        ],
+    )
+    def test_holds_the_prod_service_to_the_deploy_rules(
+        self, monkeypatch, tmp_path, profile, railway_name, overrides, message
+    ):
+        """
+        GIVEN a fully configured prod service (by profile, by Railway environment, or both)
+            with the assistant on and one deploy rule broken: a local model role, an empty
+            corpus database URL, a zero message limit or a non-EU LangSmith endpoint
+        WHEN Settings is constructed
+        THEN validation fails with that rule's message, as it does on dev and test
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        for name, value in overrides.items():
+            monkeypatch.setenv(name, value)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=message):
+            Settings()
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "test")])
+    def test_rejects_a_local_role_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, provider, url
+    ):
+        """
+        GIVEN a deployed dev or test service with one model role left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming that role's provider setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        monkeypatch.setenv(provider.upper(), "local")
+        monkeypatch.setenv(url.upper(), "http://127.0.0.1:8081/v1")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{provider}.*api") as excinfo:
+            Settings()
+        assert _FAKE_KEY not in str(excinfo.value)
+
+    def test_names_every_local_role_in_one_message(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service with all three roles left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the message lists all three provider settings
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as excinfo:
+            Settings()
+        for provider, _ in _PROVIDER_ROLES:
+            assert provider in str(excinfo.value)
+
+    @pytest.mark.parametrize("railway_name", ["production", "prod-eu"])
+    def test_checks_the_railway_environment_even_with_testing_set(
+        self, monkeypatch, tmp_path, railway_name
+    ):
+        """
+        GIVEN TESTING=1 alongside an unknown Railway environment, so is_deploy is false, with
+            every role hosted
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the environment rule still refuses it, since a process on Railway is a
+            deployed service whatever else is set alongside it
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name=railway_name, testing=True
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled must stay false"):
+            Settings()
+
+    def test_holds_railway_prod_to_the_deploy_rules_even_with_testing_set(
         self, monkeypatch, tmp_path
     ):
         """
-        GIVEN TESTING=1 set alongside a Railway environment marker
+        GIVEN TESTING=1 alongside Railway environment prod, so is_deploy is false, with
+            one model role left local
         WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, since a process on Railway must never run the
-            assistant, even one that also looks like a test run
+        THEN the hosted-roles rule still refuses it, since a process on Railway prod is a
+            deployed service whatever else is set alongside it
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
+            Settings()
+
+    def test_checks_the_hosted_roles_even_with_testing_set(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING=1 alongside Railway environment dev, so is_deploy is false, with
+            one role left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the hosted-roles rule still refuses it, naming that role
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="dev", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
+            Settings()
+
+    def test_allows_local_roles_in_the_ci_test_profile(self, monkeypatch, tmp_path):
+        """
+        GIVEN APP_ENV=test with TESTING=1 and no Railway marker (the CI test runner),
+            the assistant on and every role local
+        WHEN Settings is constructed
+        THEN validation passes, since the runner is not a deployed service
         """
         # GIVEN
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
         monkeypatch.setenv("TESTING", "1")
-        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-test")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_provider == "local"
+
+    def test_rejects_local_roles_in_a_test_profile_deploy_without_railway(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN APP_ENV=test with TESTING unset and no Railway marker (a test-profile deploy,
+            so is_deploy is true), the assistant on and one role left local
+        WHEN Settings is constructed
+        THEN the hosted-roles rule refuses it, naming that role
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="test", railway_name=None)
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
+            Settings()
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing", "endpoint"),
+        [
+            ("dev", "dev", False, "https://eu.api.smith.langchain.com"),
+            ("test", "test", False, "https://eu.api.smith.langchain.com"),
+            ("dev", "dev", True, "https://eu.api.smith.langchain.com"),
+            ("dev", "dev", False, " HTTPS://EU.API.SMITH.LANGCHAIN.COM/ "),
+        ],
+    )
+    def test_allows_langsmith_tracing_to_the_eu_endpoint_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing, endpoint
+    ):
+        """
+        GIVEN a deployed dev or test service with every role hosted and LangSmith tracing on
+            with a key, a project and the EU endpoint (however it is capitalised or ends)
+        WHEN Settings is constructed
+        THEN validation passes and the endpoint is kept without spaces or a trailing slash
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENDPOINT", endpoint)
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", "become-assistant-dev")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
+        assert settings.assistant_langsmith_endpoint == endpoint.strip().rstrip("/")
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://api.smith.langchain.com",
+            "https://eu.api.smith.langchain.com.example.com",
+            "http://eu.api.smith.langchain.com",
+            "",
+        ],
+    )
+    def test_rejects_langsmith_tracing_to_another_endpoint_on_a_deployed_service(
+        self, monkeypatch, tmp_path, endpoint
+    ):
+        """
+        GIVEN a deployed service with LangSmith tracing on and an endpoint that is not the EU one
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_langsmith_endpoint
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENDPOINT", endpoint)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_endpoint must be the EU"):
+            Settings()
+
+    @pytest.mark.parametrize(
+        "project", ["", "   ", "become-assistant-local", "Become-Assistant-Local"]
+    )
+    def test_rejects_langsmith_tracing_without_a_project_on_a_deployed_service(
+        self, monkeypatch, tmp_path, project
+    ):
+        """
+        GIVEN a deployed service with LangSmith tracing on and an empty, blank or local-default
+            project, the default in any case
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_langsmith_project
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", project)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_project must be set"):
+            Settings()
+
+    def test_strips_whitespace_from_the_langsmith_project(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed service with LangSmith tracing on and a project name with spaces around it
+        WHEN Settings is constructed
+        THEN the project is stored without them, so the traces land in the named project
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", "  become-assistant-dev  ")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_project == "become-assistant-dev"
+
+    @pytest.mark.parametrize("switch", _LANGSMITH_LIBRARY_SWITCHES)
+    @pytest.mark.parametrize("tracing_enabled", ["true", "false"])
+    @pytest.mark.parametrize("value", ["true", "1", " YES "])
+    def test_rejects_a_langsmith_library_switch_on_a_deployed_service(
+        self, monkeypatch, tmp_path, switch, tracing_enabled, value
+    ):
+        """
+        GIVEN a deployed service where a LangSmith library switch is true, 1 or yes, with the
+            assistant's own tracing setting on or off
+        WHEN Settings is constructed
+        THEN validation fails and points to ASSISTANT_LANGSMITH_ENABLED, since the library
+            would trace for any call, bypassing that setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", tracing_enabled)
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv(switch, value)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="use ASSISTANT_LANGSMITH_ENABLED instead"):
+            Settings()
+
+    @pytest.mark.parametrize("first", ["", "false"])
+    def test_rejects_a_later_langsmith_switch_behind_a_blank_or_false_first_one(
+        self, monkeypatch, tmp_path, first
+    ):
+        """
+        GIVEN a deployed service where LANGSMITH_TRACING_V2 is blank or false and
+            LANGSMITH_TRACING is true (the library reads the blank case as on; the
+            false case is refused too, which is stricter than the library)
+        WHEN Settings is constructed
+        THEN validation fails, since no name hides another
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("LANGSMITH_TRACING_V2", first)
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="use ASSISTANT_LANGSMITH_ENABLED instead"):
+            Settings()
+
+    @pytest.mark.parametrize("name", _LANGSMITH_RUNS_ENDPOINTS)
+    def test_rejects_langsmith_runs_endpoints_on_a_deployed_service(
+        self, monkeypatch, tmp_path, name
+    ):
+        """
+        GIVEN a deployed service where a LangSmith RUNS_ENDPOINTS list is set
+        WHEN Settings is constructed
+        THEN validation fails, since the library would send runs there whatever the settings say
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(name, '[{"api_url": "https://elsewhere.example.test"}]')
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="_RUNS_ENDPOINTS must not be set"):
+            Settings()
+
+    @pytest.mark.parametrize("value", ["false", "", "0"])
+    def test_allows_a_langsmith_library_switch_that_is_not_true_on_a_deployed_service(
+        self, monkeypatch, tmp_path, value
+    ):
+        """
+        GIVEN a deployed service where a LangSmith library switch is false, empty or 0
+        WHEN Settings is constructed
+        THEN validation passes, since the library does not read it as on
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("LANGSMITH_TRACING", value)
+
+        # WHEN/THEN
+        assert Settings().langsmith_tracing == value
+
+    def test_allows_a_langsmith_library_switch_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and LANGSMITH_TRACING true
+        WHEN Settings is constructed
+        THEN validation passes, since the tracing scope overrides the switch
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
         monkeypatch.setenv("APP_ENV", "dev")
-        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.langsmith_tracing == "true"
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [
+            ("dev", "dev", False),
+            ("test", "test", False),
+            ("test", None, False),
+            ("dev", "dev", True),
+        ],
+    )
+    def test_rejects_an_empty_vector_database_url_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing
+    ):
+        """
+        GIVEN a deployed service, or a Railway process with TESTING set, with the assistant
+            on and no ASSISTANT_VECTOR_DB_URL
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_vector_db_url
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be set"):
+            Settings()
+
+    @pytest.mark.parametrize("shared_with", ["DATABASE_URL", "MIGRATION_DATABASE_URL"])
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5432/db?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@HOST.:5432/db?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host/db?sslmode=require",
+        ],
+        ids=["app-url-other-driver", "host-case-and-dot", "default-port"],
+    )
+    def test_rejects_a_vector_database_that_is_the_application_database(
+        self, monkeypatch, tmp_path, shared_with, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose ASSISTANT_VECTOR_DB_URL names the same host, port
+            and database as DATABASE_URL or MIGRATION_DATABASE_URL, whatever the driver,
+            host spelling, port notation or credentials
+        WHEN Settings is constructed
+        THEN validation fails, and the message echoes no part of any URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+        if shared_with == "MIGRATION_DATABASE_URL":
+            # Move the app URL off the shared database so only the migration URL matches.
+            monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@other-host:5432/appdb")
+            monkeypatch.setenv("MIGRATION_DATABASE_URL", _DEPLOYED_DATABASE_URL)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must not") as excinfo:
+            Settings()
+        message = str(excinfo.value)
+        assert _VECTOR_PASSWORD not in message
+        assert "corpus_reader" not in message
+        assert "host:5432" not in message
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5432/corpus"
+            "?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@other-host:5432/db"
+            "?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5433/db?sslmode=require",
+        ],
+        ids=["other-database", "other-host", "other-port"],
+    )
+    def test_allows_a_vector_database_that_differs_from_the_application_database(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL differs from DATABASE_URL in the
+            database name, the host or the port
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        assert Settings().assistant_vector_db_url == vector_url
+
+    def test_skips_the_same_database_comparison_for_a_non_postgres_migration_url(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a deployed dev service whose MIGRATION_DATABASE_URL is not a PostgreSQL URL
+        WHEN Settings is constructed with a valid vector URL
+        THEN validation passes, since there is nothing to compare against
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "sqlite:///./become.db")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    @pytest.mark.parametrize(
+        "query",
+        ["", "?sslmode=disable", "?sslmode=allow", "?sslmode=prefer", "?application_name=x"],
+        ids=["no-query", "disable", "allow", "prefer", "no-sslmode"],
+    )
+    def test_rejects_a_vector_database_url_without_tls(self, monkeypatch, tmp_path, query):
+        """
+        GIVEN a deployed dev service whose vector URL does not demand TLS
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, and the message echoes no part
+            of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus{query}",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus-db" not in str(e.value)
+
+    @pytest.mark.parametrize("mode", ["require", "verify-ca", "verify-full"])
+    def test_allows_a_vector_database_url_that_demands_tls(self, monkeypatch, tmp_path, mode):
+        """
+        GIVEN a deployed dev service whose vector URL carries sslmode require, verify-ca
+            or verify-full
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            f"?sslmode={mode}",
+        )
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    def test_rejects_an_unparseable_vector_database_url_without_echoing_it(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL is not a URL
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, with the value left out
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", f"not-a-url-{_VECTOR_PASSWORD}")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}/corpus?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}?sslmode=require",
+        ],
+        ids=["password-then-path", "password-then-query"],
+    )
+    def test_does_not_leak_the_password_of_a_vector_url_that_fails_to_parse(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL makes SQLAlchemy raise a plain
+            ValueError (the password read as a port)
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, and the error holds no part
+            of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "corpus_reader" not in str(excinfo.value)
+
+    @pytest.mark.parametrize("variable", ["DATABASE_URL", "MIGRATION_DATABASE_URL"])
+    def test_skips_the_comparison_for_an_application_url_that_fails_to_parse(
+        self, monkeypatch, tmp_path, variable
+    ):
+        """
+        GIVEN a deployed dev service whose DATABASE_URL or MIGRATION_DATABASE_URL makes
+            SQLAlchemy raise a plain ValueError, and a valid vector URL
+        WHEN Settings is constructed
+        THEN validation passes without raising and the secret never reaches an error
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(variable, f"postgresql+psycopg://app:{_VECTOR_PASSWORD}/appdb")
+
+        # WHEN/THEN
+        assert Settings().assistant_vector_db_url == _VECTOR_URL
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus?sslmode=require",
+            f"postgresql+asyncpg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=require",
+            f"postgresql+psycopg2://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=require",
+            f"mysql://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:3306/corpus",
+            "sqlite:///corpus.db",
+        ],
+        ids=["bare-postgresql", "asyncpg", "psycopg2", "mysql", "sqlite"],
+    )
+    def test_rejects_a_vector_url_the_vector_store_cannot_connect_with(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL is not postgresql+psycopg://, the
+            driver the vector store's async engine needs
+        WHEN Settings is constructed
+        THEN validation fails at boot naming postgresql+psycopg, with no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"must be a postgresql\+psycopg:// URL") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus-db" not in str(e.value)
+
+    @pytest.mark.parametrize(
+        "authority",
+        ["corpus_reader:{pw}@corpus-db:5432", "corpus_reader:{pw}@corpus-db:5432/"],
+        ids=["no-path", "empty-path"],
+    )
+    def test_rejects_a_vector_url_without_a_database_name(self, monkeypatch, tmp_path, authority):
+        """
+        GIVEN a deployed dev service whose vector URL names no database
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name the corpus database, and the message
+            echoes no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://{authority.format(pw=_VECTOR_PASSWORD)}?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "corpus-db" not in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "override",
+        ["host=app-db", "hostaddr=10.0.0.5", "port=5433", "dbname=appdb", "service=app"],
+    )
+    def test_rejects_a_vector_url_whose_query_overrides_the_connection_target(
+        self, monkeypatch, tmp_path, override
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL carries a libpq host, hostaddr, port,
+            dbname or service parameter, which libpq lets win over the URL's own parts
+        WHEN Settings is constructed
+        THEN validation fails telling the operator to put them in the URL, and the message
+            echoes no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@/corpus"
+            f"?{override}&sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must not carry host, hostaddr") as excinfo:
+            Settings()
+        assert "in the URL itself" in str(excinfo.value)
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "app-db" not in str(excinfo.value)
+
+    def test_rejects_a_repeated_sslmode_in_the_vector_url(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service whose vector URL repeats sslmode, which SQLAlchemy
+            hands to libpq as one tuple-shaped value that libpq rejects
+        WHEN Settings is constructed
+        THEN validation fails on the TLS demand, asking for sslmode once
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=disable&sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS") as e:
+            Settings()
+        assert "once" in str(e.value)
+
+    @pytest.mark.parametrize(
+        "authority",
+        ["corpus_reader:{pw}@/corpus", "/corpus"],
+        ids=["credentials-no-host", "no-authority"],
+    )
+    def test_rejects_a_vector_url_without_a_host(self, monkeypatch, tmp_path, authority):
+        """
+        GIVEN a deployed dev service whose vector URL names no host, which libpq would fill
+            in from the environment or a local socket
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name the host, and the message echoes no
+            part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://{authority.format(pw=_VECTOR_PASSWORD)}?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database host") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus_reader" not in str(e.value)
+
+    def test_rejects_a_vector_url_with_several_hosts(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service whose vector URL lists several hosts, which libpq
+            tries in turn and which defeats the same-database comparison
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name one host, and the message echoes no
+            part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@apphost,corpus.internal:5432"
+            "/corpus?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database host") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "apphost" not in str(e.value)
+
+    def test_does_not_check_the_vector_database_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service with the assistant off and an empty vector URL
+        WHEN Settings is constructed
+        THEN validation passes, since the assistant rules apply only when it is enabled
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is False
+
+    def test_does_not_check_the_vector_database_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and a vector URL that
+            is the application database with no TLS
+        WHEN Settings is constructed
+        THEN validation passes, since only a deployed service is held to the rule
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "postgresql+psycopg://user:pass@localhost/db")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    def test_allows_langsmith_tracing_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and LangSmith
+            tracing on with a key
+        WHEN Settings is constructed
+        THEN validation passes, since tracing is for local work
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
+
+    def test_allows_a_hosted_railway_dev_process_with_testing_set(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING=1 alongside Railway environment dev, every role hosted
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="dev", testing=True
+        )
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+    )
+    @pytest.mark.parametrize(
+        "setting", ["assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"]
+    )
+    def test_rejects_a_zero_message_limit_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing, setting
+    ):
+        """
+        GIVEN a deployed dev or test service, TESTING=1 included, with the assistant on and
+            the per-user or the global message limit set to zero, which would mean no limit
+        WHEN Settings is constructed
+        THEN validation fails naming that setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv(setting.upper(), "0")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=setting):
+            Settings()
+
+    def test_allows_a_zero_message_limit_with_the_assistant_off_or_on_a_laptop(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a message limit of zero, once on a deployed service with the assistant off and
+            once on a laptop with the assistant on
+        WHEN Settings is constructed
+        THEN validation passes both times, since only a deployed assistant is held to it
+        """
+        # GIVEN a deployed service with the assistant off
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+        monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "0")
+
+        # WHEN/THEN
+        settings = Settings()
+        assert settings.assistant_enabled is False
+        assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_global_turns_per_hour == 0
+
+        # GIVEN a laptop with the assistant on
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
-            Settings()
+        settings = Settings()
+        assert settings.assistant_enabled is True
+        assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_global_turns_per_hour == 0
+
+    def test_prod_with_the_assistant_off_is_unaffected(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production service with local roles and the assistant off
+        WHEN Settings is constructed
+        THEN validation passes, since the assistant rules apply only when it is enabled
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_laptop_keeps_local_roles(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and every role local
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_provider == "local"
 
     def test_private_corpus_manifest_defaults_to_none(self, monkeypatch, tmp_path):
         """
@@ -1319,7 +2343,8 @@ class TestAssistantSettings:
         GIVEN Settings without an explicit override and no .env file in reach
         WHEN constructed
         THEN the answer model targets the local :8084 server, apart from the :8081
-             query-transform model, with an 800-token answer cap and k=3 retrieval
+             query-transform model, with an 800-token answer cap, a 2048-token query cap
+             and k=3 retrieval
         """
         # GIVEN
         monkeypatch.chdir(tmp_path)
@@ -1327,6 +2352,7 @@ class TestAssistantSettings:
             "ASSISTANT_ANSWER_LLM_BASE_URL",
             "ASSISTANT_ANSWER_LLM_MODEL",
             "ASSISTANT_ANSWER_MAX_TOKENS",
+            "ASSISTANT_QUERY_MAX_TOKENS",
             "ASSISTANT_RETRIEVAL_K",
         ):
             monkeypatch.delenv(name, raising=False)
@@ -1338,13 +2364,17 @@ class TestAssistantSettings:
         assert settings.assistant_answer_llm_base_url == "http://127.0.0.1:8084/v1"
         assert settings.assistant_answer_llm_model == "Qwen/Qwen3.5-9B"
         assert settings.assistant_answer_max_tokens == 800
+        assert settings.assistant_query_max_tokens == 2048
         assert settings.assistant_retrieval_k == 3
 
-    @pytest.mark.parametrize("field", ["assistant_answer_max_tokens", "assistant_retrieval_k"])
+    @pytest.mark.parametrize(
+        "field",
+        ["assistant_answer_max_tokens", "assistant_query_max_tokens", "assistant_retrieval_k"],
+    )
     @pytest.mark.parametrize("value", [0, -1])
     def test_rejects_a_non_positive_answer_limit(self, field, value, monkeypatch, tmp_path):
         """
-        GIVEN a non-positive answer token cap or retrieval k
+        GIVEN a non-positive answer or query token cap, or retrieval k
         WHEN Settings is constructed
         THEN it is refused, naming the field
         """
@@ -1393,6 +2423,43 @@ class TestAssistantSettings:
         assert Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=0)
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
+
+    def test_global_ceiling_defaults_to_600_accepts_zero_and_rejects_a_negative_value(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN Settings without an override for the global hourly ceiling, one set to zero,
+            which means no ceiling, and one below it
+        WHEN Settings is constructed
+        THEN the default is 600, zero is accepted and the negative value is refused
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key").assistant_global_turns_per_hour == 600
+        assert (
+            Settings(
+                secret_key="test-secret-key", assistant_global_turns_per_hour=0
+            ).assistant_global_turns_per_hour
+            == 0
+        )
+        with pytest.raises(ValidationError, match="assistant_global_turns_per_hour"):
+            Settings(secret_key="test-secret-key", assistant_global_turns_per_hour=-1)
+
+    def test_concurrent_turns_default_to_eight_and_must_be_above_zero(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the concurrent turn cap, and one set to zero
+        WHEN Settings is constructed
+        THEN the default is 8 and zero is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key").assistant_max_concurrent_turns == 8
+        with pytest.raises(ValidationError, match="assistant_max_concurrent_turns"):
+            Settings(secret_key="test-secret-key", assistant_max_concurrent_turns=0)
 
     def test_mode_defaults_to_workflow_and_the_others_stay_selectable(self, monkeypatch, tmp_path):
         """
@@ -1494,6 +2561,120 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_turn_timeout_seconds"):
             Settings(secret_key="test-secret-key", assistant_turn_timeout_seconds=value)
 
+    def test_first_byte_timeout_defaults_to_ninety_seconds(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the first-byte timeout and no .env file in reach
+        WHEN constructed
+        THEN the work before a response's first byte may take 90 seconds, under the 100 seconds
+             after which Cloudflare answers 524
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_first_byte_timeout_seconds == 90.0
+
+    def test_first_byte_timeout_may_exceed_the_turn_timeout(self, monkeypatch, tmp_path):
+        """
+        GIVEN a first-byte timeout above the turn timeout, as an existing deployment with a
+             short turn timeout would have
+        WHEN Settings is constructed
+        THEN it is accepted, because no deployed value may stop validating
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_turn_timeout_seconds=30.0,
+            assistant_first_byte_timeout_seconds=90.0,
+        )
+
+        # THEN
+        assert settings.assistant_turn_timeout_seconds == 30.0
+        assert settings.assistant_first_byte_timeout_seconds == 90.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_first_byte_timeout(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a first-byte timeout of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because every turn would expire at once
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_first_byte_timeout_seconds"):
+            Settings(secret_key="test-secret-key", assistant_first_byte_timeout_seconds=value)
+
+    def test_stream_heartbeat_defaults_to_fifteen_seconds(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the stream heartbeat and no .env file in reach
+        WHEN constructed
+        THEN a waiting stream sends a keep-alive comment every 15 seconds
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_STREAM_HEARTBEAT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_stream_heartbeat_seconds == 15.0
+
+    @pytest.mark.parametrize("value", [100.0, 150])
+    def test_rejects_a_stream_heartbeat_at_the_proxys_idle_cutoff_or_above(
+        self, value, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a stream heartbeat of 100 seconds or more, the idle time after which Cloudflare
+             answers 524
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because the keep-alive would come too late
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_stream_heartbeat_seconds"):
+            Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=value)
+
+    def test_accepts_a_stream_heartbeat_just_under_the_cutoff(self, monkeypatch, tmp_path):
+        """
+        GIVEN a stream heartbeat of 99 seconds
+        WHEN Settings is constructed
+        THEN it is accepted and keeps that value
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=99.0)
+
+        # THEN
+        assert settings.assistant_stream_heartbeat_seconds == 99.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_stream_heartbeat(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a stream heartbeat of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because the stream would send nothing else
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_stream_heartbeat_seconds"):
+            Settings(secret_key="test-secret-key", assistant_stream_heartbeat_seconds=value)
+
     def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an explicit override and no .env file in reach
@@ -1511,6 +2692,28 @@ class TestAssistantSettings:
         # THEN
         assert settings.assistant_langsmith_enabled is False
         assert settings.assistant_langsmith_api_key is None
+
+    def test_the_langsmith_api_key_is_not_shown_in_the_settings_representation(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN Settings with a LangSmith key
+        WHEN it is turned into text
+        THEN the key appears in neither repr nor str
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        key = "lsv2_visible_if_leaked"  # pragma: allowlist secret
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=True,
+            assistant_langsmith_api_key=key,
+        )
+
+        # WHEN/THEN
+        assert key not in repr(settings)
+        assert key not in str(settings)
+        assert settings.assistant_langsmith_api_key.get_secret_value() == key
 
     @pytest.mark.parametrize("api_key", [None, "", "   "])
     def test_rejects_langsmith_tracing_without_an_api_key(self, api_key, monkeypatch, tmp_path):
@@ -1573,3 +2776,181 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_langsmith_enabled is False
+
+
+@pytest.fixture
+def provider_env(monkeypatch, tmp_path) -> None:
+    """Keep a developer's own .env and shell out of the provider settings tests."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ASSISTANT_API_KEY_OVH", raising=False)
+    for provider, _ in _PROVIDER_ROLES:
+        monkeypatch.delenv(provider.upper(), raising=False)
+
+
+@pytest.mark.usefixtures("provider_env")
+class TestAssistantProviderSettings:
+    """Each model role runs locally or through the hosted API, and api mode needs a key."""
+
+    def test_every_role_is_local_by_default_without_a_key(self):
+        """
+        GIVEN Settings with no override and no key in reach
+        WHEN constructed
+        THEN all three roles are local and no key is held
+        """
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_answer_provider == "local"
+        assert settings.assistant_llm_provider == "local"
+        assert settings.assistant_embedding_provider == "local"
+        assert settings.assistant_api_key_ovh is None
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize("api_key", [None, "", "   "])
+    def test_rejects_api_mode_without_a_key(self, provider, url, api_key):
+        """
+        GIVEN one role in api mode with a remote URL and no key, an empty key or a blank key
+        WHEN Settings is constructed
+        THEN it is refused, naming the key and the role's provider setting
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"assistant_api_key_ovh.*{provider}"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=api_key,
+                **{provider: "api", url: _REMOTE_URL},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_accepts_api_mode_with_a_key_and_a_remote_url(self, provider, url):
+        """
+        GIVEN one role in api mode with a key and a remote https URL
+        WHEN Settings is constructed
+        THEN validation passes and the key is held as a secret
+        """
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_api_key_ovh=_FAKE_KEY,
+            **{provider: "api", url: _REMOTE_URL},
+        )
+
+        # THEN
+        assert getattr(settings, provider) == "api"
+        assert settings.assistant_api_key_ovh is not None
+        assert settings.assistant_api_key_ovh.get_secret_value() == _FAKE_KEY
+        assert _FAKE_KEY not in repr(settings)
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize(
+        "loopback",
+        [
+            "https://127.0.0.1:8081/v1",
+            "https://127.0.0.2/v1",
+            "https://localhost:8081/v1",
+            "https://[::1]/v1",
+        ],
+    )
+    def test_rejects_api_mode_with_a_loopback_url(self, provider, url, loopback):
+        """
+        GIVEN one role in api mode with a key but a loopback base URL, even an https one
+              or a loopback address other than 127.0.0.1
+        WHEN Settings is constructed
+        THEN it is refused, naming the role's URL setting, because the key would go to a
+             local server that ignores it
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{url}.*loopback"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: loopback},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_rejects_api_mode_over_cleartext_http(self, provider, url):
+        """
+        GIVEN one role in api mode with a key and a remote URL that is plain http
+        WHEN Settings is constructed
+        THEN it is refused, naming the role's URL setting, because the key and every
+             prompt would cross the network unencrypted
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{url}.*https"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: "http://api.example.com/v1"},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize("unparsable", ["models.example.com/v1", "", "https:///v1"])
+    def test_rejects_api_mode_with_an_unparsable_url(self, provider, url, unparsable):
+        """
+        GIVEN one role in api mode with a key and a base URL missing its scheme or host
+        WHEN Settings is constructed
+        THEN it is refused with the shape the URL must have
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"must be an https:// URL with a host"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: unparsable},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_local_mode_needs_no_key_and_allows_a_loopback_url(self, provider, url):
+        """
+        GIVEN one role in local mode with a loopback URL and no key
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            **{provider: "local", url: "http://127.0.0.1:9999/v1"},
+        )
+
+        # THEN
+        assert getattr(settings, provider) == "local"
+
+    def test_rejects_an_unknown_provider(self):
+        """
+        GIVEN a provider name that is neither local nor api
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider"):
+            Settings(secret_key="test-secret-key", assistant_answer_provider="cloud")
+
+    @pytest.mark.parametrize(("raw", "expected"), [("", None), ("   ", None), ("low", "low")])
+    def test_reasoning_effort_reads_the_environment(self, monkeypatch, raw, expected):
+        """
+        GIVEN ASSISTANT_API_REASONING_EFFORT set to an empty, blank or valid value
+        WHEN Settings is constructed
+        THEN an empty or blank value means None (send nothing) and a valid one is kept
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_API_REASONING_EFFORT", raw)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_api_reasoning_effort == expected
+
+    def test_reasoning_effort_refuses_a_wrong_case(self, monkeypatch):
+        """
+        GIVEN ASSISTANT_API_REASONING_EFFORT set to "High"
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_API_REASONING_EFFORT", "High")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_api_reasoning_effort"):
+            Settings(secret_key="test-secret-key")

@@ -40,6 +40,14 @@ class InvalidCredentialsError(BeCoMeAPIError):
         self.reason = reason
 
 
+class CurrentPasswordIncorrectError(BeCoMeAPIError):
+    """Raised when a password change is given a wrong current password.
+
+    Separate from :class:`InvalidCredentialsError` because the caller is signed in: the
+    answer must not be a 401, which the SPA reads as a lost session.
+    """
+
+
 class LoginThrottledError(BeCoMeAPIError):
     """Raised when an account is temporarily locked after too many failed logins."""
 
@@ -103,6 +111,10 @@ class ScaleRangeError(ValidationError):
     """Raised when scale_min >= scale_max."""
 
 
+class ScaleExcludesOpinionsError(BeCoMeAPIError):
+    """Raised when a scale change would leave existing opinions outside the new range."""
+
+
 # Password-reset exceptions
 class InvalidResetTokenError(ValidationError):
     """Raised when a password reset token is unknown or already used."""
@@ -152,3 +164,25 @@ class UnresolvableEmailDomainError(ValidationError):
 # all, one Cloudflare rejected, or one minted for another form or another site.
 class TurnstileVerificationError(BeCoMeAPIError):
     """Raised when a request carries no Turnstile token, or none Cloudflare vouches for."""
+
+
+# Profile-photo upload refusals (api/routes/users.py). Each one is a distinct 400 with
+# its own code, so the SPA can say which check refused the file.
+class PhotoTypeNotAllowedError(BeCoMeAPIError):
+    """Raised when an uploaded photo's declared content type is not an allowed image type."""
+
+
+class PhotoTooLargeError(BeCoMeAPIError):
+    """Raised when an uploaded photo is larger than the byte limit."""
+
+
+class PhotoContentMismatchError(BeCoMeAPIError):
+    """Raised when an uploaded photo's bytes are not the image type it declared."""
+
+
+class PhotoUnreadableError(BeCoMeAPIError):
+    """Raised when an uploaded photo has the right signature but its header does not parse."""
+
+
+class PhotoDimensionsTooLargeError(BeCoMeAPIError):
+    """Raised when an uploaded photo's header parses and declares a canvas over the limit."""

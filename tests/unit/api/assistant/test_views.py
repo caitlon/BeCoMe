@@ -83,7 +83,8 @@ class TestOpinionViewAllowlist:
         """
         GIVEN a raw OpinionResponse-shaped dict
         WHEN OpinionView validates it
-        THEN expert_name is built and user_email/user_id/user_first_name are dropped
+        THEN expert_name is built, the position is kept, and user_email/user_id/user_first_name
+            are dropped
         """
         # GIVEN
         raw = {
@@ -111,6 +112,7 @@ class TestOpinionViewAllowlist:
         assert "user_id" not in dumped
         assert "user_first_name" not in dumped
         assert "user_last_name" not in dumped
+        assert view.position == "Flood coordinator"
 
     def test_handles_a_missing_last_name(self):
         """

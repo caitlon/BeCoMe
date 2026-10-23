@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 
 from api.assistant.client import _MAX_PAGES, UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.roles import tagged_role
 from api.pagination import MAX_PAGE_SIZE
 
 
@@ -152,6 +153,35 @@ class TestPagination:
         assert len(opinions) == MAX_PAGE_SIZE + 1
         assert opinions[-1].expert_name == f"Expert {MAX_PAGE_SIZE}"
         assert asked == [(MAX_PAGE_SIZE, 0), (MAX_PAGE_SIZE, MAX_PAGE_SIZE)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("kwargs", "expected"), [({}, True), ({"full": True}, False)])
+    async def test_get_opinions_asks_for_the_assistant_view_unless_full(self, kwargs, expected):
+        """
+        GIVEN a stand-in opinions endpoint that records the for_assistant parameter
+        WHEN get_opinions is called by default, and again with full=True
+        THEN the default asks for the assistant view on every page and full=True does not
+        """
+        # GIVEN
+        rows = [_opinion_row(n) for n in range(MAX_PAGE_SIZE + 1)]
+        asked: list[bool] = []
+        app = FastAPI()
+
+        @app.get("/api/v1/projects/{project_id}/opinions")
+        def list_opinions(
+            project_id: str, limit: int, offset: int, for_assistant: bool = False
+        ) -> list[dict[str, Any]]:
+            asked.append(for_assistant)
+            return rows[offset : offset + limit]
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN
+        await api_client.get_opinions(str(uuid4()), **kwargs)
+        await api_client.aclose()
+
+        # THEN
+        assert asked == [expected, expected]
 
     @pytest.mark.asyncio
     async def test_list_projects_stops_at_an_empty_page(self):
@@ -385,3 +415,29 @@ class TestMalformedSuccessBody:
         with pytest.raises(AssistantUpstreamError, match="not a list"):
             await api_client.get_opinions(str(uuid4()))
         await api_client.aclose()
+
+
+class TestFailureRole:
+    """A failure inside the application's own routes says it came from the application."""
+
+    @pytest.mark.asyncio
+    async def test_an_error_raised_by_the_app_is_tagged_app_api(self):
+        """
+        GIVEN an application whose route fails with an error of the kind a database raises
+        WHEN the client reads through it
+        THEN the error reaches the caller as it is, tagged app_api
+        """
+        # GIVEN
+        app = FastAPI()
+
+        @app.get("/api/v1/projects")
+        async def projects() -> None:
+            raise ConnectionRefusedError("application-db")
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN/THEN
+        with pytest.raises(ConnectionRefusedError) as raised:
+            await api_client.list_projects()
+        await api_client.aclose()
+        assert tagged_role(raised.value) == "app_api"

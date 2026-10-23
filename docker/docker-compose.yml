@@ -13,6 +13,7 @@
 #   UVICORN_WORKERS  - Number of API workers (default: 4)
 #   DEBUG            - Enable debug mode (default: false)
 #   CORS_ORIGINS     - JSON array of allowed origins, e.g. '["http://localhost:3000"]'
+#   ASSISTANT_ENABLED - Build the API image with the assistant extra (build arg only, default: false)
 #
 # Production considerations:
 #   - Always set SECRET_KEY via environment variable
@@ -55,6 +56,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-false}
     container_name: become-api
     restart: unless-stopped
     ports:
@@ -103,11 +106,11 @@ services:
   # ============================================
   # Assistant vector database (pgvector) - local only
   # ============================================
-  # Backs the local AI assistant's RAG index. The "assistant" profile keeps
-  # this out of a plain `docker compose up`: nothing outside a developer's own laptop
-  # ever sets ASSISTANT_ENABLED=true (Settings._validate_assistant_local_only in
-  # api/config.py refuses to start any deployed profile with it on), so no deployed
-  # environment has a reason to start this container either.
+  # Backs the AI assistant's RAG index on a developer's laptop. The "assistant" profile
+  # keeps this out of a plain `docker compose up`. A deployed service
+  # points ASSISTANT_VECTOR_DB_URL at its own database, and Settings._validate_assistant_deploy
+  # in api/config.py requires one on a deploy, so no deployed environment has a reason to
+  # start this container.
   assistant-db:
     image: pgvector/pgvector:0.8.6-pg16
     container_name: become-assistant-db

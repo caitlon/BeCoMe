@@ -1,5 +1,7 @@
 """Integration tests for opinion management endpoints."""
 
+import pytest
+
 from tests.integration.api.conftest import (
     auth_header,
     create_project,
@@ -92,6 +94,199 @@ class TestListOpinions:
 
         # THEN
         assert response.status_code == 404
+
+
+def _join_project(client, owner_token, project_id, email):
+    """Register an expert, invite them, accept, and return their token."""
+    token = register_and_login(client, email)
+    client.post(
+        f"/api/v1/projects/{project_id}/invite",
+        json={"email": email},
+        headers=auth_header(owner_token),
+    )
+    invitation = client.get("/api/v1/invitations", headers=auth_header(token)).json()[0]
+    client.post(f"/api/v1/invitations/{invitation['id']}/accept", headers=auth_header(token))
+    return token
+
+
+class TestListOpinionsForAssistant:
+    """The for_assistant view leaves out opinions of users who objected."""
+
+    @staticmethod
+    def _project_with_an_objector(client):
+        """Owner and expert B did not object, expert A did; all three hold an opinion."""
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        project_id = project["id"]
+        objector = _join_project(client, owner, project_id, "a@example.com")
+        other = _join_project(client, owner, project_id, "b@example.com")
+        for token, peak in ((owner, 50.0), (objector, 60.0), (other, 70.0)):
+            submit_opinion(client, token, project_id, peak - 10.0, peak, peak + 10.0)
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(objector)
+        )
+        return project_id, owner, objector, other
+
+    @staticmethod
+    def _user_id(client, token):
+        response = client.get("/api/v1/users/me", headers=auth_header(token))
+        return response.json()["id"]
+
+    @staticmethod
+    def _listed_ids(client, token, project_id, query=""):
+        """User ids of the listed rows; the e-mail is hidden from non-admins, ids are not."""
+        response = client.get(
+            f"/api/v1/projects/{project_id}/opinions{query}", headers=auth_header(token)
+        )
+        assert response.status_code == 200
+        return [row["user_id"] for row in response.json()]
+
+    def test_other_members_do_not_get_the_objectors_row(self, client):
+        """A member asking for the assistant view gets no row for the objector."""
+        # GIVEN
+        project_id, owner, objector, other = self._project_with_an_objector(client)
+        objector_id = self._user_id(client, objector)
+
+        # WHEN / THEN
+        for token in (owner, other):
+            ids = self._listed_ids(client, token, project_id, "?for_assistant=true")
+            assert objector_id not in ids
+            assert len(ids) == 2
+
+    def test_the_objector_still_gets_their_own_row(self, client):
+        """The objector's own assistant view is complete."""
+        # GIVEN
+        project_id, owner, objector, other = self._project_with_an_objector(client)
+
+        # WHEN
+        ids = self._listed_ids(client, objector, project_id, "?for_assistant=true")
+
+        # THEN
+        everyone = [self._user_id(client, token) for token in (owner, objector, other)]
+        assert sorted(ids) == sorted(everyone)
+
+    def test_two_objectors_see_only_their_own_rows(self, client):
+        """Each objector gets their own row and not the other's; a bystander gets neither."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project_id = create_project(client, owner)["id"]
+        first = _join_project(client, owner, project_id, "a@example.com")
+        second = _join_project(client, owner, project_id, "c@example.com")
+        for token, peak in ((owner, 50.0), (first, 60.0), (second, 70.0)):
+            submit_opinion(client, token, project_id, peak - 10.0, peak, peak + 10.0)
+        for token in (first, second):
+            client.put(
+                "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+            )
+
+        # WHEN
+        query = "?for_assistant=true"
+        first_view = self._listed_ids(client, first, project_id, query)
+        second_view = self._listed_ids(client, second, project_id, query)
+        owner_view = self._listed_ids(client, owner, project_id, query)
+
+        # THEN
+        owner_id, first_id, second_id = (
+            self._user_id(client, token) for token in (owner, first, second)
+        )
+        assert sorted(first_view) == sorted([first_id, owner_id])
+        assert sorted(second_view) == sorted([second_id, owner_id])
+        assert owner_view == [owner_id]
+
+    @pytest.mark.parametrize("query", ["", "?for_assistant=false"])
+    def test_the_plain_listing_is_unchanged(self, client, query):
+        """Without the parameter every opinion is listed and no flag is exposed."""
+        # GIVEN
+        project_id, owner, _objector, _other = self._project_with_an_objector(client)
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project_id}/opinions{query}", headers=auth_header(owner)
+        )
+
+        # THEN
+        rows = response.json()
+        assert len(rows) == 3
+        assert all("assistant_objection" not in row for row in rows)
+
+    def test_pages_of_the_filtered_view_stay_full_and_consistent(self, client):
+        """The filter is applied before limit and offset, so no page comes back short."""
+        # GIVEN: the objector's row sits in the middle of the creation order
+        project_id, owner, _objector, _other = self._project_with_an_objector(client)
+
+        # WHEN
+        first = self._listed_ids(client, owner, project_id, "?for_assistant=true&limit=1&offset=0")
+        second = self._listed_ids(client, owner, project_id, "?for_assistant=true&limit=1&offset=1")
+        third = self._listed_ids(client, owner, project_id, "?for_assistant=true&limit=1&offset=2")
+
+        # THEN
+        assert first + second == self._listed_ids(client, owner, project_id, "?for_assistant=true")
+        assert len(first) == len(second) == 1
+        assert third == []
+
+
+class TestOpinionEmailVisibility:
+    """A member's e-mail is shown to the project admin and to the member only."""
+
+    @staticmethod
+    def _project_with_two_opinions(client):
+        """Return the project id and (token, user id) of the owner and of an expert."""
+        owner = register_and_login(client, "owner@example.com")
+        project_id = create_project(client, owner)["id"]
+        expert = _join_project(client, owner, project_id, "expert@example.com")
+        submit_opinion(client, owner, project_id, 30.0, 50.0, 70.0)
+        submit_opinion(client, expert, project_id, 40.0, 60.0, 80.0)
+        ids = [
+            client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
+            for token in (owner, expert)
+        ]
+        return project_id, (owner, ids[0]), (expert, ids[1])
+
+    @staticmethod
+    def _emails_by_user(client, token, project_id):
+        response = client.get(f"/api/v1/projects/{project_id}/opinions", headers=auth_header(token))
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 2
+        assert all("user_email" in row for row in rows)
+        return {row["user_id"]: row["user_email"] for row in rows}
+
+    def test_admin_sees_every_email(self, client):
+        """The project admin gets every address."""
+        # GIVEN
+        project_id, (owner, owner_id), (_expert, expert_id) = self._project_with_two_opinions(
+            client
+        )
+
+        # WHEN
+        emails = self._emails_by_user(client, owner, project_id)
+
+        # THEN
+        assert emails == {owner_id: "owner@example.com", expert_id: "expert@example.com"}
+
+    def test_expert_sees_only_their_own_email(self, client):
+        """An expert gets null for the other rows and their own address on their row."""
+        # GIVEN
+        project_id, (_owner, owner_id), (expert, expert_id) = self._project_with_two_opinions(
+            client
+        )
+
+        # WHEN
+        emails = self._emails_by_user(client, expert, project_id)
+
+        # THEN
+        assert emails == {owner_id: None, expert_id: "expert@example.com"}
+
+    def test_submitting_an_opinion_returns_the_callers_own_email(self, client):
+        """The response to the caller's own submission carries their address."""
+        # GIVEN
+        project_id, _owner, (expert, _expert_id) = self._project_with_two_opinions(client)
+
+        # WHEN
+        response = submit_opinion(client, expert, project_id, 41.0, 61.0, 81.0)
+
+        # THEN
+        assert response["user_email"] == "expert@example.com"
 
 
 class TestSubmitOpinion:
@@ -512,6 +707,50 @@ class TestGetResult:
         data = response.json()
         assert data["likert_value"] is not None
         assert data["likert_decision"] is not None
+
+    def test_includes_the_likert_recommendation_for_standard_scale(self, client):
+        """The result carries the interpreter's action sentence for the Likert point."""
+        # GIVEN a 0-100 project without a unit and a compromise that rounds to 75
+        token = register_and_login(client)
+        project = create_project(client, token)
+        submit_opinion(client, token, project["id"], 70.0, 80.0, 90.0)
+
+        # WHEN the result is read
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/result",
+            headers=auth_header(token),
+        )
+
+        # THEN the recommendation sits next to the value and the decision
+        data = response.json()
+        assert data["likert_value"] == 75
+        assert data["likert_decision"] == "Rather agree"
+        assert data["likert_recommendation"] == "Policy is recommended with minor adjustments"
+
+    def test_skips_the_likert_recommendation_when_a_unit_is_set(self, client):
+        """A 0-100 scale that names a unit measures a quantity, so no recommendation."""
+        # GIVEN a 0-100 project measured in percent
+        token = register_and_login(client)
+        project_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Percent Scale", "scale_unit": "%"},
+            headers=auth_header(token),
+        )
+        project = project_resp.json()
+        submit_opinion(client, token, project["id"], 70.0, 80.0, 90.0)
+
+        # WHEN the result is read
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/result",
+            headers=auth_header(token),
+        )
+
+        # THEN the field is present and null
+        data = response.json()
+        assert data["likert_value"] is None
+        assert data["likert_decision"] is None
+        assert "likert_recommendation" in data
+        assert data["likert_recommendation"] is None
 
     def test_includes_the_agreement_level(self, client):
         """The result carries its agreement reading, so every reader shows the same one.

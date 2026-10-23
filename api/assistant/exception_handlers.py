@@ -13,6 +13,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from api.assistant.errors import (
+    AssistantBusyError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
@@ -20,10 +21,12 @@ from api.assistant.errors import (
 
 logger = logging.getLogger(__name__)
 
-_UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
+UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
 
 
-def _log(request: Request, exc: Exception, *, event: str, status_code: int, level: int) -> None:
+def _log(
+    request: Request, exc: Exception, *, event: str, status_code: int, level: int, **fields: str
+) -> None:
     """Record a chat error with ids only, never the message text.
 
     :param request: The request that failed.
@@ -31,6 +34,7 @@ def _log(request: Request, exc: Exception, *, event: str, status_code: int, leve
     :param event: Machine-readable event name for the record.
     :param status_code: Status the handler answers with.
     :param level: Logging level for the record.
+    :param fields: Further fields for the record, such as a ``reason``.
     """
     logger.log(
         level,
@@ -43,6 +47,7 @@ def _log(request: Request, exc: Exception, *, event: str, status_code: int, leve
             "status_code": status_code,
             "path": request.url.path,
             "exception_type": type(exc).__name__,
+            **fields,
         },
     )
 
@@ -54,7 +59,7 @@ def assistant_rate_limited_handler(
 
     :param request: FastAPI request.
     :param exc: The raised error.
-    :return: A 429 JSON response.
+    :return: A 429 JSON response with a ``Retry-After`` header.
     """
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     _log(
@@ -63,6 +68,40 @@ def assistant_rate_limited_handler(
     return JSONResponse(
         status_code=status_code,
         content={"detail": "Too many assistant messages. Please try again later."},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONResponse:
+    """Answer 503 with ``Retry-After`` when a turn is refused for load.
+
+    The body is the same fixed text as for an unreachable model server. The record is the
+    only one a refusal writes: a WARNING, not an ERROR, since a full assistant is load and not
+    a fault, and it names the limit that refused (``process``, ``user`` or ``global``) and no
+    user. The global ceiling has an event of its own, ``assistant_global_cap_reached``, since
+    it is an hourly spend and not a count of turns running.
+
+    :param request: FastAPI request.
+    :param exc: The raised error.
+    :return: A 503 JSON response with a ``Retry-After`` header.
+    """
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    _log(
+        request,
+        exc,
+        event=(
+            "assistant_global_cap_reached"
+            if exc.reason == "global"
+            else "assistant_concurrency_cap_reached"
+        ),
+        status_code=status_code,
+        level=logging.WARNING,
+        reason=exc.reason,
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": UNAVAILABLE_DETAIL},
+        headers={"Retry-After": str(exc.retry_after)},
     )
 
 
@@ -75,7 +114,7 @@ def assistant_unavailable_handler(request: Request, exc: AssistantUnavailableErr
     """
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     _log(request, exc, event="assistant_unavailable", status_code=status_code, level=logging.ERROR)
-    return JSONResponse(status_code=status_code, content={"detail": _UNAVAILABLE_DETAIL})
+    return JSONResponse(status_code=status_code, content={"detail": UNAVAILABLE_DETAIL})
 
 
 def assistant_upstream_handler(request: Request, exc: AssistantUpstreamError) -> JSONResponse:
@@ -92,4 +131,4 @@ def assistant_upstream_handler(request: Request, exc: AssistantUpstreamError) ->
     _log(
         request, exc, event="assistant_upstream_error", status_code=status_code, level=logging.ERROR
     )
-    return JSONResponse(status_code=status_code, content={"detail": _UNAVAILABLE_DETAIL})
+    return JSONResponse(status_code=status_code, content={"detail": UNAVAILABLE_DETAIL})

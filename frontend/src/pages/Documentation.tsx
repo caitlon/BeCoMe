@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
@@ -7,32 +7,65 @@ import {
   Calculator,
   BarChart3,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { PageShell } from "@/components/layout/PageShell";
 import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useAssistantGuide } from "@/components/assistant";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
 
-const sectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
+const baseSectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
+const sectionIdsWithAssistant: readonly string[] = [
+  "getting-started",
+  "expert-opinions",
+  "results",
+  "visualization",
+  "assistant",
+  "glossary",
+];
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.documentation"));
 
+  // The assistant's entry, id and section all wait for the guide module, so none shows without the others.
+  const loadedGuide = useAssistantGuide();
+  // A render error in the guide's section or label drops the entry and the id with it.
+  const [guideFailed, setGuideFailed] = useState(false);
+  const guide = guideFailed ? null : loadedGuide;
+  const dropGuide = () => setGuideFailed(true);
+  const sectionIds = useMemo(() => (guide ? sectionIdsWithAssistant : baseSectionIds), [guide]);
   const { activeId, scrollToSection } = useScrollSpy(sectionIds, "getting-started");
 
   useEffect(() => {
     globalThis.scrollTo(0, 0);
   }, []);
 
+  const assistantItem: SidebarNavItem[] = guide
+    ? [
+        {
+          id: "assistant",
+          label: (
+            <ErrorBoundary fallback={null} onError={dropGuide}>
+              <guide.AssistantDocsNavLabel />
+            </ErrorBoundary>
+          ),
+          icon: Sparkles,
+        },
+      ]
+    : [];
+
   const tocItems: SidebarNavItem[] = [
     { id: "getting-started", label: t("gettingStarted.title"), icon: BookOpen },
     { id: "expert-opinions", label: t("expertOpinions.title"), icon: Users },
     { id: "results", label: t("results.title"), icon: Calculator },
     { id: "visualization", label: t("visualization.title"), icon: BarChart3 },
+    ...assistantItem,
     { id: "glossary", label: t("glossary.title"), icon: FileText },
   ];
 
@@ -229,6 +262,9 @@ const Documentation = () => {
                       <p className="text-sm font-mono bg-muted px-3 py-2 rounded">
                         {t("expertOpinions.likert.example")}
                       </p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("expertOpinions.likert.verdict")}
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -342,6 +378,12 @@ const Documentation = () => {
                   </CardContent>
                 </Card>
               </section>
+
+              {guide && (
+                <ErrorBoundary fallback={null} onError={dropGuide}>
+                  <guide.AssistantDocsSection />
+                </ErrorBoundary>
+              )}
 
               {/* Glossary */}
               <section id="glossary" className="mb-12">

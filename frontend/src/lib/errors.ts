@@ -21,6 +21,49 @@
  */
 export const TURNSTILE_REFUSED_CODE = 'turnstile_refused';
 
+/**
+ * The code the API sends when a password change is given a wrong current password.
+ * It rides on a 400, not a 401, so the request is not mistaken for a lost session.
+ */
+export const CURRENT_PASSWORD_INCORRECT_CODE = 'current_password_incorrect'; // pragma: allowlist secret
+
+/** The invitation names an email that no account uses. */
+export const INVITEE_NOT_FOUND_CODE = 'invitee_not_found';
+
+/** The invitee already has a pending invitation to this project. */
+export const ALREADY_INVITED_CODE = 'already_invited';
+
+/** The invitee is already a member of this project. */
+export const ALREADY_MEMBER_CODE = 'already_member';
+
+/** The shared example project does not take invitations. */
+export const EXAMPLE_PROJECT_NOT_INVITABLE_CODE = 'example_project_not_invitable';
+
+/** The invitation being accepted or declined no longer exists. */
+export const INVITATION_NOT_FOUND_CODE = 'invitation_not_found';
+
+/** The uploaded photo is not a JPEG, PNG, GIF or WebP file. */
+export const PHOTO_TYPE_NOT_ALLOWED_CODE = 'photo_type_not_allowed';
+
+/** The uploaded photo is over the size limit. */
+export const PHOTO_TOO_LARGE_CODE = 'photo_too_large';
+
+/** The uploaded photo's content does not match the type it declared. */
+export const PHOTO_CONTENT_MISMATCH_CODE = 'photo_content_mismatch';
+
+/** The uploaded photo could not be decoded as an image. */
+export const PHOTO_UNREADABLE_CODE = 'photo_unreadable';
+
+/** The uploaded photo has more pixels than the API accepts. */
+export const PHOTO_DIMENSIONS_TOO_LARGE_CODE = 'photo_dimensions_too_large';
+
+/**
+ * The API refused a mutation because the CSRF token it carried is missing or does
+ * not belong to the current session. Usually another tab signed in again, so this
+ * tab still holds the token of the session that tab replaced.
+ */
+export const CSRF_INVALID_CODE = 'csrf_invalid';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;
@@ -30,6 +73,19 @@ export class NetworkError extends Error {
     super(message);
     this.name = 'NetworkError';
     this.cause = options?.cause;
+  }
+}
+
+/**
+ * A streamed response ended before it said it was finished: the body closed with
+ * no terminal event, so whatever was received is a truncated answer.
+ */
+export class StreamIncompleteError extends Error {
+  readonly kind = 'streamIncomplete' as const;
+
+  constructor(message = 'The stream ended before it completed') {
+    super(message);
+    this.name = 'StreamIncompleteError';
   }
 }
 
@@ -112,6 +168,10 @@ export const isServerError = (error: unknown): error is ServerError =>
  */
 export const isTurnstileRefusal = (error: unknown): boolean =>
   error instanceof HttpError && error.code === TURNSTILE_REFUSED_CODE;
+
+/** The current password typed into the change-password form was wrong. */
+export const isCurrentPasswordIncorrect = (error: unknown): boolean =>
+  error instanceof HttpError && error.code === CURRENT_PASSWORD_INCORRECT_CODE;
 
 /** A network hiccup or a 5xx: the service itself is the problem, not the request. */
 export const isServiceUnavailable = (error: unknown): boolean =>

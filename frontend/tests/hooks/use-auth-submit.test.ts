@@ -67,7 +67,7 @@ describe('useAuthSubmit', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('calls action, shows success toast, navigates to /projects', async () => {
+  it('calls action and shows the success toast, leaving the redirect to GuestRoute', async () => {
     const action = vi.fn().mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useAuthSubmit(messages));
@@ -81,7 +81,7 @@ describe('useAuthSubmit', () => {
       title: 'Success',
       description: 'You are logged in',
     });
-    expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('shows error toast with error.message on failure', async () => {

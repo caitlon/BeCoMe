@@ -4,11 +4,11 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import hash_email
-from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
+from api.dependencies import ProjectAdmin, get_invitation_service
 from api.exceptions import (
     AlreadyInvitedError,
     ExampleProjectInvitationError,
@@ -33,15 +33,15 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
 def _log_invitation_rejected(reason: str, project_id: UUID, inviter_id: UUID, email: str) -> None:
     """Record an invitation the endpoint refused.
 
-    Both refusals translate a :class:`~api.exceptions.BeCoMeAPIError` into an
-    ``HTTPException`` inside the route, so ``become_api_error_handler`` never sees the
-    original and neither refusal is logged anywhere else.
+    The route catches each refusal only to call this, then re-raises it for
+    ``become_api_error_handler``, which builds the response and its code. The handler logs
+    the exception type but not the reason, project or inviter recorded here.
 
     The address is tagged, never written out: this endpoint is the application's
     email-enumeration surface, and a log of the addresses people probed for would be
     the registry the uniform rate limit exists to deny.
 
-    :param reason: ``invitee_not_found`` or ``already_invited``.
+    :param reason: ``example_project``, ``invitee_not_found`` or ``already_invited``.
     :param project_id: Project the invitation targeted.
     :param inviter_id: Admin who sent it.
     :param email: Address that was invited.
@@ -82,8 +82,10 @@ def invite_by_email(
     :param current_user: Authenticated admin user
     :param invitation_service: Invitation service
     :return: Created invitation
-    :raises HTTPException: 404 if user not found, 409 if already member, already
-        invited, or the project is the seeded example
+    :raises UserNotFoundForInvitationError: If no user has this email (404)
+    :raises UserAlreadyMemberError: If the user is already a member (409)
+    :raises AlreadyInvitedError: If the user already has a pending invitation (409)
+    :raises ExampleProjectInvitationError: If the project is the seeded example (409)
     """
     try:
         invitation, invitee = invitation_service.invite_by_email(
@@ -91,24 +93,15 @@ def invite_by_email(
             inviter_id=current_user.id,
             invitee_email=data.email,
         )
-    except ExampleProjectInvitationError as err:
+    except ExampleProjectInvitationError:
         _log_invitation_rejected("example_project", project.id, current_user.id, data.email)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The example project cannot take invitations",
-        ) from err
-    except UserNotFoundForInvitationError as err:
+        raise
+    except UserNotFoundForInvitationError:
         _log_invitation_rejected("invitee_not_found", project.id, current_user.id, data.email)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No user found with this email",
-        ) from err
-    except AlreadyInvitedError as err:
+        raise
+    except AlreadyInvitedError:
         _log_invitation_rejected("already_invited", project.id, current_user.id, data.email)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User already has a pending invitation",
-        ) from err
+        raise
 
     return InvitationResponse.from_model(invitation, invitee)
 
@@ -119,13 +112,13 @@ def invite_by_email(
 )
 def list_project_invitations(
     project_id: UUID,
-    project: ProjectMember,
+    project: ProjectAdmin,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
     pagination: Annotated[PaginationParams, Depends()],
 ) -> list[ProjectInvitationResponse]:
-    """Get pending invitations for a project. Accessible to project members.
+    """Get pending invitations for a project. Accessible to the project admin only.
 
-    :param project: Project (verified member access)
+    :param project: Project (verified admin access)
     :param invitation_service: Invitation service
     :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with invitee details
@@ -196,11 +189,13 @@ def accept_invitation(
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
     :return: Created membership details
-    :raises HTTPException: 404 if invitation not found or not for this user
+    :raises InvitationNotFoundError: If the invitation does not exist or is not for this user
+    :raises ExampleProjectInvitationError: If the invitation is into the seeded example
+    :raises UserAlreadyMemberError: If the user is already a member of the project
     """
     membership = invitation_service.accept_invitation(invitation_id, current_user.id)
 
-    return MemberResponse.from_model(membership, current_user)
+    return MemberResponse.from_model(membership, current_user, show_email=True)
 
 
 @router.post(
@@ -218,6 +213,6 @@ def decline_invitation(
     :param invitation_id: Invitation UUID
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
-    :raises HTTPException: 404 if invitation not found or not for this user
+    :raises InvitationNotFoundError: If the invitation does not exist or is not for this user
     """
     invitation_service.decline_invitation(invitation_id, current_user.id)

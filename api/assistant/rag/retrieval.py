@@ -7,6 +7,7 @@ as it is), "multi_query" adds paraphrases of the query, and "hyde" replaces the 
 with a model-generated hypothetical answer.
 """
 
+import asyncio
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -37,6 +38,35 @@ def _tokenize(text: str) -> list[str]:
     :return: Lowercase word tokens.
     """
     return _TOKEN_PATTERN.findall(text.lower())
+
+
+def _build_bm25_index(documents: list[Document]) -> BM25Okapi:
+    """Tokenize the documents and build the BM25 index; CPU work, run it in a thread.
+
+    :param documents: Every document of the collection; not empty.
+    :return: The index over their text.
+    """
+    return BM25Okapi([_tokenize(doc.page_content) for doc in documents])
+
+
+def _rank_bm25(
+    index: BM25Okapi, documents: list[Document], query: str, fetch_k: int
+) -> list[tuple[Document, float]]:
+    """Score every document against the query and sort them; CPU work, run it in a thread.
+
+    :param index: The index built over ``documents``.
+    :param documents: The documents the index was built over, in the same order.
+    :param query: The search query.
+    :param fetch_k: How many candidates to return.
+    :return: (Document, score) pairs, highest BM25 score first.
+    """
+    scores = index.get_scores(_tokenize(query))
+    ranked = sorted(
+        zip(documents, scores, strict=True),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    return [(doc, float(score)) for doc, score in ranked[:fetch_k]]
 
 
 #: Letters that exist in Czech and not in English. Lowercase only: the query is lowercased
@@ -362,6 +392,9 @@ class DocsRetriever:
         self._llm = llm
         self._bm25_documents: list[Document] | None = None
         self._bm25_index: BM25Okapi | None = None
+        # Two first requests arriving together would each fetch the whole collection and
+        # build an index; the lock lets the second find the first one's.
+        self._bm25_lock = asyncio.Lock()
 
     async def _search_dense(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
         """Dense vector search over the store, scored by LangChain's relevance conversion.
@@ -399,24 +432,30 @@ class DocsRetriever:
         """
         if self._bm25_index is not None:
             return
-        # The public asimilarity_search_with_score, not the protected
-        # relevance-score method dense search uses: bm25 needs the collection's
-        # documents only and discards the scores, so pgvector's
-        # distance-versus-similarity convention plays no part here.
-        results = await self._store.asimilarity_search_with_score(
-            "assistant corpus", k=_BM25_FETCH_LIMIT
-        )
-        documents = [doc for doc, _ in results]
-        if not documents:
-            raise ValueError("cannot build a bm25 index: the store's collection is empty")
-        if len(documents) >= _BM25_FETCH_LIMIT:
-            raise ValueError(
-                f"cannot build a complete bm25 index: the collection fills the fetch limit "
-                f"of {_BM25_FETCH_LIMIT} chunks, so some chunks may be missing; raise "
-                "_BM25_FETCH_LIMIT"
+        async with self._bm25_lock:
+            if self._bm25_index is not None:
+                return
+            # The public asimilarity_search_with_score, not the protected
+            # relevance-score method dense search uses: bm25 needs the collection's
+            # documents only and discards the scores, so pgvector's
+            # distance-versus-similarity convention plays no part here.
+            results = await self._store.asimilarity_search_with_score(
+                "assistant corpus", k=_BM25_FETCH_LIMIT
             )
-        self._bm25_documents = documents
-        self._bm25_index = BM25Okapi([_tokenize(doc.page_content) for doc in documents])
+            documents = [doc for doc, _ in results]
+            if not documents:
+                raise ValueError("cannot build a bm25 index: the store's collection is empty")
+            if len(documents) >= _BM25_FETCH_LIMIT:
+                raise ValueError(
+                    f"cannot build a complete bm25 index: the collection fills the fetch limit "
+                    f"of {_BM25_FETCH_LIMIT} chunks, so some chunks may be missing; raise "
+                    "_BM25_FETCH_LIMIT"
+                )
+            # Measured at about 0.27 s for 5000 chunks of 250 tokens: short, but long enough
+            # to hold up every other request on the loop, and it grows with the corpus.
+            index = await asyncio.to_thread(_build_bm25_index, documents)
+            self._bm25_documents = documents
+            self._bm25_index = index
 
     async def _search_bm25(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
         """BM25 keyword search over every document currently in the store.
@@ -430,13 +469,9 @@ class DocsRetriever:
         await self._ensure_bm25_index()
         if self._bm25_index is None or self._bm25_documents is None:
             raise RuntimeError("unreachable: _ensure_bm25_index always sets both or raises")
-        scores = self._bm25_index.get_scores(_tokenize(query))
-        ranked = sorted(
-            zip(self._bm25_documents, scores, strict=True),
-            key=lambda pair: pair[1],
-            reverse=True,
+        return await asyncio.to_thread(
+            _rank_bm25, self._bm25_index, self._bm25_documents, query, fetch_k
         )
-        return [(doc, float(score)) for doc, score in ranked[:fetch_k]]
 
     async def _apply_rerank(
         self, query: str, candidates: list[tuple[Document, float]]

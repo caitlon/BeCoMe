@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   NetworkError,
+  StreamIncompleteError,
   HttpError,
   UnauthorizedError,
   ForbiddenError,
@@ -13,7 +14,9 @@ import {
   isServiceUnavailable,
   isRetryable,
   isTurnstileRefusal,
+  isCurrentPasswordIncorrect,
   TURNSTILE_REFUSED_CODE,
+  CURRENT_PASSWORD_INCORRECT_CODE,
 } from '@/lib/errors';
 import { toHttpError, safeFetch } from '@/lib/api';
 
@@ -30,6 +33,18 @@ function mockResponse(
     headers: { get: (name: string) => headers[name] ?? null },
   } as unknown as Response;
 }
+
+describe('StreamIncompleteError', () => {
+  it('carries its own kind and a default message, and is not a service-unavailable failure', () => {
+    const error = new StreamIncompleteError();
+    expect(error.message).toBe('The stream ended before it completed');
+    expect(error.kind).toBe('streamIncomplete');
+    expect(error.name).toBe('StreamIncompleteError');
+    expect(error).toBeInstanceOf(Error);
+    expect(isServiceUnavailable(error)).toBe(false);
+    expect(isRetryable(error)).toBe(false);
+  });
+});
 
 describe('NetworkError', () => {
   it('defaults to a generic message', () => {
@@ -185,6 +200,43 @@ describe('toHttpError / safeFetch (api.ts error production)', () => {
     expect((error as RateLimitError).retryAfter).toBeUndefined();
   });
 
+  describe('Retry-After as an HTTP-date or garbage', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function retryAfterOf(header: string): Promise<number | undefined> {
+      const error = await toHttpError(
+        mockResponse(429, { detail: 'Slow down' }, { 'Retry-After': header })
+      );
+      return (error as RateLimitError).retryAfter;
+    }
+
+    it('turns an HTTP-date in the future into whole seconds from now, rounded up', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-11T12:00:00.000Z'));
+
+      expect(await retryAfterOf('Sun, 11 Oct 2026 12:01:30 GMT')).toBe(90);
+      expect(await retryAfterOf('Sun, 11 Oct 2026 12:00:00 GMT')).toBe(0);
+    });
+
+    it('turns an HTTP-date that has passed into 0', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-11T12:00:00.000Z'));
+
+      expect(await retryAfterOf('Sun, 11 Oct 2026 11:00:00 GMT')).toBe(0);
+    });
+
+    it('keeps an integer count of seconds as it is', async () => {
+      expect(await retryAfterOf('120')).toBe(120);
+      expect(await retryAfterOf('0')).toBe(0);
+    });
+
+    it.each([['soon'], ['not-a-date'], ['   '], ['1.5'], ['-5'], ['+5']])('leaves %j undefined', async (header) => {
+      expect(await retryAfterOf(header)).toBeUndefined();
+    });
+  });
+
   it('maps 5xx to ServerError, preserving the exact status', async () => {
     const error = await toHttpError(mockResponse(502, { detail: 'Bad gateway' }));
     expect(error).toBeInstanceOf(ServerError);
@@ -306,5 +358,24 @@ describe('isTurnstileRefusal', () => {
     expect(isTurnstileRefusal(new NetworkError())).toBe(false);
     expect(isTurnstileRefusal('turnstile_refused')).toBe(false);
     expect(isTurnstileRefusal(undefined)).toBe(false);
+  });
+});
+
+describe('isCurrentPasswordIncorrect', () => {
+  it('recognises the 400 a password change answers a wrong current password with', () => {
+    expect(
+      isCurrentPasswordIncorrect(new HttpError('wrong', 400, CURRENT_PASSWORD_INCORRECT_CODE))
+    ).toBe(true);
+  });
+
+  it('rejects a 400 with no code or another code', () => {
+    expect(isCurrentPasswordIncorrect(new HttpError('bad', 400))).toBe(false);
+    expect(isCurrentPasswordIncorrect(new HttpError('bad', 400, 'something_else'))).toBe(false);
+  });
+
+  it('rejects values that are not HTTP errors at all', () => {
+    expect(isCurrentPasswordIncorrect(new NetworkError())).toBe(false);
+    expect(isCurrentPasswordIncorrect('current_password_incorrect')).toBe(false);
+    expect(isCurrentPasswordIncorrect(undefined)).toBe(false);
   });
 });

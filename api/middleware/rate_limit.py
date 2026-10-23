@@ -1,6 +1,8 @@
 """Rate limiting configuration for API endpoints."""
 
 import logging
+import math
+import time
 
 from fastapi import Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -62,6 +64,33 @@ LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)
 LIMIT_ASSISTANT_CHAT = "20/minute"  # Every message costs model calls; the hourly cap is per user
 
 
+def _retry_after_seconds(request: Request, exc: RateLimitExceeded) -> int:
+    """Return the whole seconds until the throttled client's window closes.
+
+    Reads the window from the limiter's store. When the request recorded no limit or
+    the store cannot be read, answers with the full window length, the longest the
+    wait can be.
+
+    :param request: The throttled request
+    :param exc: The rate-limit exception
+    :return: Seconds to wait, at least 1
+    """
+    view_rate_limit = getattr(request.state, "view_rate_limit", None)
+    if view_rate_limit is not None:
+        limit, keys = view_rate_limit
+        try:
+            reset, _ = request.app.state.limiter.limiter.get_window_stats(limit, *keys)
+            seconds: int = math.ceil(reset - time.time())
+            return max(1, seconds)
+        except Exception:
+            logger.warning(
+                "Rate limit window unreadable, answering with the full window",
+                extra={"event": "rate_limit_window_unreadable"},
+                exc_info=True,
+            )
+    return exc.limit.limit.get_expiry() if exc.limit else 1
+
+
 def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
     """Log a rate-limit violation, then delegate to the slowapi handler.
 
@@ -69,9 +98,13 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
     events leave a trace. The dependency on slowapi's private handler is
     deliberate: the library documents this exact composition pattern.
 
+    slowapi sets ``Retry-After`` only with ``headers_enabled``, which would also put
+    ``X-RateLimit-*`` on every response, so the header is added here instead, unless
+    slowapi already set it.
+
     :param request: The throttled request
     :param exc: The rate-limit exception
-    :return: The slowapi 429 response
+    :return: The slowapi 429 response, with ``Retry-After`` set
     """
     logger.warning(
         "Rate limit exceeded",
@@ -82,4 +115,7 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
             "request_id": getattr(request.state, "request_id", None),
         },
     )
-    return _rate_limit_exceeded_handler(request, exc)
+    response = _rate_limit_exceeded_handler(request, exc)
+    if response.headers.get("Retry-After") is None:
+        response.headers["Retry-After"] = str(_retry_after_seconds(request, exc))
+    return response

@@ -48,8 +48,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         # Imported only when the flag is on, like the router in create_app(), so a
         # deployed process never loads the assistant package.
         from api.assistant.agent.tracing import shutdown_tracing
+        from api.assistant.deps import close_assistant_resources
 
-        shutdown_tracing()
+        try:
+            shutdown_tracing()
+        finally:
+            await close_assistant_resources()
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 
@@ -164,8 +168,9 @@ def create_app() -> FastAPI:
         # allow_headers covers the request direction only. The SPA runs on a different
         # host than the API, so the CSRF token reaches it as a response header, and a
         # cross-origin response header stays invisible to JavaScript unless it is named
-        # here (see api/auth/cookies.py::set_csrf_header).
-        expose_headers=["X-CSRF-Token"],
+        # here (see api/auth/cookies.py::set_csrf_header). Retry-After is exposed for the
+        # same reason: the SPA's retry timer reads it off the 429.
+        expose_headers=["X-CSRF-Token", "Retry-After"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 
@@ -193,16 +198,18 @@ def create_app() -> FastAPI:
 
     # Imported only when the flag is on, so the assistant package - and, once later
     # PRs add them, its LangChain/LangGraph imports from the "assistant" extra -
-    # never loads in a deployed process. It could not run there anyway:
-    # Settings._validate_assistant_local_only refuses to start any deployed profile
-    # with assistant_enabled set.
+    # never loads in a process that leaves the flag off. Settings._validate_assistant_deploy
+    # refuses to start a Railway environment other than dev, test and prod with
+    # assistant_enabled set.
     if settings.assistant_enabled:
         from api.assistant.errors import (
+            AssistantBusyError,
             AssistantRateLimitedError,
             AssistantUnavailableError,
             AssistantUpstreamError,
         )
         from api.assistant.exception_handlers import (
+            assistant_busy_handler,
             assistant_rate_limited_handler,
             assistant_unavailable_handler,
             assistant_upstream_handler,
@@ -213,6 +220,7 @@ def create_app() -> FastAPI:
         # Registered here, not in EXCEPTION_MAP, so a deployed process never imports
         # the assistant package to build its error table. A specific class outranks
         # the BeCoMeAPIError handler, so these answer before the generic one.
+        app.add_exception_handler(AssistantBusyError, assistant_busy_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]

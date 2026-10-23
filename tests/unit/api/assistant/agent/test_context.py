@@ -1,6 +1,8 @@
 """Tests for the source registry and the per-turn agent context."""
 
-from api.assistant.agent.context import SourceRegistry
+import pytest
+
+from api.assistant.agent.context import SNIPPET_CHARS, SourceRegistry, _excerpt
 from api.assistant.rag.corpus import Layer
 from api.assistant.rag.retrieval import RetrievedChunk
 
@@ -115,6 +117,35 @@ class TestSourceRegistry:
         assert refs[1].title == "Other"
         assert refs[1].section == "Deep"
 
+    def test_refs_carries_a_snippet_of_the_passage(self):
+        """
+        GIVEN a public chunk and a local chunk, one of them with untidy whitespace
+        WHEN the references are built
+        THEN each carries the first words of its passage as a tidy snippet
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("The mean\nand the   median."))
+        registry.add(_chunk("Private words.", layer="local"))
+
+        refs = registry.refs()
+
+        assert refs[0].snippet == "The mean and the median."
+        assert refs[1].snippet == "Private words."
+
+    def test_refs_cuts_a_long_passage_to_the_snippet_limit(self):
+        """
+        GIVEN a chunk much longer than the snippet limit
+        WHEN the references are built
+        THEN the snippet fits the limit and ends with an ellipsis
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("word " * 200))
+
+        snippet = registry.refs()[0].snippet
+
+        assert snippet == ("word " * 47).strip() + " word\u2026"
+        assert len(snippet) <= SNIPPET_CHARS
+
     def test_refs_of_a_local_chunk_exposes_no_path(self):
         """
         GIVEN a local-layer chunk whose url holds a filesystem path
@@ -194,3 +225,112 @@ class TestSourceRegistry:
         THEN the list is empty
         """
         assert SourceRegistry().numbered() == []
+
+
+class TestExcerpt:
+    """The snippet is plain text on one line, cut at a word and marked with an ellipsis."""
+
+    def test_collapses_whitespace_runs_to_one_space(self):
+        """
+        GIVEN text with newlines, tabs and repeated spaces
+        WHEN the excerpt is made
+        THEN every run becomes a single space and the ends are trimmed
+        """
+        assert _excerpt("  one\n\ntwo\t three   four ") == "one two three four"
+
+    def test_strips_control_characters(self):
+        """
+        GIVEN text holding a null byte, an escape and a zero-width space
+        WHEN the excerpt is made
+        THEN those characters are gone and the words stay
+        """
+        assert _excerpt("al\x00pha\x1b[0m be\u200bta") == "alpha[0m beta"
+
+    @pytest.mark.parametrize("text", ["a \x00 b", "a\n\x00\nb", "a\x00 \x1b b"])
+    def test_a_dropped_control_character_leaves_no_double_space(self, text):
+        """
+        GIVEN text where a control character sits between spaces or newlines
+        WHEN the excerpt is made
+        THEN the words are joined by a single space
+        """
+        assert _excerpt(text) == "a b"
+
+    def test_leaves_short_text_untouched(self):
+        """
+        GIVEN text no longer than the limit
+        WHEN the excerpt is made
+        THEN it comes back without an ellipsis
+        """
+        assert _excerpt("short text", limit=10) == "short text"
+
+    def test_cuts_at_the_last_space_before_the_limit(self):
+        """
+        GIVEN text longer than the limit
+        WHEN the excerpt is made
+        THEN it is cut at the last space before the limit and ends with an ellipsis
+        """
+        assert _excerpt("alpha beta gamma", limit=12) == "alpha beta\u2026"
+
+    def test_a_space_exactly_at_the_limit_is_not_a_place_to_cut(self):
+        """
+        GIVEN text whose space falls at index equal to the limit
+        WHEN the excerpt is made
+        THEN the cut uses the earlier space, because the ellipsis needs that slot
+        """
+        assert _excerpt("abc defg hij", 8) == "abc\u2026"
+
+    @pytest.mark.parametrize("text", ["", " ", " \n\t  ", "\x00"])
+    def test_empty_or_blank_text_gives_an_empty_excerpt(self, text):
+        """
+        GIVEN text that is empty, only whitespace, or only a control character
+        WHEN the excerpt is made
+        THEN the result is an empty string
+        """
+        assert _excerpt(text) == ""
+
+    @pytest.mark.parametrize("text", ["ab", "abc def", "word " * 10])
+    def test_a_limit_of_one_leaves_only_the_ellipsis(self, text):
+        """
+        GIVEN non-empty text longer than one character and a limit of one
+        WHEN the excerpt is made
+        THEN only the ellipsis remains
+        """
+        assert _excerpt(text, limit=1) == "\u2026"
+
+    def test_a_zero_width_joiner_is_dropped_from_an_emoji_sequence(self):
+        """
+        GIVEN an emoji sequence joined by a zero-width joiner (category Cf)
+        WHEN the excerpt is made
+        THEN the joiner is removed and the two emoji stay side by side; this documents
+            the current behaviour, not a wish to split the sequence
+        """
+        assert _excerpt("\U0001f469\u200d\U0001f4bb") == "\U0001f469\U0001f4bb"
+
+    def test_a_cut_may_use_the_space_just_inside_the_limit(self):
+        """
+        GIVEN text whose last word boundary falls on the last character the limit leaves
+            room for
+        WHEN the excerpt is made
+        THEN that word is kept and the result is exactly as long as the limit
+        """
+        excerpt = _excerpt("abc def ghi", 8)
+
+        assert excerpt == "abc def\u2026"
+        assert len(excerpt) == 8
+
+    def test_cuts_at_the_limit_when_there_is_no_space(self):
+        """
+        GIVEN one long word
+        WHEN the excerpt is made
+        THEN it is cut so that the text and its ellipsis fit the limit exactly
+        """
+        assert _excerpt("abcdefghij", limit=5) == "abcd\u2026"
+
+    def test_the_default_limit_is_the_snippet_length(self):
+        """
+        GIVEN text one character over the default limit
+        WHEN the excerpt is made without a limit
+        THEN it is shortened, and text at exactly the limit is not
+        """
+        assert _excerpt("a" * SNIPPET_CHARS) == "a" * SNIPPET_CHARS
+        assert _excerpt("a" * (SNIPPET_CHARS + 1)).endswith("\u2026")

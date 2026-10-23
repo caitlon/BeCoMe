@@ -22,9 +22,44 @@ interface AuthContextType {
   ) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
+  /**
+   * Replaces the signed-in user with a fresh copy the caller already holds (the
+   * response of a write), without refreshUser's status flip to 'loading', which
+   * makes ProtectedRoute swap the whole page for a loader and remount it.
+   */
+  readonly setCurrentUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const signOutListeners = new Set<() => void>();
+
+/**
+ * Subscribes to every transition into the unauthenticated state: an explicit
+ * sign-out, an expired session, and a session probe refused with 401/403. Lets
+ * a feature that holds per-user state outside this context drop it without
+ * this file knowing the feature exists. Returns the unsubscribe function.
+ */
+export function registerSignOutListener(listener: () => void): () => void {
+  signOutListeners.add(listener);
+  return () => {
+    signOutListeners.delete(listener);
+  };
+}
+
+// A throwing listener must not keep the rest from running, nor the caller from
+// finishing its sign-out.
+function notifySignOutListeners() {
+  signOutListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (err) {
+      logger.error('Sign-out listener failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+}
 
 export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -47,6 +82,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       if (isUnauthorized(err) || err instanceof ForbiddenError) {
         setUser(null);
         setStatus('unauthenticated');
+        notifySignOutListeners();
       } else {
         // Network/server trouble, not "not logged in": keep the distinction so the
         // UI can offer a retry instead of bouncing an authenticated user to /login.
@@ -69,6 +105,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     api.setOnSessionExpired(() => {
       setUser(null);
       setStatus('unauthenticated');
+      notifySignOutListeners();
       toast({
         title: tCommon('errors.sessionExpiredTitle'),
         description: tCommon('errors.sessionExpired'),
@@ -109,6 +146,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     setStatus('unauthenticated');
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
+    notifySignOutListeners();
     if (logoutFailed) {
       throw logoutError;
     }
@@ -123,6 +161,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     login,
     logout,
     refreshUser,
+    setCurrentUser: setUser,
   }), [user, status, login, logout, refreshUser]);
 
   return (

@@ -36,6 +36,13 @@ test.describe('Public Pages', () => {
     await expect(page.getByRole('main')).toContainText('strictly necessary');
   });
 
+  test('terms page loads', async ({ page }) => {
+    await page.goto('/terms');
+
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Terms of use');
+    await expect(page.getByRole('main')).toBeVisible();
+  });
+
   test('documentation page loads', async ({ page }) => {
     await page.goto('/docs');
 

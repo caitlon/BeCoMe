@@ -1,0 +1,434 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import i18n, { toSupportedLanguage } from "@/i18n";
+import { HttpError, RateLimitError, StreamIncompleteError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+import type { AnswerChecks, ChatTurn, SourceRef, TurnTiming } from "@/types/api";
+import { streamAssistantMessage } from "./assistant-api";
+import { isRecord } from "./message-shape";
+import { readAssistantSseStream, type AssistantSseEvent } from "./sse";
+
+const MESSAGE_STATUSES = ["pending", "done", "error", "cut", "cancelled"] as const;
+
+export type AssistantMessageStatus = (typeof MESSAGE_STATUSES)[number];
+
+export interface AssistantMessageError {
+  readonly code: number;
+  readonly detail: string;
+  readonly retryAfter?: number;
+}
+
+export interface AssistantMessage {
+  readonly id: string;
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly status: AssistantMessageStatus;
+  readonly sources?: SourceRef[];
+  readonly toolsUsed?: string[];
+  readonly checks?: AnswerChecks;
+  readonly timing?: TurnTiming;
+  readonly error?: AssistantMessageError;
+  readonly createdAt: number;
+}
+
+const STORAGE_BASE = "assistant-chat";
+/**
+ * sessionStorage keys are `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`. The
+ * version is bumped when the stored shape changes, e.g. SourceRef; a key of an older
+ * version is never read, and sign-out still removes it.
+ */
+export const STORAGE_PREFIX = `${STORAGE_BASE}:v1`;
+
+// AssistantChatRequest.history takes at most 20 entries (api/schemas/assistant.py).
+const MAX_HISTORY_ENTRIES = 20;
+// The list kept in memory, and the same number is what is stored.
+const MAX_MESSAGES = 40;
+
+// Bumped by clearAssistantHistory(). A thread remembers the value it was loaded
+// under and stops writing once that value is out of date, so a sign-out cannot be
+// undone by a hook that is still mounted when it happens.
+let historyEpoch = 0;
+
+interface Thread {
+  readonly key: string;
+  readonly messages: AssistantMessage[];
+  readonly epoch: number;
+  // How many times an action (append, settle, clear) asked for the thread to be
+  // stored. It travels inside the state with the change it belongs to, so no render
+  // can take the request for a save without also holding that change.
+  readonly writes: number;
+}
+
+function storageKeyFor(userId: string, projectId: string | null): string {
+  return `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`;
+}
+
+function isStoredMessage(value: unknown): value is AssistantMessage {
+  if (!isRecord(value)) return false;
+  const { error, sources, toolsUsed, checks, timing } = value;
+  return (
+    typeof value.id === "string" &&
+    (value.role === "user" || value.role === "assistant") &&
+    typeof value.content === "string" &&
+    typeof value.status === "string" &&
+    (MESSAGE_STATUSES as readonly string[]).includes(value.status) &&
+    typeof value.createdAt === "number" &&
+    (error === undefined ||
+      (isRecord(error) &&
+        typeof error.code === "number" &&
+        typeof error.detail === "string" &&
+        (error.retryAfter === undefined || typeof error.retryAfter === "number"))) &&
+    (sources === undefined || Array.isArray(sources)) &&
+    (toolsUsed === undefined || Array.isArray(toolsUsed)) &&
+    (checks === undefined || isRecord(checks)) &&
+    (timing === undefined || isRecord(timing))
+  );
+}
+
+// A request cannot outlive the page that made it, so a message stored as pending
+// is a partial answer that was cut off, empty or not.
+// Anything that is not a JSON array of messages (an object, null, a number) throws on
+// `.filter` and ends up in the catch, the same as unparsable text.
+function loadMessages(key: string): AssistantMessage[] {
+  try {
+    const parsed: unknown[] = JSON.parse(window.sessionStorage.getItem(key) ?? "[]");
+    return parsed
+      .filter(isStoredMessage)
+      .slice(-MAX_MESSAGES)
+      .map((m) => (m.status === "pending" ? { ...m, status: "cut" } : m));
+  } catch {
+    return [];
+  }
+}
+
+// Storage that is blocked, full or absent must never throw out of the hook.
+function saveMessages({ key, messages, epoch }: Thread): void {
+  if (epoch !== historyEpoch) return;
+  try {
+    if (messages.length === 0) {
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, JSON.stringify(messages));
+    }
+  } catch {
+    // The conversation simply is not kept across a reload.
+  }
+}
+
+/** Removes the conversations of every user and project, for sign-out. */
+export function clearAssistantHistory(): void {
+  historyEpoch += 1;
+  try {
+    const storage = window.sessionStorage;
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key?.startsWith(`${STORAGE_BASE}:`)) keys.push(key);
+    }
+    keys.forEach((key) => storage.removeItem(key));
+  } catch {
+    // Nothing was stored that could be cleared.
+  }
+}
+
+// Only a message that was sent and answered in full goes back to the server: a
+// partial, failed, cut or cancelled answer would teach the model words it never said.
+function historyWindow(messages: AssistantMessage[]): number[] {
+  const indexes: number[] = [];
+  messages.forEach((m, index) => {
+    if (m.status === "done") indexes.push(index);
+  });
+  const sent = indexes.slice(-MAX_HISTORY_ENTRIES);
+  // A turn whose answer was cut leaves its question in the list alone, which can move the
+  // cut of 20 onto an answer; the window then starts at the next question instead.
+  while (sent.length > 0 && messages[sent[0]].role === "assistant") sent.shift();
+  return sent;
+}
+
+function toError(error: unknown): AssistantMessageError {
+  if (error instanceof RateLimitError) {
+    return { code: error.status, detail: error.message, retryAfter: error.retryAfter };
+  }
+  if (error instanceof HttpError) {
+    return { code: error.status, detail: error.message };
+  }
+  return { code: 0, detail: error instanceof Error ? error.message : String(error) };
+}
+
+// The refusals the endpoint gives by design: not found, invalid, rate limited, disabled.
+const EXPECTED_REFUSALS: ReadonlySet<number> = new Set([404, 422, 429, 503]);
+
+// The class only: a message can carry a host or a piece of the user's text. An expected
+// refusal is a warning; any other failure, a 500 included, stays an error.
+function logTurnFailure(error: unknown): void {
+  const context = { error: error instanceof Error ? error.name : typeof error };
+  if (error instanceof HttpError && EXPECTED_REFUSALS.has(error.status)) {
+    logger.warn("Assistant turn failed", context);
+  } else {
+    logger.error("Assistant turn failed", context);
+  }
+}
+
+function applyEvent(m: AssistantMessage, event: AssistantSseEvent): AssistantMessage {
+  switch (event.type) {
+    case "token":
+      return { ...m, content: m.content + event.text };
+    case "done":
+      return {
+        ...m,
+        content: event.response.answer,
+        status: "done",
+        sources: event.response.sources,
+        toolsUsed: event.response.tools_used,
+        checks: event.response.checks,
+        timing: event.response.timing,
+      };
+    case "error":
+      return { ...m, status: "error", error: { code: event.code, detail: event.detail } };
+  }
+}
+
+function applyFailure(
+  m: AssistantMessage,
+  error: unknown,
+  aborted: boolean,
+  hasContent: boolean
+): AssistantMessage {
+  if (aborted) return { ...m, status: "cancelled" };
+  // Once an answer has begun, whatever breaks the stream leaves a cut answer:
+  // a refusal from the server can only come before the first token.
+  if (hasContent) return { ...m, status: "cut" };
+  return { ...m, status: "error", error: toError(error) };
+}
+
+function patchMessage(
+  messages: AssistantMessage[],
+  id: string,
+  patch: (m: AssistantMessage) => AssistantMessage
+): AssistantMessage[] {
+  return messages.map((m) => (m.id === id ? patch(m) : m));
+}
+
+function markFailed(m: AssistantMessage): AssistantMessage {
+  return { ...m, status: "error" };
+}
+
+// A retried turn is asked again, so its earlier copy of the question is marked failed, as
+// a refused one is: otherwise the next request would carry the question twice. Only the
+// last turn is looked at, since the panel offers a retry on the last answer alone.
+function failRetriedQuestion(messages: AssistantMessage[], text: string): AssistantMessage[] {
+  const answer = messages[messages.length - 1];
+  const question = messages[messages.length - 2];
+  const failed = answer?.status === "error" || answer?.status === "cut";
+  if (!failed || question?.role !== "user" || question.content !== text) return messages;
+  return patchMessage(messages, question.id, markFailed);
+}
+
+// What the stream has produced so far; the caller reads it after a failure to tell
+// a refusal (nothing was said) from a cut answer.
+interface StreamProgress {
+  finished: boolean;
+  hasContent: boolean;
+}
+
+async function consumeStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  progress: StreamProgress,
+  onEvent: (event: AssistantSseEvent) => void
+): Promise<void> {
+  for await (const event of readAssistantSseStream(body, signal)) {
+    // The reader stops on an abort by itself; this keeps a cancel final even
+    // for an event it had already handed over.
+    if (signal.aborted) break;
+    if (event.type !== "token") progress.finished = true;
+    else if (event.text) progress.hasContent = true;
+    onEvent(event);
+  }
+  if (!progress.finished) throw new StreamIncompleteError();
+}
+
+// A thread that no longer holds the message (cleared, or another conversation) is
+// left as it is.
+function patchThread(
+  thread: Thread,
+  id: string,
+  patch: (m: AssistantMessage) => AssistantMessage,
+  settles: boolean
+): Thread {
+  if (!thread.messages.some((m) => m.id === id)) return thread;
+  return {
+    ...thread,
+    messages: patchMessage(thread.messages, id, patch),
+    writes: thread.writes + (settles ? 1 : 0),
+  };
+}
+
+export function useAssistantChat({
+  projectId,
+  userId,
+}: {
+  readonly projectId: string | null;
+  readonly userId: string;
+}) {
+  const storageKey = storageKeyFor(userId, projectId);
+  const [thread, setThread] = useState<Thread>(() => ({
+    key: storageKey,
+    messages: loadMessages(storageKey),
+    epoch: historyEpoch,
+    writes: 0,
+  }));
+  const [draft, setDraft] = useState("");
+  const [now, setNow] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const savedRef = useRef({ key: storageKey, writes: 0 });
+
+  // A different user or project is a different conversation; the render that
+  // sees the new key swaps the thread before anything is committed.
+  let current = thread;
+  if (thread.key !== storageKey) {
+    current = { key: storageKey, messages: loadMessages(storageKey), epoch: historyEpoch, writes: 0 };
+    setThread(current);
+  }
+  const { messages } = current;
+
+  const pendingMessage = messages.find((m) => m.status === "pending");
+  const isPending = pendingMessage !== undefined;
+  const startedAt = pendingMessage?.createdAt ?? null;
+  const pendingSeconds = startedAt === null ? 0 : Math.max(0, Math.floor((now - startedAt) / 1000));
+
+  // Stored after a turn is appended (the answer still empty), settles or is cleared,
+  // never on mount and never while tokens are arriving: a stream of any length
+  // writes storage twice.
+  useEffect(() => {
+    const saved = savedRef.current;
+    savedRef.current = { key: current.key, writes: current.writes };
+    if (saved.key !== current.key || saved.writes === current.writes) return;
+    saveMessages(current);
+  }, [current]);
+
+  useEffect(() => {
+    if (!isPending) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [isPending]);
+
+  // The Sheet keeps the panel mounted while it is open, so closing it does not
+  // cancel; the root going away, or the conversation changing under a request,
+  // does. The partial answer is dropped with it and is not written to storage.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [storageKey]
+  );
+
+  // Sends `text` as a new turn: the draft's text for a send, or the question of a
+  // failed turn for a retry.
+  const send = useCallback(async (text: string, retried = false) => {
+    if (!text || abortRef.current) return;
+    const earlier = retried ? failRetriedQuestion(current.messages, text) : current.messages;
+
+    const startedAtMs = Date.now();
+    const pendingId = crypto.randomUUID();
+    const history: ChatTurn[] = historyWindow(earlier).map((index) => ({
+      role: earlier[index].role,
+      content: earlier[index].content,
+    }));
+    const userMessage: AssistantMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: text,
+      status: "done",
+      createdAt: startedAtMs,
+    };
+    const answer: AssistantMessage = {
+      id: pendingId,
+      role: "assistant",
+      content: "",
+      status: "pending",
+      createdAt: startedAtMs,
+    };
+
+    const patchAnswer = (patch: (m: AssistantMessage) => AssistantMessage, settles = false) =>
+      setThread((prev) => patchThread(prev, pendingId, patch, settles));
+    // The turn ends here, so what it leaves behind is worth storing.
+    const settleAnswer = (patch: (m: AssistantMessage) => AssistantMessage) =>
+      patchAnswer(patch, true);
+
+    // Nothing was answered, so the question goes back into the box, unless the
+    // user has already started typing another one. The question is marked as
+    // failed too, so the next request does not carry it a second time.
+    const restoreDraft = () => {
+      setDraft((d) => d || text);
+      // No write is asked for: this always runs in the same tick as the settle that
+      // does, so one render carries both changes into storage.
+      setThread((prev) => ({
+        ...prev,
+        messages: patchMessage(prev.messages, userMessage.id, markFailed),
+      }));
+    };
+    const progress: StreamProgress = { finished: false, hasContent: false };
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setThread({
+      ...current,
+      messages: [...earlier, userMessage, answer].slice(-MAX_MESSAGES),
+      writes: current.writes + 1,
+    });
+    // A retried question was put back into the box by the failure; one the user has
+    // replaced with something else stays.
+    setDraft((d) => (d.trim() === text ? "" : d));
+    setNow(startedAtMs);
+
+    try {
+      const response = await streamAssistantMessage(
+        { message: text, history, project_id: projectId, locale: toSupportedLanguage(i18n.language) },
+        controller.signal
+      );
+      if (!response.body) throw new StreamIncompleteError();
+
+      await consumeStream(response.body, controller.signal, progress, (event) => {
+        patchAnswer((m) => applyEvent(m, event), event.type !== "token");
+        if (event.type === "error" && !progress.hasContent) restoreDraft();
+      });
+    } catch (error) {
+      const aborted = controller.signal.aborted;
+      if (!aborted) logTurnFailure(error);
+      settleAnswer((m) => applyFailure(m, error, aborted, progress.hasContent));
+      if (!aborted && !progress.hasContent) restoreDraft();
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, [current, projectId]);
+
+  const sendMessage = useCallback(() => send(draft.trim()), [send, draft]);
+  const retry = useCallback((text: string) => send(text, true), [send]);
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const clear = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setThread((prev) => ({ ...prev, messages: [], writes: prev.writes + 1 }));
+  }, []);
+
+  const sentIndexes = historyWindow(messages);
+  const historyWindowStart = sentIndexes.length > 0 ? sentIndexes[0] : -1;
+
+  return {
+    messages,
+    draft,
+    setDraft,
+    sendMessage,
+    retry,
+    cancel,
+    clear,
+    isPending,
+    pendingSeconds,
+    startedAt,
+    historyWindowStart,
+  };
+}

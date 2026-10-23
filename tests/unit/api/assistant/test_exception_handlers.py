@@ -7,11 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from api.assistant.errors import (
+    AssistantBusyError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
 from api.assistant.exception_handlers import (
+    assistant_busy_handler,
     assistant_rate_limited_handler,
     assistant_unavailable_handler,
     assistant_upstream_handler,
@@ -36,10 +38,17 @@ class TestAssistantExceptionHandlers:
         [
             (
                 assistant_rate_limited_handler,
-                AssistantRateLimitedError(_PRIVATE_TEXT),
+                AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=90),
                 429,
                 "Too many assistant messages. Please try again later.",
                 "assistant_rate_limited",
+            ),
+            (
+                assistant_busy_handler,
+                AssistantBusyError(_PRIVATE_TEXT, retry_after=5, reason="process"),
+                503,
+                "The assistant is temporarily unavailable",
+                "assistant_concurrency_cap_reached",
             ),
             (
                 assistant_unavailable_handler,
@@ -56,7 +65,7 @@ class TestAssistantExceptionHandlers:
                 "assistant_upstream_error",
             ),
         ],
-        ids=["rate_limited", "unavailable", "upstream"],
+        ids=["rate_limited", "busy", "unavailable", "upstream"],
     )
     def test_answers_with_the_status_and_detail_body(
         self, caplog, handler, exc, status_code, detail, event
@@ -80,6 +89,68 @@ class TestAssistantExceptionHandlers:
         assert len(records) == 1
         assert records[0].request_id == "req-1"
         assert _PRIVATE_TEXT not in records[0].getMessage()
+
+    def test_the_rate_limited_answer_carries_retry_after(self):
+        """
+        GIVEN a rate-limited error holding 1234 seconds
+        WHEN its handler runs
+        THEN the 429 has a Retry-After header of that many whole seconds
+        """
+        # GIVEN
+        exc = AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=1234)
+
+        # WHEN
+        response = assistant_rate_limited_handler(_request(), exc)
+
+        # THEN
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "1234"
+
+    def test_the_busy_answer_carries_retry_after(self):
+        """
+        GIVEN a busy error holding 1234 seconds
+        WHEN its handler runs
+        THEN the 503 has a Retry-After header of that many seconds
+        """
+        # GIVEN
+        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=1234, reason="user")
+
+        # WHEN
+        response = assistant_busy_handler(_request(), exc)
+
+        # THEN
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "1234"
+
+    @pytest.mark.parametrize(
+        ("reason", "event"),
+        [
+            ("process", "assistant_concurrency_cap_reached"),
+            ("user", "assistant_concurrency_cap_reached"),
+            ("global", "assistant_global_cap_reached"),
+        ],
+    )
+    def test_a_refused_turn_is_logged_once_at_warning_with_the_limit_that_refused(
+        self, caplog, reason, event
+    ):
+        """
+        GIVEN a busy error refused by one of the three limits
+        WHEN its handler runs
+        THEN exactly one record is written, a WARNING since a full assistant is load and not a
+             fault, with the event of that limit, naming it and no user
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=5, reason=reason)
+
+        # WHEN
+        assistant_busy_handler(_request(), exc)
+
+        # THEN
+        assert [(r.levelno, r.event, r.reason) for r in caplog.records] == [
+            (logging.WARNING, event, reason)
+        ]
+        assert not hasattr(caplog.records[0], "user_id")
 
     def test_the_upstream_failure_is_logged_at_error(self, caplog):
         """

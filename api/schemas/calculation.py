@@ -96,4 +96,5 @@ class CalculationResultResponse(CalculateResponse):
     agreement_level: AgreementLevel
     likert_value: int | None = Field(None, ge=0, le=100)
     likert_decision: str | None = None
+    likert_recommendation: str | None = None
     calculated_at: datetime

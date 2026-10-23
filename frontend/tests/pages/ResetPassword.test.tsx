@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ResetPassword from '@/pages/ResetPassword';
+import { HttpError, NetworkError, RateLimitError, ServerError } from '@/lib/errors';
 
 // Mock the API client (the page calls api.resetPassword directly)
 const mockResetPassword = vi.fn();
@@ -31,6 +32,7 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 // AuthLayout renders Navbar, which calls useAuth -> mock it (as Login/Register tests do)
+const mockRefreshUser = vi.fn();
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: null,
@@ -38,7 +40,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAuthenticated: false,
     login: vi.fn(),
     logout: vi.fn(),
-    refreshUser: vi.fn(),
+    refreshUser: () => mockRefreshUser(),
   }),
 }));
 
@@ -146,6 +148,34 @@ describe('ResetPassword', () => {
     });
   });
 
+  // The server drops every session of the user on a reset, but the client still
+  // reads as signed in; /login would bounce it to /projects until the first 401.
+  it('waits for the session re-probe before it navigates to login', async () => {
+    const user = userEvent.setup();
+    let finishProbe!: () => void;
+    mockResetPassword.mockResolvedValueOnce(undefined);
+    mockRefreshUser.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishProbe = resolve;
+      })
+    );
+    render(<ResetPassword />);
+
+    await user.type(getPasswordInput(), 'BrandNewPass456!');
+    await user.type(getConfirmInput(), 'BrandNewPass456!');
+    await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
+    await user.click(getSubmitButton());
+
+    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1));
+    // Let any navigation that does not wait for the probe happen first.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    finishProbe();
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+  });
+
   it('shows an error toast when the reset fails', async () => {
     const user = userEvent.setup();
     mockResetPassword.mockRejectedValueOnce(new Error('Invalid or expired reset token'));
@@ -160,6 +190,75 @@ describe('ResetPassword', () => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ variant: 'destructive' })
       );
+    });
+    expect(mockRefreshUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  describe('when the reset is refused', () => {
+    const INVALID_TOKEN = 'This reset link is invalid or has expired.';
+    const UNAVAILABLE = 'The service is temporarily unavailable. Please try again in a moment.';
+
+    const submitWith = async (error: unknown) => {
+      const user = userEvent.setup();
+      mockResetPassword.mockRejectedValueOnce(error);
+      render(<ResetPassword />);
+
+      await user.type(getPasswordInput(), 'BrandNewPass456!');
+      await user.type(getConfirmInput(), 'BrandNewPass456!');
+      await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
+      await user.click(getSubmitButton());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalled());
+    };
+
+    it.each([
+      ['a network failure', new NetworkError()],
+      ['a 5xx response', new ServerError('Service Unavailable', 503)],
+    ])('says the service is unavailable, not that the link is bad, on %s', async (_label, error) => {
+      await submitWith(error);
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: UNAVAILABLE,
+        variant: 'destructive',
+      });
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: INVALID_TOKEN })
+      );
+    });
+
+    it('says to wait, with the delay, on a 429 that carries one', async () => {
+      await submitWith(new RateLimitError('Too many requests', 30));
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: 'Too many attempts. Please try again in 30s.',
+        variant: 'destructive',
+      });
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: INVALID_TOKEN })
+      );
+    });
+
+    it('says to wait, without a delay, on a 429 that carries none', async () => {
+      await submitWith(new RateLimitError());
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: 'Too many attempts. Please wait a moment and try again.',
+        variant: 'destructive',
+      });
+    });
+
+    it('keeps the invalid-link message for the API 400 on a bad, expired or used token', async () => {
+      await submitWith(new HttpError('Invalid or expired reset token', 400));
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: INVALID_TOKEN,
+        variant: 'destructive',
+      });
     });
   });
 });

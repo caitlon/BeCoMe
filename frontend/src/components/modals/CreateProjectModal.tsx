@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormField, FormTextarea, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ export function CreateProjectModal({
   onSuccess,
 }: CreateProjectModalProps) {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const submittingRef = useRef(false);
@@ -60,7 +62,6 @@ export function CreateProjectModal({
           scale_max: z.coerce.number(),
           scale_unit: z
             .string()
-            .min(1, t("create.validation.unitRequired"))
             .max(50, t("create.validation.unitMaxLength")),
         })
         .refine((data) => data.scale_max > data.scale_min, {
@@ -104,9 +105,7 @@ export function CreateProjectModal({
     } catch (error) {
       toast({
         title: t("create.errorTitle"),
-        description:
-          /* v8 ignore next */
-          error instanceof Error ? error.message : t("toast.createFailed"),
+        description: describeError(error, tCommon, t("toast.createFailed")),
         variant: "destructive",
       });
     } finally {
@@ -195,11 +194,18 @@ export function CreateProjectModal({
                   {...register("scale_unit")}
                   className={cn(errors.scale_unit && "border-destructive")}
                   aria-invalid={!!errors.scale_unit}
-                  aria-describedby={errors.scale_unit ? `${scaleId}-unit-error` : undefined}
+                  aria-describedby={
+                    errors.scale_unit
+                      ? `${scaleId}-unit-error ${scaleId}-unit-hint`
+                      : `${scaleId}-unit-hint`
+                  }
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleUnit")}
                 </span>
+                <p id={`${scaleId}-unit-hint`} className="text-xs text-muted-foreground mt-1">
+                  {t("create.scaleUnitHint")}
+                </p>
                 {errors.scale_unit && (
                   <p id={`${scaleId}-unit-error`} className="text-xs text-destructive mt-1">
                     {errors.scale_unit.message}

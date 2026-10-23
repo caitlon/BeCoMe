@@ -2,20 +2,27 @@
 """Answer eval runner: put questions through the real chat service and record the answers.
 
 Every question is one single-turn chat through ``POST /api/v1/assistant/chat``, so what is
-measured is what a user gets: the service, the product prompt and the grounding checks.
+measured is what a user gets: the service, the product prompt and the grounding checks. With
+``--stream`` the question goes through ``POST /api/v1/assistant/chat/stream`` instead and the
+row records the server's own timing, first-token time included (null in the agent and hybrid
+modes). The transport is part of a row's
+provenance, so one output file never mixes the two.
 
 The app is driven in-process (httpx's ASGI transport), with the fixtures user signed in by
 a bearer token the way every route authenticates, so authorization and the tenant checks
 run as in production. The mode is chosen through ``assistant_mode``: the service reads its
 settings through a FastAPI dependency, and the runner overrides that one dependency with a
-copy of the settings that carries the requested mode and has LangSmith tracing switched off.
+copy of the settings that carries the requested mode and has LangSmith tracing switched off
+unless ``--trace`` is passed, because tracing sends the question and answer text to a remote
+service.
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database must hold the fixtures' user and projects. Set
-``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` for a long run. ``LIMIT_ASSISTANT_CHAT`` (per address,
-per minute) is met by pacing: the runner starts at most one question fewer per 60 s than that
-limit allows, and the wait is not part of ``latency_s``. ``--no-pacing`` turns it off, for a rig
-where the limiter is off.
+``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` and ``ASSISTANT_GLOBAL_TURNS_PER_HOUR=0`` for a long run:
+the pacing below sends about 1140 questions an hour, past the global default of 600.
+``LIMIT_ASSISTANT_CHAT`` (per address, per minute) is met by pacing: the runner starts at most
+one question fewer per 60 s than that limit allows, and the wait is not part of ``latency_s``.
+``--no-pacing`` turns it off, for a rig where the limiter is off.
 
 The output holds answers and source titles; logs carry counts and timings only.
 """
@@ -31,7 +38,7 @@ import statistics
 import sys
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,11 +46,11 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
-import langsmith as ls
 import psycopg
 from fastapi import FastAPI
 
 from api.assistant.agent.prompt import SYSTEM_PROMPT
+from api.assistant.agent.tracing import shutdown_tracing, tracing_scope
 from api.assistant.rag.pipeline import git_version
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.auth.jwt import create_access_token
@@ -52,6 +59,7 @@ from api.main import create_app
 from api.middleware import rate_limit
 
 CHAT = "/api/v1/assistant/chat"
+STREAM = "/api/v1/assistant/chat/stream"
 
 # sha256 of question files that are sealed: a run over one needs a written pre-registration.
 SEALED_SHA256 = frozenset({"e9c434888f00c817f85a4e536c4ca8db3d551a13d6851bcb74ab806fb08b6559"})
@@ -88,7 +96,19 @@ _PROVENANCE_FIELDS = (
     "max_tool_calls",
     "collection",
     "code_version",
+    "transport",
+    "answer_provider",
+    "query_provider",
+    "embedding_provider",
 )
+# What a row written before the field existed is taken to hold: only /chat existed, and
+# every model role ran on a local server.
+_PROVENANCE_DEFAULTS = {
+    "transport": "chat",
+    "answer_provider": "local",
+    "query_provider": "local",
+    "embedding_provider": "local",
+}
 
 
 class RunRefusedError(Exception):
@@ -309,7 +329,7 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
     differing = [
         field
         for field in _PROVENANCE_FIELDS
-        if any(row.get(field) != meta[field] for row in same_arm)
+        if any(row.get(field, _PROVENANCE_DEFAULTS.get(field)) != meta[field] for row in same_arm)
     ]
     if not differing:
         return None
@@ -319,19 +339,23 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
     )
 
 
-def _eval_settings(settings: Settings, mode: str) -> Settings:
-    """Copy the settings with the requested mode and LangSmith tracing off.
+def _eval_settings(settings: Settings, mode: str, trace: bool) -> Settings:
+    """Copy the settings with the requested mode, the sources shown, and tracing off unless traced.
 
-    Tracing sends the full text of questions and answers to a remote service, so the runner
-    never leaves it on, whatever the environment says.
+    The runner measures the answer as the model wrote it, markers and sources included, so it
+    shows them whatever the environment says. Tracing sends the full text of questions and
+    answers to a remote service, so it is off, whatever the environment says, unless ``trace``
+    is set; then the environment's setting stands.
 
     :param settings: The application settings.
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
+    :param trace: Keep the environment's tracing setting instead of switching it off.
     :return: The settings the service runs under.
     """
-    return settings.model_copy(
-        update={"assistant_mode": mode, "assistant_langsmith_enabled": False}
-    )
+    update: dict[str, Any] = {"assistant_mode": mode, "assistant_show_sources": True}
+    if not trace:
+        update["assistant_langsmith_enabled"] = False
+    return settings.model_copy(update=update)
 
 
 def _collection_versions(settings: Settings) -> tuple[str | None, str | None]:
@@ -371,7 +395,8 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
     """Pick what a row records from a successful chat response.
 
     :param body: The decoded ``AssistantChatResponse``.
-    :return: The answer, sources (with whether each has a url), tool names and checks.
+    :return: The answer, sources (with whether each has a url), tool names, checks, usage and
+        the server's timing.
     """
     return {
         "answer": body["answer"],
@@ -387,11 +412,72 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
         ],
         "tool_calls": body["tools_used"],
         "checks": body["checks"],
+        "usage": body["usage"],
+        "timing": body["timing"],
     }
 
 
+def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Read server-sent events from the lines of a response body.
+
+    An event ends at a blank line and at nothing else, so a line break cannot split a
+    payload; the route writes each ``data:`` on one line. An event the body ended in the
+    middle of is dropped.
+
+    :param lines: The body's lines, without their line breaks.
+    :return: ``(event name, decoded data)`` for each finished event, in order.
+    """
+    name = ""
+    data: list[str] = []
+    for line in lines:
+        if line:
+            if line.startswith("event:"):
+                name = line[len("event:") :].strip()
+            elif line.startswith("data:"):
+                data.append(line[len("data:") :].removeprefix(" "))
+        elif data:
+            yield name, json.loads("\n".join(data))
+            name, data = "", []
+        else:
+            name = ""
+
+
+async def _ask_stream(
+    http: httpx.AsyncClient, body: dict[str, Any], token: str, result: dict[str, Any]
+) -> None:
+    """Ask the streamed route and fill ``result`` from its events.
+
+    :param http: The in-process client.
+    :param body: The chat request body.
+    :param token: The access token.
+    :param result: The result being built; ``status`` is set, and the response fields on a
+        ``done`` event. An ``error`` event gives ``stream_error_<code>``; a body that ends
+        with neither gives ``stream_incomplete``.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    async with http.stream("POST", STREAM, json=body, headers=headers) as response:
+        if response.status_code != 200:
+            result["status"] = f"http_{response.status_code}"
+            return
+        lines = [line async for line in response.aiter_lines()]
+    result["status"] = "stream_incomplete"
+    for event, payload in parse_sse(lines):
+        if event == "done":
+            result["status"] = "ok"
+            result.update(_row_from_response(payload))
+            return
+        if event == "error":
+            result["status"] = f"stream_error_{payload['code']}"
+            return
+
+
 async def _ask(
-    http: httpx.AsyncClient, record: dict[str, Any], project_id: str | None, user_id: str
+    http: httpx.AsyncClient,
+    record: dict[str, Any],
+    project_id: str | None,
+    user_id: str,
+    *,
+    stream: bool = False,
 ) -> dict[str, Any]:
     """Run one single-turn chat and return its result fields.
 
@@ -401,24 +487,36 @@ async def _ask(
     :param record: The question record.
     :param project_id: The id of the project the question is asked about, or None.
     :param user_id: The fixtures user's id.
+    :param stream: Ask the streamed route instead of ``/chat``.
     :return: ``status``, ``latency_s`` and, for an answered turn, the response fields.
     """
     body: dict[str, Any] = {"message": record["question"]}
     if project_id is not None:
         body["project_id"] = project_id
-    result: dict[str, Any] = {"answer": None, "sources": None, "tool_calls": None, "checks": None}
+    result: dict[str, Any] = {
+        "answer": None,
+        "sources": None,
+        "tool_calls": None,
+        "checks": None,
+        "usage": None,
+        "timing": None,
+    }
     started = time.monotonic()
     try:
         token = create_access_token(UUID(user_id))
-        response = await http.post(CHAT, json=body, headers={"Authorization": f"Bearer {token}"})
+        if stream:
+            await _ask_stream(http, body, token, result)
+        else:
+            response = await http.post(
+                CHAT, json=body, headers={"Authorization": f"Bearer {token}"}
+            )
+            if response.status_code == 200:
+                result["status"] = "ok"
+                result.update(_row_from_response(response.json()))
+            else:
+                result["status"] = f"http_{response.status_code}"
     except Exception as exc:
         result["status"] = type(exc).__name__
-    else:
-        if response.status_code == 200:
-            result["status"] = "ok"
-            result.update(_row_from_response(response.json()))
-        else:
-            result["status"] = f"http_{response.status_code}"
     result["latency_s"] = round(time.monotonic() - started, 3)
     return result
 
@@ -436,6 +534,8 @@ async def run_eval(
     code_version: str | None,
     retry_failed: bool = False,
     pacing: bool = True,
+    trace: bool = False,
+    stream: bool = False,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, Any]:
@@ -445,9 +545,11 @@ async def run_eval(
     status: a failed turn is a result. With ``retry_failed`` those whose latest row is not
     ``ok`` are asked again, and the new row wins (:func:`latest_rows`). The run stops when
     :func:`_stop_reason` says the environment is failing. While it lasts the app's settings
-    dependency is overridden with :func:`_eval_settings` and tracing is off; the override is
-    removed afterwards. With ``pacing`` each question waits first, so that no 60 s window holds
-    more starts than :func:`_starts_per_window`; the wait is outside ``latency_s``.
+    dependency is overridden with :func:`_eval_settings` and tracing is off unless ``trace``;
+    the override is removed afterwards. With ``pacing`` each question waits first, so that no
+    60 s window holds more starts than :func:`_starts_per_window`; the wait is outside
+    ``latency_s``. With ``stream`` the questions go through the streamed route, and the rows
+    record the transport.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -460,6 +562,8 @@ async def run_eval(
     :param code_version: The version of the code that generates the answers.
     :param retry_failed: Ask again the questions whose latest row is not ``ok``.
     :param pacing: Pace the questions to the route's per-minute limit.
+    :param trace: Leave LangSmith tracing as the environment sets it instead of switching it off.
+    :param stream: Ask the streamed route instead of ``/chat``.
     :param clock: Time source of the pacing, in seconds.
     :param sleep: Wait function of the pacing.
     :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s``, ``unresolved``,
@@ -487,6 +591,10 @@ async def run_eval(
         "corpus_version": versions[1],
         "code_version": code_version,
         "prompt_sha256": PROMPT_SHA256,
+        "transport": "stream" if stream else "chat",
+        "answer_provider": settings.assistant_answer_provider,
+        "query_provider": settings.assistant_llm_provider,
+        "embedding_provider": settings.assistant_embedding_provider,
     }
     problem = _provenance_problem(_read_rows(output), meta)
     if problem is not None:
@@ -504,8 +612,16 @@ async def run_eval(
         print(f"pacing: at most {per_window} questions per 60 s", file=sys.stderr)
     else:
         print("pacing: off", file=sys.stderr)
+    print(f"transport: {meta['transport']}", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
-    run_settings = _eval_settings(settings, mode)
+    run_settings = _eval_settings(settings, mode, trace)
+    traced = run_settings.assistant_langsmith_enabled
+    print(f"tracing: {'on' if traced else 'off'}", file=sys.stderr)
+    if trace and not traced:
+        print(
+            "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced",
+            file=sys.stderr,
+        )
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
     ok = consecutive = 0
@@ -517,14 +633,15 @@ async def run_eval(
             transport=transport,
             base_url="http://eval.invalid",
         ) as http:
-            # The query-transform call runs before the service's own tracing scope opens.
-            with ls.tracing_context(enabled=False), output.open("a", encoding="utf-8") as sink:
+            # The service opens its own tracing scope per turn; this one wraps the loop so that
+            # ambient tracing is suppressed for anything outside a turn when the setting is off.
+            with tracing_scope(run_settings), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
                     if pacer is not None:
                         await pacer.wait_turn()
                     result = await _ask(
-                        http, record, None if key is None else projects[key], user_id
+                        http, record, None if key is None else projects[key], user_id, stream=stream
                     )
                     row = {
                         "id": record["id"],
@@ -548,6 +665,8 @@ async def run_eval(
                         break
     finally:
         app.dependency_overrides.pop(get_settings, None)
+        if traced:
+            shutdown_tracing()
     unresolved = sum(
         row["status"] != "ok" for (_, row_arm), row in latest_rows(output).items() if row_arm == arm
     )
@@ -576,6 +695,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--retry-failed", action="store_true", help="Ask failed questions again")
     parser.add_argument("--sealed-run", action="store_true", help="Allow a sealed question set")
     parser.add_argument("--registration", type=Path, default=None, help="Pre-registration file")
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Leave LangSmith tracing as the environment sets it (sends question and answer text)",
+    )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help=(
+            "Ask the streamed route and record the server's timing, first token included "
+            "(null in the agent and hybrid modes)"
+        ),
+    )
     parser.add_argument(
         "--no-pacing", action="store_true", help="Do not pace to the route's rate limit"
     )
@@ -653,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
                 code_version=code_version,
                 retry_failed=args.retry_failed,
                 pacing=not args.no_pacing,
+                trace=args.trace,
+                stream=args.stream,
             )
         )
     except RunRefusedError as exc:
