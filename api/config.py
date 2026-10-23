@@ -286,7 +286,7 @@ class Settings(BaseSettings):
     user_cache_ttl_seconds: int = 60
 
     # Railway Storage Bucket (S3-compatible; photo upload disabled if not set).
-    # Railway injects these when a bucket is attached to the service.
+    # On Railway they are literals on the service, copied from the bucket's credentials.
     bucket_name: str | None = None
     bucket_endpoint: str | None = None
     bucket_access_key_id: str | None = None
