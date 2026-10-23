@@ -46,7 +46,7 @@ A check with `curl` reads the key from a file, as the rotation rules below descr
 | `ASSISTANT_API_KEY_OVH` | Hosted model calls on OVHcloud AI Endpoints | OVHcloud | Dev and test share one. Prod will have its own | `GET https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models` with the bearer key answers `200`. The endpoint also answers `200` with no key, so the result counts only next to a control request with a wrong key that answers `403` |
 | `ASSISTANT_LANGSMITH_API_KEY` | Sending assistant traces to LangSmith (EU) | LangSmith | Needed only where tracing is on | `GET https://eu.api.smith.langchain.com/api/v1/sessions?limit=1` with the `x-api-key` header answers `200` |
 | `ASSISTANT_VECTOR_DB_URL` | Password of the read-only `corpus_reader` role on the corpus database | Reference to `CORPUS_READER_PASSWORD` on the `<env>-vector` service | One per environment that has a corpus service | In-container connection with the backend's own `ASSISTANT_VECTOR_DB_URL` |
-| `POSTGRES_PASSWORD` | Password of the owner role `postgres` on the `<env>-db` service. `MIGRATION_DATABASE_URL` references it | Railway Postgres of the environment | One per environment, set on the database service | Same check as `MIGRATION_DATABASE_URL` |
+| `POSTGRES_PASSWORD` | Password of the owner role on the `<env>-db` service (`postgres`) and on the `<env>-vector` service. `MIGRATION_DATABASE_URL` references the one on `<env>-db` | Railway Postgres of the environment | One per database service | Same check as `MIGRATION_DATABASE_URL` |
 | `REDIS_PASSWORD` | Password the `<env>-redis` service demands (`--requirepass`). `REDIS_URL` references it | Railway Redis of the environment | One per environment, set on the Redis service | Same check as `REDIS_URL` |
 | `CORPUS_READER_PASSWORD` | Password of `corpus_reader` on the `<env>-vector` service. `ASSISTANT_VECTOR_DB_URL` references it | Railway Postgres of the corpus service | One per environment that has a corpus service, set on that service | Same check as `ASSISTANT_VECTOR_DB_URL` |
 
@@ -167,7 +167,7 @@ for name in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "ASSISTANT_VECTOR_DB_URL"
         check(name, connect, name)
 check("REDIS_URL", ping)
 if os.environ.get("BUCKET_NAME"):
-    check("BUCKET_NAME", list_bucket)
+    check("BUCKET_ACCESS_KEY_ID", list_bucket)
 ```
 
 Two weaker signals support it. The new container's log has the `db_warmup` event and not
@@ -256,7 +256,8 @@ that adds a second role.
 2. Write `roles.sql` under `umask 077` from the verifier files. The database logs DDL
    statements ([`security.md`](security.md#audit-logging)). The first line switches that off
    for the session. The second stops a failing statement from being logged with its text,
-   verifier included. Postgres 16 does that when `log_statement` is `ddl`:
+   verifier included, which Postgres does at the default `log_min_error_statement = error`
+   whatever `log_statement` says:
 
    ```sh
    {
@@ -310,8 +311,8 @@ that adds a second role.
      'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -x CONFIG SET requirepass' < redis.password
    ```
 
-   `railway ssh` joins its arguments into one command string for the remote shell, so the
-   whole remote command is one quoted argument and `$REDIS_PASSWORD` expands in the container.
+   A single argument reaches the remote shell as its command line, so `$REDIS_PASSWORD`
+   expands in the container, not on your machine.
 
    If Redis is asleep (App Sleep), SSH does not reach the container. Skip this step and omit
    `--skip-deploys` in the next one, which restarts Redis with the new password.
@@ -330,10 +331,12 @@ backend right away.
 Where the environment has a corpus service, follow the Postgres steps with these changes:
 
 1. The service is `<env>-vector`. The roles are `corpus_reader` and the service's owner, the
-   user named by its `POSTGRES_USER` variable. A user name is not a secret, so read it from
-   the variable.
+   user named by its `POSTGRES_USER` variable. Read it with
+   `railway ssh -e <env> -s <env>-vector printenv POSTGRES_USER`, not with
+   `railway variable list`, which prints every value of the service.
 2. In the `psql` command, pass the owner as `-U` and the database named by `POSTGRES_DB` of
-   that service as `-d`, in place of `postgres` and `railway`.
+   that service as `-d`, in place of `postgres` and `railway`. Name the same two roles in the
+   `rolname IN (...)` list of the hash check.
 3. Skip the `DATABASE_URL` step. `ASSISTANT_VECTOR_DB_URL` references
    `CORPUS_READER_PASSWORD`, so the backend redeploy picks it up.
 4. Set `CORPUS_READER_PASSWORD` and the service's `POSTGRES_PASSWORD` with
