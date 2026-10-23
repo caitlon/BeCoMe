@@ -25,6 +25,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from langchain_core.language_models import BaseChatModel
+from sqlmodel import Session
 
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.service import AssistantService
@@ -49,11 +50,15 @@ from api.assistant.rate_limit import (
     get_assistant_throttle,
 )
 from api.assistant.upstream import UNAVAILABLE_ERRORS
-from api.auth.dependencies import AccessToken, CurrentUser
+from api.auth.dependencies import AccessToken, get_current_user
+from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.config import Settings, get_settings
+from api.db.models import User
+from api.db.session import get_session
 from api.exceptions import ValidationError
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatRequest
+from api.services.user_cache import UserCacheStore, get_user_cache
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -257,6 +262,34 @@ def get_assistant_service(
     return AssistantService(settings, answer_model)
 
 
+async def get_assistant_user(
+    token: AccessToken,
+    session: Annotated[Session, Depends(get_session, scope="function")],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    cache: Annotated[UserCacheStore, Depends(get_user_cache)],
+) -> User:
+    """Return the authenticated caller of a chat route, without holding a database session.
+
+    The same lookup as :func:`~api.auth.dependencies.get_current_user`, called as a function. Its
+    session has the ``function`` scope, so it is closed when the route function returns, before
+    the body of a streamed response is sent. ``get_current_user``'s own session lasts until the
+    stream ends, and on a user-cache miss would keep a pool connection checked out for the whole
+    turn. This dependency is separate, and not a change to that one, because the other routes
+    share the request's session through the dependency cache. The chat dependencies that need the
+    caller all take this one, so they all get the same user. A user loaded on a cache miss is
+    detached once the session closes, and its loaded fields stay readable.
+
+    :param token: JWT access token.
+    :param session: Database session, used only on a user-cache miss.
+    :param store: Revocation store consulted during token validation.
+    :param cache: User profile cache.
+    :return: The authenticated user.
+    :raises HTTPException: 401 if the token is invalid or the user is not found.
+    """
+    return await get_current_user(token, session, store, cache)
+
+
+AssistantUser = Annotated[User, Depends(get_assistant_user)]
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
 AssistantThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_throttle)]
 AssistantGlobalThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_global_throttle)]
@@ -265,7 +298,7 @@ DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
 
 
 async def enforce_message_limit(
-    current_user: CurrentUser,
+    current_user: AssistantUser,
     throttle: AssistantThrottleDep,
     global_throttle: AssistantGlobalThrottleDep,
 ) -> None:
@@ -318,7 +351,7 @@ def limit_per_address(request: Request) -> None:
     """
 
 
-async def hold_turn_slot(current_user: CurrentUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
+async def hold_turn_slot(current_user: AssistantUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
     """Hold one of the process's turn slots until the response is done, or refuse at once.
 
     Listed right after the per-address limit on both chat routes, ahead of
