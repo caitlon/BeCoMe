@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -638,6 +638,36 @@ class TestAssistantShutdown:
         # THEN
         assert calls_while_running == [0]
         shutdown.assert_called_once_with()
+
+    def test_the_assistants_resources_are_closed_when_the_app_stops_with_it_on(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN the app starts and then stops
+        THEN its resources were closed once
+        """
+        # GIVEN
+        with patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close:
+            # WHEN
+            self._run_app(monkeypatch, tmp_path, enabled=True)
+
+        # THEN
+        close.assert_awaited_once_with()
+
+    def test_no_resources_are_closed_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN the assistant switched off
+        WHEN the app starts and then stops
+        THEN nothing of the assistant was closed
+        """
+        # GIVEN
+        with patch("api.assistant.deps.close_assistant_resources", new=AsyncMock()) as close:
+            # WHEN
+            self._run_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        close.assert_not_awaited()
 
     def test_nothing_is_flushed_with_the_assistant_off(self, monkeypatch, tmp_path):
         """

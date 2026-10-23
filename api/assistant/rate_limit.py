@@ -199,6 +199,10 @@ class RedisAssistantThrottle:
         # Counts in place of the store while it is down: same budget, this process only.
         self._fallback = InMemoryAssistantThrottle(max_per_hour, window_seconds)
 
+    def close(self) -> None:
+        """Close the Redis client, for application shutdown."""
+        self._client.close()
+
     def hit(self, user_id: UUID) -> bool:
         """Count one message and report whether the user is within budget.
 

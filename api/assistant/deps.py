@@ -6,16 +6,17 @@ code that loads when ``settings.assistant_enabled`` is true.
 
 What lives for the whole process is cached here: the two chat models, the
 documentation retriever, which owns a BM25 index and the vector store's engine, and the
-table of turn slots. :func:`clear_caches` drops all of them at once. What belongs to one
+table of turn slots. :func:`clear_caches` drops all of them at once, and
+:func:`close_assistant_resources` closes them first at shutdown. What belongs to one
 request is not cached: the API client carries the caller's own access token, and sharing it
 would hand one user's token to another user's turn.
 """
 
 import asyncio
-import contextlib
+import inspect
 import logging
 import threading
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
@@ -25,6 +26,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from langchain_core.language_models import BaseChatModel
+from langchain_postgres import PGEngine
 from sqlmodel import Session
 
 from api.assistant.agent.context import AssistantContext, SourceRegistry
@@ -46,6 +48,7 @@ from api.assistant.rag.store import make_engine, open_store
 from api.assistant.rate_limit import (
     GLOBAL_KEY,
     AssistantThrottle,
+    RedisAssistantThrottle,
     get_assistant_global_throttle,
     get_assistant_throttle,
 )
@@ -122,7 +125,13 @@ def get_query_model() -> BaseChatModel:
     return make_chat_model(get_settings())
 
 
-@lru_cache
+# The retriever and the engine behind its store, built together under the lock. A plain holder
+# and not ``lru_cache``: FastAPI resolves this in its threadpool, and two cold requests would
+# each build an engine, one of them never closed. Shutdown reads the engine from here.
+_docs_lock = threading.Lock()
+_docs_resources: tuple[DocsRetriever, PGEngine] | None = None
+
+
 def get_docs_retriever() -> DocsRetriever:
     """Return the process-wide documentation retriever, built once from settings.
 
@@ -133,9 +142,27 @@ def get_docs_retriever() -> DocsRetriever:
     Opening the store reaches the vector database, so the first request of a process can
     meet a database that is down, or a collection that is missing: that, and a missing
     ``ASSISTANT_VECTOR_DB_URL``, are ``AssistantUnavailableError``. A missing URL is logged
-    by setting name only. A build that fails closes its engine first.
+    by setting name only. A build that fails closes its engine first. Threads asking at the
+    same time on a cold process wait for one build; a failed build is not kept.
 
     :return: A retriever over the configured collection.
+    :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
+        opened, or the URL is not set.
+    """
+    global _docs_resources
+    built = _docs_resources
+    if built is None:
+        with _docs_lock:
+            built = _docs_resources
+            if built is None:
+                built = _docs_resources = _build_docs_retriever()
+    return built[0]
+
+
+def _build_docs_retriever() -> tuple[DocsRetriever, PGEngine]:
+    """Build the retriever and open its engine; the body of :func:`get_docs_retriever`.
+
+    :return: The retriever and the engine its store uses.
     :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
         opened, or the URL is not set.
     """
@@ -163,13 +190,22 @@ def get_docs_retriever() -> DocsRetriever:
                 else None
             )
             llm = get_query_model() if config.query_transform != "none" else None
-            return DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
+            retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
+            return retriever, engine
         except Exception:
             # A failed build is not cached, so every request would build another pool:
             # release this one before the error goes on, and let a failing close not
-            # replace that error.
-            with contextlib.suppress(Exception):
+            # replace that error, only be recorded.
+            try:
                 asyncio.run(engine.close())
+            except Exception as close_exc:
+                logger.warning(
+                    "Assistant engine close failed",
+                    extra={
+                        "event": "assistant_engine_close_failed",
+                        "reason": type(close_exc).__name__,
+                    },
+                )
             raise
 
 
@@ -241,12 +277,68 @@ def clear_caches() -> None:
     """Drop every process-wide object this module keeps, so the next call builds anew.
 
     For tests and for a run that changes the settings; the models, the retriever and the
-    turn slots read them once, when they are built.
+    turn slots read them once, when they are built. It closes nothing: see
+    :func:`close_assistant_resources`.
     """
+    global _docs_resources
     get_answer_model.cache_clear()
     get_query_model.cache_clear()
-    get_docs_retriever.cache_clear()
+    with _docs_lock:
+        _docs_resources = None
     get_turn_slots.cache_clear()
+
+
+async def close_assistant_resources() -> None:
+    """Close what the process built for the assistant, then drop the caches.
+
+    For application shutdown. Only what was built is closed, and nothing is built to be
+    closed: the cached getters are asked only when their cache holds an object. That is the
+    corpus engine, the two chat models' clients and the Redis clients of the throttles. The
+    reranker opens a client per call and the embeddings client has no public way to close, so
+    neither is touched. A close that fails is recorded, by the resource and the error's class
+    only, and the others still run.
+    """
+    closers: list[tuple[str, Callable[[], object]]] = []
+    if _docs_resources is not None:
+        closers.append(("docs_engine", _docs_resources[1].close))
+    for name, model_getter in (
+        ("answer_model", get_answer_model),
+        ("query_model", get_query_model),
+    ):
+        if model_getter.cache_info().currsize:
+            model = model_getter()
+            for suffix, attribute in (
+                ("async_client", "root_async_client"),
+                ("client", "root_client"),
+            ):
+                client = getattr(model, attribute, None)
+                if client is not None:
+                    closers.append((f"{name}_{suffix}", client.close))
+    for name, throttle_getter in (
+        ("assistant_throttle", get_assistant_throttle),
+        ("assistant_global_throttle", get_assistant_global_throttle),
+    ):
+        if throttle_getter.cache_info().currsize:
+            throttle = throttle_getter()
+            if isinstance(throttle, RedisAssistantThrottle):
+                closers.append((name, throttle.close))
+    for resource, close in closers:
+        try:
+            outcome = close()
+            if inspect.isawaitable(outcome):
+                await outcome
+        except Exception as exc:
+            logger.warning(
+                "Assistant resource close failed at shutdown",
+                extra={
+                    "event": "assistant_shutdown_close_failed",
+                    "resource": resource,
+                    "reason": type(exc).__name__,
+                },
+            )
+    clear_caches()
+    get_assistant_throttle.cache_clear()
+    get_assistant_global_throttle.cache_clear()
 
 
 def get_assistant_service(

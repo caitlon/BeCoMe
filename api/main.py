@@ -48,8 +48,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         # Imported only when the flag is on, like the router in create_app(), so a
         # deployed process never loads the assistant package.
         from api.assistant.agent.tracing import shutdown_tracing
+        from api.assistant.deps import close_assistant_resources
 
         shutdown_tracing()
+        await close_assistant_resources()
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 
