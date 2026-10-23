@@ -150,18 +150,37 @@ class _RoleTaggedChatOpenAI(ChatOpenAI):
                 )
 
 
+def _check_vectors(vectors: list[Any]) -> None:
+    """Check that every vector of an embedding reply is a non-empty list of numbers.
+
+    The library passes an item without ``embedding``, or with a null one, on as ``None``.
+
+    :param vectors: What the library returned for the texts.
+    :raises ValueError: For a vector that is not a non-empty list of ints and floats.
+    """
+    for vector in vectors:
+        if not isinstance(vector, list) or not vector:
+            raise ValueError("an embedding is not a non-empty list")
+        if not all(isinstance(x, int | float) and not isinstance(x, bool) for x in vector):
+            raise ValueError("an embedding holds a value that is not a number")
+
+
 class _RoleTaggedEmbeddings(OpenAIEmbeddings):
     """An OpenAIEmbeddings client whose failures carry the role ``embedding``.
 
     The library does not check the body it gets: an HTML page raises an ``AttributeError``
     and a body without vectors a ``ValueError``, from inside the call, so those errors are
     caught around each of the four public methods and raised as
-    :class:`MalformedModelResponseError`.
+    :class:`MalformedModelResponseError`. An item of ``data`` with no vector, a null one or an
+    empty one comes back as a bad vector without any error, so the vectors are checked too.
+    ``embed_query`` and ``aembed_query`` call the ``*_documents`` methods, where the check is.
     """
 
     def embed_documents(self, *args: Any, **kwargs: Any) -> list[list[float]]:
         with _upstream("embedding", _REPLY_SHAPE_ERRORS):
-            return super().embed_documents(*args, **kwargs)
+            vectors = super().embed_documents(*args, **kwargs)
+            _check_vectors(vectors)
+            return vectors
 
     def embed_query(self, *args: Any, **kwargs: Any) -> list[float]:
         with _upstream("embedding", _REPLY_SHAPE_ERRORS):
@@ -169,7 +188,9 @@ class _RoleTaggedEmbeddings(OpenAIEmbeddings):
 
     async def aembed_documents(self, *args: Any, **kwargs: Any) -> list[list[float]]:
         with _upstream("embedding", _REPLY_SHAPE_ERRORS):
-            return await super().aembed_documents(*args, **kwargs)
+            vectors = await super().aembed_documents(*args, **kwargs)
+            _check_vectors(vectors)
+            return vectors
 
     async def aembed_query(self, *args: Any, **kwargs: Any) -> list[float]:
         with _upstream("embedding", _REPLY_SHAPE_ERRORS):
@@ -363,7 +384,8 @@ class LlamaServerReranker:
 
         A non-2xx response raises httpx.HTTPStatusError, and an unreachable server
         raises httpx.ConnectError, both as-is but tagged with the role ``rerank``. A 200
-        whose body is not JSON, or holds no ``results`` list, raises
+        whose body is not JSON, holds no ``results`` list, or holds an item that is not an
+        object with an integer ``index`` and a numeric ``relevance_score``, raises
         MalformedModelResponseError. The chat endpoint's service layer is what turns any
         of them into AssistantUnavailableError.
 
@@ -373,21 +395,31 @@ class LlamaServerReranker:
             sorted by score. A caller that wants a ranking sorts the (text, score)
             pairs itself.
         :raises MalformedModelResponseError: if the response is not a JSON object with a
-            ``results`` list.
+            ``results`` list of well-formed items.
         :raises ValueError: if a result's "index" falls outside range(len(texts)),
             if the response scores the same index more than once, or if it leaves
             any index in that range unscored.
         """
-        with _upstream("rerank", (ValueError, KeyError, TypeError)):
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            with _upstream("rerank", ()):
                 response = await client.post(
                     f"{self._base_url}/rerank",
                     json={"model": self._model, "query": query, "documents": texts},
                 )
-            response.raise_for_status()
+                response.raise_for_status()
+        with _upstream("rerank", (ValueError, KeyError, TypeError)):
             results = response.json()["results"]
             if not isinstance(results, list):
                 raise TypeError("results is not a list")
+            for result in results:
+                if not isinstance(result, dict):
+                    raise TypeError("a result is not an object")
+                index = result["index"]
+                score = result["relevance_score"]
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise TypeError("a result index is not an integer")
+                if not isinstance(score, int | float) or isinstance(score, bool):
+                    raise TypeError("a result score is not a number")
         scores = [0.0] * len(texts)
         seen_indices: set[int] = set()
         for result in results:
