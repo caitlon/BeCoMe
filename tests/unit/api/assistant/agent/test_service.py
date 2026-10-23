@@ -747,12 +747,12 @@ class TestFailures:
         ("error", "role"),
         [
             (OperationalError("SELECT 1", {}, Exception("lost")), "vector_db"),
-            (tagged(MalformedModelResponseError("html"), "rerank"), "rerank"),
-            (tagged(openai.APIConnectionError(request=_REQUEST), "embedding"), "embedding"),
             (tagged(openai.APIConnectionError(request=_REQUEST), "query"), "query"),
+            (tagged(MalformedModelResponseError("html"), "answer"), "answer"),
+            (MalformedModelResponseError("html"), "unknown"),
             (httpx.ConnectError("refused"), "unknown"),
         ],
-        ids=["database", "rerank", "embedding", "query model", "untagged"],
+        ids=["database", "query model", "answer model", "untagged malformed reply", "untagged"],
     )
     async def test_the_log_names_the_server_a_retriever_failure_came_from(self, error, role):
         """
