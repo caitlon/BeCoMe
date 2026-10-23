@@ -314,6 +314,12 @@ check skips bearer-token clients, which carry no session cookie, and every path 
 is exempt by default. A stale cookie left by a revoked session can never block a fresh
 login. Logout stays CSRF-protected.
 
+A refused request gets a 403 with `detail` "CSRF token missing or invalid" and the stable
+code `csrf_invalid`, the same for both failure reasons. The SPA branches on the code to ask
+for a page reload. The usual cause is a sign-in in another tab: the first tab still holds the
+token of the session it replaced. The client does not retry on its own, since the other tab may
+have signed in as a different user.
+
 Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
 (`session_id_from_access_token`). It still verifies the signature, but the rest is the
 authentication layer's job, and checking it here would put three Redis round trips in front
@@ -395,22 +401,39 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
-| Assistant chat | `20/minute` | The local assistant's chat route, which exists only on a developer's machine |
-| Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off). A spent budget answers `429` |
+| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev, test and prod services |
+| Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
+| Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
+| Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
 
-Only those routes carry a decorator. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The hourly assistant cap is the only row of this table
-applied through a dependency. The `enforce_message_limit` dependency applies it before the
-`20/minute` per-IP limit runs, so a request that limit refuses has already spent one hourly
-message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
-memory otherwise.
+Only those routes carry a limit of their own. Everything else is bounded by the two global ceilings
+alone, which is the point of having them. The three assistant caps (the hourly messages per account,
+the global hourly ceiling counted for everyone, and the concurrent turns per process) are applied
+through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs first, so a
+request it refuses takes no slot, spends no message and builds no API client; the `hold_turn_slot`
+dependency follows, so a request refused for a full process spends no message of the hourly budget,
+and the message limit comes last. It is no longer a route dependency: `open_chat_turn` calls
+`enforce_message_limit` after the request body check and the documentation retriever, so a message
+that is too long or an invalid body (`422`) and a retriever that cannot be built (`503`) are
+refused before a message is spent.
+`api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
+memory otherwise. A deployed service refuses to start with the per-user or the global hourly
+limit at `0`, so neither cap can be switched off there.
+
+The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
+seconds: the time left in the limit's window, or until that user's hourly window closes.
+`CORSMiddleware` lists the header in `expose_headers`, so the SPA can read it and start its retry
+timer.
 
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
 `X-Origin-Verify` header matching `CLOUDFLARE_ORIGIN_SECRET`. Anything else, including a
 deployed service with no secret configured, keys under one constant. It never reads
-`X-Forwarded-For`, so a client cannot spoof its way around the per-IP limits. Rate limiting
-fails **open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
+`X-Forwarded-For`, so a client cannot spoof its way around the per-IP limits. The assistant's
+in-process API client (`UserApiClient`) runs through the same limiter, so when the secret is set
+it sends `X-Origin-Verify`, and the transport's peer address is the caller's key; the header
+never leaves the process. Rate limiting fails
+**open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
 traffic, at the cost of the shared counters. See "Accepted risks" for the reasoning. A
 request body over the configured ceiling gets a `413` before anything buffers it, and the
 API streams profile-photo uploads under a size cap rather than reading them whole into
@@ -418,10 +441,11 @@ memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match
-that declaration, and the pixel canvas must fit the avatar budget (4096x4096, no side over
-8192). The last one exists because bytes and pixels are not the same limit: image formats
-compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canvas, which
-costs tens to hundreds of megabytes the moment anything decodes it, depending on the mode.
+that declaration, and the pixel canvas must fit the avatar budget (about 16.8 megapixels,
+the area of 4096x4096, and no side over 8192). The last one exists because bytes and pixels
+are not the same limit: image formats compress uniform areas so well that a 35 KB PNG can
+declare a 25-megapixel canvas, which costs tens to hundreds of megabytes the moment anything
+decodes it, depending on the mode.
 The validator parses only the header, so rejecting such a file costs nothing.
 
 Rate limiting bounds how fast one caller can drive an endpoint. It does nothing about a
@@ -473,13 +497,19 @@ rather than a default nobody notices.
 
 ## Input validation
 
-Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected
-field draws a `422` rather than passing as a silently ignored parameter. String fields carry
-length caps, free-text names go through HTML sanitization, and list endpoints clamp their
-page size (`MAX_PAGE_SIZE = 100`, `api/pagination.py`) so a single request cannot ask the
-database for an unbounded result set. The GDPR export is the one deliberate exception to the
-list caps, since Article 20 requires the full dataset. `api/README.md` records the
-exemption, and the route itself carries no note.
+Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected field
+draws a `422` rather than passing as a silently ignored parameter. String fields carry length caps,
+free-text names go through HTML sanitization, numeric fields that feed the calculation (fuzzy
+bounds, the project scale) refuse `NaN` and infinity, and list endpoints clamp their page size
+(`MAX_PAGE_SIZE = 100`, `api/pagination.py`) so a single request cannot ask the database for an
+unbounded result set. The GDPR export is the one deliberate exception to the list caps, since
+Article 20 requires the full dataset. `api/README.md` records the exemption, and the route itself
+carries no note.
+
+Text a model writes reaches the browser only through the optional assistant panel, which
+renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
+`ul`, `ol`, `li`, `code`, `br`, with `unwrapDisallowed`), loads no raw-HTML plugin, and
+turns a source into a link only when its URL is `https://`.
 
 ## Configuration and profiles
 
@@ -502,12 +532,35 @@ laptop and a CI runner carry no such marker, so the invariants guard staging wit
 breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
-The local assistant has a check of its own, separate from the nine invariants.
-`assistant_enabled` defaults to `false`, and `_validate_assistant_local_only` refuses to start
-when it is `true` on any deploy. The check also fires when `RAILWAY_ENVIRONMENT_NAME` is set, so
-a Railway process that carries `TESTING=1` and slips past `is_deploy` is still refused. The
-assistant router is registered only when the setting is on, so on a deployed service every request
-that reaches routing answers 404 for the whole `/api/v1/assistant` prefix.
+The assistant, which runs its models locally by default or at a hosted provider per role, has a
+check of its own, separate from the nine invariants. `assistant_enabled` defaults to `false`, and
+`_validate_assistant_deploy` refuses to start when it is `true` on a Railway environment whose
+name is not `dev`, `test` or `prod` (compared stripped and case-insensitively, so an unknown or
+renamed environment is refused). The `prod` profile is a deploy like the other two and is held to
+the rules that follow. On any deploy the validator also requires the three model roles to be `api`, since a local model
+server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR` or
+`ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch the cap off. The model is shown each
+expert's name and position in the opinions block, except for members who objected to the assistant
+(`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are left out for
+everyone but themselves. The result block still includes their values in the aggregates (mean,
+median, best compromise, number of experts), so with a single objector their values follow from the
+aggregates and the visible rows; the prompt forbids the model to compute them. The missing row also
+shows other members who objected. Tracing sends the text of questions, history, tool replies and
+answers to LangSmith, but the names and positions of the turn's participants are replaced before
+anything leaves the process, and a trace is dropped rather than sent unmasked when the roster of the
+turn's project cannot be read. The mask misses typos, diminutives, forms that change a word's stem,
+a position the model translates or paraphrases and names inside e-mail addresses, and the drop does
+not cover a project of more than 100 experts, nor a turn with no current project whose text names
+another project's experts. The full list is in
+[`api/assistant/README.md`](../api/assistant/README.md#tracing). With `assistant_langsmith_enabled`
+on, a deployed service must use the EU endpoint and a named project other than the local default,
+and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and its
+`RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to turn
+tracing on. The key, https and loopback checks stay in `_validate_assistant_providers`. The
+environment-name refusal, the hosted-roles rule and the tracing rules also fire when
+`RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
+`is_deploy` is still held to them. The assistant router is registered only when the setting is on,
+so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
 
 ## Network and edge
 
@@ -572,7 +625,10 @@ repeated attempts on one account. Rotating the fallback re-tags every later reco
 
 The rule for any new log record: identifiers, keyed tags, and counts, never the values
 themselves. Allowed are `user_id`, `project_id`, `invitation_id`, `jti`, `sid`, `ip`,
-`status_code`, `duration_ms`, `row_count`, and the `reason` for refusing a request. Never
+`status_code`, `duration_ms`, `row_count`, and the `reason` for refusing a request. The
+assistant's `assistant_turn` record also lists the sources a turn used, by number, title,
+section heading and layer; it never holds a source's excerpt, address or file path, or the
+question. Never
 logged, at any level: passwords and password hashes, raw JWTs, the CSRF cookie or header
 value, the email API key or bucket credentials, the `Authorization` header, any request or
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
@@ -599,10 +655,12 @@ ERROR is what turns a record into an issue, and an issue is the only thing that 
 WARNING these records were a breadcrumb on some later event, which meant the brute-force
 lockout could stay off for the length of an outage with nothing raised anywhere, since the
 request it happened during returns normally, so there is no other symptom to notice. The
-accepted risk is unchanged. What changed is that it now announces itself. The local-only
-assistant's hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at
-ERROR. That record is for whoever reads the local log. The assistant cannot run on a deployed
-service, so the deployed alert rule below is not expected to fire for it.
+accepted risk is unchanged. What changed is that it now announces itself. The assistant's
+hourly cap does not fail open. On a Redis error each process counts in its own memory with the
+same budget, so a store outage leaves a cap per process, not none, and the record
+`assistant_throttle_unavailable` goes out at ERROR. Where the assistant runs
+in production, the alert rule below fires for it as for the other throttles; on the dev and test
+services the record is for whoever reads their log.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
@@ -684,7 +742,7 @@ When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
 opinion in one transaction, and the route recalculates the project result afterwards
 (`api/routes/projects.py`). Otherwise the row would outlive the membership: it carries the
-person's name, email, and stated position, it reaches every remaining member and every
+person's name, stated position, and (for the admin) email, it reaches every remaining member and every
 export, and `RequireProjectAccess` would no longer let the person concerned withdraw it
 themselves.
 

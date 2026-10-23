@@ -26,7 +26,9 @@ run_lint() {
   uv run bandit -c pyproject.toml -r src api --severity-level medium
   uv run mypy src/ api/
   uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
-  cd "$PROJECT_ROOT/frontend" && npm run lint && npm run typecheck
+  cd "$PROJECT_ROOT/frontend"
+  npm run lint
+  npm run typecheck
   echo ""
   echo "Lint passed."
 }
@@ -37,7 +39,8 @@ run_test() {
   SECRET_KEY=test-secret-key TESTING=1 \
     uv run pytest tests/unit/ tests/integration/ \
       --cov=src --cov=api --cov-report=term-missing
-  cd "$PROJECT_ROOT/frontend" && npm run test:run
+  cd "$PROJECT_ROOT/frontend"
+  npm run test:run
   echo ""
   echo "Tests passed."
 }
@@ -65,11 +68,11 @@ case "${1:-all}" in
   e2e)         run_e2e ;;
   e2e-backend) run_e2e_backend ;;
   e2e-pw)      run_e2e_playwright ;;
-  fast)        run_lint && run_test ;;
+  fast)        run_lint; run_test ;;
   smoke)       "$PROJECT_ROOT/scripts/ci/smoke-test.sh" "${@:2}" ;;
   sonar)       "$PROJECT_ROOT/scripts/ci/sonar-local.sh" "${@:2}" ;;
   mutmut)      "$PROJECT_ROOT/scripts/ci/mutmut-run.sh" "${@:2}" ;;
-  all)         run_lint && run_test && run_e2e ;;
+  all)         run_lint; run_test; run_e2e ;;
   *)
     echo "Usage: $0 {lint|test|e2e|e2e-backend|e2e-pw|fast|smoke|sonar|mutmut|all}"
     exit 1

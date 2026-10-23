@@ -2,6 +2,7 @@
 
 import logging
 import re
+import unicodedata
 from uuid import UUID
 
 from sqlmodel import select
@@ -129,6 +130,13 @@ class ResultExportService(BaseService):
 
     @staticmethod
     def _slug(name: str) -> str:
-        """Turn a project name into an ASCII, filename-safe slug."""
-        slug = _SLUG_RE.sub("-", name.lower()).strip("-")
+        """Turn a project name into an ASCII, filename-safe slug.
+
+        Accented letters keep their base letter (an e with a caron becomes e);
+        letters with no ASCII base become separators, like punctuation.
+        """
+        base = "".join(
+            ch for ch in unicodedata.normalize("NFKD", name) if not unicodedata.combining(ch)
+        )
+        slug = _SLUG_RE.sub("-", base.lower()).strip("-")
         return slug or "project"

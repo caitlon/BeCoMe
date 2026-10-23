@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
+import { HttpError } from '@/lib/errors';
 import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
 
 // Mock api
@@ -43,6 +44,14 @@ describe('CreateProjectModal', () => {
     expect(screen.getByPlaceholderText('Max')).toBeInTheDocument();
   });
 
+  it('shows a hint that an empty unit makes an agreement project', () => {
+    render(<CreateProjectModal {...defaultProps} />);
+
+    const hint = screen.getByText(/leave the unit empty on a 0 to 100 scale/i);
+    expect(hint).toBeInTheDocument();
+    expect(getUnitInput()).toHaveAccessibleDescription(/leave the unit empty on a 0 to 100 scale/i);
+  });
+
   it('has default scale values', () => {
     render(<CreateProjectModal {...defaultProps} />);
 
@@ -64,18 +73,27 @@ describe('CreateProjectModal', () => {
     });
   });
 
-  it('requires unit field to be filled', async () => {
+  // An empty unit on a 0-100 scale is what makes a project a Likert agreement project,
+  // so the form must let it through and send the empty string as it is.
+  it('creates a project with an empty unit and shows no unit error', async () => {
     const user = userEvent.setup();
+    mockCreateProject.mockResolvedValueOnce({ id: '1', name: 'Agreement' });
     render(<CreateProjectModal {...defaultProps} />);
 
-    // Fill name but leave unit empty
-    await user.type(getNameInput(), 'Test Project');
+    await user.type(getNameInput(), 'Agreement');
     await user.click(getSubmitButton());
 
-    // API should not be called without unit
     await waitFor(() => {
-      expect(mockCreateProject).not.toHaveBeenCalled();
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Agreement',
+          scale_min: 0,
+          scale_max: 100,
+          scale_unit: '',
+        })
+      );
     });
+    expect(screen.queryByText(/unit is required/i)).not.toBeInTheDocument();
   });
 
   it('shows validation error when max is not greater than min', async () => {
@@ -226,6 +244,23 @@ describe('CreateProjectModal', () => {
         expect.objectContaining({
           variant: 'destructive',
         })
+      );
+    });
+  });
+
+  it('shows the error message of an HTTP failure as the toast description', async () => {
+    const user = userEvent.setup();
+    mockCreateProject.mockRejectedValueOnce(new HttpError('boom', 400));
+
+    render(<CreateProjectModal {...defaultProps} />);
+
+    await user.type(getNameInput(), 'New Project');
+    await user.type(getUnitInput(), '%');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'boom', variant: 'destructive' })
       );
     });
   });

@@ -1,0 +1,125 @@
+{
+  "trigger": {
+    "header": "Asistent",
+    "result": "Vysvětlit výsledek"
+  },
+  "privacy": {
+    "title": "Soukromí v asistentovi",
+    "label": "Skrýt moje názory před asistentem ostatních členů",
+    "description": "Když je to zapnuté, asistent neukáže vaše názory ostatním členům projektu, kteří se ho na ně zeptají. Vám je ukazuje dál. Výsledky projektu, třeba průměr a počet expertů, se počítají jako dřív.",
+    "enabledToast": "Vaše názory jsou teď před asistentem ostatních členů skryté",
+    "disabledToast": "Asistent ostatních členů může vaše názory zase ukazovat",
+    "failed": "Nastavení asistenta se nepodařilo uložit"
+  },
+  "panel": {
+    "title": "Asistent",
+    "scopeProject": "Projekt „{{name}}“",
+    "scopeGeneral": "Metoda a aplikace",
+    "seesOnly": "Vidí jen to, co v projektu vidíte vy. Otázky odcházejí k modelu AI v EU.",
+    "clear": "Vymazat konverzaci",
+    "clearConfirm": "Vymazat konverzaci? Nelze vrátit zpět.",
+    "clearYes": "Vymazat",
+    "clearNo": "Ponechat",
+    "footer": "Asistent se může mýlit. Ověřte na stránce výsledku."
+  },
+  "empty": {
+    "titleProject": "Zeptejte se na tento projekt",
+    "titleGeneral": "Zeptejte se na metodu nebo aplikaci",
+    "hint": "Odpovědi vycházejí z dokumentace a z dat tohoto projektu. Za každým tvrzením je zdroj.",
+    "suggestionsProject": [
+      "Co výsledek znamená?",
+      "Proč je spolehlivost střední?",
+      "Jak se počítá nejlepší kompromis?"
+    ],
+    "suggestionsGeneral": [
+      "Co je fuzzy názor?",
+      "Jak pozvu experty?",
+      "Co říká Δmax?"
+    ]
+  },
+  "composer": {
+    "placeholder": "Napište otázku…",
+    "hint": "Enter odešle · Shift+Enter nový řádek",
+    "stop": "Zastavit"
+  },
+  "feed": {
+    "label": "Konverzace",
+    "older": "Starší zprávy se k novým otázkám už neposílají."
+  },
+  "message": {
+    "sources": "Zdroje",
+    "localCopy": "Místní kopie",
+    "localHint": "Z diplomové práce a článků, které nemají veřejnou stránku.",
+    "publicLayer": "Dokumentace",
+    "openSource": "Otevřít stránku",
+    "noSuchSource": "Zdroj neexistuje",
+    "numbersNotConfirmed": "Čísla, která zdroje nepotvrzují: {{numbers}}",
+    "numbersNotConfirmedGeneric": "Některá čísla zdroje nepotvrzují.",
+    "citationInvalid": "Citace odkazuje na neexistující zdroj.",
+    "read": "Načteno: {{tools}}",
+    "tools": {
+      "search_docs": "dokumentace",
+      "list_my_projects": "projekty",
+      "get_project": "projekt",
+      "get_project_result": "výsledek",
+      "get_project_opinions": "názory"
+    },
+    "stopped": "Zastaveno",
+    "stoppedHint": "Částečná odpověď. S další otázkou se neodesílá.",
+    "retry": "Zkusit znovu",
+    "errors": {
+      "rateLimited": "Limit zpráv vyčerpán. Zkuste to znovu za {{minutes}} min.",
+      "rateLimitedGeneric": "Limit zpráv vyčerpán. Zkuste to znovu později.",
+      "unavailable": "Asistent je dočasně nedostupný.",
+      "unavailableHint": "Model neodpovídá.",
+      "notFound": "Tento projekt není dostupný.",
+      "notFoundHint": "Mohl být smazán nebo už nejste jeho členem.",
+      "generic": "Něco se pokazilo. Zkuste to prosím znovu.",
+      "cut": "Spojení se přerušilo před dokončením odpovědi.",
+      "cutHint": "Co dorazilo, je výše. S další otázkou se neodesílá."
+    },
+    "askWithout": "Ptát se bez projektu",
+    "openProjects": "Otevřít projekty",
+    "pending": {
+      "searching": "Hledám v dokumentaci…",
+      "reading": "Čtu projekt…",
+      "writing": "Píšu odpověď. Může to trvat až minutu.",
+      "answering": "Odpovídám…"
+    }
+  },
+  "guide": {
+    "docs": {
+      "title": "Asistent",
+      "intro": "Asistent odpovídá na otázky o metodě BeCoMe a o vašich projektech. Je to systém umělé inteligence, jazykový model, ne člověk, a jeho odpovědi mohou být chybné. Cokoli důležitého ověřte na stránce výsledku a v této dokumentaci.",
+      "where": {
+        "title": "Kde ho najdete",
+        "body": "Přihlaste se a v horní liště klikněte na tlačítko asistenta <icon/>. Na stránce výsledků projektu otevře tlačítko <b>Vysvětlit výsledek</b> asistenta rovnou s tímto projektem."
+      },
+      "answers": {
+        "title": "Na co odpoví",
+        "method": "Jak funguje metoda: fuzzy názory, nejlepší kompromis, maximální chyba.",
+        "project": "Váš projekt: jeho názory a výsledek. Vidí jen to, co v projektu vidíte vy.",
+        "app": "Jak aplikaci používat, například jak vytvořit projekt nebo pozvat experty. Obecné otázky můžete klást i bez projektu.",
+        "readOnly": "Asistent jen čte. Projekt, názor ani váš účet změnit nemůže."
+      },
+      "limits": {
+        "title": "Omezení",
+        "rate": "Za hodinu můžete poslat nejvýše 60 zpráv. Po dosažení limitu vám asistent řekne, kolik minut počkat.",
+        "time": "Odpověď může trvat až minutu.",
+        "storage": "Konverzace se do vašeho účtu neukládá. Zůstává jen v této záložce prohlížeče.",
+        "history": "V dlouhé konverzaci se starší zprávy s novými otázkami už neposílají, takže k nim asistent přestane přihlížet."
+      },
+      "data": {
+        "title": "Vaše údaje",
+        "sent": "Vaše otázka a údaje otevřeného projektu, včetně jmen, pozic a názorů ostatních členů, odcházejí k modelu AI v EU. Co přesně se posílá a jak dlouho se uchovává, popisují <privacy>Zásady ochrany osobních údajů</privacy>.",
+        "sensitive": "Do asistenta nepište citlivé údaje.",
+        "objection": "Pokud nechcete, aby asistent ukazoval vaše názory ostatním členům, zapněte v profilu <b>Skrýt moje názory před asistentem ostatních členů</b>."
+      }
+    },
+    "tour": {
+      "title": "Zeptejte se asistenta",
+      "body": "Nevíte, co znamená výsledek nebo pojem? Klikněte v horní liště na tlačítko asistenta <icon/> a zeptejte se vlastními slovy. Zná metodu BeCoMe a projekty, jejichž jste členem. Je to AI a může se mýlit, proto důležité věci ověřte na stránce výsledku.",
+      "hint": "Více v <docs>dokumentaci<sr>, otevře se v nové záložce</sr></docs>, v části Asistent."
+    }
+  }
+}

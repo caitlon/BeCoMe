@@ -15,7 +15,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import langsmith as ls
@@ -25,12 +25,17 @@ from langchain_core.messages import AIMessage
 from langsmith import run_helpers
 
 from api.assistant import deps
+from api.assistant.agent import tracing
 from api.assistant.agent.prompt import SYSTEM_PROMPT
 from api.assistant.rag.retrieval import RetrievedChunk
-from api.assistant.rate_limit import get_assistant_throttle
+from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.config import get_settings
 from tests.integration.api.conftest import create_project, register_and_login, stored_accounts
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, StaticDocsRetriever
+from tests.shared.assistant_fakes import (
+    DEFAULT_USAGE,
+    ScriptedToolCallingModel,
+    StaticDocsRetriever,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -42,12 +47,14 @@ DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 PROVENANCE_FIELDS = (  # noqa: SIM905
     "mode prompt_sha256 corpus_version app_version answer_model retrieval_mode "
     "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
-    "max_tool_calls collection code_version answer_endpoint"
+    "max_tool_calls collection code_version answer_endpoint transport "
+    "answer_provider query_provider embedding_provider"
 ).split()
 GOOD_ROW = json.dumps({"id": "q0", "arm": "cli", "status": "ok"})
 _ENV = {
     "ASSISTANT_MODE": "workflow",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
+    "ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0",
     "ASSISTANT_RETRIEVAL_K": "3",
     "ASSISTANT_LANGSMITH_ENABLED": "false",
     "ASSISTANT_ANSWER_LLM_MODEL": "test-answer-model",
@@ -80,6 +87,7 @@ def _reset() -> None:
     get_settings.cache_clear()
     deps.clear_caches()
     get_assistant_throttle.cache_clear()
+    get_assistant_global_throttle.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -91,6 +99,20 @@ def _runner_env(monkeypatch, tmp_path):
     _reset()
     yield
     _reset()
+
+
+def _enable_tracing_setting(monkeypatch) -> None:
+    """Turn the assistant's LangSmith setting on, with a stand-in client so nothing is sent."""
+    monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+    monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+    monkeypatch.setattr(tracing, "_shared_client", MagicMock())
+    _reset()
+
+
+@pytest.fixture
+def tracing_setting_on(monkeypatch):
+    """Turn the assistant's LangSmith setting on, with a stand-in client so nothing is sent."""
+    _enable_tracing_setting(monkeypatch)
 
 
 def _scripted(*answers: str) -> ScriptedToolCallingModel:
@@ -191,6 +213,7 @@ class TestRunEval:
         assert [(s["n"], s["has_url"]) for s in first["sources"]] == [(1, True), (2, False)]
         assert set(first["sources"][0]) == {"n", "title", "section", "layer", "has_url"}
         assert isinstance(first["latency_s"], float)
+        assert first["usage"] == {**DEFAULT_USAGE, "llm_calls": 1, "complete": True}
         assert (first["arm"], first["mode"]) == ("test-arm", "workflow")
         assert first["answer_model"] == "test-answer-model"
         assert first["answer_endpoint"] == "127.0.0.1:9"
@@ -257,7 +280,7 @@ class TestRunEval:
 
         # THEN
         first, second, third = _rows(output)
-        assert (first["status"], first["answer"]) == ("http_404", None)
+        assert (first["status"], first["answer"], first["usage"]) == ("http_404", None, None)
         assert OTHER_PROJECT not in _shown(model)
         assert second["status"] == "ok"
         assert third["status"] == "IndexError"
@@ -359,11 +382,12 @@ class TestRunScope:
         assert [row["status"] for row in _rows(output)] == ["ok", "ok"]
 
     def test_tracing_is_off_while_the_documents_are_searched(
-        self, assistant_settings, client, tmp_path, monkeypatch
+        self, assistant_settings, client, tmp_path, monkeypatch, tracing_setting_on
     ):
         """
-        GIVEN LANGSMITH_TRACING=true in the environment
-        WHEN the runner asks a question, whose search runs before the service's own scope
+        GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
+        WHEN the runner asks a question without trace, whose search runs before the service's
+            own scope
         THEN tracing is switched off at that point
         """
         # GIVEN
@@ -379,6 +403,159 @@ class TestRunScope:
 
         # THEN
         assert probe.enabled == [False]
+
+    def test_trace_switches_tracing_on_while_the_documents_are_searched(
+        self, assistant_settings, client, tmp_path, monkeypatch, tracing_setting_on
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
+        WHEN the runner asks a question with trace=True
+        THEN the tracing context is enabled while the documents are searched
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}],
+            tmp_path / "out.jsonl",
+            trace=True,
+        )
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [True]
+
+    @pytest.mark.parametrize(
+        ("setting_on", "trace", "flushed"),
+        [(True, True, 1), (True, False, 0), (False, True, 0), (False, False, 0)],
+    )
+    def test_tracing_is_flushed_once_only_when_the_run_was_traced(
+        self, assistant_settings, client, tmp_path, monkeypatch, setting_on, trace, flushed
+    ):
+        """
+        GIVEN the assistant's tracing setting on or off
+        WHEN the runner finishes a question with or without trace
+        THEN the pending traces are flushed once if both are on, and never otherwise
+        """
+        # GIVEN
+        if setting_on:
+            _enable_tracing_setting(monkeypatch)
+        calls = []
+        monkeypatch.setattr(ea, "shutdown_tracing", lambda: calls.append(1))
+        fixtures = _setup(client, _scripted("Fine.", "Also fine."))
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}],
+            tmp_path / "out.jsonl",
+            trace=trace,
+        )
+
+        # THEN
+        assert len(calls) == flushed
+
+    def test_trace_with_the_setting_off_still_switches_tracing_off(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment and the assistant's setting off
+        WHEN the runner asks a question with trace=True
+        THEN tracing is switched off around the search, since the setting is what traces
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}],
+            tmp_path / "out.jsonl",
+            trace=True,
+        )
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [False]
+
+    def test_setting_off_without_trace_switches_tracing_off(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment and the assistant's setting off
+        WHEN the runner asks a question without trace
+        THEN tracing is switched off around the search
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], tmp_path / "out.jsonl")
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [False]
+
+    @pytest.mark.parametrize(
+        ("setting_on", "flag", "expected"),
+        [
+            (True, [], "tracing: off"),
+            (True, ["--trace"], "tracing: on"),
+            (False, ["--trace"], "tracing: off"),
+            (False, [], "tracing: off"),
+        ],
+    )
+    def test_main_says_whether_tracing_is_on(
+        self,
+        assistant_settings,
+        client,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        setting_on,
+        flag,
+        expected,
+    ):
+        """
+        GIVEN a one-question run, with the assistant's tracing setting on or off
+        WHEN main runs with or without --trace
+        THEN stderr says tracing is on only when the flag is given and the setting is on, and
+            notes that nothing is traced when the flag is given with the setting off
+        """
+        # GIVEN
+        if setting_on:
+            _enable_tracing_setting(monkeypatch)
+        fixtures = _setup(client, _scripted("One."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path, "workflow", *flag))
+        err = capsys.readouterr().err
+
+        # THEN
+        assert expected in err
+        assert ("tracing: on" in err) is (expected == "tracing: on")
+        note = "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced"
+        assert (note in err) is (bool(flag) and not setting_on)
 
 
 class TestEvalSettings:
@@ -397,11 +574,46 @@ class TestEvalSettings:
         assert get_settings().assistant_langsmith_enabled is True
 
         # WHEN
-        settings = ea._eval_settings(get_settings(), "hybrid")
+        settings = ea._eval_settings(get_settings(), "hybrid", False)
 
         # THEN
         assert settings.assistant_langsmith_enabled is False
         assert settings.assistant_mode == "hybrid"
+
+    def test_the_sources_are_shown_whatever_the_environment_says(self, monkeypatch):
+        """
+        GIVEN settings with the answer sources switched off
+        WHEN the runner builds the settings it runs under
+        THEN the sources are shown, so the runner reads the answer as the model wrote it
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_SHOW_SOURCES", "false")
+        _reset()
+        assert get_settings().assistant_show_sources is False
+
+        # WHEN
+        settings = ea._eval_settings(get_settings(), "workflow", False)
+
+        # THEN
+        assert settings.assistant_show_sources is True
+
+    def test_trace_keeps_the_environments_tracing_setting(self, monkeypatch):
+        """
+        GIVEN settings with LangSmith tracing switched on by the environment
+        WHEN the runner builds the settings it runs under with trace
+        THEN tracing stays as the environment gave it and the mode is the requested one
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+        _reset()
+
+        # WHEN
+        traced = ea._eval_settings(get_settings(), "agent", True)
+
+        # THEN
+        assert traced.assistant_langsmith_enabled is True
+        assert traced.assistant_mode == "agent"
 
 
 class TestInputs:
@@ -476,7 +688,10 @@ class TestMain:
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
 
         # WHEN
-        with patch.object(ea, "create_app", return_value=client.app):
+        with (
+            patch.object(ea, "git_version", return_value="code-1") as git_version,
+            patch.object(ea, "create_app", return_value=client.app),
+        ):
             code = ea.main(_argv(tmp_path))
 
         # THEN
@@ -488,7 +703,8 @@ class TestMain:
         assert "Plum" not in shown
         assert "Secret-free" not in shown
         assert "app_version and corpus_version are null" in captured.err
-        assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == ea.git_version(ea.REPO_ROOT)
+        assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == "code-1"
+        git_version.assert_called_once_with(ea.REPO_ROOT)
 
     def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
         self, client, tmp_path, capsys
@@ -664,15 +880,20 @@ class TestFailureHandling:
 
         # WHEN
         client.app.dependency_overrides[deps.get_docs_retriever] = _RaisingRetriever
-        with patch.object(ea, "create_app", return_value=client.app):
-            stopped = ea.main(_argv(tmp_path))
+        # The three runs must share one code version, so the live git describe is pinned;
+        # pacing is off because 22 questions would otherwise wait out a real 60 s window.
+        with (
+            patch.object(ea, "git_version", return_value="code-1"),
+            patch.object(ea, "create_app", return_value=client.app),
+        ):
+            stopped = ea.main(_argv(tmp_path, "workflow", "--no-pacing"))
             message = capsys.readouterr().err
             rows_after_stop = len(_rows(output))
             client.app.dependency_overrides[deps.get_docs_retriever] = lambda: working
-            second = ea.main(_argv(tmp_path))
+            second = ea.main(_argv(tmp_path, "workflow", "--no-pacing"))
             asked_by_second = len(model.seen)
             second_out = capsys.readouterr().out
-            third = ea.main(_argv(tmp_path, "workflow", "--retry-failed"))
+            third = ea.main(_argv(tmp_path, "workflow", "--retry-failed", "--no-pacing"))
             third_out = capsys.readouterr().out
 
         # THEN
@@ -867,31 +1088,33 @@ class TestPacing:
 
     def test_latency_does_not_include_the_wait(self, assistant_settings, client, tmp_path):
         """
-        GIVEN a limit of 2 a minute, so the second question waits, and a wait that really takes 0.5 s
+        GIVEN a limit of 2 a minute, so the second question waits, and a fake clock that the
+            wait moves by a minute while a turn takes no time on it
         WHEN the runner asks two questions
-        THEN the wait happened and every latency_s is shorter than it
+        THEN the wait happened and every latency_s is zero, so none of it counts as latency
         """
         # GIVEN
         fixtures = _setup(client, _scripted("One.", "Two."))
-        waited: list[float] = []
-
-        async def really_sleep(seconds: float) -> None:
-            waited.append(seconds)
-            await asyncio.sleep(0.5)
+        fake = _FakeTime()
 
         # WHEN
-        with patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "2/minute"):
+        with (
+            patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "2/minute"),
+            patch.object(ea, "time", SimpleNamespace(monotonic=fake.clock)),
+        ):
             _run(
                 client,
                 fixtures,
                 self._questions(2),
                 tmp_path / "out.jsonl",
-                sleep=really_sleep,
+                clock=fake.clock,
+                sleep=fake.sleep,
             )
 
         # THEN
-        assert len(waited) == 1
-        assert all(row["latency_s"] < 0.5 for row in _rows(tmp_path / "out.jsonl"))
+        assert len(fake.sleeps) == 1
+        assert fake.sleeps[0] > 0
+        assert [row["latency_s"] for row in _rows(tmp_path / "out.jsonl")] == [0.0, 0.0]
 
     def test_no_pacing_never_waits(self, assistant_settings, client, tmp_path):
         """
@@ -983,6 +1206,311 @@ class TestPacing:
         # THEN
         assert "pacing: at most 19 questions per 60 s" in paced
         assert "pacing: off" in unpaced
+
+
+class TestStream:
+    """``--stream`` asks the streamed route and records the server's own timing."""
+
+    def test_stream_rows_carry_timing(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN the same two questions asked over the stream route and over /chat
+        WHEN the runner records both
+        THEN the streamed rows carry usage and the server's timing with an integer first-token
+             time, their answers equal the /chat answers, and the /chat rows have no first token
+        """
+        # GIVEN
+        fixtures = _setup(
+            client, _scripted("It combines two.", "Zadne.", "It combines two.", "Zadne.")
+        )
+        questions = [{"id": "q1", "question": "What is it?"}, {"id": "q2", "question": "Kolik?"}]
+        streamed_out = tmp_path / "streamed.jsonl"
+        chat_out = tmp_path / "chat.jsonl"
+
+        # WHEN
+        _run(client, fixtures, questions, streamed_out, stream=True)
+        _run(client, fixtures, questions, chat_out)
+
+        # THEN
+        streamed, chat = _rows(streamed_out), _rows(chat_out)
+        for row in streamed:
+            assert row["status"] == "ok"
+            assert isinstance(row["timing"]["ttft_ms"], int)
+            assert row["timing"]["ttft_ms"] >= 0
+            assert isinstance(row["timing"]["total_ms"], int)
+            assert row["usage"]["complete"] is True
+            assert row["transport"] == "stream"
+        assert [row["answer"] for row in streamed] == [row["answer"] for row in chat]
+        for row in chat:
+            assert row["timing"]["ttft_ms"] is None
+            assert isinstance(row["timing"]["total_ms"], int)
+            assert row["transport"] == "chat"
+
+    def test_a_stream_error_event_is_a_failed_turn(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN a model that dies after its first piece
+        WHEN the runner asks a question over the stream route
+        THEN the row's status names the error event's code, and answer and timing are null
+        """
+        # GIVEN
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")], fail_after_chunks=1
+        )
+        fixtures = _setup(client, model)
+        output = tmp_path / "out.jsonl"
+
+        # WHEN
+        summary = _run(client, fixtures, [{"id": "q1", "question": "Plum?"}], output, stream=True)
+
+        # THEN
+        (row,) = _rows(output)
+        assert row["status"] == "stream_error_503"
+        assert (row["answer"], row["timing"], row["usage"]) == (None, None, None)
+        assert (summary["ok"], summary["failed"]) == (0, 1)
+
+    def test_a_refusal_before_the_stream_opens_is_an_http_status(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a question about another user's project
+        WHEN the runner asks it over the stream route
+        THEN the row's status is the plain http_404, as on /chat
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Never used."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "Result?", "project": "foreign"}]
+
+        # WHEN
+        _run(client, fixtures, question, output, stream=True)
+
+        # THEN
+        (row,) = _rows(output)
+        assert (row["status"], row["answer"], row["timing"]) == ("http_404", None, None)
+
+    def test_events_are_split_on_blank_lines_only(self):
+        """
+        GIVEN the lines of two events whose JSON holds an escaped newline
+        WHEN they are parsed
+        THEN there are two events and the payloads are intact
+        """
+        # GIVEN
+        lines = [
+            "event: token",
+            'data: {"text":"one\\n\\ntwo"}',
+            "",
+            "event: done",
+            'data: {"answer":"a\\nb"}',
+            "",
+        ]
+
+        # WHEN
+        events = list(ea.parse_sse(lines))
+
+        # THEN
+        assert events == [("token", {"text": "one\n\ntwo"}), ("done", {"answer": "a\nb"})]
+
+    def test_an_event_cut_short_by_the_end_of_the_body_is_not_yielded(self):
+        """
+        GIVEN lines that end before the blank line of the last event
+        WHEN they are parsed
+        THEN only the finished event comes out
+        """
+        lines = ["event: token", 'data: {"text":"a"}', "", "event: done", 'data: {"ans']
+
+        assert list(ea.parse_sse(lines)) == [("token", {"text": "a"})]
+
+    def test_several_data_lines_of_one_event_form_one_payload(self):
+        """
+        GIVEN an event whose JSON is spread over two ``data:`` lines
+        WHEN it is parsed
+        THEN the lines are joined with a newline into one payload, as the SSE spec says
+        """
+        lines = ["event: done", 'data: {"answer":', 'data: "a"}', ""]
+
+        assert list(ea.parse_sse(lines)) == [("done", {"answer": "a"})]
+
+    def test_a_body_that_ends_after_a_token_is_an_incomplete_stream(self, assistant_settings):
+        """
+        GIVEN a 200 response whose body ends after a token event, with no done or error
+        WHEN the runner asks a question over it
+        THEN the status is stream_incomplete and answer, usage and timing are null
+        """
+
+        # GIVEN
+        class _Response:
+            status_code = 200
+
+            async def aiter_lines(self):
+                for line in ("event: token", 'data: {"text":"a"}', ""):
+                    yield line
+
+        class _Opened:
+            async def __aenter__(self):
+                return _Response()
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+        http = SimpleNamespace(stream=lambda *args, **kwargs: _Opened())
+        record = {"id": "q1", "question": "Plum?"}
+
+        # WHEN
+        result = asyncio.run(ea._ask(http, record, None, str(uuid4()), stream=True))
+
+        # THEN
+        assert result["status"] == "stream_incomplete"
+        assert (result["answer"], result["usage"], result["timing"]) == (None, None, None)
+
+    def test_a_chat_body_that_is_not_json_is_a_failed_turn(self, assistant_settings):
+        """
+        GIVEN a 200 response from the chat route whose body is not JSON
+        WHEN the runner asks a question over the plain route
+        THEN the status is JSONDecodeError and answer, usage and timing are null
+        """
+
+        # GIVEN
+        def _not_json():
+            raise json.JSONDecodeError("Expecting value", "not json", 0)
+
+        async def _post(*args, **kwargs):
+            return SimpleNamespace(status_code=200, json=_not_json)
+
+        http = SimpleNamespace(post=_post)
+        record = {"id": "q1", "question": "Plum?"}
+
+        # WHEN
+        result = asyncio.run(ea._ask(http, record, None, str(uuid4()), stream=False))
+
+        # THEN
+        assert result["status"] == "JSONDecodeError"
+        assert (result["answer"], result["usage"], result["timing"]) == (None, None, None)
+
+    def test_an_answer_with_a_unicode_line_separator_survives_the_stream(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a model whose answer holds U+2028
+        WHEN the runner asks the question over the stream route
+        THEN the row is ok and its answer is intact
+        """
+        # GIVEN
+        answer = "It combines\u2028two."
+        fixtures = _setup(client, _scripted(answer))
+        output = tmp_path / "out.jsonl"
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "What is it?"}], output, stream=True)
+
+        # THEN
+        # Not _rows: splitlines would cut the file at the U+2028 inside the answer.
+        (row,) = ea.latest_rows(output).values()
+        assert row["status"] == "ok"
+        assert row["answer"] == answer
+
+    def test_main_prints_the_transport(self, assistant_settings, client, tmp_path, capsys):
+        """
+        GIVEN a one-question run
+        WHEN main runs with and without --stream
+        THEN stderr names the transport in effect each time
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path, "workflow", "--stream"))
+            streamed = capsys.readouterr().err
+            ea.main(_argv(tmp_path, "workflow", "--arm", "other"))
+            plain = capsys.readouterr().err
+
+        # THEN
+        assert "transport: stream" in streamed
+        assert "transport: chat" in plain
+
+    def test_a_resumed_file_with_the_other_transport_is_refused(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN rows of an arm recorded over /chat
+        WHEN the arm is run again over the stream route
+        THEN the run is refused naming transport, and nothing is appended
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, question, output, stream=True)
+        assert len(_rows(output)) == 1
+
+    def test_a_resumed_stream_file_with_the_chat_transport_is_refused(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN rows of an arm recorded over the stream route
+        WHEN the arm is run again over /chat
+        THEN the run is refused naming transport, and nothing is appended
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output, stream=True)
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, question, output, stream=False)
+        assert len(_rows(output)) == 1
+
+    def test_rows_from_before_the_stream_existed_count_as_chat(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a row of the arm written before rows had a transport field
+        WHEN the arm is resumed over /chat, and then over the stream route
+        THEN the first run is accepted and the second is refused
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        output = tmp_path / "out.jsonl"
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+        legacy = {key: value for key, value in _rows(output)[0].items() if key != "transport"}
+        output.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+        second = [{"id": "q2", "question": "Two?"}]
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, second, output, stream=True)
+        assert _run(client, fixtures, second, output)["rows"] == 1
+
+    def test_rows_from_before_the_providers_existed_count_as_local(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a row of the arm written before rows recorded a provider per role
+        WHEN the arm is resumed with every role local
+        THEN the run is accepted and appends its row
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        output = tmp_path / "out.jsonl"
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+        providers = {"answer_provider", "query_provider", "embedding_provider"}
+        legacy = {k: v for k, v in _rows(output)[0].items() if k not in providers}
+        output.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+        # WHEN
+        result = _run(client, fixtures, [{"id": "q2", "question": "Two?"}], output)
+
+        # THEN
+        assert result["rows"] == 1
+        for provider in sorted(providers):
+            assert {row[provider] for row in _rows(output)[1:]} == {"local"}
 
 
 class TestProvenance:

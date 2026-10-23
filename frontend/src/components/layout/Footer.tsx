@@ -49,14 +49,16 @@ export function Footer() {
                   {isAuthenticated ? t("nav.goToProjects") : t("nav.getStarted")}
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/login"
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {t("nav.signIn")}
-                </Link>
-              </li>
+              {!isAuthenticated && (
+                <li>
+                  <Link
+                    to="/login"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t("nav.signIn")}
+                  </Link>
+                </li>
+              )}
               <li>
                 <Link
                   to="/about"
@@ -150,6 +152,14 @@ export function Footer() {
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {t("footer.privacy")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/terms"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.terms")}
                 </Link>
               </li>
             </ul>

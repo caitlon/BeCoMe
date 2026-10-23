@@ -2,7 +2,27 @@
 
 import pytest
 
-from tests.integration.api.conftest import create_test_app
+from api.config import Settings, get_settings
+from tests.integration.api.conftest import create_test_app, register_and_login
+from tests.shared.helpers import auth_header
+
+
+@pytest.fixture(autouse=True)
+def _local_providers(monkeypatch):
+    """Keep a developer's own shell and .env out of the provider and base URL settings.
+
+    An environment variable beats .env, so pinning the providers and the three base URLs
+    (to the code defaults) here covers both.
+    """
+    monkeypatch.delenv("ASSISTANT_API_KEY_OVH", raising=False)
+    for name in ("ANSWER", "LLM", "EMBEDDING"):
+        monkeypatch.setenv(f"ASSISTANT_{name}_PROVIDER", "local")
+    for field in (
+        "assistant_answer_llm_base_url",
+        "assistant_llm_base_url",
+        "assistant_embedding_base_url",
+    ):
+        monkeypatch.setenv(field.upper(), Settings.model_fields[field].default)
 
 
 class TestAssistantRouterGating:
@@ -10,28 +30,97 @@ class TestAssistantRouterGating:
 
     def test_config_endpoint_404s_when_the_flag_is_off(self, client):
         """
-        GIVEN the shared test app built with the flag off
+        GIVEN the shared test app built with the flag off and a signed-in user
         WHEN the config endpoint is requested
         THEN the prefix is unrouted, so the answer is 404
         """
+        # GIVEN
+        token = register_and_login(client)
+
         # WHEN
-        response = client.get("/api/v1/assistant/config")
+        response = client.get("/api/v1/assistant/config", headers=auth_header(token))
 
         # THEN
         assert response.status_code == 404
 
-    def test_config_endpoint_answers_when_the_flag_is_on(self, assistant_settings, client):
+    def test_config_endpoint_401s_without_a_session(self, assistant_settings, client):
         """
         GIVEN the shared test app built with the flag on
-        WHEN the config endpoint is requested
-        THEN it answers 200 and reports the assistant as enabled
+        WHEN a request carries neither a cookie nor a bearer token
+        THEN the config endpoint answers 401
         """
         # WHEN
         response = client.get("/api/v1/assistant/config")
 
         # THEN
+        assert response.status_code == 401
+
+    def test_config_endpoint_answers_when_the_flag_is_on(self, assistant_settings, client):
+        """
+        GIVEN the shared test app built with the flag on and a signed-in user
+        WHEN the config endpoint is requested
+        THEN it answers 200 and reports the assistant as enabled
+        """
+        # GIVEN
+        token = register_and_login(client)
+
+        # WHEN
+        response = client.get("/api/v1/assistant/config", headers=auth_header(token))
+
+        # THEN
         assert response.status_code == 200
         assert response.json()["enabled"] is True
+
+    def test_config_endpoint_reports_every_role_as_local_by_default(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN the test app with the flag on, no provider switched and a signed-in user
+        WHEN the config endpoint is requested
+        THEN the answer, query and embedding providers are all local
+        """
+        # GIVEN
+        token = register_and_login(client)
+
+        # WHEN
+        body = client.get("/api/v1/assistant/config", headers=auth_header(token)).json()
+
+        # THEN
+        assert body["answer_provider"] == "local"
+        assert body["query_provider"] == "local"
+        assert body["embedding_provider"] == "local"
+
+    def test_config_endpoint_reports_a_role_on_the_api_without_a_key_or_a_url(
+        self, assistant_settings, client, monkeypatch
+    ):
+        """
+        GIVEN settings with the answer role on the hosted API, a key and a remote URL,
+              and a signed-in user
+        WHEN the config endpoint is requested
+        THEN the answer provider reads api, the others stay local, and neither the key nor
+             the URL appears anywhere in the body
+        """
+        # GIVEN
+        token = register_and_login(client)
+        key = "ovh-test-key"  # pragma: allowlist secret
+        url = "https://models.example.test/v1"
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", key)
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "api")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", url)
+        get_settings.cache_clear()
+
+        # WHEN
+        response = client.get("/api/v1/assistant/config", headers=auth_header(token))
+
+        # THEN
+        body = response.json()
+        assert (body["answer_provider"], body["query_provider"], body["embedding_provider"]) == (
+            "api",
+            "local",
+            "local",
+        )
+        assert key not in response.text
+        assert url not in response.text
 
 
 class TestTestAppMirrorsTheMainApp:

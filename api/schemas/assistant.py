@@ -20,12 +20,19 @@ MAX_HISTORY_CONTENT_CHARS = 8000
 
 
 class AssistantConfigResponse(BaseModel):
-    """Which model, mode, and document collection currently serve the assistant."""
+    """Which model, mode, and document collection currently serve the assistant.
+
+    The three providers say where each model role runs, ``local`` or ``api``. The
+    response never carries a key or a URL.
+    """
 
     enabled: bool
     model: str
     mode: str
     collection: str
+    answer_provider: Literal["local", "api"]
+    query_provider: Literal["local", "api"]
+    embedding_provider: Literal["local", "api"]
 
 
 class ChatTurn(BaseModel):
@@ -66,13 +73,34 @@ class AssistantChatRequest(BaseModel):
 
 
 class SourceRef(BaseModel):
-    """One documentation passage the answer may cite as ``[n]``."""
+    """One documentation passage the answer may cite as ``[n]``.
+
+    ``snippet`` is the first words of the passage, plain text, at most 240 characters.
+    ``url`` is None or an ``https://`` address: the browser renders it as a link.
+    """
 
     n: int
     title: str
     section: str
+    snippet: str
     url: str | None
     layer: Layer
+
+    @field_validator("url")
+    @classmethod
+    def _require_https(cls, value: str | None) -> str | None:
+        """Refuse any url that is not an ``https://`` address, returning None unchanged.
+
+        The index is ours, so this is defence in depth against a ``javascript:`` or
+        ``data:`` address reaching a link in the browser.
+
+        :param value: The source url, if any.
+        :return: The same value, untouched.
+        :raises ValueError: If the url does not start with ``https://``.
+        """
+        if value is not None and not value.startswith("https://"):
+            raise ValueError("url must start with https://")
+        return value
 
 
 class AnswerChecks(BaseModel):
@@ -83,6 +111,36 @@ class AnswerChecks(BaseModel):
     ungrounded_numbers: list[str]
 
 
+class TurnUsage(BaseModel):
+    """The tokens the answer model used in one chat turn, summed over its replies.
+
+    ``complete`` is false when a reply reported no usage: its tokens are then missing from
+    the sums, though it is still counted in ``llm_calls``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    llm_calls: int
+    complete: bool
+
+
+class TurnTiming(BaseModel):
+    """How long one chat turn took, in milliseconds.
+
+    ``ttft_ms`` is the time from the start of the answer model's call to its first piece
+    of answer text, known only for a streamed turn; it is None for a turn answered in one
+    piece. ``total_ms`` is the whole turn, retrieval included.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ttft_ms: int | None
+    total_ms: int
+
+
 class AssistantChatResponse(BaseModel):
     """The assistant's answer to one chat turn."""
 
@@ -90,3 +148,5 @@ class AssistantChatResponse(BaseModel):
     sources: list[SourceRef]
     tools_used: list[str]
     checks: AnswerChecks
+    usage: TurnUsage
+    timing: TurnTiming

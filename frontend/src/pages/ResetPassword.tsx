@@ -14,7 +14,10 @@ import {
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
+import { isRateLimited, isServiceUnavailable } from "@/lib/errors";
 import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 type ResetPasswordFormData = {
@@ -30,6 +33,7 @@ const ResetPassword = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -71,11 +75,21 @@ const ResetPassword = () => {
         title: t("resetPassword.successTitle"),
         description: t("resetPassword.successMessage"),
       });
+      // The server ended every session of this user; /login is a guest route and
+      // would bounce a client that still reads as signed in.
+      await refreshUser();
       navigate("/login");
-    } catch {
+    } catch (error) {
+      // The API answers an invalid, expired or already used token with one opaque
+      // 400, so only an outage or a throttled request is told apart from it. Blaming
+      // the link for those sends the user off to request a new one for nothing.
+      const description =
+        isServiceUnavailable(error) || isRateLimited(error)
+          ? describeError(error, tCommon, t("resetPassword.errorInvalidToken"))
+          : t("resetPassword.errorInvalidToken");
       toast({
         title: t("resetPassword.errorTitle"),
-        description: t("resetPassword.errorInvalidToken"),
+        description,
         variant: "destructive",
       });
     } finally {

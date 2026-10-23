@@ -6,6 +6,7 @@ export interface User {
   first_name: string;
   last_name: string | null;
   photo_url: string | null;
+  assistant_objection: boolean;
   created_at: string;
 }
 
@@ -37,7 +38,7 @@ export interface FuzzyNumber {
 export interface Opinion {
   id: string;
   user_id: string;
-  user_email: string;
+  user_email: string | null;
   user_first_name: string;
   user_last_name: string | null;
   position: string;
@@ -60,6 +61,7 @@ export interface CalculationResult {
   agreement_level: 'high' | 'moderate' | 'low';
   likert_value: number | null;
   likert_decision: string | null;
+  likert_recommendation: string | null;
   calculated_at: string;
 }
 
@@ -79,7 +81,7 @@ export interface Invitation {
 
 export interface Member {
   user_id: string;
-  email: string;
+  email: string | null;
   first_name: string;
   last_name: string | null;
   photo_url: string | null;
@@ -138,6 +140,7 @@ export interface RegisterInput {
 export interface UpdateUserInput {
   first_name?: string;
   last_name?: string;
+  assistant_objection?: boolean;
 }
 
 export interface ChangePasswordInput {
@@ -154,4 +157,65 @@ export interface ApiError {
    * the human-facing `detail` sentence.
    */
   code?: string;
+}
+
+// AI assistant. Field names match api/schemas/assistant.py exactly,
+// so the wire JSON needs no translation layer.
+export interface AssistantConfigResponse {
+  enabled: boolean;
+  model: string;
+  mode: 'agent' | 'workflow' | 'hybrid';
+  collection: string;
+  answer_provider: 'local' | 'api';
+  query_provider: 'local' | 'api';
+  embedding_provider: 'local' | 'api';
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AssistantChatRequest {
+  message: string;
+  history: ChatTurn[];
+  project_id: string | null;
+  locale: 'en' | 'cs';
+}
+
+export interface SourceRef {
+  n: number;
+  title: string;
+  section: string;
+  snippet: string;
+  url: string | null;
+  layer: 'public' | 'local';
+}
+
+export interface AnswerChecks {
+  citations_valid: boolean;
+  numbers_grounded: boolean;
+  ungrounded_numbers: string[];
+}
+
+export interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  llm_calls: number;
+  complete: boolean;
+}
+
+export interface TurnTiming {
+  ttft_ms: number | null;
+  total_ms: number;
+}
+
+export interface AssistantChatResponse {
+  answer: string;
+  sources: SourceRef[];
+  tools_used: string[];
+  checks: AnswerChecks;
+  usage: TurnUsage;
+  timing: TurnTiming;
 }

@@ -74,7 +74,7 @@ api = [
     "boto3==1.43.104",
     "slowapi==0.1.10",
     "bleach==6.4.0",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "sentry-sdk[fastapi]==2.71.0",
     "logtail-python==0.5.1",
     "reportlab==5.0.1",
@@ -95,7 +95,7 @@ assistant = [
     "langsmith==0.14.1",
     "openai==3.20.0",
     "psycopg[binary]==3.3.6",
-    "pypdf==6.19.0",  # security fix for page labels
+    "pypdf==6.21.1",  # security fixes
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the

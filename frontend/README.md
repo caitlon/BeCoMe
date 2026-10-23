@@ -12,6 +12,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - [Internationalisation](#internationalisation)
 - [Accessibility](#accessibility)
 - [Layout](#layout)
+- [Assistant](#assistant)
 - [Testing](#testing)
 
 ## Tech stack
@@ -27,6 +28,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - React Router (routing)
 - i18next with react-i18next (English and Czech)
 - Sentry (`@sentry/react`, browser error tracking)
+- react-markdown (assistant answers, rendered from an allowlist of elements)
 - Cloudflare Turnstile (bot check on the sign-in, registration, password reset and resend-verification forms)
 - Vitest with Testing Library (unit tests)
 - Playwright with axe-core (end-to-end and accessibility tests)
@@ -75,6 +77,8 @@ cd .. && SECRET_KEY=dev-secret uv run uvicorn api.main:app --reload
 - `VITE_APP_ENV`: the `dev`, `test`, or `prod` tag on Sentry events.
 - `VITE_TURNSTILE_SITE_KEY`: Cloudflare Turnstile site key. When it is empty, the forms draw
   no widget and submit without a token.
+- `VITE_ASSISTANT_ENABLED`: build flag for the assistant panel. Only the exact string `true`
+  includes it in the bundle; prod leaves it unset. See the Assistant section.
 
 Declare every one of them as both an `ARG` and an `ENV` in `Dockerfile`, before
 `RUN npm run build`. Railway passes service variables to the build as build args, but Docker
@@ -113,6 +117,12 @@ The interface is in English (`en`) and Czech (`cs`). The strings live in
 Both locales must carry the same keys. `tests/i18n/key-parity.test.ts` compares the key set of
 every namespace, and the set of namespaces itself.
 
+A string that depends on a count uses i18next plural suffixes: `key_one`, `key_other` and so on,
+called with `t("key", { count })`. English carries `_one` and `_other`, Czech `_one`, `_few`,
+`_many` and `_other`, which are the categories `Intl.PluralRules` reports for each language. The
+parity test folds the suffixes into one key before it compares the locales, and checks that every
+group has exactly the categories of its language.
+
 The language is taken from `localStorage` under the key `become-language`, then from the
 browser's language list, and falls back to English. A choice made with the language switcher
 is stored under the same key. Only `en` and `cs` are supported, and a regional tag such as
@@ -141,7 +151,7 @@ The three calls that send a localised email, `register`, `resendVerification` an
   `src/components/ui/toast.tsx`). The language switcher's accessible name comes from the
   `switchToLanguage` key, for example "EN, switch to Čeština".
 - **Audit.** `e2e/wcag-audit.spec.ts` runs axe-core with the WCAG 2.0 and 2.1 A and AA tags. It
-  covers the landing, about, docs, FAQ, privacy, case studies, case study, login, register and
+  covers the landing, about, docs, FAQ, privacy, terms, case studies, case study, login, register and
   404 pages, the landing and login pages in the dark theme, and the projects, onboarding and
   profile pages of a signed-in user.
 
@@ -149,6 +159,26 @@ The three calls that send a localised email, `register`, `resendVerification` an
 
 The navigation bar shows its full row from the `xl` breakpoint (1280 px) and a menu button
 below it, and a long signed-in name is truncated.
+
+## Assistant
+
+The assistant panel is behind the build flag `VITE_ASSISTANT_ENABLED`. It is off by default,
+and a default build carries no assistant code, strings, i18n keys or endpoint paths. The
+panel, its triggers, the privacy card on the profile page, the documentation section and the
+onboarding tour step are lazy chunks that exist only when the flag is set.
+Build with the flag to include it:
+```bash
+VITE_ASSISTANT_ENABLED=true npm run build
+```
+
+The feature lives in `src/components/assistant/`. Its backend half needs `ASSISTANT_ENABLED`
+on the API and runs on a developer machine and on the dev, test and prod services (`api/assistant/README.md`).
+
+`e2e/assistant-panel.spec.ts` needs no backend: it answers every API request with a route.
+It is skipped unless the flag is in the environment when Playwright starts its dev server:
+```bash
+VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
+```
 
 ## Testing
 

@@ -1,6 +1,7 @@
 """Unit tests for the assistant's exception hierarchy."""
 
 from api.assistant.errors import (
+    AssistantBusyError,
     AssistantError,
     AssistantNotFoundError,
     AssistantRateLimitedError,
@@ -65,6 +66,23 @@ class TestChatErrorHierarchy:
         THEN it is an AssistantError
         """
         assert issubclass(AssistantRateLimitedError, AssistantError)
+
+    def test_busy_is_an_assistant_error_and_carries_retry_after(self):
+        """
+        GIVEN AssistantBusyError built with a wait of 5 seconds and the process limit
+        WHEN its bases and attributes are inspected
+        THEN it is an AssistantError, apart from the unavailable error, and holds the wait and
+             the limit that refused
+        """
+        # GIVEN
+        error = AssistantBusyError("the assistant is full", retry_after=5, reason="process")
+
+        # THEN
+        assert issubclass(AssistantBusyError, AssistantError)
+        assert not issubclass(AssistantBusyError, AssistantUnavailableError)
+        assert error.retry_after == 5
+        assert error.reason == "process"
+        assert str(error) == "the assistant is full"
 
     def test_unavailable_and_upstream_are_distinguishable(self):
         """

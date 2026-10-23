@@ -5,7 +5,8 @@ assistant, so an offline evaluation script can use them as they are.
 """
 
 import re
-from collections.abc import Callable, Iterable
+from collections import deque
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 
@@ -45,6 +46,8 @@ _CITATION_CONTENT = re.compile(
     rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
 )
 _LABEL_WORD = re.compile(_LABEL, re.IGNORECASE)
+# A bracket's content when it writes exactly one number: one item, no separator, no range.
+_SINGLE_CITATION_ITEM = re.compile(rf"\s*{_CITATION_ITEM}\s*", re.IGNORECASE)
 _CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 
 # What is dropped from an answer before its numbers are scanned. A link's target stops
@@ -133,10 +136,19 @@ def check_citations(answer: str, valid_numbers: set[int]) -> bool:
     :return: True when every cited number is in ``valid_numbers``; an answer with no
         citation passes, and a citation of ``0`` never does.
     """
+    return cited_numbers(answer) <= valid_numbers
+
+
+def cited_numbers(answer: str) -> set[int]:
+    """List the source numbers an answer cites, read as :func:`check_citations` reads them.
+
+    :param answer: The model's final answer text.
+    :return: Every number named by a citation in the answer, ranges expanded.
+    """
     cited: set[int] = set()
     for _start, _end, numbers in _citation_spans(answer):
         cited |= numbers
-    return cited <= valid_numbers
+    return cited
 
 
 @dataclass(frozen=True)
@@ -358,6 +370,180 @@ def _replace_citations(text: str, filler: str) -> str:
         position = link.end() if link else end
     pieces.append(text[position:])
     return "".join(pieces)
+
+
+# Spaces and tabs, not line breaks: what is dropped along with a citation.
+_BLANKS = " \t\u00a0\u202f"
+_OPENERS = {"]": "[", "\u3011": "\u3010"}
+# What a link target is read in: not yet started, waiting for its parenthesis, inside it.
+_NO_LINK, _LINK_AHEAD, _LINK_OPEN = range(3)
+
+
+def remove_citations(text: str, source_numbers: Collection[int]) -> str:
+    """Remove citation-like brackets, with the link target and the blanks around them.
+
+    A bracket that writes one number (``[7]``, ``[source 2]``, ``\u30103\u3011``) is a
+    citation and always goes, even when no such source exists. A bracket that writes several
+    numbers or a range (``[1, 2]``, ``[1-3]``) goes only when every number in it is one of
+    ``source_numbers``, so that ``[0, 1]``, ``[1, 5]``, ``[5, 5, 5]`` and the fuzzy number
+    ``[6, 8, 11]`` stay. Brackets are taken innermost first, so ``[[1]2]`` goes whole. Each
+    citation goes together with the spaces and tabs before it and with a markdown link target
+    right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
+    opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
+    that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike :func:`strip_citations`,
+    which leaves a space, this returns text meant to be shown. The result has no citation
+    left, so removing again changes nothing.
+
+    :param text: The text to clean.
+    :param source_numbers: The source numbers handed out this turn, one-based.
+    :return: The text without its citations.
+    """
+    remover = CitationStreamFilter(source_numbers)
+    return remover.feed(text) + remover.finish()
+
+
+class CitationStreamFilter:
+    """Removes citations from an answer as its pieces arrive, by the rule of
+    :func:`remove_citations`.
+
+    The reading carries over from one piece to the next, so the pieces let out joined are
+    exactly ``remove_citations`` of the whole text, however it was cut, in time that grows
+    with its length. Text is held back while a later character may still take it away: from
+    a bracket nothing has closed yet, the spaces at the end, which a citation after them
+    would take, and a link target that has not closed. A bracket that never closes holds the
+    rest of the answer until :meth:`finish`. Each character is read a bounded number of
+    times, so the work grows with the length of the text.
+    """
+
+    def __init__(self, source_numbers: Collection[int]) -> None:
+        """Start with no text read and none let out.
+
+        :param source_numbers: The source numbers handed out this turn, one-based.
+        """
+        self._source_numbers = frozenset(source_numbers)
+        self._out: list[str] = []  # What is kept and not yet let out.
+        self._base = 0  # How many characters were let out.
+        self._last = ""  # The last one of them.
+        self._text_end = 0  # Just past the last kept character that is not a blank.
+        self._kept_at = -1  # Where the last closing bracket that stayed in the text is.
+        # Unclosed brackets of each kind: position, and the text end before it.
+        self._open: dict[str, list[tuple[int, int]]] = {"[": [], "\u3010": []}
+        self._link = _NO_LINK
+        self._target: list[str] = []  # What follows the parenthesis of a link target.
+        self._skip_blanks = False
+
+    def feed(self, piece: str) -> str:
+        """Take the next piece of the answer.
+
+        :param piece: The raw text that arrived.
+        :return: The text that can now be shown, empty while it is held back.
+        """
+        self._read(deque(piece))
+        # What may still change starts at the blanks before the outermost open bracket, or
+        # at the blanks that end the text.
+        opened = [stack[0] for stack in self._open.values() if stack]
+        return self._take((min(opened)[1] if opened else self._text_end) - self._base)
+
+    def finish(self) -> str:
+        """Release what is still held back, once the whole answer has been fed.
+
+        :return: The rest of the answer without citations.
+        """
+        pending: deque[str] = deque()
+        while True:
+            if self._link == _LINK_OPEN:
+                pending.extend(["(", *self._target])
+            self._link = _NO_LINK
+            if not pending:
+                break
+            self._read(pending)
+        return self._take(len(self._out))
+
+    def _take(self, count: int) -> str:
+        """Let out the first ``count`` kept characters."""
+        text = "".join(self._out[:count])
+        if text:
+            self._last = text[-1]
+        del self._out[:count]
+        self._base += count
+        return text
+
+    def _read(self, queue: deque[str]) -> None:
+        """Read characters until the queue is empty; a failed link target is queued again."""
+        while queue:
+            char = queue.popleft()
+            if self._link == _LINK_AHEAD:
+                self._link = _NO_LINK
+                if char == "(":
+                    self._link, self._target = _LINK_OPEN, []
+                    continue
+            elif self._link == _LINK_OPEN:
+                if char == ")":
+                    self._link = _NO_LINK
+                elif char in "()[]" or char.isspace():
+                    # Not a link target after all: read it again as ordinary text.
+                    self._link = _NO_LINK
+                    queue.extendleft(reversed(["(", *self._target, char]))
+                else:
+                    self._target.append(char)
+                continue
+            self._place(char)
+
+    def _place(self, char: str) -> None:
+        """Keep a character, or open or close a bracket; blanks after a removed citation go."""
+        if self._skip_blanks:
+            if char in _BLANKS:
+                return
+            self._skip_blanks = False
+        if char in self._open:
+            self._open[char].append((self._base + len(self._out), self._text_end))
+            self._append(char)
+        elif char in _OPENERS:
+            self._close(char)
+        else:
+            self._append(char)
+
+    def _append(self, char: str) -> None:
+        """Keep a character."""
+        self._out.append(char)
+        if char not in _BLANKS:
+            self._text_end = self._base + len(self._out)
+
+    def _keep(self, closer: str) -> None:
+        """Keep a closing bracket that does not close a citation."""
+        self._kept_at = self._base + len(self._out)
+        self._append(closer)
+
+    def _is_removable(self, content: str) -> bool:
+        """Tell whether the text inside a bracket is a citation that has to go."""
+        numbers = _cited_numbers(content)
+        if numbers is None:
+            return False
+        return (
+            numbers <= self._source_numbers or _SINGLE_CITATION_ITEM.fullmatch(content) is not None
+        )
+
+    def _close(self, closer: str) -> None:
+        """Close the innermost open bracket of the closer's kind, dropping it if a citation."""
+        stack = self._open[_OPENERS[closer]]
+        if not stack:
+            self._keep(closer)
+            return
+        start, before = stack.pop()
+        for others in self._open.values():
+            while others and others[-1][0] > start:
+                others.pop()
+        # A closing bracket that stayed is in the way of every bracket around it, so those are
+        # not read again: a citation holds digits, labels and separators, never a bracket.
+        content = "".join(self._out[start - self._base + 1 :]) if self._kept_at < start else None
+        if content is None or not self._is_removable(content):
+            self._keep(closer)
+            return
+        previous = self._out[before - self._base - 1] if before > self._base else self._last
+        self._skip_blanks = previous in ("", "\n", "\r")
+        del self._out[(start if self._skip_blanks else before) - self._base :]
+        self._text_end = before
+        self._link = _LINK_AHEAD
 
 
 def _drop_ordinals(text: str) -> str:

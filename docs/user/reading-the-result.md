@@ -64,17 +64,22 @@ something you can count.
 
 On this panel the centroid view is the one that settles the argument. Thirteen dots, two clusters, nothing in between, and the mean sitting out in the empty middle where no expert put anything.
 
-## The agreement mode is not finished
+## Reading an agreement result
 
 The method has a second mode for "should we" questions rather than "how much" ones. A project whose
-scale runs 0 to 100 with no unit is read as an agreement scale, and the compromise is rounded to one
-of five positions, from strongly disagree to strongly agree.
+scale runs 0 to 100 with no unit is read as an agreement scale. Experts enter triangles on that
+scale as usual: 0 is strongly disagree, 25 rather disagree, 50 neutral, 75 rather agree and 100
+strongly agree.
 
-None of that reaches you yet, and it breaks in three separate places. The create form will not
-accept a project without a unit, so such a project cannot be made at all. The interface never
-displays the position, even when one is computed. And the recommendation sentence the core library
-writes for each position is dropped before it leaves the API. The pieces exist and are tested
-individually. They are not joined up, and this page will say so until they are.
+The compromise is rounded to the nearest of those five positions. Under the best compromise, the
+result screen shows an **Agreement verdict** block with the position in words, such as "Rather
+agree", and one recommendation sentence for it. The four figures and the chart are the same as in
+any other project.
+
+![The result card of an agreement project: a best compromise of 75.00 and, under it, the verdict "Rather agree" with its recommendation](img/project-likert-verdict.png)
+
+A blank unit on a 0 to 100 scale is what switches this on. If the quantity you ask about is
+measured from 0 to 100, give it a unit such as `%`, and the verdict does not appear.
 
 ## Words used on this page
 
@@ -87,5 +92,4 @@ fuzzy number back to one figure when you need to sort or compare.
 **Membership function.** What the vertical axis measures. Membership is 1 at the peak and falls
 linearly to 0 at each bound.
 
-Next: [a worked example](worked-example.md), where these four figures come from a real panel of
-thirteen.
+Next: [the assistant](assistant.md), which can explain a result in plain words.

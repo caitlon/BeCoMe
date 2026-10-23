@@ -1,27 +1,46 @@
 """Tests for exception handlers."""
 
+import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 
 from api.exceptions import (
+    AlreadyInvitedError,
     BeCoMeAPIError,
+    CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
+    ExampleProjectInvitationError,
     InvalidCredentialsError,
+    InvitationNotFoundError,
     NotFoundError,
+    PhotoContentMismatchError,
+    PhotoDimensionsTooLargeError,
+    PhotoTooLargeError,
+    PhotoTypeNotAllowedError,
+    PhotoUnreadableError,
     ProjectNotFoundError,
+    ScaleExcludesOpinionsError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
+    UserAlreadyMemberError,
+    UserNotFoundForInvitationError,
     ValidationError,
     ValuesOutOfRangeError,
 )
 from api.middleware.exception_handlers import (
+    CURRENT_PASSWORD_INCORRECT_CODE,
+    SCALE_EXCLUDES_OPINIONS_CODE,
     TURNSTILE_REFUSED_CODE,
     _get_status_and_detail,
     become_api_error_handler,
     register_exception_handlers,
+    request_validation_error_handler,
     unhandled_exception_handler,
 )
 
@@ -277,15 +296,15 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_log.assert_not_called()
 
-    def test_invalid_current_password_logs_password_change_failure(self):
+    def test_wrong_current_password_logs_password_change_failure(self):
         """
-        GIVEN an InvalidCredentialsError flagged as a wrong current password
+        GIVEN a wrong current password on a password change
         WHEN become_api_error_handler is called
         THEN it logs a password-change failure, not a login failure
         """
         # GIVEN
         request = MagicMock()
-        exc = InvalidCredentialsError(reason="invalid_current_password")
+        exc = CurrentPasswordIncorrectError("Current password is incorrect")
 
         with (
             patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
@@ -297,6 +316,26 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_pcf.assert_called_once_with(request)
             mock_lf.assert_not_called()
+
+    def test_invalid_credentials_does_not_log_password_change_failure(self):
+        """
+        GIVEN a failed login
+        WHEN become_api_error_handler is called
+        THEN no password-change failure is logged
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = InvalidCredentialsError(email="test@example.com", reason="invalid_password")
+
+        with (
+            patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
+            patch("api.middleware.exception_handlers.log_login_failure"),
+        ):
+            # WHEN
+            become_api_error_handler(request, exc)
+
+            # THEN
+            mock_pcf.assert_not_called()
 
 
 class TestMachineReadableErrorCodes:
@@ -325,6 +364,53 @@ class TestMachineReadableErrorCodes:
         # THEN
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert json.loads(response.body)["code"] == TURNSTILE_REFUSED_CODE
+
+    def test_a_scale_change_that_excludes_opinions_is_a_409_with_a_code(self):
+        """
+        GIVEN a scale change that would leave an opinion outside the new range
+        WHEN the handler builds the response
+        THEN it answers 409 with the fixed detail and the scale code, never the message
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = ScaleExcludesOpinionsError("2 opinion(s) fall outside the scale 40.0..80.0")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert json.loads(response.body) == {
+            "detail": (
+                "Existing opinions fall outside the new scale. "
+                "Widen the range, or ask the experts to change their opinions first."
+            ),
+            "code": SCALE_EXCLUDES_OPINIONS_CODE,
+        }
+
+    def test_a_wrong_current_password_is_a_400_with_a_code_and_no_challenge(self):
+        """
+        GIVEN a password change with a wrong current password
+        WHEN the handler builds the response
+        THEN it answers 400 with the code and no WWW-Authenticate header
+
+        A 401 on an authenticated request reads as "no session" to the SPA, which would
+        refresh, retry and sign the user out over a typo.
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = CurrentPasswordIncorrectError("Current password is incorrect")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert json.loads(response.body) == {
+            "detail": "Current password is incorrect",
+            "code": CURRENT_PASSWORD_INCORRECT_CODE,
+        }
+        assert "www-authenticate" not in response.headers
 
     def test_an_unverified_account_carries_no_code(self):
         """
@@ -369,6 +455,131 @@ class TestMachineReadableErrorCodes:
 
         # THEN
         assert json.loads(absent.body) == json.loads(rejected.body)
+
+
+class TestInvitationAndPhotoErrorCodes:
+    """Each invitation and photo-upload refusal answers with its own stable code.
+
+    So the SPA can translate these by code, a code names exactly one (status, detail) pair
+    and the sentence stays as it was for any client still matching on it.
+    """
+
+    @pytest.mark.parametrize(
+        ("exc", "expected_status", "detail", "code"),
+        [
+            (
+                UserNotFoundForInvitationError("No user found with email x@example.com"),
+                status.HTTP_404_NOT_FOUND,
+                "No user found with this email",
+                "invitee_not_found",
+            ),
+            (
+                AlreadyInvitedError("User already has a pending invitation"),
+                status.HTTP_409_CONFLICT,
+                "User already has a pending invitation",
+                "already_invited",
+            ),
+            (
+                UserAlreadyMemberError("User is already a member of this project"),
+                status.HTTP_409_CONFLICT,
+                "You are already a member of this project",
+                "already_member",
+            ),
+            (
+                ExampleProjectInvitationError("The example project cannot take invitations"),
+                status.HTTP_409_CONFLICT,
+                "The example project cannot take invitations",
+                "example_project_not_invitable",
+            ),
+            (
+                InvitationNotFoundError("Invitation not found"),
+                status.HTTP_404_NOT_FOUND,
+                "Invitation not found",
+                "invitation_not_found",
+            ),
+            (
+                PhotoTypeNotAllowedError("content type refused"),
+                status.HTTP_400_BAD_REQUEST,
+                "Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+                "photo_type_not_allowed",
+            ),
+            (
+                PhotoTooLargeError("file over the limit"),
+                status.HTTP_400_BAD_REQUEST,
+                "File too large. Maximum size is 5 MB",
+                "photo_too_large",
+            ),
+            (
+                PhotoContentMismatchError("magic bytes disagree"),
+                status.HTTP_400_BAD_REQUEST,
+                "File content does not match declared type",
+                "photo_content_mismatch",
+            ),
+            (
+                PhotoDimensionsTooLargeError("canvas over the limit"),
+                status.HTTP_400_BAD_REQUEST,
+                "Image dimensions are too large. Maximum is 8192 pixels per side "
+                "and about 16.8 megapixels in total",
+                "photo_dimensions_too_large",
+            ),
+            (
+                PhotoUnreadableError("header does not parse"),
+                status.HTTP_400_BAD_REQUEST,
+                "The image could not be read. Try saving it again as JPEG or PNG.",
+                "photo_unreadable",
+            ),
+        ],
+    )
+    def test_refusal_answers_with_its_status_detail_and_code(
+        self, exc, expected_status, detail, code
+    ):
+        """
+        GIVEN an invitation or photo-upload refusal
+        WHEN the handler builds the response
+        THEN the body is exactly the fixed detail plus the refusal's own code
+        """
+        # GIVEN
+        request = MagicMock()
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == expected_status
+        assert json.loads(response.body) == {"detail": detail, "code": code}
+
+    def test_an_unknown_invitee_response_does_not_echo_the_address(self):
+        """
+        GIVEN the service message for an unknown invitee, which names the address
+        WHEN the handler builds the response
+        THEN the address appears nowhere in the body
+
+        Without a mapped detail the handler would fall back to the exception message.
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = UserNotFoundForInvitationError("No user found with email stranger@example.com")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert b"stranger@example.com" not in response.body
+
+    def test_a_pending_invitation_is_a_409_not_the_unmapped_422(self):
+        """
+        GIVEN AlreadyInvitedError, a ValidationError subclass
+        WHEN its status is looked up
+        THEN it is 409, not the 422 an unmapped ValidationError would get
+        """
+        # GIVEN
+        exc = AlreadyInvitedError("User already has a pending invitation")
+
+        # WHEN
+        status_code, _ = _get_status_and_detail(exc)
+
+        # THEN
+        assert status_code == status.HTTP_409_CONFLICT
 
 
 class TestRegisterExceptionHandlers:
@@ -417,6 +628,94 @@ class TestExceptionLogging:
         assert extra["request_id"] == "rid-1"
         assert extra["path"] == "/projects/123"
         assert extra["exception_type"] == "ProjectNotFoundError"
+
+
+class TestRequestValidationErrorHandler:
+    """Tests for the request validation error handler."""
+
+    @staticmethod
+    def _error(input_value, loc=("body", "scale_min")):
+        return RequestValidationError(
+            [
+                {
+                    "type": "finite_number",
+                    "loc": loc,
+                    "msg": "Input should be finite",
+                    "input": input_value,
+                }
+            ]
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(float("nan"), "nan"), (float("inf"), "inf"), (float("-inf"), "-inf")],
+    )
+    def test_top_level_non_finite_input_is_stringified(self, value, expected):
+        """
+        GIVEN a validation error whose rejected input is a non-finite float
+        WHEN request_validation_error_handler runs
+        THEN it returns 422 with the input as a string instead of failing to render
+        """
+        # GIVEN
+        exc = self._error(value)
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert json.loads(response.body)["detail"][0]["input"] == expected
+
+    def test_nested_non_finite_input_is_stringified(self):
+        """
+        GIVEN a validation error whose rejected input holds non-finite floats at depth
+        WHEN request_validation_error_handler runs
+        THEN every one of them is stringified and finite values are untouched
+        """
+        # GIVEN
+        exc = self._error({"peak": float("nan"), "bounds": [1.5, float("inf"), [float("-inf")]]})
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert json.loads(response.body)["detail"][0]["input"] == {
+            "peak": "nan",
+            "bounds": [1.5, "inf", ["-inf"]],
+        }
+
+    def test_ordinary_error_body_matches_fastapi_default(self):
+        """
+        GIVEN an ordinary validation error with no non-finite value
+        WHEN request_validation_error_handler runs
+        THEN its body equals what FastAPI's default handler produces
+        """
+        # GIVEN
+        exc = self._error("abc", loc=("body", "name"))
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        default = asyncio.run(request_validation_exception_handler(MagicMock(), exc))
+        assert response.status_code == default.status_code
+        assert json.loads(response.body) == json.loads(default.body)
+
+    def test_register_adds_validation_handler(self):
+        """
+        GIVEN a FastAPI app
+        WHEN register_exception_handlers runs
+        THEN request_validation_error_handler is registered for RequestValidationError
+        """
+        # GIVEN
+        app = FastAPI()
+
+        # WHEN
+        register_exception_handlers(app)
+
+        # THEN
+        assert app.exception_handlers[RequestValidationError] == request_validation_error_handler
 
 
 class TestUnhandledExceptionHandler:

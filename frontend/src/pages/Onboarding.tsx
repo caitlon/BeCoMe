@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { PageShell } from "@/components/layout/PageShell";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useAssistantGuide } from "@/components/assistant";
 import {
   StepWelcome,
   StepCreateProject,
@@ -17,23 +19,44 @@ import {
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { getStepIndicatorClass, slideVariants } from "@/pages/onboarding-utils";
 
-const steps = [
+const stepsBeforeAssistant = [
   { id: "welcome", component: StepWelcome },
   { id: "create-project", component: StepCreateProject },
   { id: "invite-experts", component: StepInviteExperts },
   { id: "enter-opinion", component: StepEnterOpinion },
   { id: "view-results", component: StepViewResults },
-  { id: "complete", component: StepComplete },
 ];
+const completeStep = { id: "complete", component: StepComplete };
 
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
   const { t: tCommon } = useTranslation();
   const navigate = useNavigate();
   useDocumentTitle(tCommon("pageTitle.onboarding"));
-  const [currentStep, setCurrentStep] = useState(0);
+
+  // The assistant step waits for the guide module, so a build without the flag, a failed load and a
+  // render error in the step all leave the six steps below.
+  const loadedGuide = useAssistantGuide();
+  const [guideFailed, setGuideFailed] = useState(false);
+  const guide = guideFailed ? null : loadedGuide;
+  const dropGuide = useCallback(() => setGuideFailed(true), []);
+  const steps = useMemo(
+    () => [
+      ...stepsBeforeAssistant,
+      ...(guide ? [{ id: "assistant", component: guide.AssistantTourStep }] : []),
+      completeStep,
+    ],
+    [guide],
+  );
+
+  // The position is kept as a step id, not an index, because the list can grow after the first paint
+  // (the module resolves) or shrink (the step throws): an index would slide onto a neighbouring step.
+  // A dropped step is only ever the one on screen, so the fallback is the last step, "complete".
+  const [currentId, setCurrentId] = useState(steps[0].id);
   const [direction, setDirection] = useState(0);
 
+  const currentIndex = steps.findIndex((step) => step.id === currentId);
+  const currentStep = currentIndex === -1 ? steps.length - 1 : currentIndex;
   const totalSteps = steps.length;
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === totalSteps - 1;
@@ -42,17 +65,17 @@ const Onboarding = () => {
     /* v8 ignore next */
     if (currentStep < totalSteps - 1) {
       setDirection(1);
-      setCurrentStep((prev) => prev + 1);
+      setCurrentId(steps[currentStep + 1].id);
     }
-  }, [currentStep, totalSteps]);
+  }, [currentStep, totalSteps, steps]);
 
   const goToPrevious = useCallback(() => {
     /* v8 ignore next */
     if (currentStep > 0) {
       setDirection(-1);
-      setCurrentStep((prev) => prev - 1);
+      setCurrentId(steps[currentStep - 1].id);
     }
-  }, [currentStep]);
+  }, [currentStep, steps]);
 
   const navigateToProjects = useCallback(() => {
     navigate("/projects");
@@ -87,6 +110,7 @@ const Onboarding = () => {
   }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
   const CurrentStepComponent = steps[currentStep].component;
+  const currentStepContent = <CurrentStepComponent />;
 
   return (
     <PageShell
@@ -141,7 +165,7 @@ const Onboarding = () => {
                     type="button"
                     onClick={() => {
                       setDirection(index > currentStep ? 1 : -1);
-                      setCurrentStep(index);
+                      setCurrentId(step.id);
                     }}
                     className="p-2 rounded-full"
                     aria-label={t("buttons.goToStep", { step: index + 1 })}
@@ -183,7 +207,13 @@ const Onboarding = () => {
               }}
               className="h-full"
             >
-              <CurrentStepComponent />
+              {steps[currentStep].id === "assistant" ? (
+                <ErrorBoundary fallback={null} onError={dropGuide}>
+                  {currentStepContent}
+                </ErrorBoundary>
+              ) : (
+                currentStepContent
+              )}
             </motion.div>
           </AnimatePresence>
         </div>

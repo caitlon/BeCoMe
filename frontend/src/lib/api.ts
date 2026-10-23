@@ -119,6 +119,21 @@ async function parseErrorBody(response: Response): Promise<{ detail: string; cod
   return { detail: '', code };
 }
 
+/**
+ * Reads a Retry-After header as whole seconds. The header is either a count of seconds
+ * or an HTTP-date; a date becomes the seconds left until it (0 once it has passed), and
+ * anything else is undefined rather than NaN, which would be stored as null.
+ */
+function parseRetryAfter(header: string | null): number | undefined {
+  const value = header?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value);
+  // Date.parse also reads '1.5' or '-5' as a date; an HTTP-date always has a month name.
+  if (!/[a-z]/i.test(value)) return undefined;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
+
 /** Classifies a non-ok response into the typed error taxonomy. */
 export async function toHttpError(response: Response): Promise<HttpError> {
   const { detail, code } = await parseErrorBody(response);
@@ -131,9 +146,7 @@ export async function toHttpError(response: Response): Promise<HttpError> {
     return new ForbiddenError(message, code);
   }
   if (response.status === 429) {
-    const retryAfterHeader = response.headers.get('Retry-After');
-    const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
-    return new RateLimitError(message, retryAfter, code);
+    return new RateLimitError(message, parseRetryAfter(response.headers.get('Retry-After')), code);
   }
   if (response.status >= 500) {
     return new ServerError(message, response.status, code);
@@ -197,8 +210,10 @@ class ApiClient {
         credentials: 'include',
         headers: { 'X-Request-ID': crypto.randomUUID() },
       });
-      // A refresh rotates the CSRF token, so the retry that follows must send the
-      // new one; the value this replaces is already dead on the server.
+      // A refresh keeps the session id, so the token normally comes back unchanged.
+      // Capturing it is still right: it is harmless, and it covers the legacy path
+      // where a refresh token from before sessions existed starts a new session and
+      // so a new token, which the retry that follows has to send.
       this.captureCsrfToken(res);
       if (!res.ok) {
         throw await toHttpError(res);
@@ -229,11 +244,36 @@ class ApiClient {
     this.onSessionExpired?.();
   }
 
-  private async request<T>(
+  /**
+   * One silent refresh after a 401. When it fails, the session is over and this
+   * throws UnauthorizedError, after notifying subscribers unless it was the probe.
+   */
+  private async refreshOrExpire(isAuthProbe: boolean, endpoint: string): Promise<void> {
+    try {
+      await this.refreshSession();
+    } catch (refreshError) {
+      // A network/5xx refresh failure means the service is down, not that the
+      // session is gone, so surface the typed error (letting react-query retry
+      // and AuthContext show "service unavailable") instead of a false logout.
+      if (isServiceUnavailable(refreshError)) {
+        throw refreshError;
+      }
+      this.handleTerminalUnauthorized(isAuthProbe, endpoint);
+      throw new UnauthorizedError();
+    }
+  }
+
+  /**
+   * The pipeline behind every JSON and streamed call: request ID and CSRF header,
+   * credentials, and one silent refresh-and-retry on a 401. Returns the Response
+   * once it is known to be ok, with its body untouched, so request<T>() can parse
+   * it and requestStream() can hand it over to be read as a stream.
+   */
+  private async requestRaw(
     endpoint: string,
     options: RequestInit = {},
     opts: { isAuthProbe?: boolean; isRetry?: boolean } = {}
-  ): Promise<T> {
+  ): Promise<Response> {
     const { isAuthProbe = false, isRetry = false } = opts;
     const requestId = crypto.randomUUID();
     const method = options.method ?? 'GET';
@@ -267,19 +307,8 @@ class ApiClient {
       // a probe (mount-time "am I logged in?" check) stays silent, everything
       // else notifies onSessionExpired.
       if (response.status === 401 && !isRetry) {
-        try {
-          await this.refreshSession();
-        } catch (refreshError) {
-          // A network/5xx refresh failure means the service is down, not that the
-          // session is gone, so surface the typed error (letting react-query retry
-          // and AuthContext show "service unavailable") instead of a false logout.
-          if (isServiceUnavailable(refreshError)) {
-            throw refreshError;
-          }
-          this.handleTerminalUnauthorized(isAuthProbe, endpoint);
-          throw new UnauthorizedError();
-        }
-        return this.request<T>(endpoint, options, { isAuthProbe, isRetry: true });
+        await this.refreshOrExpire(isAuthProbe, endpoint);
+        return this.requestRaw(endpoint, options, { isAuthProbe, isRetry: true });
       }
 
       const error = await toHttpError(response);
@@ -302,11 +331,41 @@ class ApiClient {
 
     logger.debug('API response', { method, endpoint, status: response.status, requestId });
 
+    return response;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    opts: { isAuthProbe?: boolean; isRetry?: boolean } = {}
+  ): Promise<T> {
+    const response = await this.requestRaw(endpoint, options, opts);
+
     if (response.status === 204) {
       return undefined as T;
     }
 
     return response.json();
+  }
+
+  /**
+   * Public escape hatch for a caller outside this class that needs the same
+   * typed request/refresh/retry pipeline as every method below, without a
+   * dedicated method here for its own endpoint. The endpoint string is the
+   * caller's argument, so nothing endpoint-specific lives in this file.
+   */
+  async requestJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
+    return this.request<T>(endpoint, init);
+  }
+
+  /**
+   * Like requestJson, but hands back the Response unread so the caller can read
+   * its body as a ReadableStream. It runs through the same pipeline: credentials,
+   * the CSRF header, and one silent refresh-and-retry on a 401. A non-2xx answer
+   * before the stream opens is thrown as the usual typed error.
+   */
+  async requestStream(endpoint: string, init?: RequestInit): Promise<Response> {
+    return this.requestRaw(endpoint, init);
   }
 
   /**
@@ -542,7 +601,7 @@ class ApiClient {
 
   async updateProject(id: string, data: UpdateProjectInput): Promise<Project> {
     return this.request<Project>(`/projects/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }

@@ -817,6 +817,62 @@ class TestClearStaleLikertVerdictsMigration:
             engine.dispose()
 
 
+class TestAssistantObjectionMigration:
+    """The migration adding users.assistant_objection."""
+
+    # Pinned to the revision ids, so a later migration cannot change what is tested.
+    BEFORE = "d5c1a7e93b02"  # pragma: allowlist secret
+    REVISION = "e7b3d2a94c18"  # pragma: allowlist secret
+
+    def test_upgrade_defaults_existing_users_to_no_objection_and_downgrade_drops_it(
+        self, migration_pg, monkeypatch
+    ):
+        """A user that predates the column gets False, and the column is NOT NULL."""
+        # GIVEN: a database one revision before this one, holding a user
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(config, self.BEFORE)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'old@example.com', 'hash', 'Old', 'User', :now)"
+                    ),
+                    {"id": str(uuid4()), "now": datetime(2026, 1, 1, tzinfo=UTC)},
+                )
+
+            # WHEN
+            command.upgrade(config, self.REVISION)
+
+            # THEN: the existing row reads False and the column refuses NULL
+            with engine.connect() as conn:
+                value = conn.execute(
+                    text("SELECT assistant_objection FROM users WHERE email = 'old@example.com'")
+                ).scalar()
+            assert value is False
+            column = next(
+                c
+                for c in inspect(engine).get_columns("users")
+                if c["name"] == "assistant_objection"
+            )
+            assert column["nullable"] is False
+
+            # WHEN: rolled back
+            command.downgrade(config, self.BEFORE)
+
+            # THEN
+            assert "assistant_objection" not in {
+                c["name"] for c in inspect(engine).get_columns("users")
+            }
+        finally:
+            engine.dispose()
+
+
 class TestMigrationsKeepAppLoggers:
     """Running Alembic in process leaves the application's own loggers working."""
 

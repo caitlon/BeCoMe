@@ -109,6 +109,25 @@ class TestProjectCreate:
                 scale_max=50.0,
             )
 
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_scale_rejected(self, field, literal):
+        """
+        GIVEN a JSON body with a non-finite number for a scale bound
+        WHEN ProjectCreate is validated
+        THEN ValidationError is raised
+        """
+        # GIVEN
+        body = f'{{"name": "Project", "{field}": {literal}}}'
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as exc_info:
+            ProjectCreate.model_validate_json(body)
+        assert any(
+            error["type"] == "finite_number" and error["loc"] == (field,)
+            for error in exc_info.value.errors()
+        )
+
 
 class TestProjectUpdate:
     """Tests for ProjectUpdate schema."""
@@ -166,6 +185,25 @@ class TestProjectUpdate:
         assert update.scale_min is None
         assert update.scale_max is None
         assert update.scale_unit is None
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_scale_rejected(self, field, literal):
+        """
+        GIVEN a JSON body with a non-finite number for a scale bound
+        WHEN ProjectUpdate is validated
+        THEN ValidationError is raised
+        """
+        # GIVEN
+        body = f'{{"{field}": {literal}}}'
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as exc_info:
+            ProjectUpdate.model_validate_json(body)
+        assert any(
+            error["type"] == "finite_number" and error["loc"] == (field,)
+            for error in exc_info.value.errors()
+        )
 
 
 class TestProjectResponseFromModel:
@@ -277,7 +315,7 @@ class TestMemberResponseFromModel:
         )
 
         # WHEN
-        response = MemberResponse.from_model(member, user)
+        response = MemberResponse.from_model(member, user, show_email=True)
 
         # THEN
         assert response.user_id == str(user_id)
@@ -287,6 +325,38 @@ class TestMemberResponseFromModel:
         assert response.photo_url is None
         assert response.role == "expert"
         assert response.joined_at == joined_at
+
+    def test_hides_email_when_not_shown(self):
+        """
+        GIVEN ProjectMember and User models
+        WHEN from_model is called with show_email False
+        THEN email is None and the rest of the row is unchanged
+        """
+        # GIVEN
+        user_id = uuid4()
+        user = User(
+            id=user_id,
+            email="expert@example.com",
+            hashed_password="hash",
+            first_name="Jane",
+            last_name="Doe",
+        )
+        member = ProjectMember(
+            id=uuid4(),
+            project_id=uuid4(),
+            user_id=user_id,
+            role=MemberRole.EXPERT,
+            joined_at=datetime.now(UTC),
+        )
+
+        # WHEN
+        response = MemberResponse.from_model(member, user, show_email=False)
+
+        # THEN
+        assert response.email is None
+        assert response.model_dump()["email"] is None
+        assert response.first_name == "Jane"
+        assert response.user_id == str(user_id)
 
     def test_builds_photo_proxy_url(self):
         """
@@ -313,7 +383,7 @@ class TestMemberResponseFromModel:
         )
 
         # WHEN
-        response = MemberResponse.from_model(member, user)
+        response = MemberResponse.from_model(member, user, show_email=True)
 
         # THEN
         assert response.photo_url is not None
@@ -343,7 +413,7 @@ class TestMemberResponseFromModel:
         )
 
         # WHEN
-        response = MemberResponse.from_model(member, user)
+        response = MemberResponse.from_model(member, user, show_email=True)
 
         # THEN
         assert response.last_name is None

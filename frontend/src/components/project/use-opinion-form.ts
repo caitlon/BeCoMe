@@ -6,6 +6,9 @@ import { z } from "zod";
 
 import { Opinion, ProjectWithRole } from "@/types/api";
 
+// Mirrors max_length on the position field in api/schemas/opinion.py.
+const POSITION_MAX_LENGTH = 255;
+
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 const numericField = (requiredMessage: string, invalidMessage: string) =>
@@ -25,7 +28,11 @@ const numericField = (requiredMessage: string, invalidMessage: string) =>
 const buildOpinionSchema = (t: Translate, scaleMin: number, scaleMax: number) =>
   z
     .object({
-      position: z.string().trim().min(1, t("detail.hintPositionRequired")),
+      position: z
+        .string()
+        .trim()
+        .min(1, t("detail.hintPositionRequired"))
+        .max(POSITION_MAX_LENGTH, t("detail.hintPositionTooLong", { max: POSITION_MAX_LENGTH })),
       lower: numericField(t("detail.hintFieldsRequired"), t("toast.invalidNumbers")),
       peak: numericField(t("detail.hintFieldsRequired"), t("toast.invalidNumbers")),
       upper: numericField(t("detail.hintFieldsRequired"), t("toast.invalidNumbers")),

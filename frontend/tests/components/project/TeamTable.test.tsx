@@ -257,3 +257,54 @@ describe('TeamTable - Member Row Interaction', () => {
     expect(onMemberClick).not.toHaveBeenCalled();
   });
 });
+
+describe('TeamTable - E-mail column', () => {
+  const members = [
+    createMember({ user_id: 'user-1', first_name: 'John', role: 'admin', email: 'john@example.com' }),
+    createMember({ user_id: 'user-2', first_name: 'Jane', role: 'expert', email: 'jane@example.com' }),
+  ];
+  const invitations = [createProjectInvitation({ invitee_email: 'sophie@example.com' })];
+
+  it('shows the e-mail header and every address to the admin', () => {
+    render(<TeamTable {...baseProps} members={members} pendingInvitations={invitations} />);
+
+    expect(screen.getByRole('columnheader', { name: 'Email' })).toBeInTheDocument();
+    expect(screen.getByText('john@example.com')).toBeInTheDocument();
+    expect(screen.getByText('jane@example.com')).toBeInTheDocument();
+    expect(screen.getByText('sophie@example.com')).toBeInTheDocument();
+  });
+
+  it('renders no e-mail header or address for a non-admin', () => {
+    // The API sends null for other members; the column must not render at all.
+    const hidden = members.map((member) => ({ ...member, email: null }));
+
+    render(<TeamTable {...baseProps} isAdmin={false} members={hidden} pendingInvitations={[]} />);
+
+    expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      expect(row.querySelectorAll('td')).toHaveLength(3);
+    }
+  });
+
+  it('hides an address from a non-admin even when one is present', () => {
+    render(<TeamTable {...baseProps} isAdmin={false} members={members} pendingInvitations={[]} />);
+
+    expect(screen.queryByText('john@example.com')).not.toBeInTheDocument();
+    expect(screen.queryByText('jane@example.com')).not.toBeInTheDocument();
+  });
+
+  it('hides the invitee address and its cell from a non-admin', () => {
+    render(
+      <TeamTable {...baseProps} isAdmin={false} members={members} pendingInvitations={invitations} />,
+    );
+
+    expect(screen.queryByText('sophie@example.com')).not.toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(members.length + invitations.length);
+    const invitationRow = rows[rows.length - 1];
+    expect(invitationRow.querySelectorAll('td')).toHaveLength(
+      rows[0].querySelectorAll('td').length,
+    );
+  });
+});

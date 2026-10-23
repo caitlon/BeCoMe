@@ -26,7 +26,8 @@ MAX_FILE_SIZE_BYTES: Final = 5 * 1024 * 1024  # 5 MB
 # Pixel budget for an avatar. The byte cap above does not bound this: image formats
 # compress uniform areas so well that a few hundred KB can describe tens of gigapixels,
 # which is a decompression bomb, and the memory is spent the moment anything decodes it.
-# 4096x4096 is far more than an avatar ever needs while accepting real camera photos.
+# About 16.8 megapixels in total (the area of 4096x4096) and no side over 8192 is far more
+# than an avatar ever needs while accepting real camera photos.
 MAX_IMAGE_PIXELS: Final = 4096 * 4096
 MAX_IMAGE_DIMENSION: Final = 8192
 
@@ -47,6 +48,31 @@ def extension_for(content_type: str) -> str:
     :return: Lowercase extension without a dot, defaulting to ``jpg``.
     """
     return CONTENT_TYPE_TO_EXTENSION.get(content_type, "jpg")
+
+
+def validate_image_readable(content: bytes) -> bool:
+    """Check that an image's header parses, whatever size it declares.
+
+    Run before :func:`validate_image_dimensions` so a corrupt file and an oversized one
+    are told apart: that function answers False for both. Only the header is parsed, as
+    there, and the declared size is not judged here.
+
+    Pillow's :class:`~PIL.Image.DecompressionBombError` counts as readable: it fires
+    from ``open`` only after the header has parsed, and the size check then refuses the
+    canvas on its own terms.
+
+    :param content: Raw file bytes.
+    :return: True when the header parses with a width and height of at least 1.
+    """
+    try:
+        with Image.open(BytesIO(content)) as image:
+            width, height = image.size
+    except Image.DecompressionBombError:
+        return True
+    except (OSError, ValueError):  # UnidentifiedImageError is an OSError
+        return False
+
+    return width >= 1 and height >= 1
 
 
 def validate_image_dimensions(content: bytes) -> bool:

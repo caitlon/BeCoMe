@@ -42,10 +42,30 @@ def _validate_collection_name(name: str) -> None:
         )
 
 
-def make_engine(url: str) -> PGEngine:
+class CollectionUnavailableError(RuntimeError):
+    """The collection's table cannot be opened: it is missing, unreadable or of the wrong shape.
+
+    Raised by :func:`open_store` in place of the library's bare ``ValueError``, which says
+    nothing about why, so the chat route can answer "unavailable" and not fail with a 500.
+    """
+
+
+# Railway drops idle connections without a word, so the pool checks a connection before
+# handing it out, recycles it after five minutes and keeps TCP keepalives on; the values
+# are api/db/engine.py's. pool_size and max_overflow stay at SQLAlchemy's defaults: the
+# corpus is its own server, outside the application database's connection budget. The
+# statement caps below are for the request path only; ingestion passes none, because its
+# bulk load and index build run far past 30 seconds.
+_IDLE_IN_TRANSACTION_TIMEOUT_MS = 60000
+
+
+def make_engine(url: str, *, statement_timeout_ms: int | None = None) -> PGEngine:
     """Build the connection pool to the assistant's own vector database.
 
     :param url: SQLAlchemy connection URL (Settings.assistant_vector_db_url).
+    :param statement_timeout_ms: When set, cap every statement at this many milliseconds
+        and end a transaction left idle for a minute. The request path sets it; ingestion
+        leaves it unset.
     :return: A PGEngine wrapping an async connection pool.
     :raises ValueError: If url is empty; the setting has no default, so an unset
         ASSISTANT_VECTOR_DB_URL arrives here as the empty string.
@@ -55,7 +75,25 @@ def make_engine(url: str) -> PGEngine:
             "ASSISTANT_VECTOR_DB_URL is not set; the assistant's vector database has no "
             "default URL (see env/.env.example)"
         )
-    return PGEngine.from_connection_string(url=url)
+    connect_args: dict[str, object] = {
+        "connect_timeout": 10,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    }
+    if statement_timeout_ms is not None:
+        connect_args["options"] = (
+            f"-c statement_timeout={statement_timeout_ms} "
+            f"-c idle_in_transaction_session_timeout={_IDLE_IN_TRANSACTION_TIMEOUT_MS}"
+        )
+    return PGEngine.from_connection_string(
+        url=url,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_timeout=10,
+        connect_args=connect_args,
+    )
 
 
 _STAGING_SUFFIX = "_staging"
@@ -150,6 +188,14 @@ def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVector
     :param embeddings: The embeddings client used to embed queries and documents.
     :return: A PGVectorStore bound to that table.
     :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
+    :raises CollectionUnavailableError: If the table does not exist, the connected role
+        cannot read its columns, or a column has the wrong type (the schema drifted); the
+        library reports all three as a bare ValueError.
     """
     _validate_collection_name(table)
-    return PGVectorStore.create_sync(engine=engine, embedding_service=embeddings, table_name=table)
+    try:
+        return PGVectorStore.create_sync(
+            engine=engine, embedding_service=embeddings, table_name=table
+        )
+    except ValueError as exc:
+        raise CollectionUnavailableError(f"collection {table!r} cannot be opened") from exc

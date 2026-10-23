@@ -1,4 +1,6 @@
-"""Exceptions raised by the local assistant while it acts on a user's behalf."""
+"""Exceptions raised by the assistant while it acts on a user's behalf."""
+
+from typing import Literal
 
 from api.exceptions import BeCoMeAPIError
 
@@ -25,5 +27,33 @@ class AssistantUnavailableError(AssistantError):
     """Raised when the local LLM, embedding, or rerank server cannot be reached."""
 
 
+class AssistantBusyError(AssistantError):
+    """Raised when a turn is refused for load: no free slot, or the global hourly ceiling.
+
+    The cause is load, not the caller: it is answered 503, never 429.
+
+    :param message: Description for the log; never shown to the caller.
+    :param retry_after: Whole seconds the caller should wait, sent as ``Retry-After``.
+    :param reason: The limit that refused the turn: ``"process"`` for the whole process,
+        ``"user"`` for this caller's own share of its slots, ``"global"`` for the hourly
+        ceiling on all users together. It goes into the one log record.
+    """
+
+    def __init__(
+        self, message: str, *, retry_after: int, reason: Literal["process", "user", "global"]
+    ) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.reason = reason
+
+
 class AssistantRateLimitedError(AssistantError):
-    """Raised when a user has spent their per-hour assistant message budget."""
+    """Raised when a user has spent their per-hour assistant message budget.
+
+    :param message: Description for the log; never shown to the caller.
+    :param retry_after: Whole seconds until the user's window closes, sent as ``Retry-After``.
+    """
+
+    def __init__(self, message: str, *, retry_after: int) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after

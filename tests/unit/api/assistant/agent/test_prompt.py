@@ -93,6 +93,15 @@ class TestSystemPrompt:
         """
         assert "<project_data>" in STYLE
 
+    def test_the_style_block_tells_the_model_the_opinion_list_can_be_short(self):
+        """
+        GIVEN the style block
+        WHEN it is searched for the objection rule
+        THEN it says rows can be missing and forbids guessing or computing them
+        """
+        assert "fewer rows than the number of experts" in STYLE
+        assert "Do not guess, compute or attribute the missing opinions" in STYLE
+
 
 class TestPinnedThresholds:
     """The thresholds the prompt states are the ones the agreement rule applies."""

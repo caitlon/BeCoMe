@@ -45,7 +45,7 @@ class OpinionResponse(BaseModel):
 
     id: str
     user_id: str
-    user_email: str
+    user_email: str | None
     user_first_name: str
     user_last_name: str | None = None
     position: str
@@ -57,17 +57,20 @@ class OpinionResponse(BaseModel):
     updated_at: datetime
 
     @classmethod
-    def from_model(cls, opinion: "ExpertOpinion", user: "User") -> "OpinionResponse":
+    def from_model(
+        cls, opinion: "ExpertOpinion", user: "User", *, show_email: bool
+    ) -> "OpinionResponse":
         """Create response from database models.
 
         :param opinion: ExpertOpinion database model
         :param user: User database model
-        :return: OpinionResponse instance
+        :param show_email: Whether the viewer may see the address (project admin or the author)
+        :return: OpinionResponse instance, with ``user_email`` null when hidden
         """
         return cls(
             id=str(opinion.id),
             user_id=str(opinion.user_id),
-            user_email=user.email,
+            user_email=user.email if show_email else None,
             user_first_name=user.first_name,
             user_last_name=user.last_name,
             position=opinion.position,

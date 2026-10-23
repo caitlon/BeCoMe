@@ -1,10 +1,23 @@
+import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
 import ForgotPassword from '@/pages/ForgotPassword';
-import { ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
+import {
+  ForbiddenError,
+  NetworkError,
+  RateLimitError,
+  ServerError,
+  TURNSTILE_REFUSED_CODE,
+} from '@/lib/errors';
+
+// Mock useToast
+const mockToast = vi.fn();
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: mockToast }),
+}));
 
 // Mock the API client (the page calls api.forgotPassword directly)
 const mockForgotPassword = vi.fn();
@@ -17,20 +30,19 @@ vi.mock('@/lib/api', () => ({
 
 // A real TurnstileField needs Cloudflare's script, which never loads in this suite.
 // The Turnstile-specific describe block below swaps in a fake that mints a token on
-// click. No ref: unlike the other three forms, this page never resets the widget,
-// because submitting replaces the whole form with the confirmation panel.
+// click and exposes reset() the same way the real widget does, as a spy, so the tests
+// can see the widget being reset after a refused bot check or a 429.
+const mockTurnstileReset = vi.fn();
 vi.mock('@/components/forms', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/forms')>();
   const { isTurnstileRequired } = await import('@/lib/turnstile');
   return {
     ...actual,
-    TurnstileField: function TurnstileFieldMock({
-      action,
-      onToken,
-    }: {
-      action: string;
-      onToken: (token: string | null) => void;
-    }) {
+    TurnstileField: forwardRef<
+      { reset: () => void },
+      { action: string; onToken: (token: string | null) => void }
+    >(function TurnstileFieldMock({ action, onToken }, ref) {
+      useImperativeHandle(ref, () => ({ reset: mockTurnstileReset }));
       // Mirrors the real widget's own contract (renders nothing without a
       // sitekey), so every test that does not opt into Turnstile sees exactly
       // what it saw before this mock existed.
@@ -42,7 +54,7 @@ vi.mock('@/components/forms', async (importOriginal) => {
           {`mint ${action} token`}
         </button>
       );
-    },
+    }),
   };
 });
 
@@ -77,6 +89,31 @@ describe('ForgotPassword', () => {
     render(<ForgotPassword />);
 
     expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+  });
+
+  it('shows no email error when the empty field is left before any submit attempt', async () => {
+    const user = userEvent.setup();
+    render(<ForgotPassword />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+    await act(async () => {});
+
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for the email when the form is submitted with it empty', async () => {
+    const user = userEvent.setup();
+    render(<ForgotPassword />);
+
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(mockForgotPassword).not.toHaveBeenCalled();
   });
 
   it('shows a validation error for an invalid email', async () => {
@@ -151,6 +188,47 @@ describe('ForgotPassword', () => {
     await waitFor(() => {
       expect(screen.getByText(/if that email is registered/i)).toBeInTheDocument();
     });
+  });
+
+  // Only what is decided before the address is read may surface (the bot check and
+  // the per-IP limiter). A server fault can be specific to a registered address, so
+  // a 5xx or a dropped connection must look the same as success.
+  it.each([
+    ['a 5xx response', new ServerError('Service Unavailable', 503)],
+    ['a network failure', new NetworkError()],
+  ])('still shows the confirmation panel on %s (anti-enumeration)', async (_label, error) => {
+    const user = userEvent.setup();
+    mockForgotPassword.mockRejectedValueOnce(error);
+    render(<ForgotPassword />);
+
+    await user.type(getEmailInput(), 'user@example.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(screen.getByText(/if that email is registered/i)).toBeInTheDocument();
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('does not claim a link was sent when the request was rate limited', async () => {
+    const user = userEvent.setup();
+    mockForgotPassword.mockRejectedValueOnce(new RateLimitError('Too many requests', 45));
+    render(<ForgotPassword />);
+
+    await user.type(getEmailInput(), 'user@example.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Request failed',
+        description: 'Too many attempts. Please try again in 45s.',
+        variant: 'destructive',
+      });
+    });
+    expect(screen.queryByText(/if that email is registered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toBeInTheDocument();
+    expect(getSubmitButton()).toBeInTheDocument();
   });
 
   it('shows a loading state during submission', async () => {
@@ -248,10 +326,36 @@ describe('ForgotPassword', () => {
       await user.click(submitButton);
 
       await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
+      await waitFor(() => expect(mockTurnstileReset).toHaveBeenCalled());
 
       // Nothing was sent, so the confirmation panel would be a lie — and it would
       // unmount the widget, leaving the user with no way to earn a fresh challenge.
       // The form stays put with the widget on it.
+      expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /mint password_reset token/i })
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the widget and the form when the request was rate limited', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockForgotPassword.mockRejectedValueOnce(new RateLimitError('Too many requests'));
+      const user = userEvent.setup();
+      render(<ForgotPassword />);
+
+      await user.type(getEmailInput(), 'user@example.com');
+      await user.click(screen.getByRole('button', { name: /mint password_reset token/i }));
+
+      const submitButton = getSubmitButton();
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
+
+      // The bot check runs before the limiter, so its token is already spent: the
+      // widget is reset and the submit button locks until it mints a fresh one.
+      await waitFor(() => expect(mockTurnstileReset).toHaveBeenCalled());
+      await waitFor(() => expect(getSubmitButton()).toBeDisabled());
       expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /mint password_reset token/i })

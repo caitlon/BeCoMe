@@ -186,7 +186,9 @@ class TestResultExportServiceHelpers:
         [
             ("Floods 2021!", "floods-2021"),
             ("  Budget  Case  ", "budget-case"),
-            ("Povodně", "povodn"),
+            ("Povodně", "povodne"),
+            ("Protipovodňová opatření \u2013 Opava 2027", "protipovodnova-opatreni-opava-2027"),
+            ("Привет", "project"),
             ("***", "project"),
             ("", "project"),
         ],

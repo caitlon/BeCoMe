@@ -3,7 +3,10 @@
 Every call goes through the real API over an in-process ASGI transport, carrying
 the caller's own access token and IP, so project access is governed by the same
 RequireProjectAccess dependency the browser UI goes through. The client issues GET
-requests only: it has no method that could write anything.
+requests only: it has no method that could write anything. Where a Cloudflare origin
+secret is configured, each request also carries the origin-verify header, so the inner
+rate-limit key resolves to the caller's own address (the transport's peer); that header
+never leaves the process, and the secret is never logged.
 """
 
 from http.cookiejar import CookieJar, DefaultCookiePolicy
@@ -15,7 +18,9 @@ from pydantic import BaseModel, ValidationError
 from starlette.types import ASGIApp
 
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.roles import tag_role
 from api.assistant.views import OpinionView, ProjectBrief, ProjectView, ResultView
+from api.config import get_settings
 from api.pagination import MAX_PAGE_SIZE
 
 # A loopback host: the request never leaves this process, so plain http exposes nothing.
@@ -79,27 +84,42 @@ class UserApiClient:
 
     def __init__(self, app: ASGIApp, access_token: str, client_ip: str) -> None:
         transport = httpx.ASGITransport(app=app, client=(client_ip, 0))
+        headers = {"Authorization": f"Bearer {access_token}"}
+        # With the secret verified, get_client_ip falls back to request.client.host when
+        # CF-Connecting-IP is absent, and the ASGI peer above is already client_ip. Without
+        # the header every request would key under one constant, one bucket for all users.
+        origin_secret = get_settings().cloudflare_origin_secret
+        if origin_secret:
+            headers["X-Origin-Verify"] = origin_secret
         self._http = httpx.AsyncClient(
             transport=transport,
             base_url=_INTERNAL_BASE_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers=headers,
             # A jar that stores nothing. The API reads a session cookie before the
             # Authorization header, so a cookie kept from one response would outrank
             # the token this client was built with.
             cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])),
         )
 
-    async def _get_json(self, path: str, params: dict[str, int] | None = None) -> Any:
+    async def _get_json(self, path: str, params: dict[str, int | bool] | None = None) -> Any:
         """Issue the one kind of request this client ever sends and decode its body.
 
         :param path: API path to read, e.g. "/api/v1/projects".
-        :param params: Query parameters, used only for pagination.
+        :param params: Query parameters, used for pagination and the opinions view.
         :return: The decoded JSON body.
         :raises AssistantNotFoundError: On a 404 response.
         :raises AssistantUpstreamError: On any other non-2xx response, or a 2xx whose
             body is not JSON. The message never carries any of the body.
+        :raises Exception: Whatever the request itself raises, tagged with the role
+            ``app_api``.
         """
-        response = await self._http.get(path, params=params)
+        try:
+            response = await self._http.get(path, params=params)
+        except Exception as exc:
+            # The call runs the application's own route, so a database error raised in it
+            # is the application's, not the assistant's document index.
+            tag_role(exc, "app_api")
+            raise
         if response.status_code == httpx.codes.NOT_FOUND:
             raise AssistantNotFoundError(f"{path} returned 404")
         if response.is_error:
@@ -110,7 +130,7 @@ class UserApiClient:
             pass
         raise AssistantUpstreamError(f"{path} returned a body that is not JSON")
 
-    async def _get_all(self, path: str) -> list[Any]:
+    async def _get_all(self, path: str, extra_params: dict[str, bool] | None = None) -> list[Any]:
         """Read every page of a paginated list endpoint.
 
         The list endpoints return at most MAX_PAGE_SIZE items per request, so one
@@ -118,13 +138,14 @@ class UserApiClient:
         last one.
 
         :param path: API path of a list endpoint that takes limit and offset.
+        :param extra_params: Query parameters sent with every page, next to the paging ones.
         :return: The items of every page, in the order the API returns them.
         :raises AssistantUpstreamError: If a page is not a list, or the list runs past
             _MAX_PAGES full pages.
         """
         items: list[Any] = []
         for _ in range(_MAX_PAGES):
-            params = {"limit": MAX_PAGE_SIZE, "offset": len(items)}
+            params = {**(extra_params or {}), "limit": MAX_PAGE_SIZE, "offset": len(items)}
             page = await self._get_json(path, params=params)
             if not isinstance(page, list):
                 raise AssistantUpstreamError(f"{path} returned a page that is not a list")
@@ -169,10 +190,15 @@ class UserApiClient:
         body = await self._get_json(f"/api/v1/projects/{_canonical_project_id(project_id)}/result")
         return _validate(ResultView, body) if body is not None else None
 
-    async def get_opinions(self, project_id: str) -> list[OpinionView]:
-        """List a project's expert opinions.
+    async def get_opinions(self, project_id: str, *, full: bool = False) -> list[OpinionView]:
+        """List a project's expert opinions, as the assistant may show them to the caller.
+
+        Opinions of members who objected to the assistant are left out, except the
+        caller's own. ``full=True`` lifts that and exists only for the trace mask, which
+        has to know every name; what it returns must never reach the model.
 
         :param project_id: Project UUID, as a string.
+        :param full: Read the complete list, objectors included.
         :return: One OpinionView per submitted opinion, across every page.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
@@ -180,7 +206,8 @@ class UserApiClient:
             that is not JSON or fails the schema, or the list runs past _MAX_PAGES full pages.
         """
         path = f"/api/v1/projects/{_canonical_project_id(project_id)}/opinions"
-        return [_validate(OpinionView, item) for item in await self._get_all(path)]
+        extra = {} if full else {"for_assistant": True}
+        return [_validate(OpinionView, item) for item in await self._get_all(path, extra)]
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""

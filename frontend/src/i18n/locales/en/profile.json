@@ -11,6 +11,7 @@
     "currentPassword": "Current Password",
     "newPassword": "New Password",
     "confirmPassword": "Confirm New Password",
+    "currentIncorrect": "Current password is incorrect",
     "update": "Update Password",
     "updating": "Updating..."
   },
@@ -53,6 +54,7 @@
     "profileUpdated": "Profile updated",
     "updateFailed": "Failed to update profile",
     "passwordUpdated": "Password updated",
+    "passwordUpdatedSignedOut": "Your password was changed and every session, this one included, was signed out. Sign in again with the new password.",
     "passwordFailed": "Failed to change password",
     "accountDeleted": "Account deleted",
     "photoUpdated": "Profile photo updated",

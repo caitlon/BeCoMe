@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from api.auth.password import hash_password, verify_password
 from api.db.models import User
-from api.exceptions import InvalidCredentialsError, UserExistsError
+from api.exceptions import CurrentPasswordIncorrectError, InvalidCredentialsError, UserExistsError
 from api.services.base import BaseService
 from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
@@ -123,18 +123,22 @@ class UserService(BaseService):
         user: User,
         first_name: str | None = None,
         last_name: str | None = None,
+        assistant_objection: bool | None = None,
     ) -> User:
         """Update user profile fields.
 
         :param user: User to update
         :param first_name: New first name (optional)
         :param last_name: New last name (optional)
+        :param assistant_objection: New objection flag; ``False`` clears it (optional)
         :return: Updated User instance
         """
         if first_name is not None:
             user.first_name = first_name
         if last_name is not None:
             user.last_name = last_name
+        if assistant_objection is not None:
+            user.assistant_objection = assistant_objection
 
         saved = self._save_and_refresh(user)
         self._invalidate_cache(saved.id)
@@ -149,13 +153,10 @@ class UserService(BaseService):
 
         :param user: User whose password to verify
         :param current_password: Password to compare against the stored hash
-        :raises InvalidCredentialsError: If current password is incorrect
+        :raises CurrentPasswordIncorrectError: If current password is incorrect
         """
         if not verify_password(current_password, user.hashed_password):
-            raise InvalidCredentialsError(
-                "Current password is incorrect",
-                reason="invalid_current_password",
-            )
+            raise CurrentPasswordIncorrectError("Current password is incorrect")
 
     def set_password(self, user: User, new_password: str) -> User:
         """Store a new password hash without verifying the previous one.
@@ -176,7 +177,7 @@ class UserService(BaseService):
         :param current_password: Current password for verification
         :param new_password: New password
         :return: Updated User instance
-        :raises InvalidCredentialsError: If current password is incorrect
+        :raises CurrentPasswordIncorrectError: If current password is incorrect
         """
         self.verify_current_password(user, current_password)
         return self.set_password(user, new_password)

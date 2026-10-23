@@ -26,6 +26,7 @@ import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { ProjectWithRole } from "@/types/api";
 import { isUnauthorized } from "@/lib/errors";
+import { describeError } from "@/lib/errorMessages";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { formatDate } from "@/lib/formatDate";
@@ -99,9 +100,10 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.acceptFailed"),
+        description: describeError(error, tCommon, t("toast.acceptFailed")),
         variant: "destructive",
       });
+      invalidateLists();
     },
   });
 
@@ -115,9 +117,10 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.declineFailed"),
+        description: describeError(error, tCommon, t("toast.declineFailed")),
         variant: "destructive",
       });
+      invalidateLists();
     },
   });
 
@@ -133,7 +136,7 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
+        description: describeError(error, tCommon, t("toast.deleteFailed")),
         variant: "destructive",
       });
     },
@@ -248,12 +251,28 @@ const Projects = () => {
                               {project.role === 'admin' && (
                                 <>
                                   <DropdownMenuItem
-                                    onClick={() => {
+                                    disabled={project.is_example}
+                                    onSelect={() => {
                                       setSelectedProject(project);
                                       setInviteModalOpen(true);
                                     }}
+                                    className={
+                                      project.is_example
+                                        ? "flex-col items-start gap-0.5 data-[disabled]:opacity-100"
+                                        : undefined
+                                    }
                                   >
-                                    {t("dropdown.inviteExpert")}
+                                    {project.is_example ? (
+                                      <>
+                                        {/* Only the label fades: faded, the reason below would be unreadable. */}
+                                        <span className="opacity-50">{t("dropdown.inviteExpert")}</span>
+                                        <span className="max-w-56 text-xs text-muted-foreground">
+                                          {t("detail.inviteDisabledOnExample")}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      t("dropdown.inviteExpert")
+                                    )}
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
@@ -282,7 +301,7 @@ const Projects = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Users className="h-4 w-4" />
-                            <span>{project.member_count} {t("card.experts")}</span>
+                            <span>{t("card.expertCount", { count: project.member_count })}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             {project.is_example && (
@@ -369,7 +388,7 @@ const Projects = () => {
                               </span>
                               <span className="flex items-center gap-1">
                                 <Users className="h-3 w-3" />
-                                {invitation.current_experts_count} {t("card.experts")}
+                                {t("card.expertCount", { count: invitation.current_experts_count })}
                               </span>
                               <span>
                                 {t("invitations.invitedDate")}: {formatDate(invitation.invited_at, i18n.language)}

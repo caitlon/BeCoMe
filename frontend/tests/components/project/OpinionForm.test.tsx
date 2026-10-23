@@ -171,6 +171,46 @@ describe('OpinionForm - Submission', () => {
     });
   });
 
+  it('accepts a position of exactly 255 characters', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onSubmit={onSubmit} />);
+    const position = 'p'.repeat(255);
+
+    await user.click(screen.getByLabelText('Position'));
+    await user.paste(position);
+    await user.type(screen.getByLabelText(/lower/i), '20');
+    await user.type(screen.getByLabelText(/peak/i), '50');
+    await user.type(screen.getByLabelText(/upper/i), '80');
+    await user.click(screen.getByRole('button', { name: 'Save Opinion' }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        { position, lower: 20, peak: 50, upper: 80 },
+        expect.anything()
+      );
+    });
+  });
+
+  it('rejects a position of 256 characters with a message and does not submit', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onSubmit={onSubmit} />);
+
+    await user.click(screen.getByLabelText('Position'));
+    await user.paste('p'.repeat(256));
+    await user.type(screen.getByLabelText(/lower/i), '20');
+    await user.type(screen.getByLabelText(/peak/i), '50');
+    await user.type(screen.getByLabelText(/upper/i), '80');
+    await user.click(screen.getByRole('button', { name: 'Save Opinion' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Position must be at most 255 characters')).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('Position')).toHaveAttribute('aria-invalid', 'true');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('marks the invalid field with aria-invalid', async () => {
     const user = userEvent.setup();
     render(<Harness onSubmit={vi.fn().mockResolvedValue(undefined)} />);

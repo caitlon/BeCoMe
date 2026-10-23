@@ -136,7 +136,13 @@ def get_project(
     )
 
 
-@router.patch("/{project_id}", summary="Update project")
+@router.patch(
+    "/{project_id}",
+    summary="Update project",
+    responses={
+        409: {"description": "The new scale would leave existing opinions outside the range"},
+    },
+)
 def update_project(
     project_id: UUID,
     project: ProjectAdmin,
@@ -145,7 +151,8 @@ def update_project(
 ) -> ProjectResponse:
     """Update project. Only admin can update.
 
-    ScaleRangeError is handled by centralized exception middleware.
+    ScaleRangeError and ScaleExcludesOpinionsError are handled by centralized
+    exception middleware.
 
     :param project: Project (verified admin)
     :param request: Fields to update
@@ -219,6 +226,7 @@ def transfer_ownership(
 def list_members(
     project_id: UUID,
     project: ProjectMember,
+    current_user: CurrentUser,
     membership_service: Annotated[
         ProjectMembershipService, Depends(get_project_membership_service)
     ],
@@ -226,7 +234,11 @@ def list_members(
 ) -> list[MemberResponse]:
     """List members of a project. Only members can access.
 
+    E-mail addresses are returned only to the project admin and on the caller's own row;
+    every other row carries ``email: null``.
+
     :param project: Project (verified membership)
+    :param current_user: Authenticated caller
     :param membership_service: Membership service
     :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of members with their roles
@@ -242,7 +254,15 @@ def list_members(
             "row_count": len(members),
         },
     )
-    return [MemberResponse.from_model(member.membership, member.user) for member in members]
+    viewer_is_admin = membership_service.is_admin(project.id, current_user.id)
+    return [
+        MemberResponse.from_model(
+            member.membership,
+            member.user,
+            show_email=viewer_is_admin or member.user.id == current_user.id,
+        )
+        for member in members
+    ]
 
 
 @router.delete(

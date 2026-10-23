@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/collapsible";
 import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
 import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
+import { AssistantResultSlot } from "@/components/assistant";
 import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
 import { OpinionLandscape } from "./OpinionLandscape";
@@ -37,6 +38,7 @@ export const ResultsSection = ({
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
   const showIndividualId = useId();
+  const likertHeadingId = useId();
 
   if (!result || opinions.length === 0) {
     return (
@@ -105,6 +107,7 @@ export const ResultsSection = ({
                 {t(`detail.confidenceLevel.${agreementLevel}`)} {t("detail.confidence")}
               </Badge>
             </div>
+            <AssistantResultSlot projectId={project.id} />
           </div>
           <div className="grid grid-cols-3 gap-4 text-center border-t pt-4">
             <div>
@@ -126,6 +129,21 @@ export const ResultsSection = ({
               </div>
             </div>
           </div>
+          {result.likert_value !== null && (
+            <section aria-labelledby={likertHeadingId} className="border-t mt-4 pt-4 text-center">
+              <h3 id={likertHeadingId} className="text-xs text-muted-foreground uppercase">
+                {t("detail.likertVerdict.title")}
+              </h3>
+              {/* The interpreter returns only 0, 25, 50, 75 or 100, so the position is translated
+                  by its number and the page follows the interface language. */}
+              <p className="mt-1 text-lg font-medium">
+                {t(`detail.likertVerdict.decision.${result.likert_value}`)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t(`detail.likertVerdict.recommendation.${result.likert_value}`)}
+              </p>
+            </section>
+          )}
         </CardContent>
       </Card>
 

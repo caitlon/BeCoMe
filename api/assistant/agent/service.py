@@ -15,18 +15,30 @@ language (see :func:`~api.assistant.agent.generation.user_message`).
 
 import asyncio
 import logging
-import time
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Literal
 
+import langsmith as ls
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langsmith.run_trees import RunTree
 
-from api.assistant.agent.checks import check_citations, find_ungrounded_numbers, strip_citations
+from api.assistant.agent.checks import (
+    CitationStreamFilter,
+    check_citations,
+    cited_numbers,
+    find_ungrounded_numbers,
+    remove_citations,
+    strip_citations,
+)
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.generation import (
     AgentGenerator,
     AnswerGenerator,
     CutOffAnswerError,
     DirectGenerator,
+    Generated,
     user_message,
 )
 from api.assistant.agent.prompt import (
@@ -35,9 +47,14 @@ from api.assistant.agent.prompt import (
     render_context_block,
 )
 from api.assistant.agent.tools import render_opinions, render_project
-from api.assistant.agent.tracing import tracing_scope
+from api.assistant.agent.tracing import (
+    end_turn,
+    ending_turn,
+    start_turn,
+    tracing_scope,
+)
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
-from api.assistant.upstream import UNAVAILABLE_ERRORS
+from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
 from api.schemas.assistant import (
@@ -45,6 +62,7 @@ from api.schemas.assistant import (
     AssistantChatRequest,
     AssistantChatResponse,
     ChatTurn,
+    TurnTiming,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +72,12 @@ logger = logging.getLogger(__name__)
 # of the prompt the client controls, so the fetched context, the message and the answer
 # are left room by capping it.
 _HISTORY_CHAR_BUDGET = 6000
+
+# Which limit ended a turn: the one on the work before the first byte, or the turn's own.
+TimeoutLimit = Literal["first_byte", "turn"]
+
+# The most seconds the fetch of the opinions for the trace mask may take, in every mode.
+_ROSTER_FETCH_SECONDS = 5.0
 
 
 def _kept_history(history: list[ChatTurn], max_turns: int) -> list[ChatTurn]:
@@ -87,6 +111,28 @@ def _kept_history(history: list[ChatTurn], max_turns: int) -> list[ChatTurn]:
     return kept
 
 
+@dataclass
+class TurnDraft:
+    """A turn ready for generation: what the service built before the model is called.
+
+    :ivar request: The validated chat request.
+    :ivar ctx: The turn's context.
+    :ivar kept: The part of the client's history the model is sent.
+    :ivar messages: The conversation for the model, ending with this turn's user message.
+    :ivar started: The event loop's clock when :meth:`AssistantService.prepare` began.
+    :ivar deadline_at: The event loop's clock when the turn runs out of time.
+    :ivar trace: The turn's root LangSmith run, or None when tracing is off.
+    """
+
+    request: AssistantChatRequest
+    ctx: AssistantContext
+    kept: list[ChatTurn]
+    messages: list[AnyMessage]
+    started: float
+    deadline_at: float
+    trace: RunTree | None
+
+
 class AssistantService:
     """Answers one chat turn using the mode configured in ``Settings``.
 
@@ -106,29 +152,25 @@ class AssistantService:
             else AgentGenerator(chat_model, settings.assistant_max_tool_calls)
         )
 
-    async def answer(
-        self, request: AssistantChatRequest, ctx: AssistantContext
-    ) -> AssistantChatResponse:
-        """Answer one turn in the configured mode.
+    async def prepare(self, request: AssistantChatRequest, ctx: AssistantContext) -> TurnDraft:
+        """Build everything a turn needs before the model is called.
 
-        The whole turn, fetching and generation, runs under
-        ``assistant_turn_timeout_seconds``. The documents are searched with the last
-        message alone, not with the history: a follow-up that only makes sense with the
-        earlier turns is searched as it stands, which is a known limit.
-
-        A check that fails changes the flags of the response and nothing else: the answer
-        is not generated again.
+        The documents are searched with the last message alone, not with the history: a
+        follow-up that only makes sense with the earlier turns is searched as it stands,
+        which is a known limit. The fetching runs under ``assistant_first_byte_timeout_seconds``
+        (or the turn timeout, when that is shorter), so that a caller that streams the answer
+        meets its failures before any byte is sent, and sends one before a proxy gives up.
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
-        :return: The answer, its sources, the tools that ran and the grounding checks.
+        :return: The turn, with the messages for the model and the deadline of the whole turn.
         :raises ProjectNotFoundError: If the request names a project the caller cannot see.
         :raises AssistantUpstreamError: If the API answers something unusable while the
             project is fetched.
-        :raises AssistantUnavailableError: If a model or data server is down, the answer
-            is empty, or the turn outlives its deadline.
+        :raises AssistantUnavailableError: If a data server is down or the deadline passes
+            while fetching.
         """
-        started = time.monotonic()
+        started = asyncio.get_running_loop().time()
         mode = self._settings.assistant_mode
         kept = _kept_history(request.history, self._settings.assistant_max_history_turns)
         messages: list[AnyMessage] = [
@@ -137,89 +179,339 @@ class AssistantService:
             else AIMessage(content=turn.content)
             for turn in kept
         ]
-        deadline = asyncio.timeout(self._settings.assistant_turn_timeout_seconds)
+        deadline_at = started + self._settings.assistant_turn_timeout_seconds
+        first_byte_at, limit = self._first_byte_bound(started, deadline_at)
+        trace = start_turn(self._settings, request.message, ctx.roster)
+        if trace is not None and ctx.current_project_id is not None:
+            # Complete once the current project's opinions are read into it (see below).
+            ctx.roster.incomplete = True
         try:
-            async with deadline:
-                parts = [] if mode == "agent" else await self._fetch(request, ctx)
-                if mode != "workflow" and ctx.current_project_id is not None:
-                    parts.append(f"Current project id: {ctx.current_project_id}")
-                messages.append(HumanMessage(content=user_message(parts, request.message)))
-                empty_reason = "empty"
-                with tracing_scope(self._settings):
-                    try:
-                        text, tools_used = await self._generator.generate(
-                            messages, ctx, request.message
-                        )
-                    except CutOffAnswerError:
-                        text, tools_used, empty_reason = "", [], "cut_off"
-                if not text:
-                    logger.warning(
-                        "Assistant answer was empty",
-                        extra={
-                            "event": "assistant_empty_answer",
-                            "mode": mode,
-                            "reason": empty_reason,
-                        },
-                    )
-                    raise AssistantUnavailableError("the model gave an empty answer")
+            with tracing_scope(self._settings, parent=trace):
+                try:
+                    async with asyncio.timeout_at(first_byte_at) as deadline:
+                        parts = [] if mode == "agent" else await self._fetch(request, ctx)
+                        if trace is not None:
+                            await self._register_participants(ctx, deadline_at)
+                        if mode != "workflow" and ctx.current_project_id is not None:
+                            parts.append(f"Current project id: {ctx.current_project_id}")
+                        messages.append(HumanMessage(content=user_message(parts, request.message)))
+                except TimeoutError:
+                    if not deadline.expired():
+                        raise
+                    raise self._timed_out(mode, started, limit) from None
+                except UNAVAILABLE_ERRORS as exc:
+                    raise self._unavailable(exc, mode) from None
+        except BaseException as exc:
+            end_turn(trace, error=type(exc).__name__)
+            raise
+        return TurnDraft(request, ctx, kept, messages, started, deadline_at, trace)
+
+    async def answer(
+        self, request: AssistantChatRequest, ctx: AssistantContext
+    ) -> AssistantChatResponse:
+        """Answer one turn in the configured mode.
+
+        The whole turn, fetching and generation, runs under
+        ``assistant_first_byte_timeout_seconds``, or ``assistant_turn_timeout_seconds`` when
+        that is shorter, because the answer is one body and its first byte is its last. A check
+        that fails changes the flags of the response and nothing else: the answer is not
+        generated again.
+
+        :param request: The validated chat request.
+        :param ctx: Per-turn context (client, retriever, source registry, project).
+        :return: The answer, its sources, the tools that ran, the grounding checks, the
+            tokens the answer model used and the time the turn took.
+        :raises ProjectNotFoundError: If the request names a project the caller cannot see.
+        :raises AssistantUpstreamError: If the API answers something unusable while the
+            project is fetched.
+        :raises AssistantUnavailableError: If a model or data server is down, the answer
+            is empty, or the turn outlives its deadline.
+        """
+        turn = await self.prepare(request, ctx)
+        mode = self._settings.assistant_mode
+        bound, limit = self._first_byte_bound(turn.started, turn.deadline_at)
+        with ending_turn(turn.trace):
+            try:
+                async with asyncio.timeout_at(bound) as deadline:
+                    empty_reason = "empty"
+                    with tracing_scope(self._settings, parent=turn.trace):
+                        try:
+                            text, tools_used, usage = await self._generator.generate(
+                                turn.messages, ctx, request.message
+                            )
+                        except CutOffAnswerError:
+                            text, tools_used, empty_reason = "", [], "cut_off"
+                    if not text:
+                        raise self._empty_answer(mode, empty_reason)
+            except TimeoutError:
+                if not deadline.expired():
+                    raise
+                raise self._timed_out(mode, turn.started, limit) from None
+            except UNAVAILABLE_ERRORS as exc:
+                raise self._unavailable(exc, mode) from None
+            response = self._finish(
+                turn, Generated(text, tools_used, usage), ttft_ms=None, streamed=False
+            )
+            end_turn(turn.trace, outputs={"answer": response.answer})
+            return response
+
+    async def stream(self, turn: TurnDraft) -> AsyncGenerator[str | AssistantChatResponse]:
+        """Generate a prepared turn's answer, yielding its text as it arrives.
+
+        The `hybrid` and `agent` modes yield no text, only the final response. The time of the first
+        piece is the turn's time to first token. The deadline bounds each wait for the model's
+        next piece, and the turn as a whole, because it is one point in time.
+
+        :param turn: What :meth:`prepare` built.
+        :return: Pieces of answer text, then the response as the last item.
+        :raises AssistantUnavailableError: If a model server is down, the answer is empty or
+            cut off, or the turn outlives its deadline, after zero or more pieces.
+        """
+        mode = self._settings.assistant_mode
+        loop = asyncio.get_running_loop()
+        model_started = loop.time()
+        ttft_ms: int | None = None
+        generated: Generated | None = None
+        empty_reason = "empty"
+        citation_filter = self._citation_filter(turn)
+        items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
+        with ending_turn(turn.trace):
+            try:
+                with tracing_scope(self._settings, parent=turn.trace):
+                    while True:
+                        # The deadline bounds only the wait for the model's next piece, never the
+                        # yield: a timeout that fired while the consumer held a piece would
+                        # cancel the consumer instead of this generator.
+                        try:
+                            item = await self._next_item(items, turn, mode)
+                        except CutOffAnswerError:
+                            empty_reason = "cut_off"
+                            break
+                        if item is None:
+                            break
+                        if isinstance(item, Generated):
+                            generated = item
+                        elif item:
+                            ttft_ms = self._first_token_ms(ttft_ms, loop, model_started)
+                            if shown := self._shown(citation_filter, item):
+                                yield shown
+            except UNAVAILABLE_ERRORS as exc:
+                raise self._unavailable(exc, mode) from None
+            finally:
+                await items.aclose()
+            generated = self._complete(generated, mode, empty_reason)
+            # A mode that yields no text fed the filter nothing, so it releases nothing here.
+            if citation_filter and (rest := citation_filter.finish()):
+                yield rest
+            response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
+            # Closed before the yield: the consumer may stop reading once it holds the
+            # response, and the turn has succeeded by then.
+            end_turn(turn.trace, outputs={"answer": response.answer})
+            yield response
+
+    def _citation_filter(self, turn: TurnDraft) -> CitationStreamFilter | None:
+        """Build the filter for the streamed text (only the workflow mode has any), if needed.
+
+        The filter is built from the registry before the model is called because the workflow
+        mode registers every source in :meth:`prepare`. The other modes register sources while
+        they run but yield no text, so their answer is cleaned in :meth:`_finish` against the
+        full registry.
+        """
+        if self._settings.assistant_show_sources:
+            return None
+        return CitationStreamFilter({number for number, _chunk in turn.ctx.sources.numbered()})
+
+    async def _next_item(
+        self, items: AsyncGenerator[str | Generated], turn: TurnDraft, mode: str
+    ) -> str | Generated | None:
+        """Wait for the generator's next item within the turn's deadline; None ends the stream."""
+        try:
+            async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                return await anext(items, None)
         except TimeoutError:
             if not deadline.expired():
                 raise
-            duration_ms = round((time.monotonic() - started) * 1000)
-            logger.warning(
-                "Assistant turn timed out",
-                extra={"event": "assistant_turn_timeout", "mode": mode, "duration_ms": duration_ms},
-            )
-            raise AssistantUnavailableError("the assistant turn ran out of time") from None
-        except UNAVAILABLE_ERRORS as exc:
-            logger.warning(
-                "Assistant dependency unavailable",
-                extra={
-                    "event": "assistant_dependency_unavailable",
-                    "mode": mode,
-                    "reason": type(exc).__name__,
-                },
-            )
-            raise AssistantUnavailableError("a server the assistant needs is unavailable") from None
+            raise self._timed_out(mode, turn.started, "turn") from None
 
+    @staticmethod
+    def _first_token_ms(known: int | None, loop: asyncio.AbstractEventLoop, started: float) -> int:
+        """Return the time to first token, measured now unless it is known already."""
+        return known if known is not None else round((loop.time() - started) * 1000)
+
+    @staticmethod
+    def _shown(citation_filter: CitationStreamFilter | None, piece: str) -> str:
+        """Return the part of a piece that can be shown, which the filter may hold back."""
+        return citation_filter.feed(piece) if citation_filter else piece
+
+    def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
+        """Return what the generator produced, or refuse a missing or empty answer."""
+        if generated is None or not generated.text:
+            raise self._empty_answer(mode, empty_reason)
+        return generated
+
+    def _finish(
+        self, turn: TurnDraft, generated: Generated, *, ttft_ms: int | None, streamed: bool
+    ) -> AssistantChatResponse:
+        """Check the answer, record the turn and build the response.
+
+        :param turn: What :meth:`prepare` built.
+        :param generated: What the generator produced.
+        :param ttft_ms: Milliseconds from the model call to the first piece, when streamed.
+        :param streamed: Whether the answer was delivered piece by piece.
+        :return: The response.
+        """
+        ctx, text, usage = turn.ctx, generated.text, generated.usage
         sources = ctx.sources.refs()
-        citations_valid = check_citations(text, {source.n for source in sources})
+        cited = cited_numbers(text)
+        source_numbers = {source.n for source in sources}
+        citations_valid = check_citations(text, source_numbers)
         ungrounded = find_ungrounded_numbers(
             text,
             [
                 *ctx.sources.texts(),
                 *ctx.tool_outputs,
-                request.message,
-                *(turn.content for turn in kept if turn.role == "user"),
+                turn.request.message,
+                *(turn_.content for turn_ in turn.kept if turn_.role == "user"),
                 *PINNED_NUMBERS,
                 *FORMULA_NUMBERS,
             ],
         )
+        duration_ms = round((asyncio.get_running_loop().time() - turn.started) * 1000)
         logger.info(
             "Assistant turn answered",
             extra={
                 "event": "assistant_turn",
-                "mode": mode,
+                "mode": self._settings.assistant_mode,
                 "model": self._settings.assistant_answer_llm_model,
-                "tool_names": tools_used,
-                "tool_call_count": len(tools_used),
+                "tool_names": generated.tools_used,
+                "tool_call_count": len(generated.tools_used),
                 "source_count": len(sources),
+                "sources": [
+                    {
+                        "n": number,
+                        "title": chunk.title,
+                        "section": chunk.section,
+                        "layer": chunk.layer,
+                        "cited": number in cited,
+                    }
+                    for number, chunk in ctx.sources.numbered()
+                ],
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
                 "ungrounded_number_count": len(ungrounded),
-                "duration_ms": round((time.monotonic() - started) * 1000),
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.total_tokens,
+                "llm_calls": usage.llm_calls,
+                "usage_complete": usage.complete,
+                "duration_ms": duration_ms,
+                "ttft_ms": ttft_ms,
+                "streamed": streamed,
             },
         )
+        if not self._settings.assistant_show_sources:
+            # The client sees no citation, so a warning about one would mean nothing to it;
+            # the turn record above keeps the real value.
+            text, sources, citations_valid = remove_citations(text, source_numbers), [], True
         return AssistantChatResponse(
             answer=text,
             sources=sources,
-            tools_used=tools_used,
+            tools_used=generated.tools_used,
             checks=AnswerChecks(
                 citations_valid=citations_valid,
                 numbers_grounded=not ungrounded,
                 ungrounded_numbers=ungrounded,
             ),
+            usage=usage,
+            timing=TurnTiming(ttft_ms=ttft_ms, total_ms=duration_ms),
         )
+
+    def _first_byte_bound(self, started: float, deadline_at: float) -> tuple[float, TimeoutLimit]:
+        """Return the time the work before a response's first byte must be done by.
+
+        That is ``assistant_first_byte_timeout_seconds`` after the turn started, unless the
+        turn's own deadline comes first, so the setting can shorten the turn and never extend it.
+
+        :param started: The event loop's clock when the turn began.
+        :param deadline_at: The event loop's clock when the turn runs out of time.
+        :return: The event loop's clock to stop at, and the limit that is.
+        """
+        first_byte_at = started + self._settings.assistant_first_byte_timeout_seconds
+        if first_byte_at < deadline_at:
+            return first_byte_at, "first_byte"
+        return deadline_at, "turn"
+
+    @staticmethod
+    def _timed_out(mode: str, started: float, limit: TimeoutLimit) -> AssistantUnavailableError:
+        """Log that the turn outlived a limit and build the error to raise."""
+        duration_ms = round((asyncio.get_running_loop().time() - started) * 1000)
+        logger.warning(
+            "Assistant turn timed out",
+            extra={
+                "event": "assistant_turn_timeout",
+                "mode": mode,
+                "timeout_limit": limit,
+                "duration_ms": duration_ms,
+            },
+        )
+        return AssistantUnavailableError("the assistant turn ran out of time")
+
+    @staticmethod
+    def _unavailable(exc: Exception, mode: str) -> AssistantUnavailableError:
+        """Log a server outage by its class name and role only and build the error to raise."""
+        logger.warning(
+            "Assistant dependency unavailable",
+            extra={
+                "event": "assistant_dependency_unavailable",
+                "mode": mode,
+                "reason": type(exc).__name__,
+                "role": role_of(exc),
+            },
+        )
+        return AssistantUnavailableError("a server the assistant needs is unavailable")
+
+    @staticmethod
+    def _empty_answer(mode: str, reason: str) -> AssistantUnavailableError:
+        """Log that the model gave no answer and build the error to raise."""
+        logger.warning(
+            "Assistant answer was empty",
+            extra={"event": "assistant_empty_answer", "mode": mode, "reason": reason},
+        )
+        return AssistantUnavailableError("the model gave an empty answer")
+
+    @staticmethod
+    async def _register_participants(ctx: AssistantContext, deadline_at: float) -> None:
+        """Fetch the current project's opinions for the trace mask alone.
+
+        A question or an answer can name an expert the model never reads about: one the modes
+        with tools did not fetch, or one who objected to the assistant and so is left out of
+        what the model is shown. The trace of the turn is masked with the experts the turn has
+        met, so this reads the complete list, objectors included. Nothing fetched here reaches
+        the model, and a workflow turn that cannot read it loses its trace. The fetch
+        has a bound of its own, :data:`_ROSTER_FETCH_SECONDS`, capped by the turn's deadline. A
+        failure or timeout changes neither the answer nor the errors of the turn, but leaves
+        the roster incomplete, so the turn's trace is dropped.
+
+        :param ctx: The turn's context; its roster is filled.
+        :param deadline_at: The event loop's clock when the turn runs out of time.
+        """
+        if ctx.current_project_id is None:
+            return
+        bound = min(asyncio.get_running_loop().time() + _ROSTER_FETCH_SECONDS, deadline_at)
+        try:
+            async with asyncio.timeout_at(bound):
+                opinions = await ctx.client.get_opinions(ctx.current_project_id, full=True)
+            ctx.roster.add(opinions)
+            ctx.roster.incomplete = False
+        except Exception as exc:
+            logger.debug(
+                "Assistant roster could not be fetched",
+                extra={
+                    "event": "assistant_roster_unavailable",
+                    "reason": type(exc).__name__,
+                    "role": role_of(exc),
+                },
+            )
 
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:
         """Fetch what the model is shown ahead of the question, in workflow and hybrid modes.
@@ -252,9 +544,30 @@ class AssistantService:
             project_blocks.append(render_project(project))
             if result is not None:
                 project_blocks.append(render_context_block([], result))
+            ctx.roster.add(opinions)
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)
-        chunks = await ctx.retriever.search(request.message)
+        # Embeddings are not LangChain runnables and emit no callbacks, so the search is
+        # traced here, as a child of the turn's run.
+        with ls.trace(
+            "docs_search", run_type="retriever", inputs={"query": request.message}
+        ) as span:
+            chunks = await ctx.retriever.search(request.message)
+            span.end(
+                outputs={
+                    "documents": [
+                        {
+                            "page_content": chunk.text,
+                            "metadata": {
+                                "title": chunk.title,
+                                "url": chunk.url,
+                                "score": chunk.score,
+                            },
+                        }
+                        for chunk in chunks
+                    ]
+                }
+            )
         excerpts = render_context_block([(ctx.sources.add(chunk), chunk) for chunk in chunks], None)
         return [*([excerpts] if excerpts else []), *project_blocks]

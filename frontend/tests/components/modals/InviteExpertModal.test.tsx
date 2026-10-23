@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
+import { HttpError } from '@/lib/errors';
 import { InviteExpertModal } from '@/components/modals/InviteExpertModal';
 
 // Mock api
@@ -44,6 +45,31 @@ describe('InviteExpertModal', () => {
     render(<InviteExpertModal {...defaultProps} />);
 
     expect(getEmailInput()).toBeInTheDocument();
+  });
+
+  it('shows no email error when the empty field is left before any submit attempt', async () => {
+    const user = userEvent.setup();
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+    await act(async () => {});
+
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for the email when the form is submitted with it empty', async () => {
+    const user = userEvent.setup();
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(mockInviteExpert).not.toHaveBeenCalled();
   });
 
   it('shows validation error for invalid email', async () => {
@@ -187,6 +213,28 @@ describe('InviteExpertModal', () => {
       expect(
         await screen.findByRole('button', { name: 'Vytváření pozvánky...' })
       ).toHaveAttribute('aria-disabled', 'true');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('shows the Czech text, not the English API detail, when the invitee is unknown', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockRejectedValueOnce(
+      new HttpError('No user found with this email', 404, 'invitee_not_found')
+    );
+
+    await i18n.changeLanguage('cs');
+    try {
+      render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'nobody@example.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalled());
+      expect(mockToast.mock.calls[0][0].description).toBe(
+        'Tento e-mail nepatří žádnému účtu. Požádejte experta, ať se nejdřív zaregistruje.'
+      );
     } finally {
       await i18n.changeLanguage('en');
     }

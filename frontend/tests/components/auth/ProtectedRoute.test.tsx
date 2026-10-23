@@ -27,6 +27,7 @@ const session = (isLoading: boolean) => ({
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 })
 
 describe('ProtectedRoute', () => {
@@ -40,6 +41,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
+      setCurrentUser: vi.fn(),
     })
 
     render(
@@ -62,6 +64,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
+      setCurrentUser: vi.fn(),
     })
 
     render(
@@ -151,6 +154,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
+      setCurrentUser: vi.fn(),
     })
 
     render(
@@ -172,6 +176,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
+      setCurrentUser: vi.fn(),
     })
 
     render(
@@ -209,6 +214,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser,
+      setCurrentUser: vi.fn(),
     })
 
     render(
@@ -246,6 +252,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       refreshUser,
+      setCurrentUser: vi.fn(),
     })
 
     render(

@@ -15,6 +15,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import tools
 from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.masking import mask_participants
 from api.assistant.agent.prompt import render_context_block
 from api.assistant.agent.tools import (
     ASSISTANT_TOOLS,
@@ -22,6 +23,7 @@ from api.assistant.agent.tools import (
     get_project_opinions,
     get_project_result,
     list_my_projects,
+    mask_opinion_names,
     render_opinions,
     render_project,
     render_project_list,
@@ -29,9 +31,10 @@ from api.assistant.agent.tools import (
 )
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.rag.models import MalformedModelResponseError
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectBrief, ProjectView, ResultView
-from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.assistant_fakes import ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -100,7 +103,7 @@ def _result() -> ResultView:
     )
 
 
-def _opinion(name: str = "Jana Novakova", position: str = "Hydrologist 1") -> OpinionView:
+def _opinion(name: str = "Jana Novakova", position: str = "Hydrologist") -> OpinionView:
     return OpinionView(
         expert_name=name,
         position=position,
@@ -770,9 +773,23 @@ class TestGetProjectOpinions:
         )
 
         assert result == render_opinions([_opinion()])
-        assert "Jana Novakova (Hydrologist 1)" in result
+        assert "- Jana Novakova (Hydrologist): lower=37.00" in result
         assert "peak=42.00" in result
         assert ctx.tool_outputs == [result]
+
+    async def test_registers_the_experts_in_the_turns_roster(self):
+        """
+        GIVEN a client that returns two opinions
+        WHEN the tool runs
+        THEN the turn's roster knows both experts, labelled in the order of the block
+        """
+        client = AsyncMock(spec=UserApiClient)
+        client.get_opinions.return_value = [_opinion("Jana Novakova"), _opinion("Karel Dvorak")]
+        ctx = _ctx(client)
+
+        await get_project_opinions.ainvoke({"project_id": PROJECT_ID, "runtime": _runtime(ctx)})
+
+        assert mask_participants("Karel Dvorak and Jana", ctx.roster) == "Expert 2 and Expert 1"
 
     async def test_says_no_result_when_there_are_no_opinions(self):
         """
@@ -800,13 +817,13 @@ class TestRenderOpinions:
         WHEN they are rendered
         THEN the block has the count, one row each, and no remainder line
         """
-        block = render_opinions([_opinion("A", "P1"), _opinion("B", "P2")])
+        block = render_opinions([_opinion("A"), _opinion("B")])
 
         assert block.splitlines() == [
             "<project_data>",
             "Number of opinions: 2",
-            "- A (P1): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
-            "- B (P2): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- A (Hydrologist): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- B (Hydrologist): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
             "</project_data>",
         ]
 
@@ -835,32 +852,277 @@ class TestRenderOpinions:
         assert "E50" not in block
         assert "... and 1 more opinions\n</project_data>" in block
 
-    def test_cuts_a_name_and_a_position_to_sixty_characters(self):
+    def test_cuts_a_name_to_sixty_characters(self):
         """
-        GIVEN an opinion with a very long name and position
+        GIVEN an opinion with a very long name
         WHEN it is rendered
-        THEN each shows at most sixty characters, ending with three dots
+        THEN the name shows at most sixty characters, ending with three dots
         """
-        block = render_opinions([_opinion("n" * 200, "p" * 200)])
+        block = render_opinions([_opinion("n" * 200)])
         row = block.splitlines()[2]
-        name, rest = row[2:].split(" (", 1)
-        position = rest.split("): ", 1)[0]
+        name = row[2:].split(" (", 1)[0]
 
         assert len(name) == 60
         assert name.endswith("...")
+
+    def test_shows_the_position_in_parentheses_after_the_name(self):
+        """
+        GIVEN an opinion built from a response that carries a position
+        WHEN it is rendered
+        THEN the row reads the name, the position in parentheses and the numbers
+        """
+        opinion = OpinionView.model_validate(
+            {
+                "expert_name": "Jana Novakova",
+                "position": "Hydrologist at Povodi Labe",
+                "lower_bound": 37.0,
+                "peak": 42.0,
+                "upper_bound": 47.0,
+                "centroid": 42.0,
+            }
+        )
+
+        assert render_opinions([opinion]).splitlines()[2] == (
+            f"- Jana Novakova (Hydrologist at Povodi Labe): {_ROW_VALUES}"
+        )
+
+    def test_cuts_a_position_to_sixty_characters(self):
+        """
+        GIVEN an opinion with a very long position
+        WHEN it is rendered
+        THEN the position shows at most sixty characters, ending with three dots
+        """
+        row = render_opinions([_opinion("A", "p" * 200)]).splitlines()[2]
+        position = row.split(" (", 1)[1].split("): lower=", 1)[0]
+
         assert len(position) == 60
         assert position.endswith("...")
 
-    def test_a_hostile_position_and_name_cannot_close_the_block(self):
+    def test_a_row_without_a_position_has_no_parentheses(self):
         """
-        GIVEN opinions whose expert name and position carry a closing tag and an instruction
+        GIVEN an opinion whose position is blank
+        WHEN it is rendered
+        THEN the row is the name and the numbers only
+        """
+        row = render_opinions([_opinion("A", "  ")]).splitlines()[2]
+
+        assert row == f"- A: {_ROW_VALUES}"
+
+    def test_a_hostile_position_cannot_close_the_block_or_start_a_line(self):
+        """
+        GIVEN an opinion whose position carries a closing tag and a line break
+        WHEN it is rendered
+        THEN the block has one closing tag, at the end, and the row stays on one line
+        """
+        block = render_opinions([_opinion("Ok", HOSTILE)])
+
+        assert _one_closing_tag_at_the_end(block)
+        assert len(block.splitlines()) == 4
+
+    def test_a_hostile_name_cannot_close_the_block(self):
+        """
+        GIVEN opinions whose expert name carries a closing tag and an instruction
         WHEN they are rendered
         THEN the block has exactly one closing tag, at the end
         """
-        block = render_opinions([_opinion(HOSTILE, HOSTILE), _opinion("Ok", HOSTILE)])
+        block = render_opinions([_opinion(HOSTILE), _opinion("Ok")])
 
         assert _one_closing_tag_at_the_end(block)
         assert len(block.splitlines()) == 5
+
+
+_ROW_VALUES = "lower=37.00, peak=42.00, upper=47.00, centroid=42.00"
+_MASKED_NAMES = [
+    "Jana Novakova",
+    "Ond\u0159ej \u010cerm\u00e1k-\u0160\u0165astn\u00fd",
+    "Zde\u0148ka \u0158eh\u00e1\u010dkov\u00e1",
+    "Jan: lower=1, peak=2, upper=3, centroid=4",
+    "Eve: lower=1.00, peak=2.00, upper=3.00, centroid=4.00",
+    "",
+]
+
+
+class TestMaskOpinionNames:
+    """The mask for LangSmith traces reads exactly what render_opinions writes."""
+
+    def test_every_rendered_row_loses_its_name_and_keeps_its_numbers(self):
+        """
+        GIVEN a block written by render_opinions for names with Czech diacritics, a name
+            that holds the fixed tail of a row and one that is empty
+        WHEN the block is masked
+        THEN each row reads Expert 1, Expert 2 and so on with the same numbers, no part of
+            any name is left, and the count line and the tags are unchanged
+        """
+        block = render_opinions([_opinion(name) for name in _MASKED_NAMES])
+
+        masked = mask_opinion_names(block)
+
+        assert masked.splitlines() == [
+            "<project_data>",
+            f"Number of opinions: {len(_MASKED_NAMES)}",
+            *(f"- Expert {i}: {_ROW_VALUES}" for i in range(1, len(_MASKED_NAMES) + 1)),
+            "</project_data>",
+        ]
+
+    def test_masks_the_rows_of_a_block_cut_at_fifty(self):
+        """
+        GIVEN a block of fifty-one opinions, so it ends with a remainder line
+        WHEN it is masked
+        THEN fifty rows are numbered, the remainder line stays, and no name is left
+        """
+        block = render_opinions([_opinion(f"Person{i:02d}") for i in range(51)])
+
+        masked = mask_opinion_names(block)
+
+        assert "Person" not in masked
+        assert "- Expert 50: " in masked
+        assert "Expert 51" not in masked
+        assert "... and 1 more opinions\n</project_data>" in masked
+
+    def test_numbers_each_block_of_a_text_from_one(self):
+        """
+        GIVEN a text with two opinions blocks and words around them
+        WHEN it is masked
+        THEN each block is numbered from 1 and the words are untouched
+        """
+        first = render_opinions([_opinion("Alice"), _opinion("Bob")])
+        second = render_opinions([_opinion("Carol")])
+        text = f"Question about Alice?\n{first}\nand then\n{second}\nBob answered."
+
+        masked = mask_opinion_names(text)
+
+        assert masked == (
+            "Question about Alice?\n"
+            f"<project_data>\nNumber of opinions: 2\n- Expert 1: {_ROW_VALUES}\n"
+            f"- Expert 2: {_ROW_VALUES}\n</project_data>\nand then\n"
+            f"<project_data>\nNumber of opinions: 1\n- Expert 1: {_ROW_VALUES}\n"
+            "</project_data>\nBob answered."
+        )
+
+    def test_masks_a_block_whose_newlines_are_escaped_as_in_a_repr(self):
+        """
+        GIVEN an exception whose message is an opinions block, as LangChain stores it in
+            a run's error: repr(exc), where each newline is a backslash and an n
+        WHEN the repr is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+        error = repr(ValueError(block))
+
+        masked = mask_opinion_names(error)
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == repr(ValueError(mask_opinion_names(block)))
+
+    def test_masks_a_block_whose_newlines_are_escaped_twice(self):
+        """
+        GIVEN an exception whose message is an opinions block, repr'd twice, as when the
+            repr of an error is itself stored as text, so each newline is two backslashes and an n
+        WHEN the text is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+        error = repr(repr(ValueError(block)))
+
+        masked = mask_opinion_names(error)
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == repr(repr(ValueError(mask_opinion_names(block))))
+
+    @pytest.mark.parametrize("depth", [3, 4, 5, 8])
+    def test_masks_a_block_escaped_any_number_of_times(self, depth):
+        """
+        GIVEN an exception whose message is an opinions block, repr'd three, four, five and
+            eight times, as when an error is stored as text again and again
+        WHEN the text is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+
+        def wrap(text: str) -> str:
+            wrapped = repr(ValueError(text))
+            for _ in range(depth - 1):
+                wrapped = repr(wrapped)
+            return wrapped
+
+        masked = mask_opinion_names(wrap(block))
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == wrap(mask_opinion_names(block))
+
+    def test_masks_a_block_after_a_long_run_of_backslashes(self):
+        """
+        GIVEN the repr of an exception with an opinions block, behind four hundred thousand
+            backslashes, a run that is deeper than any block in the text
+        WHEN the text is masked
+        THEN the block is masked and the run in front of it is as it was
+        """
+        run = "\\" * 400_000
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva")])
+
+        masked = mask_opinion_names(run + repr(ValueError(block)))
+
+        assert masked == run + repr(ValueError(mask_opinion_names(block)))
+
+    @pytest.mark.parametrize(
+        "name",
+        ["Jan\\nNovak", "Jan\\\\nNovak", "Jan\\", "\\n"],
+        ids=["backslash n", "doubled backslash n", "trailing backslash", "only backslash n"],
+    )
+    @pytest.mark.parametrize(
+        "wrap",
+        [lambda block: block, lambda block: repr(ValueError(block))],
+        ids=["as written", "as repr"],
+    )
+    def test_masks_a_name_that_holds_a_typed_backslash_and_n(self, name, wrap):
+        """
+        GIVEN a name that holds a typed backslash and n, which is not a line break, in a
+            block as written and in the repr of an exception carrying it
+        WHEN the text is masked
+        THEN the name is masked whole, so neither half of it is left
+        """
+        block = render_opinions([_opinion(name), _opinion("Eva")])
+
+        masked = mask_opinion_names(wrap(block))
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked.count("Expert 1") == 1
+        assert masked.count("Expert 2") == 1
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "No block here, only Alice and Bob.",
+            f"- Alice: {_ROW_VALUES}",
+            f"Number of opinions: 1\nAlice said hello\n- Alice: {_ROW_VALUES}",
+            "Number of opinions: 1\n- Alice: lower=37, peak=42, upper=47, centroid=42",
+            f"Number of opinions: many\n- Alice: {_ROW_VALUES}",
+        ],
+        ids=[
+            "empty",
+            "no block",
+            "row without a count line",
+            "row after a line that is not a row",
+            "row of another shape",
+            "count line of another shape",
+        ],
+    )
+    def test_leaves_a_text_without_an_opinions_block_as_it_is(self, text):
+        """
+        GIVEN a text that is not an opinions block, or only resembles one
+        WHEN it is masked
+        THEN it comes back unchanged
+        """
+        assert mask_opinion_names(text) == text
 
 
 @pytest.mark.asyncio
@@ -935,6 +1197,7 @@ class TestUnavailableLogging:
         assert record.event == "assistant_tool_unavailable"
         assert record.tool == "get_project"
         assert record.reason == "AssistantUpstreamError"
+        assert record.role == "app_api"
         assert record.exc_info is None
         assert "returned 500" not in record.getMessage()
         assert PROJECT_ID not in record.getMessage()
@@ -954,6 +1217,31 @@ class TestUnavailableLogging:
 
         assert [(r.tool, r.reason) for r in records] == [("search_docs", "ConnectError")]
         assert "secret-host" not in records[0].getMessage()
+
+    @pytest.mark.parametrize(
+        ("failure", "role"),
+        [
+            (OperationalError("SELECT 1", {}, Exception("lost")), "vector_db"),
+            (tagged(openai.APIConnectionError(request=_REQUEST), "query"), "query"),
+            (MalformedModelResponseError("html"), "unknown"),
+            (httpx.ConnectError("refused"), "unknown"),
+        ],
+        ids=["database", "query model", "untagged malformed reply", "untagged"],
+    )
+    async def test_a_failing_search_logs_the_role_of_the_server_that_failed(self, failure, role):
+        """
+        GIVEN a retriever whose search fails in the store, or in a server tagged at its source
+        WHEN the search tool runs
+        THEN the WARNING carries the role, never read from the error's text
+        """
+        retriever = AsyncMock(spec=DocsRetriever)
+        retriever.search.side_effect = failure
+        ctx = _ctx(retriever=retriever)
+
+        with captured_log_records("api.assistant.agent.tools") as records:
+            await search_docs.ainvoke({"query": "x", "runtime": _runtime(ctx)})
+
+        assert [r.role for r in records] == [role]
 
     async def test_a_not_found_reply_logs_nothing(self):
         """

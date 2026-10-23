@@ -4,6 +4,7 @@ import json
 import logging
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from langchain.agents.middleware import ToolCallRequest
 from langchain.tools import ToolRuntime
@@ -12,9 +13,12 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import (
     AgentGenerator,
+    AnswerGenerator,
     CutOffAnswerError,
     DirectGenerator,
+    Generated,
     _tool_failed,
+    _usage_of,
     answer_text,
     user_message,
 )
@@ -23,6 +27,7 @@ from api.assistant.agent.tools import UNAVAILABLE_REPLY
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import ProjectBrief
+from api.schemas.assistant import TurnUsage
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
@@ -85,6 +90,19 @@ def _extra_fields(record: logging.LogRecord) -> set[str]:
 
 def _user(content: str = QUESTION) -> list[BaseMessage]:
     return [HumanMessage(content=content)]
+
+
+def _used(message: AIMessage, input_tokens: int, output_tokens: int) -> AIMessage:
+    """Give a scripted reply its own token usage."""
+    return message.model_copy(
+        update={
+            "usage_metadata": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+    )
 
 
 class TestUserMessage:
@@ -217,6 +235,19 @@ class TestAnswerText:
         assert answer_text(AIMessage(content="<think>all my tokens</think>  ")) == ""
 
 
+class TestUsageOf:
+    """The usage of a turn is summed over the model's replies."""
+
+    def test_a_sequence_with_no_model_reply_is_refused(self):
+        """
+        GIVEN messages that no model wrote
+        WHEN their usage is summed
+        THEN a ValueError says a turn needs a model reply
+        """
+        with pytest.raises(ValueError, match="at least one model reply"):
+            _usage_of([HumanMessage(content=QUESTION)])
+
+
 @pytest.mark.asyncio
 class TestDirectGenerator:
     """One model call, no tools."""
@@ -230,7 +261,7 @@ class TestDirectGenerator:
         model = _model(AIMessage(content="It is the midpoint."))
         messages = [HumanMessage(content="Earlier"), AIMessage(content="Reply"), *_user()]
 
-        text, tools = await DirectGenerator(model).generate(messages, _ctx(), QUESTION)
+        text, tools, _ = await DirectGenerator(model).generate(messages, _ctx(), QUESTION)
 
         assert (text, tools) == ("It is the midpoint.", [])
         assert len(model.seen) == 1
@@ -244,7 +275,7 @@ class TestDirectGenerator:
         """
         model = _model(AIMessage(content="<think>x</think>Done."))
 
-        text, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
         assert text == "Done."
 
@@ -267,9 +298,227 @@ class TestDirectGenerator:
         """
         model = _model(AIMessage(content="<think>all of it</think>"))
 
-        text, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
         assert text == ""
+
+    async def test_reports_the_usage_of_its_one_reply(self):
+        """
+        GIVEN a model whose reply reports 120 input and 30 output tokens
+        WHEN the turn is generated
+        THEN the usage is those numbers, one call, and complete
+        """
+        model = _model(_used(AIMessage(content="It is the midpoint."), 120, 30))
+
+        _, _, usage = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert usage == TurnUsage(
+            input_tokens=120, output_tokens=30, total_tokens=150, llm_calls=1, complete=True
+        )
+
+    async def test_a_reply_without_usage_is_an_incomplete_zero(self):
+        """
+        GIVEN a model whose reply carries no usage metadata
+        WHEN the turn is generated
+        THEN the usage is zero for one call, and marked incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="It is the midpoint.")], report_usage=False
+        )
+
+        _, _, usage = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert usage == TurnUsage(
+            input_tokens=0, output_tokens=0, total_tokens=0, llm_calls=1, complete=False
+        )
+
+
+async def _collect(
+    generator: AnswerGenerator, messages: list[BaseMessage], ctx: AssistantContext
+) -> tuple[list[str], Generated]:
+    """Stream a turn and return the pieces it yielded and the final result."""
+    pieces: list[str] = []
+    final: Generated | None = None
+    async for item in generator.stream(messages, ctx, QUESTION):
+        if isinstance(item, Generated):
+            final = item
+        else:
+            pieces.append(item)
+    assert final is not None
+    return pieces, final
+
+
+@pytest.mark.asyncio
+class TestDirectGeneratorStream:
+    """One streamed model call, no tools: the pieces are the answer as it arrives."""
+
+    async def test_the_pieces_join_to_the_answer(self):
+        """
+        GIVEN a model that streams "It is the midpoint."
+        WHEN the turn is streamed
+        THEN the pieces join to the answer, no tool ran, and the usage is the reply's
+        """
+        model = _model(AIMessage(content="It is the midpoint."))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "It is the midpoint."
+        assert final.text == "It is the midpoint."
+        assert final.tools_used == []
+        assert final.usage == TurnUsage(
+            input_tokens=10, output_tokens=5, total_tokens=15, llm_calls=1, complete=True
+        )
+
+    async def test_sends_the_system_prompt_then_the_messages(self):
+        """
+        GIVEN a model that answers once
+        WHEN a turn with a history is streamed
+        THEN the model saw the system prompt and then the messages, once
+        """
+        model = _model(AIMessage(content="Hello."))
+        messages = [HumanMessage(content="Earlier"), AIMessage(content="Reply"), *_user()]
+
+        await _collect(DirectGenerator(model), messages, _ctx())
+
+        assert model.seen == [[SystemMessage(content=SYSTEM_PROMPT), *messages]]
+
+    async def test_reasoning_is_withheld_and_the_answer_follows(self):
+        """
+        GIVEN a reply that opens with a reasoning block
+        WHEN the turn is streamed
+        THEN nothing of the block reaches the pieces and the answer does
+        """
+        model = _model(AIMessage(content="<think>hmm hmm</think> The answer."))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "The answer."
+        assert "hmm" not in "".join(pieces)
+        assert final.text == "The answer."
+
+    async def test_a_think_tag_split_across_chunks_is_still_withheld(self):
+        """
+        GIVEN chunks "<thi", "nk>secret</think>", " Done."
+        WHEN the turn is streamed
+        THEN neither "secret" nor the half-arrived tag appears in the pieces
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="<think>secret</think> Done.")],
+            stream_chunks=["<thi", "nk>secret</think>", " Done."],
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "Done."
+        assert final.text == "Done."
+
+    async def test_an_angle_bracket_that_is_not_a_tag_is_delivered(self):
+        """
+        GIVEN chunks "a <", " b" (an inequality, not a tag)
+        WHEN the turn is streamed
+        THEN the pieces join to "a < b" exactly
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a < b")], stream_chunks=["a <", " b"]
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "a < b" == final.text
+
+    async def test_a_trailing_angle_bracket_is_delivered_in_the_end(self):
+        """
+        GIVEN chunks "a ", "<" and then the end of the reply
+        WHEN the turn is streamed
+        THEN the withheld " <" is yielded after the last chunk and the pieces join to "a <"
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a <")], stream_chunks=["a ", "<"]
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert pieces[-1] == " <"
+        assert "".join(pieces) == "a <" == final.text
+
+    async def test_whitespace_before_a_withheld_tag_is_not_sent_twice(self):
+        """
+        GIVEN chunks "foo <", "think>x</think>"
+        WHEN the turn is streamed
+        THEN the pieces join to "foo", the same as the final text
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="foo <think>x</think>")],
+            stream_chunks=["foo <", "think>x</think>"],
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == final.text == "foo"
+
+    async def test_an_empty_reply_still_carries_the_usage(self):
+        """
+        GIVEN a scripted reply with no text
+        WHEN the turn is streamed
+        THEN one Generated comes with empty text and the default usage, complete
+        """
+        model = _model(AIMessage(content=""))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "" == final.text
+        assert final.usage.complete is True
+        assert final.usage.total_tokens == 15
+
+    async def test_a_reply_cut_off_inside_its_reasoning_is_refused(self):
+        """
+        GIVEN a reply that opens a reasoning block and never closes it
+        WHEN the turn is streamed
+        THEN CutOffAnswerError is raised and no piece was yielded
+        """
+        model = _model(AIMessage(content="<think>still thinking"))
+        pieces: list[str] = []
+
+        with pytest.raises(CutOffAnswerError):
+            async for item in DirectGenerator(model).stream(_user(), _ctx(), QUESTION):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        assert pieces == []
+
+    async def test_a_stream_without_usage_is_incomplete(self):
+        """
+        GIVEN a model that streams without reporting usage
+        WHEN the turn is streamed
+        THEN the usage counts zero, one call, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="Plain.")], report_usage=False
+        )
+
+        _, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert final.usage == TurnUsage(
+            input_tokens=0, output_tokens=0, total_tokens=0, llm_calls=1, complete=False
+        )
+
+    async def test_a_model_that_dies_mid_answer_raises_after_the_first_pieces(self):
+        """
+        GIVEN a model server that goes away after two pieces
+        WHEN the turn is streamed
+        THEN the first pieces were yielded and the connection error then propagates
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="one two three four")], fail_after_chunks=2
+        )
+        pieces: list[str] = []
+
+        with pytest.raises(httpx.ConnectError):
+            async for item in DirectGenerator(model).stream(_user(), _ctx(), QUESTION):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        assert "".join(pieces) == "one two"
 
 
 @pytest.mark.asyncio
@@ -285,7 +534,9 @@ class TestAgentGenerator:
         model = _model(_search(), AIMessage(content="It is the midpoint [1]."))
         ctx = _ctx([_chunk()])
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(_user(), ctx, QUESTION)
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), ctx, QUESTION
+        )
 
         assert (text, tools) == ("It is the midpoint [1].", ["search_docs"])
         assert [ref.title for ref in ctx.sources.refs()] == ["Method"]
@@ -317,7 +568,9 @@ class TestAgentGenerator:
             AIMessage(content="Done."),
         )
 
-        _, tools = await AgentGenerator(model, max_tool_calls=4).generate(_user(), _ctx(), QUESTION)
+        _, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert tools == ["list_my_projects", "search_docs"]
 
@@ -329,7 +582,7 @@ class TestAgentGenerator:
         """
         model = _model(_call("delete_everything"), AIMessage(content="I cannot do that."))
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx(), QUESTION
         )
 
@@ -345,7 +598,7 @@ class TestAgentGenerator:
             _call("get_project_result", projectid=PROJECT_ID), AIMessage(content="Not able.")
         )
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx(), QUESTION
         )
 
@@ -360,7 +613,9 @@ class TestAgentGenerator:
         model = _model(_search(1), _search(2), _search(3), AIMessage(content="Here it is."))
         ctx = _ctx([_chunk()])
 
-        text, tools = await AgentGenerator(model, max_tool_calls=2).generate(_user(), ctx, QUESTION)
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), ctx, QUESTION
+        )
 
         assert (text, tools) == ("Here it is.", ["search_docs"])
         assert ctx.retriever.search.await_count == 2
@@ -379,7 +634,7 @@ class TestAgentGenerator:
         model = _model(_call("list_my_projects"), AIMessage(content="I could not look it up."))
 
         with captured_log_records("api.assistant.agent.generation") as records:
-            text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+            text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
                 _user(), ctx, QUESTION
             )
 
@@ -438,7 +693,7 @@ class TestAgentGenerator:
         """
         model = _model(_search(), AIMessage(content="Stay within the limit of 5 calls."))
 
-        text, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx([_chunk()]), QUESTION
         )
 
@@ -457,7 +712,7 @@ class TestAgentGenerator:
         for index in range(3):
             history += [HumanMessage(content=f"q{index}"), AIMessage(content=f"a{index}")]
 
-        text, _ = await AgentGenerator(model, max_tool_calls=1).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=1).generate(
             [*history, *_user()], _ctx(), QUESTION
         )
 
@@ -473,7 +728,7 @@ class TestAgentGenerator:
         """
         model = _model(_search(1), _search(2), AIMessage(content="Answered in time."))
 
-        text, _ = await AgentGenerator(model, max_tool_calls=1).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=1).generate(
             _user(), _ctx([_chunk()]), QUESTION
         )
 
@@ -500,7 +755,7 @@ class TestAgentGenerator:
 
         with_context = HumanMessage(content=f"Some fetched context.\n\nQuestion: {QUESTION}")
 
-        text, tools = await AgentGenerator(model, max_tool_calls=2).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=2).generate(
             [*history, with_context], ctx, QUESTION
         )
 
@@ -581,7 +836,9 @@ class TestAgentGenerator:
             AIMessage(content="No data."),
         )
 
-        text, _ = await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert text == "No data."
         assert model.seen[-1] == [
@@ -603,7 +860,9 @@ class TestAgentGenerator:
             AIMessage(content="<think>out of tokens</think>"),
         )
 
-        text, _ = await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert text == ""
 
@@ -636,6 +895,110 @@ class TestAgentGenerator:
 
         with pytest.raises(CutOffAnswerError):
             await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+
+    async def test_sums_the_usage_of_every_reply_of_the_loop(self):
+        """
+        GIVEN a model that searches twice and then answers, each reply with its own usage
+        WHEN the turn is generated
+        THEN the usage is the sum over the three replies, and complete
+        """
+        model = _model(
+            _used(_search(1), 100, 10),
+            _used(_search(2), 200, 20),
+            _used(AIMessage(content="It is the midpoint."), 300, 40),
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=600, output_tokens=70, total_tokens=670, llm_calls=3, complete=True
+        )
+
+    async def test_the_usage_of_a_limit_run_includes_the_fallback_call_and_not_the_limit_note(self):
+        """
+        GIVEN two tool calls allowed, a model that keeps asking for tools, and a fallback reply
+        WHEN the turn is generated
+        THEN the usage is the four loop replies plus the fallback reply, five calls, and
+             the limit's own message, which no model wrote, is not counted as a missing one
+        """
+        model = _model(
+            _call("nope", 1),
+            _call("nope", 2),
+            _call("nope", 3),
+            _call("nope", 4),
+            _used(AIMessage(content="From what I found."), 50, 5),
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=4 * 10 + 50,
+            output_tokens=4 * 5 + 5,
+            total_tokens=4 * 15 + 55,
+            llm_calls=5,
+            complete=True,
+        )
+
+    async def test_a_reply_without_usage_leaves_partial_sums_and_marks_them_incomplete(self):
+        """
+        GIVEN a loop whose first reply reports usage and whose second reports none
+        WHEN the turn is generated
+        THEN the usage counts the first, still counts two calls, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_used(_search(), 100, 10), AIMessage(content="It is the midpoint.")],
+            report_usage=False,
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=100, output_tokens=10, total_tokens=110, llm_calls=2, complete=False
+        )
+
+    async def test_a_fallback_reply_without_usage_is_incomplete_and_keeps_the_loop_tokens(self):
+        """
+        GIVEN a run that hits the model-call limit and a fallback reply reporting no usage
+        WHEN the turn is generated
+        THEN the usage sums the four loop replies, counts five calls, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[
+                *(_used(_call("nope", index), 100, 10) for index in range(1, 5)),
+                AIMessage(content="From what I found."),
+            ],
+            report_usage=False,
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=400, output_tokens=40, total_tokens=440, llm_calls=5, complete=False
+        )
+
+    async def test_stream_yields_the_whole_answer_once(self):
+        """
+        GIVEN a model that searches the documents and then answers
+        WHEN the turn is streamed
+        THEN the only item is one Generated whose text, tools and usage match generate
+        """
+        responses = [_search(), AIMessage(content="It is the midpoint [1].")]
+        generator = AgentGenerator(_model(*responses), max_tool_calls=4)
+        expected = await AgentGenerator(_model(*responses), max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        items = [item async for item in generator.stream(_user(), _ctx([_chunk()]), QUESTION)]
+
+        assert items == [Generated(*expected)]
 
 
 def _failure_request(name: str = "list_my_projects") -> ToolCallRequest:

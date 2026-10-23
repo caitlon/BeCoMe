@@ -6,10 +6,12 @@ import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { GuestRoute } from "@/components/auth/GuestRoute";
 import { RouteAnnouncer } from "@/components/RouteAnnouncer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageLoader } from "@/components/PageLoader";
 import { createQueryClient } from "@/lib/queryClient";
+import { AssistantProvider, AssistantEntry } from "@/components/assistant";
 
 const Landing = lazy(() => import("./pages/Landing"));
 const Login = lazy(() => import("./pages/Login"));
@@ -26,6 +28,7 @@ const About = lazy(() => import("./pages/About"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const FaqPage = lazy(() => import("./pages/FAQ"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -37,49 +40,67 @@ const App = () => (
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <TooltipProvider>
-            <Toaster />
-            <BrowserRouter>
-              <RouteAnnouncer />
-              <Suspense fallback={<PageLoader />}>
-                <ErrorBoundary>
-                  <Routes>
-                    <Route path="/" element={<Landing />} />
-                    <Route path="/about" element={<About />} />
-                    <Route path="/docs" element={<Documentation />} />
-                    <Route path="/faq" element={<FaqPage />} />
-                    <Route path="/privacy" element={<Privacy />} />
-                    <Route path="/case-studies" element={<CaseStudies />} />
-                    <Route path="/case-study/:id" element={<CaseStudy />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
-                    <Route path="/forgot-password" element={<ForgotPassword />} />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="/verify-email" element={<VerifyEmail />} />
-                    <Route path="/projects" element={
-                      <ProtectedRoute>
-                        <Projects />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/projects/:id" element={
-                      <ProtectedRoute>
-                        <ProjectDetail />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/profile" element={
-                      <ProtectedRoute>
-                        <Profile />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="/onboarding" element={
-                      <ProtectedRoute>
-                        <Onboarding />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </ErrorBoundary>
-              </Suspense>
-            </BrowserRouter>
+            <AssistantProvider>
+              <Toaster />
+              <BrowserRouter>
+                <RouteAnnouncer />
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary>
+                    <Routes>
+                      <Route path="/" element={<Landing />} />
+                      <Route path="/about" element={<About />} />
+                      <Route path="/docs" element={<Documentation />} />
+                      <Route path="/faq" element={<FaqPage />} />
+                      <Route path="/privacy" element={<Privacy />} />
+                      <Route path="/terms" element={<Terms />} />
+                      <Route path="/case-studies" element={<CaseStudies />} />
+                      <Route path="/case-study/:id" element={<CaseStudy />} />
+                      <Route path="/login" element={
+                        <GuestRoute>
+                          <Login />
+                        </GuestRoute>
+                      } />
+                      <Route path="/register" element={
+                        <GuestRoute>
+                          <Register />
+                        </GuestRoute>
+                      } />
+                      <Route path="/forgot-password" element={<ForgotPassword />} />
+                      <Route path="/reset-password" element={<ResetPassword />} />
+                      <Route path="/verify-email" element={<VerifyEmail />} />
+                      <Route path="/projects" element={
+                        <ProtectedRoute>
+                          <Projects />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/projects/:id" element={
+                        <ProtectedRoute>
+                          <ProjectDetail />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/profile" element={
+                        <ProtectedRoute>
+                          <Profile />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/onboarding" element={
+                        <ProtectedRoute>
+                          <Onboarding />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </ErrorBoundary>
+                </Suspense>
+                {AssistantEntry && (
+                  <ErrorBoundary fallback={null}>
+                    <Suspense fallback={null}>
+                      <AssistantEntry />
+                    </Suspense>
+                  </ErrorBoundary>
+                )}
+              </BrowserRouter>
+            </AssistantProvider>
           </TooltipProvider>
         </AuthProvider>
       </QueryClientProvider>

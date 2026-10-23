@@ -20,8 +20,8 @@ class ProjectCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
     description: str | None = Field(None, max_length=2000, description="Project description")
-    scale_min: float = Field(default=0.0, description="Minimum scale value")
-    scale_max: float = Field(default=100.0, description="Maximum scale value")
+    scale_min: float = Field(default=0.0, allow_inf_nan=False, description="Minimum scale value")
+    scale_max: float = Field(default=100.0, allow_inf_nan=False, description="Maximum scale value")
     scale_unit: str = Field(
         default="", max_length=50, description="Scale unit (e.g., '%', 'points')"
     )
@@ -62,8 +62,8 @@ class ProjectUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
-    scale_min: float | None = None
-    scale_max: float | None = None
+    scale_min: float | None = Field(None, allow_inf_nan=False)
+    scale_max: float | None = Field(None, allow_inf_nan=False)
     scale_unit: str | None = Field(None, max_length=50)
 
     @model_validator(mode="before")
@@ -165,7 +165,7 @@ class MemberResponse(BaseModel):
     """Project member details."""
 
     user_id: str
-    email: str
+    email: str | None
     first_name: str
     last_name: str | None = None
     photo_url: str | None = None
@@ -173,16 +173,19 @@ class MemberResponse(BaseModel):
     joined_at: datetime
 
     @classmethod
-    def from_model(cls, member: "ProjectMember", user: "User") -> "MemberResponse":
+    def from_model(
+        cls, member: "ProjectMember", user: "User", *, show_email: bool
+    ) -> "MemberResponse":
         """Create response from database models.
 
         :param member: ProjectMember database model
         :param user: User database model
-        :return: MemberResponse instance
+        :param show_email: Whether the viewer may see the address (project admin or the member)
+        :return: MemberResponse instance, with ``email`` null when hidden
         """
         return cls(
             user_id=str(user.id),
-            email=user.email,
+            email=user.email if show_email else None,
             first_name=user.first_name,
             last_name=user.last_name,
             photo_url=build_photo_url(user.id, user.photo_url),

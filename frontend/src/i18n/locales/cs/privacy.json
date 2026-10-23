@@ -2,12 +2,12 @@
   "meta": {
     "title": "Ochrana osobních údajů",
     "subtitle": "Co o vás tato služba uchovává, proč a jak si to vzít zpět.",
-    "updated": "Aktualizováno 30. září 2026"
+    "updated": "Aktualizováno 21. října 2026"
   },
   "controller": {
     "heading": "Kdo za to odpovídá",
-    "body": "Službu provozuje Ekaterina Kuzmina jako samostatný projekt na Provozně ekonomické fakultě České zemědělské univerzity v Praze a je správcem zde popsaných údajů. S jakýmkoli dotazem se obraťte na níže uvedenou adresu.",
-    "email": "xkuze010@studenti.czu.cz"
+    "body": "Správcem zde popsaných údajů je Ekaterina Kuzmina, která tuto službu provozuje. S jakýmkoli dotazem se obraťte na níže uvedenou adresu.",
+    "email": "caiton@pm.me"
   },
   "collected": {
     "heading": "Co se ukládá",
@@ -44,7 +44,9 @@
       "Cloudflare zajišťuje doručování webu a provozuje kontrolu robotů, která chrání formuláře pro přihlášení, registraci, obnovu hesla a opětovné zaslání ověřovacího e-mailu.",
       "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Jeho rozhraní je ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
       "Sentry přijímá hlášení o chybách z prohlížeče i ze serveru, ve svém frankfurtském regionu. Prohlížeč mu navíc při každém zobrazení stránky posílá krátký záznam o relaci, který služba označuje jako release health. Server zhruba u každého desátého požadavku odesílá výkonnostní trasu s cestou, URL a časy databázových dotazů. Přístupové tokeny a tokeny pro obnovu hesla se odstraňují dříve, než cokoli z toho odejde.",
-      "Better Stack přijímá výše popsané serverové záznamy včetně IP adres, ve svém datovém regionu v Evropské unii."
+      "Better Stack přijímá výše popsané serverové záznamy včetně IP adres, ve svém datovém regionu v Evropské unii.",
+      "OVHcloud provozuje v Evropské unii model AI, na kterém běží asistent. Co dostává, popisuje oddíl o asistentovi níže.",
+      "LangChain, Inc. ukládá záznamy konverzací s asistentem (trasy) v LangSmith, ve své oblasti v Evropské unii. LangChain je americká společnost; oddíl o asistentovi níže popisuje data a záruky pro přenos."
     ],
     "outro": "Nepoužívá se žádná analytická ani reklamní služba a kromě widgetu Cloudflare a popsaného hlášení do Sentry není vložen žádný sledovací skript."
   },
@@ -56,7 +58,21 @@
       "Odkaz pro ověření e-mailu platí 24 hodin.",
       "Přihlášená relace trvá 15 minut a používáním se sama obnovuje. Sedm dní nečinnosti ji ukončí; pro průběžně používanou relaci není pevný horní limit."
     ],
-    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tři dny a poté se zahazují. Hlášení o chybách, záznamy relací a trasy uchovává Sentry 30 dní."
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tři dny a poté se zahazují. Hlášení o chybách, záznamy relací a výkonnostní trasy uchovává Sentry 30 dní. Trasy asistenta uchovává LangSmith 14 dní."
+  },
+  "assistant": {
+    "heading": "Asistent",
+    "intro": "Asistent odpovídá na otázky o metodě a o vašich projektech. Pracuje jen tehdy, když ho otevřete a pošlete otázku. S otázkou se děje toto:",
+    "items": [
+      "K modelu odchází vaše otázka, nejvýše 20 posledních zpráv konverzace, několik úryvků z dokumentace BeCoMe a z publikovaných článků a údaje projektu otevřeného v panelu: jeho název, popis, škála a výsledek a názory v něm, u každého člena jméno, příjmení, pozice a hodnoty. Týká se to všech členů projektu, nejen vás. Vaše e-mailová adresa, ID účtu ani fotka se nikdy neposílají.",
+      "Model běží v OVHcloud AI Endpoints v Evropské unii (Gravelines, Francie). OVHcloud otázky ani odpovědi neukládá a nepoužívá je k trénování modelů.",
+      "Aby šlo najít a opravit chyby, zaznamená se každá otázka jako trasa v LangSmith, kterou provozuje společnost LangChain, Inc.: vše výše uvedené, co odchází k modelu, a k tomu odpověď. Trasy se ukládají v Evropské unii (Nizozemsko) a po 14 dnech se mažou. LangChain je americká společnost a může k nim přistupovat ze Spojených států; tento přenos kryjí standardní smluvní doložky EU v její smlouvě o zpracování a o jejich kopii si můžete napsat na výše uvedenou adresu. Před odesláním trasy se jména a pozice členů projektu nahradí označením jako „Expert 1“. Funguje to pro jména zapsaná tak, jak jsou v projektu; překlep nebo zdrobnělina v otázce může projít beze změny.",
+      "Konverzace se uchovává jen v záložce vašeho prohlížeče. Smaže se, když záložku zavřete nebo se odhlásíte, a služba ji na svých serverech neukládá.",
+      "Vaše vlastní otázky a názory se posílají, aby služba mohla poskytnout to, o co žádáte (čl. 6 odst. 1 písm. b) GDPR). Názory ostatních členů a trasy stojí na oprávněném zájmu podle čl. 6 odst. 1 písm. f): zájmu členů porozumět společnému výsledku a zájmu správce na správných odpovědích asistenta.",
+      "Můžete vznést námitku. V profilu zapněte „Skrýt moje názory před asistentem ostatních členů“. Od té chvíle asistent ostatních členů vaše názory vůbec nevidí: ani jméno, ani pozici, ani hodnoty. Váš vlastní asistent vám je ukazuje dál. Výsledek projektu, třeba průměr a počet expertů, se počítá jako dřív a váš názor v něm zůstává. Pokud v projektu nikdo jiný námitku nevznesl, dají se vaše hodnoty dopočítat z výsledku a ostatních názorů; asistent má tento výpočet zakázaný. Ostatní členové si také mohou všimnout, že jeden názor chybí.",
+      "Do asistenta nepište citlivé údaje, například o zdraví nebo kontakty na jiné lidi."
+    ],
+    "outro": "V trase není e-mailová adresa, ID účtu ani IP adresa, takže ji na žádost nelze přiřadit k vašemu účtu. Všechny trasy se proto mažou po 14 dnech bez ohledu na žádost."
   },
   "rights": {
     "heading": "Vaše práva a jak je uplatnit",

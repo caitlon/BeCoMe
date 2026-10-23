@@ -1,10 +1,11 @@
 """Tests for invitation management endpoints (email-based)."""
 
+from unittest.mock import patch
 from uuid import UUID
 
 from sqlmodel import select
 
-from api.db.models import Invitation, Project, ProjectMember
+from api.db.models import Invitation, MemberRole, Project, ProjectMember
 from tests.integration.api.conftest import auth_header, create_project, register_and_login
 
 
@@ -636,8 +637,8 @@ class TestListProjectInvitations:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_accessible_by_project_member(self, client):
-        """Expert (non-admin) members can access project invitations."""
+    def test_not_accessible_by_expert_member(self, client):
+        """Expert (non-admin) members get 403 and no invitee details."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         expert_token = register_and_login(client, "expert@example.com")
@@ -656,11 +657,12 @@ class TestListProjectInvitations:
         )
 
         # Create a new pending invitation
-        client.post(
+        pending_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"email": "invitee@example.com"},
             headers=auth_header(admin_token),
         )
+        assert pending_resp.status_code == 201
 
         # WHEN: expert accesses invitations
         response = client.get(
@@ -669,8 +671,8 @@ class TestListProjectInvitations:
         )
 
         # THEN
-        assert response.status_code == 200
-        assert len(response.json()) == 1
+        assert response.status_code == 403
+        assert "invitee@example.com" not in response.text
 
     def test_not_accessible_by_non_member(self, client):
         """Non-members cannot access project invitations."""
@@ -701,3 +703,191 @@ class TestListProjectInvitations:
 
         # THEN
         assert response.status_code == 401
+
+
+class TestInvitationErrorCodes:
+    """Refusals carry a stable code beside the unchanged detail sentence."""
+
+    def test_unknown_invitee_has_a_code_and_does_not_echo_the_address(self, client):
+        """404 names the code and never repeats the address the admin typed."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        with patch("api.routes.invitations.logger") as mock_logger:
+            response = client.post(
+                f"/api/v1/projects/{project['id']}/invite",
+                json={"email": "stranger@example.com"},
+                headers=auth_header(admin_token),
+            )
+
+        # THEN
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "No user found with this email",
+            "code": "invitee_not_found",
+        }
+        assert "stranger@example.com" not in response.text
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["event"] == "invitation_rejected"
+        assert extra["reason"] == "invitee_not_found"
+        assert "stranger@example.com" not in str(mock_logger.warning.call_args)
+
+    def test_already_invited_has_a_code_and_is_logged(self, client):
+        """409 for a second pending invitation names the code and logs the rejection."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        url = f"/api/v1/projects/{project['id']}/invite"
+        client.post(url, json={"email": "invitee@example.com"}, headers=auth_header(admin_token))
+
+        # WHEN
+        with patch("api.routes.invitations.logger") as mock_logger:
+            response = client.post(
+                url, json={"email": "invitee@example.com"}, headers=auth_header(admin_token)
+            )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "User already has a pending invitation",
+            "code": "already_invited",
+        }
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["event"] == "invitation_rejected"
+        assert extra["reason"] == "already_invited"
+
+    def test_already_member_has_a_code(self, client):
+        """Inviting a project's own admin answers 409 with the member code."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "admin@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "You are already a member of this project",
+            "code": "already_member",
+        }
+
+    def test_example_project_invite_has_a_code_and_is_logged(self, client, session):
+        """The example project refuses an invitation with its code and logs the rejection."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        project = session.get(Project, UUID(created["id"]))
+        assert project is not None
+        project.is_example = True
+        session.add(project)
+        session.commit()
+
+        # WHEN
+        with patch("api.routes.invitations.logger") as mock_logger:
+            response = client.post(
+                f"/api/v1/projects/{created['id']}/invite",
+                json={"email": "invitee@example.com"},
+                headers=auth_header(admin_token),
+            )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "The example project cannot take invitations",
+            "code": "example_project_not_invitable",
+        }
+        extra = mock_logger.warning.call_args.kwargs["extra"]
+        assert extra["event"] == "invitation_rejected"
+        assert extra["reason"] == "example_project"
+
+    def test_accept_into_an_example_project_has_the_same_code(self, client, session):
+        """The accept route answers with the same code the invite route does."""
+        # GIVEN: an invitation issued before the project became the example
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        project = session.get(Project, UUID(created["id"]))
+        assert project is not None
+        project.is_example = True
+        session.add(project)
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept", headers=auth_header(invitee_token)
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json()["code"] == "example_project_not_invitable"
+
+    def test_accepting_as_an_existing_member_has_the_member_code(self, client, session):
+        """Accepting when the user already belongs to the project answers 409 with its code."""
+        # GIVEN: an invitation that is still pending after the invitee became a member
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        invitee_id = client.get("/api/v1/users/me", headers=auth_header(invitee_token)).json()["id"]
+        session.add(
+            ProjectMember(
+                project_id=UUID(created["id"]), user_id=UUID(invitee_id), role=MemberRole.EXPERT
+            )
+        )
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept", headers=auth_header(invitee_token)
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "You are already a member of this project",
+            "code": "already_member",
+        }
+
+    def test_missing_and_someone_elses_invitation_give_identical_bodies(self, client):
+        """Accept and decline cannot tell a missing invitation from one that is not yours."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        other_token = register_and_login(client, "other@example.com")
+        project = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        missing_id = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN
+        responses = [
+            client.post(f"/api/v1/invitations/{target}/{action}", headers=auth_header(other_token))
+            for action in ("accept", "decline")
+            for target in (missing_id, invitation_id)
+        ]
+
+        # THEN
+        expected = {"detail": "Invitation not found", "code": "invitation_not_found"}
+        assert [r.status_code for r in responses] == [404, 404, 404, 404]
+        assert [r.json() for r in responses] == [expected] * 4

@@ -127,6 +127,47 @@ describe('Login', () => {
     });
   });
 
+  it('shows no email error when the empty field is left before any submit attempt', async () => {
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+    // Blurring the password field validates the whole form, so once its error shows
+    // the email blur above has been validated too.
+    await user.tab();
+    await screen.findByText(/password.*required/i);
+
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for the email when the form is submitted with it empty', async () => {
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(mockLogin).not.toHaveBeenCalled();
+  });
+
+  it('updates the email error as the user types after a failed submit', async () => {
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByText('Email is required');
+
+    await user.type(getEmailInput(), 'a');
+
+    expect(await screen.findByText('Invalid email address')).toBeInTheDocument();
+    expect(screen.queryByText('Email is required')).not.toBeInTheDocument();
+  });
+
   it('shows validation error for empty password', async () => {
     const user = userEvent.setup();
     render(<Login />);
@@ -155,7 +196,7 @@ describe('Login', () => {
     });
   });
 
-  it('calls login and navigates to /projects on success', async () => {
+  it('calls login on success and leaves the redirect to GuestRoute', async () => {
     const user = userEvent.setup();
     mockLogin.mockResolvedValueOnce(undefined);
 
@@ -173,8 +214,9 @@ describe('Login', () => {
     });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+      expect(mockToast).toHaveBeenCalled();
     });
+    expect(mockNavigate).not.toHaveBeenCalled();
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({

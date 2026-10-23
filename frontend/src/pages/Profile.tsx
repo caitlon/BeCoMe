@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageShell } from "@/components/layout/PageShell";
+import { AssistantProfileSlot } from "@/components/assistant";
 import { DeleteAccountDialog } from "@/components/modals/DeleteAccountDialog";
 import {
   FormField,
@@ -21,6 +22,8 @@ import {
 } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
+import { isCurrentPasswordIncorrect } from "@/lib/errors";
+import { describeError } from "@/lib/errorMessages";
 import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -148,7 +151,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.photoFailed"),
+        description: describeError(error, tCommon, t("toast.photoFailed")),
         variant: "destructive",
       });
     } finally {
@@ -189,8 +192,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("toast.updateFailed"),
+        description: describeError(error, tCommon, t("toast.updateFailed")),
         variant: "destructive",
       });
     } finally {
@@ -206,12 +208,24 @@ const Profile = () => {
         new_password: data.newPassword,
       });
       passwordForm.reset();
-      toast({ title: t("toast.passwordUpdated") });
+      toast({
+        title: t("toast.passwordUpdated"),
+        description: t("toast.passwordUpdatedSignedOut"),
+      });
+      // The change revoked every session, this one included. Probing it now sends the
+      // user to sign in quietly, instead of on their next request with "Session expired".
+      await refreshUser();
     } catch (error) {
+      if (isCurrentPasswordIncorrect(error)) {
+        passwordForm.setError("currentPassword", {
+          type: "server",
+          message: t("changePassword.currentIncorrect"),
+        });
+        return;
+      }
       toast({
         title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("toast.passwordFailed"),
+        description: describeError(error, tCommon, t("toast.passwordFailed")),
         variant: "destructive",
       });
     } finally {
@@ -229,8 +243,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("dataExport.error"),
+        description: describeError(error, tCommon, t("dataExport.error")),
         variant: "destructive",
       });
     } finally {
@@ -405,6 +418,9 @@ const Profile = () => {
               </form>
             </CardContent>
           </Card>
+
+          {/* Assistant privacy (a lazy slot: empty in a build without the assistant) */}
+          <AssistantProfileSlot />
 
           {/* Data Export (GDPR Article 20) */}
           <Card>

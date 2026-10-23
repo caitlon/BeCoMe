@@ -1,0 +1,245 @@
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
+import { AlertTriangle, Info, OctagonX } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { AnswerChecks } from "@/types/api";
+import { AssistantMarkdown } from "./AssistantMarkdown";
+import { AssistantSources } from "./AssistantSources";
+import { cleanChecks, cleanSources, cleanToolsUsed, sourceAnchorId } from "./message-shape";
+import type { AssistantMessage as AssistantMessageData, AssistantMessageError } from "./useAssistantChat";
+
+// A blinking bar after the last line of text, so the markdown renderer knows nothing about it:
+// the last block, or the last item when that block is a list.
+const STREAMING_CURSOR =
+  "[&>:last-child:not(ul,ol)]:after:ml-0.5 [&>:last-child:not(ul,ol)]:after:inline-block [&>:last-child:not(ul,ol)]:after:h-4 [&>:last-child:not(ul,ol)]:after:w-0.5 [&>:last-child:not(ul,ol)]:after:animate-pulse [&>:last-child:not(ul,ol)]:after:bg-foreground [&>:last-child:not(ul,ol)]:after:align-middle [&>:last-child:not(ul,ol)]:after:content-[''] motion-reduce:[&>:last-child:not(ul,ol)]:after:animate-none " +
+  "[&>:is(ul,ol):last-child>li:last-child]:after:ml-0.5 [&>:is(ul,ol):last-child>li:last-child]:after:inline-block [&>:is(ul,ol):last-child>li:last-child]:after:h-4 [&>:is(ul,ol):last-child>li:last-child]:after:w-0.5 [&>:is(ul,ol):last-child>li:last-child]:after:animate-pulse [&>:is(ul,ol):last-child>li:last-child]:after:bg-foreground [&>:is(ul,ol):last-child>li:last-child]:after:align-middle [&>:is(ul,ol):last-child>li:last-child]:after:content-[''] motion-reduce:[&>:is(ul,ol):last-child>li:last-child]:after:animate-none";
+
+const KNOWN_TOOLS = new Set([
+  "search_docs",
+  "list_my_projects",
+  "get_project",
+  "get_project_result",
+  "get_project_opinions",
+]);
+
+/** The ways out of a project that is gone (a 404 on the last answer). */
+export interface NotFoundActions {
+  /** Absent in a conversation that is not about a project: there is nothing to ask without. */
+  readonly onAskWithout?: () => void;
+  readonly onOpenProjects: () => void;
+}
+
+interface FailureBlockProps {
+  readonly cut: boolean;
+  /** Whether some of the answer is on screen above the block. */
+  readonly hasText: boolean;
+  readonly error?: AssistantMessageError;
+  readonly onRetry?: () => void;
+  readonly notFound?: NotFoundActions;
+  /** Announce the block to screen readers; off for a block that was already there. */
+  readonly announce?: boolean;
+}
+
+function NotFoundButtons({ actions }: { readonly actions: NotFoundActions }) {
+  const { t } = useTranslation("assistant");
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {actions.onAskWithout && (
+        <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
+          {t("message.askWithout")}
+        </Button>
+      )}
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/projects" onClick={actions.onOpenProjects}>
+          {t("message.openProjects")}
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The red block of a failed or interrupted turn. The text is chosen by the status code
+ * from fixed copy: `error.detail` is whatever the server or the network said, and is
+ * never shown.
+ */
+function FailureBlock({ cut, hasText, error, onRetry, notFound, announce }: FailureBlockProps) {
+  const { t } = useTranslation("assistant");
+  let title = t("message.errors.generic");
+  let hint: string | null = null;
+
+  if (cut) {
+    title = t("message.errors.cut");
+    hint = hasText ? t("message.errors.cutHint") : null;
+  } else if (error?.code === 429) {
+    const seconds = error.retryAfter;
+    title =
+      seconds !== undefined && Number.isFinite(seconds) && seconds > 0
+        ? t("message.errors.rateLimited", { minutes: Math.ceil(seconds / 60) })
+        : t("message.errors.rateLimitedGeneric");
+  } else if (error?.code === 503) {
+    title = t("message.errors.unavailable");
+    hint = t("message.errors.unavailableHint");
+  } else if (error?.code === 404) {
+    title = t("message.errors.notFound");
+    hint = t("message.errors.notFoundHint");
+  }
+
+  return (
+    <div
+      role={announce ? "alert" : undefined}
+      className="mt-2 flex items-start gap-2.5 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2.5 text-[13px]"
+    >
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+      <div>
+        <p className="font-medium">{title}</p>
+        {hint && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{hint}</p>}
+        {onRetry && (
+          <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry}>
+            {t("message.retry")}
+          </Button>
+        )}
+        {notFound && <NotFoundButtons actions={notFound} />}
+      </div>
+    </div>
+  );
+}
+
+function ChecksLines({ checks }: { readonly checks: AnswerChecks }) {
+  const { t } = useTranslation("assistant");
+  const lines: string[] = [];
+  if (!checks.numbers_grounded) {
+    lines.push(
+      checks.ungrounded_numbers.length > 0
+        ? t("message.numbersNotConfirmed", { numbers: checks.ungrounded_numbers.join(", ") })
+        : t("message.numbersNotConfirmedGeneric"),
+    );
+  }
+  if (!checks.citations_valid) {
+    lines.push(t("message.citationInvalid"));
+  }
+
+  return lines.map((line) => (
+    <p key={line} className="mt-2 flex items-start gap-2 text-[12.5px] text-warning">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{line}</span>
+    </p>
+  ));
+}
+
+function ToolsLine({ tools }: { readonly tools: readonly string[] }) {
+  const { t } = useTranslation("assistant");
+  const labels = tools.map((tool) => (KNOWN_TOOLS.has(tool) ? t(`message.tools.${tool}`) : tool));
+
+  return (
+    <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+      <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>{t("message.read", { tools: labels.join(", ") })}</span>
+    </p>
+  );
+}
+
+export interface AssistantMessageProps {
+  readonly message: AssistantMessageData;
+  readonly onRetry?: () => void;
+  readonly notFound?: NotFoundActions;
+  readonly announce?: boolean;
+}
+
+function AssistantAnswer({ message, onRetry, notFound, announce }: AssistantMessageProps) {
+  const { t } = useTranslation("assistant");
+  const [openN, setOpenN] = useState<number | null>(null);
+  // A fresh object per citation click, so citing the row that is already open scrolls again.
+  const [scrollRequest, setScrollRequest] = useState<{ readonly n: number } | null>(null);
+  const sources = useMemo(() => cleanSources(message.sources), [message.sources]);
+  const sourceNumbers = useMemo(() => sources.map((source) => source.n), [sources]);
+  const tools = cleanToolsUsed(message.toolsUsed);
+  const checks = cleanChecks(message.checks);
+
+  const { status } = message;
+  const partial = status === "error" || status === "cut" || status === "cancelled";
+  const hasText = message.content.trim() !== "";
+
+  const messageId = message.id;
+  const handleCite = useCallback((n: number) => {
+    setOpenN(n);
+    setScrollRequest({ n });
+  }, []);
+
+  // After the render that opened the row, so its detail exists when the scroll measures it.
+  useEffect(() => {
+    if (scrollRequest === null) return;
+    document.getElementById(sourceAnchorId(messageId, scrollRequest.n))?.scrollIntoView?.({ block: "nearest" });
+  }, [scrollRequest, messageId]);
+
+  function handleToggle(n: number) {
+    setOpenN((current) => (current === n ? null : n));
+  }
+
+  return (
+    <div className="text-sm">
+      {hasText && (
+        <div
+          className={cn(
+            "[&_code]:whitespace-pre-wrap [&_li]:my-0.5 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-[18px] [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-[18px]",
+            partial && "border-l-2 border-dashed pl-2.5 opacity-75",
+            status === "pending" && STREAMING_CURSOR,
+          )}
+        >
+          <AssistantMarkdown
+            content={message.content}
+            messageId={message.id}
+            sourceNumbers={status === "done" ? sourceNumbers : undefined}
+            onCite={handleCite}
+          />
+        </div>
+      )}
+      {status === "cancelled" && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <OctagonX className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span>{t("message.stopped")}</span>
+          {hasText && <span>· {t("message.stoppedHint")}</span>}
+        </p>
+      )}
+      {(status === "error" || status === "cut") && (
+        <FailureBlock
+          cut={status === "cut"}
+          hasText={hasText}
+          error={message.error}
+          onRetry={onRetry}
+          notFound={notFound}
+          announce={announce}
+        />
+      )}
+      {checks && <ChecksLines checks={checks} />}
+      {sources.length > 0 && (
+        <AssistantSources messageId={message.id} sources={sources} openN={openN} onToggle={handleToggle} />
+      )}
+      {tools.length > 0 && <ToolsLine tools={tools} />}
+    </div>
+  );
+}
+
+/**
+ * One turn of the conversation. The user's text is never read as markdown. Memoised:
+ * react-markdown reparses an answer on every render, and during a stream the feed
+ * renders on every token, so a settled message must not follow it.
+ */
+export const AssistantMessage = memo(function AssistantMessage({
+  message,
+  onRetry,
+  notFound,
+  announce,
+}: AssistantMessageProps) {
+  if (message.role === "user") {
+    return (
+      <div className="ml-auto max-w-[80%] whitespace-pre-wrap rounded-xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground">
+        {message.content}
+      </div>
+    );
+  }
+  return <AssistantAnswer message={message} onRetry={onRetry} notFound={notFound} announce={announce} />;
+});

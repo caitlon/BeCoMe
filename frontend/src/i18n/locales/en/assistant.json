@@ -1,0 +1,125 @@
+{
+  "trigger": {
+    "header": "Assistant",
+    "result": "Explain this result"
+  },
+  "privacy": {
+    "title": "Assistant Privacy",
+    "label": "Hide my opinions from other members' assistant",
+    "description": "When this is on, the assistant does not show your opinions to other project members who ask it. It still shows them to you. Project results, such as the mean and the number of experts, are calculated as before.",
+    "enabledToast": "Your opinions are now hidden from other members' assistant",
+    "disabledToast": "Other members' assistant can show your opinions again",
+    "failed": "Could not save the assistant setting"
+  },
+  "panel": {
+    "title": "Assistant",
+    "scopeProject": "Project “{{name}}”",
+    "scopeGeneral": "Method and app",
+    "seesOnly": "Sees only what you see in this project. Your questions go to an AI model in the EU.",
+    "clear": "Clear conversation",
+    "clearConfirm": "Clear the conversation? This cannot be undone.",
+    "clearYes": "Clear",
+    "clearNo": "Keep",
+    "footer": "The assistant can be wrong. Check the result page."
+  },
+  "empty": {
+    "titleProject": "Ask about this project",
+    "titleGeneral": "Ask about the method or the app",
+    "hint": "Answers come from the documentation and from this project’s data. Every claim is followed by its source.",
+    "suggestionsProject": [
+      "What does the result mean?",
+      "Why is the confidence moderate?",
+      "How is the best compromise computed?"
+    ],
+    "suggestionsGeneral": [
+      "What is a fuzzy opinion?",
+      "How do I invite experts?",
+      "What does Δmax say?"
+    ]
+  },
+  "composer": {
+    "placeholder": "Ask a question…",
+    "hint": "Enter to send · Shift+Enter for a new line",
+    "stop": "Stop"
+  },
+  "feed": {
+    "label": "Conversation",
+    "older": "Older messages are no longer sent with new questions."
+  },
+  "message": {
+    "sources": "Sources",
+    "localCopy": "Local copy",
+    "localHint": "From the thesis and articles, which have no public page.",
+    "publicLayer": "Documentation",
+    "openSource": "Open the page",
+    "noSuchSource": "No such source",
+    "numbersNotConfirmed": "Numbers not confirmed by the sources: {{numbers}}",
+    "numbersNotConfirmedGeneric": "Some numbers are not confirmed by the sources.",
+    "citationInvalid": "A citation points to no source.",
+    "read": "Read: {{tools}}",
+    "tools": {
+      "search_docs": "documentation",
+      "list_my_projects": "projects",
+      "get_project": "project",
+      "get_project_result": "result",
+      "get_project_opinions": "opinions"
+    },
+    "stopped": "Stopped",
+    "stoppedHint": "Partial answer. Not sent with your next question.",
+    "retry": "Try again",
+    "errors": {
+      "rateLimited": "Message limit reached. Try again in {{minutes}} min.",
+      "rateLimitedGeneric": "Message limit reached. Try again later.",
+      "unavailable": "The assistant is temporarily unavailable.",
+      "unavailableHint": "The model is not responding.",
+      "notFound": "This project is not available.",
+      "notFoundHint": "It may have been deleted or you are no longer a member.",
+      "generic": "Something went wrong. Please try again.",
+      "cut": "The connection dropped before the answer finished.",
+      "cutHint": "What arrived is shown above. It is not sent with your next question."
+    },
+    "askWithout": "Ask without the project",
+    "openProjects": "Open projects",
+    "pending": {
+      "searching": "Searching the documentation…",
+      "reading": "Reading the project…",
+      "writing": "Writing the answer. This can take up to a minute.",
+      "answering": "Answering…"
+    }
+  },
+  "guide": {
+    "docs": {
+      "title": "Assistant",
+      "intro": "The assistant answers questions about the BeCoMe method and about your projects. It is an artificial intelligence system, a language model, not a person, and its answers can be wrong. Check anything important on the result page and in this documentation.",
+      "where": {
+        "title": "Where to find it",
+        "body": "Sign in and click the assistant button <icon/> in the top bar. On a project's result page, <b>Explain this result</b> opens the assistant with that project already selected."
+      },
+      "answers": {
+        "title": "What it can answer",
+        "method": "How the method works: fuzzy opinions, the best compromise, the maximum error.",
+        "project": "Your project: its opinions and its result. It sees only what you see as a member of the project.",
+        "app": "How to use the app, for example how to create a project or invite experts. General questions work without a project too.",
+        "readOnly": "It only reads. It cannot change a project, an opinion or your account."
+      },
+      "limits": {
+        "title": "Limits",
+        "rate": "You can send up to 60 messages an hour. When you reach the limit, the assistant tells you how many minutes to wait.",
+        "time": "An answer can take up to a minute.",
+        "storage": "The conversation is not saved to your account. It stays only in this browser tab.",
+        "history": "In a long conversation, older messages are no longer sent with new questions, so the assistant stops taking them into account."
+      },
+      "data": {
+        "title": "Your data",
+        "sent": "Your question and the data of the open project, including other members' names, positions and opinions, go to an AI model in the EU. The <privacy>Privacy notice</privacy> describes exactly what is sent and how long it is kept.",
+        "sensitive": "Do not type sensitive data into the assistant.",
+        "objection": "If you do not want the assistant to show your opinions to other members, turn on <b>Hide my opinions from other members' assistant</b> in your profile."
+      }
+    },
+    "tour": {
+      "title": "Ask the assistant",
+      "body": "Not sure what a result or a term means? Click the assistant button <icon/> in the top bar and ask in your own words. It knows the BeCoMe method and the projects you are a member of. It is an AI and can be wrong, so check what matters on the result page.",
+      "hint": "More in the <docs>documentation<sr>, opens in new tab</sr></docs>, section Assistant."
+    }
+  }
+}

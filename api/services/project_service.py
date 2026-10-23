@@ -5,8 +5,13 @@ from uuid import UUID
 
 from sqlmodel import func, select
 
-from api.db.models import MemberRole, Project, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
+from api.db.models import ExpertOpinion, MemberRole, Project, ProjectMember, User
+from api.exceptions import (
+    MemberNotFoundError,
+    ProjectNotFoundError,
+    ScaleExcludesOpinionsError,
+    ScaleRangeError,
+)
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 
@@ -72,6 +77,8 @@ class ProjectService(BaseService):
         :return: Updated Project
         :raises ProjectNotFoundError: If project doesn't exist
         :raises ScaleRangeError: If scale range becomes invalid
+        :raises ScaleExcludesOpinionsError: If an existing opinion would fall outside the
+            new scale range
         """
         project = self.get_project(project_id)
         if not project:
@@ -80,11 +87,11 @@ class ProjectService(BaseService):
         update_data = data.model_dump(exclude_unset=True)
 
         if "scale_min" in update_data or "scale_max" in update_data:
-            new_min = update_data.get("scale_min", project.scale_min)
-            new_max = update_data.get("scale_max", project.scale_max)
-            if new_min >= new_max:
-                msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
-                raise ScaleRangeError(msg)
+            self._check_scale_change(
+                project,
+                update_data.get("scale_min", project.scale_min),
+                update_data.get("scale_max", project.scale_max),
+            )
 
         if "name" in update_data:
             project.name = update_data["name"]
@@ -103,6 +110,38 @@ class ProjectService(BaseService):
             extra={"event": "project_updated", "project_id": str(project_id)},
         )
         return saved
+
+    def _check_scale_change(self, project: Project, new_min: float, new_max: float) -> None:
+        """Refuse a scale range that is inverted or would leave an opinion outside it.
+
+        :param project: Project whose scale is being changed
+        :param new_min: Effective scale_min after the update
+        :param new_max: Effective scale_max after the update
+        :raises ScaleRangeError: If new_min >= new_max
+        :raises ScaleExcludesOpinionsError: If the range changes and an existing opinion
+            would fall outside it
+        """
+        if new_min >= new_max:
+            msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
+            raise ScaleRangeError(msg)
+
+        # Only a real change is checked: a project that already holds out-of-range
+        # opinions from before this guard must still accept a PATCH that echoes its
+        # unchanged scale together with, say, a new name.
+        if new_min != project.scale_min or new_max != project.scale_max:
+            # The DB keeps lower_bound <= peak <= upper_bound, so the outer bounds decide.
+            # Inclusive, as OpinionService.validate_values_in_range.
+            outside = self._session.exec(
+                select(ExpertOpinion.id)
+                .where(
+                    ExpertOpinion.project_id == project.id,
+                    (ExpertOpinion.lower_bound < new_min) | (ExpertOpinion.upper_bound > new_max),
+                )
+                .limit(1)
+            ).first()
+            if outside is not None:
+                msg = f"opinions fall outside the scale {new_min}..{new_max}"
+                raise ScaleExcludesOpinionsError(msg)
 
     def delete_project(self, project_id: UUID) -> None:
         """Delete project and all related data (cascade).

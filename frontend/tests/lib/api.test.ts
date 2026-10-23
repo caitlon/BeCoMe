@@ -161,8 +161,9 @@ describe('ApiClient', () => {
       expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('header-value');
     });
 
-    it('sends the rotated token on the retry after a silent refresh', async () => {
-      // A refresh mints a new CSRF cookie, so the retry has to carry the new value
+    it('sends the refresh response token on the retry after a silent refresh', async () => {
+      // A refresh normally returns the same token, but one that starts a new session
+      // (a legacy refresh token) returns a new one, and the retry has to carry it
       // or it trades a 401 for a 403.
       mockFetch
         .mockResolvedValueOnce({
@@ -315,6 +316,37 @@ describe('ApiClient', () => {
 
       const { NetworkError } = await import('@/lib/errors');
       await expect(api.getProjects()).rejects.toBeInstanceOf(NetworkError);
+    });
+  });
+
+  describe('Wrong current password on a password change', () => {
+    afterEach(() => {
+      api.setOnSessionExpired(null);
+    });
+
+    it('rejects with the coded HttpError and leaves the session alone', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () =>
+          Promise.resolve({
+            detail: 'Current password is incorrect',
+            code: 'current_password_incorrect',
+          }),
+      });
+
+      const { HttpError } = await import('@/lib/errors');
+      const error = await api
+        .changePassword({ current_password: 'wrong', new_password: 'new' }) // pragma: allowlist secret
+        .catch((err: unknown) => err);
+
+      // A 400 is not a lost session: no silent refresh, no sign-out.
+      expect(error).toBeInstanceOf(HttpError);
+      expect(error).toMatchObject({ status: 400, code: 'current_password_incorrect' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(onSessionExpired).not.toHaveBeenCalled();
     });
   });
 
@@ -742,6 +774,22 @@ describe('ApiClient', () => {
 
       await expect(api.logout()).rejects.toThrow('CSRF token missing or invalid');
     });
+
+    it('keeps the csrf_invalid code on a refused request', async () => {
+      // The SPA translates this refusal by code; the English detail is for logs.
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () =>
+          Promise.resolve({ detail: 'CSRF token missing or invalid', code: 'csrf_invalid' }),
+      });
+
+      const { ForbiddenError } = await import('@/lib/errors');
+      const error = await api.logout().catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error).toMatchObject({ status: 403, code: 'csrf_invalid' });
+    });
   });
 
   // These four endpoints are the only ones a Turnstile widget guards
@@ -1084,7 +1132,7 @@ describe('ApiClient', () => {
       expect(result).toEqual(newProject);
     });
 
-    it('updateProject sends PUT to /projects/:id', async () => {
+    it('updateProject sends PATCH to /projects/:id', async () => {
       const updated = { id: '1', name: 'Updated Project' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -1097,7 +1145,7 @@ describe('ApiClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/projects/1'),
         expect.objectContaining({
-          method: 'PUT',
+          method: 'PATCH',
           body: JSON.stringify({ name: 'Updated Project' }),
         })
       );
@@ -1749,6 +1797,120 @@ describe('ApiClient', () => {
         expect.stringContaining('/projects?limit=10'),
         expect.anything()
       );
+    });
+  });
+
+  describe('requestJson', () => {
+    it('delegates to the same request pipeline as the typed methods (base URL, credentials, JSON parsing)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ hello: 'world' }),
+      });
+
+      const result = await api.requestJson<{ hello: string }>('/some/endpoint');
+
+      expect(result).toEqual({ hello: 'world' });
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/some/endpoint');
+      expect(options.credentials).toBe('include');
+    });
+  });
+
+  describe('requestStream', () => {
+    it('sends credentials and the CSRF token, and returns the response with its stream body intact', async () => {
+      const stream = new ReadableStream();
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: csrfHeaders('tok'),
+          json: () => Promise.resolve({}),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, body: stream });
+      await api.getCurrentUser();
+
+      const response = await api.requestStream('/some/stream', { method: 'POST' });
+
+      expect(response.body).toBe(stream);
+      const [url, options] = mockFetch.mock.calls[1];
+      expect(url).toContain('/some/stream');
+      expect(options.credentials).toBe('include');
+      expect(options.headers['X-CSRF-Token']).toBe('tok');
+    });
+
+    it('passes the abort signal and extra headers through to fetch', async () => {
+      const controller = new AbortController();
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, body: new ReadableStream() });
+
+      await api.requestStream('/some/stream', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.signal).toBe(controller.signal);
+      expect(options.headers.Accept).toBe('text/event-stream');
+    });
+
+    it('retries after a silent refresh on a 401 before the stream starts, returning the retried response', async () => {
+      const stream = new ReadableStream();
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Unauthorized' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, headers: csrfHeaders('after-refresh') })
+        .mockResolvedValueOnce({ ok: true, status: 200, body: stream });
+
+      const response = await api.requestStream('/some/stream', { method: 'POST' });
+
+      expect(response.body).toBe(stream);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch.mock.calls[1][0]).toContain('/auth/refresh');
+      expect(mockFetch.mock.calls[2][1].headers['X-CSRF-Token']).toBe('after-refresh');
+    });
+
+    it('throws UnauthorizedError and notifies onSessionExpired when the refresh after a 401 fails', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Unauthorized' }) })
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Refresh failed' }) });
+
+      await expect(api.requestStream('/some/stream', { method: 'POST' })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws a RateLimitError carrying Retry-After for a 429 before the stream starts', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'Retry-After': '30' }),
+        json: () => Promise.resolve({ detail: 'Too many requests' }),
+      });
+
+      await expect(api.requestStream('/some/stream', { method: 'POST' })).rejects.toMatchObject({
+        kind: 'rateLimited',
+        retryAfter: 30,
+      });
+    });
+
+    it('throws a ServerError for a 503 and an HttpError for a 404 before the stream starts', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve({ detail: 'down' }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ detail: 'Not found' }) });
+
+      await expect(api.requestStream('/some/stream')).rejects.toMatchObject({
+        kind: 'server',
+        status: 503,
+      });
+      await expect(api.requestStream('/some/stream')).rejects.toMatchObject({
+        kind: 'client',
+        status: 404,
+      });
     });
   });
 });

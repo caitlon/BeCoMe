@@ -188,14 +188,7 @@ test.describe('documentation screenshots', () => {
     await calcsCard.screenshot({ path: `${IMG}/project-supporting-calculations.png` });
   });
 
-  // Cannot pass, and relaxing the form alone will not make it pass. The agreement mode
-  // breaks in three places, any one of which is enough: `CreateProjectModal.tsx` requires
-  // a non-empty unit so the project cannot be created; `api/services/likert_verdict.py`
-  // drops the recommendation sentence before it leaves the API; and no component reads
-  // `likert_value` or `likert_decision`, so the verdict is never rendered even when it is
-  // computed. This test's final assertion looks for the position in words and would time
-  // out on the third of those. Tracked as BCM-67. Unskip when all three are done, not one.
-  test.fixme('a Likert project reports a verdict', async ({ page }) => {
+  test('a Likert project reports a verdict', async ({ page }) => {
     await registerUser(page, `docs-lk-${uniqueId()}@test.com`, 'Alex', 'Novak');
     await dismissToasts(page);
 
@@ -240,6 +233,8 @@ test.describe('documentation screenshots', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByPlaceholder('Enter project name').fill('Budget allocation 2027');
+    // The scale getting-started.md gives for this unit, so the picture matches its text.
+    await dialog.getByLabel('Maximum').fill('200');
     await dialog.getByLabel('Unit').fill('CZK billions');
     await settled(page);
     await page.screenshot({ path: `${IMG}/new-project.png` });

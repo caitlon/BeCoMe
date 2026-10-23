@@ -90,6 +90,72 @@ class TestInMemoryAssistantThrottle:
         # THEN
         assert allowed is True
 
+    def test_retry_after_is_the_whole_seconds_left_in_the_window(self):
+        """
+        GIVEN a spent budget whose window opened at t=1000
+        WHEN retry_after is asked at t=1600.5
+        THEN it is the time left, rounded up to a whole second
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=1000.0):
+            throttle.hit(user_id)
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=1600.5):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3000
+
+    def test_retry_after_is_one_second_for_an_unknown_or_closed_window(self):
+        """
+        GIVEN one user never seen and one whose window has just closed
+        WHEN retry_after is asked for each
+        THEN both get the one-second floor, never zero
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
+            closed = throttle.retry_after(user_id)
+        unknown = throttle.retry_after(uuid4())
+
+        # THEN
+        assert closed == 1
+        assert unknown == 1
+
+    def test_remaining_reports_the_open_window_and_none_otherwise(self):
+        """
+        GIVEN a user counted at t=0 and another never seen
+        WHEN remaining is asked at t=600 and again at t=3600
+        THEN it is the seconds left while the window is open, and None for the unknown
+             user and once the window has closed
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            open_window = throttle.remaining(rate_limit._digest(user_id))
+        with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
+            closed = throttle.remaining(rate_limit._digest(user_id))
+        unknown = throttle.remaining(rate_limit._digest(uuid4()))
+
+        # THEN
+        assert open_window == 3000
+        assert closed is None
+        assert unknown is None
+
     def test_expired_windows_are_dropped(self):
         """
         GIVEN many users whose windows have all expired
@@ -159,6 +225,54 @@ class TestInMemoryAssistantThrottle:
         assert len(allowed) == threads_count * hits_each
         assert allowed.count(True) == budget
 
+    def test_a_fixed_key_is_counted_apart_from_users(self):
+        """
+        GIVEN a budget of two and a user who has spent both of their messages
+        WHEN the global key is hit
+        THEN it has a budget of its own, and its refusal reports its own window
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=2, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+            throttle.hit(user_id)
+
+            # WHEN
+            outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(3)]
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
+            window = throttle.remaining(rate_limit.GLOBAL_KEY)
+
+        # THEN
+        assert outcomes == [True, True, False]
+        assert seconds == 3000
+        assert window == 3000
+
+    def test_a_user_hit_is_a_hit_under_the_users_digest(self):
+        """
+        GIVEN a budget of one and a user who has spent it through hit
+        WHEN the same digest is hit as a key
+        THEN it is refused, so the user methods and the key methods count together
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        throttle.hit(user_id)
+
+        # WHEN/THEN
+        assert throttle.hit_key(rate_limit._digest(user_id)) is False
+
+    def test_zero_means_no_limit_for_a_key_too(self):
+        """
+        GIVEN a budget of zero
+        WHEN the global key is hit repeatedly
+        THEN every hit is allowed
+        """
+        throttle = InMemoryAssistantThrottle(max_per_hour=0)
+
+        assert [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(5)] == [True] * 5
+
 
 def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
     """Return the only key the throttle wrote."""
@@ -167,7 +281,7 @@ def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
 
 
 class TestRedisAssistantThrottle:
-    """The Redis throttle shares the cap across processes and fails open."""
+    """The Redis throttle shares the cap across processes, or counts per process when it is down."""
 
     def test_allows_up_to_the_limit_then_blocks(self):
         """
@@ -274,6 +388,83 @@ class TestRedisAssistantThrottle:
         assert throttle.hit(uuid4()) is True
         assert throttle.hit(uuid4()) is True
 
+    def test_retry_after_is_the_remaining_ttl(self):
+        """
+        GIVEN a spent budget whose key has 100 seconds left
+        WHEN retry_after is asked
+        THEN it is that TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.hit(user_id)
+        throttle.hit(user_id)
+        fake.expire(_key(fake), 100)
+
+        # WHEN
+        seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 100
+
+    def test_retry_after_is_one_second_when_the_key_has_just_gone(self):
+        """
+        GIVEN a window that closed between the refusal and the question (TTL -2)
+        WHEN retry_after is asked
+        THEN it is one second
+        """
+        throttle = RedisAssistantThrottle(fakeredis.FakeStrictRedis(), max_per_hour=1)
+
+        assert throttle.retry_after(uuid4()) == 1
+
+    def test_retry_after_is_the_full_window_when_the_key_has_no_expiry(self):
+        """
+        GIVEN a key left without a TTL (-1)
+        WHEN retry_after is asked
+        THEN it is the full window, the longest the cap can last
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.hit(user_id)
+        fake.persist(_key(fake))
+
+        # WHEN
+        seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3600
+
+    def test_retry_after_is_the_full_window_and_logs_without_a_fallback_entry(self, caplog):
+        """
+        GIVEN a store whose TTL lookup raises a Redis error and a user the process has
+            never counted, so there is no fallback entry
+        WHEN retry_after is asked
+        THEN it is the full window, since one second would understate it, and a record
+             names the event without the digest
+        """
+        # GIVEN
+        client = MagicMock()
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+
+        # WHEN
+        with caplog.at_level(logging.WARNING, logger="api.security"):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3600
+        records = [
+            r
+            for r in caplog.records
+            if getattr(r, "event", None) == "assistant_throttle_retry_unavailable"
+        ]
+        assert len(records) == 1
+        assert rate_limit._digest(user_id) not in str(records[0].__dict__)
+
     def test_zero_means_no_limit_and_never_touches_redis(self):
         """
         GIVEN a budget of zero and a client that fails on any call
@@ -291,31 +482,121 @@ class TestRedisAssistantThrottle:
         assert outcomes == [True] * 5
         assert client.mock_calls == []
 
-    def test_fails_open_and_logs_when_the_store_is_unavailable(self, caplog):
+    def test_counts_per_process_and_logs_when_the_store_is_unavailable(self, caplog):
         """
-        GIVEN a store whose transaction raises a Redis error
-        WHEN a user hits the throttle
-        THEN the message is allowed and an ERROR record names the event
+        GIVEN a store whose transaction raises a Redis error and a budget of two
+        WHEN one user sends three messages
+        THEN the process-local count still refuses the third, and each failed hit writes
+             an ERROR record that says the cap is counted per process
         """
         # GIVEN
         client = MagicMock()
         client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
-        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+        throttle = RedisAssistantThrottle(client, max_per_hour=2)
         user_id = uuid4()
 
         # WHEN
         with caplog.at_level(logging.ERROR, logger="api.security"):
-            allowed = throttle.hit(user_id)
+            outcomes = [throttle.hit(user_id) for _ in range(3)]
 
         # THEN
-        assert allowed is True
+        assert outcomes == [True, True, False]
         records = [
             r
             for r in caplog.records
             if getattr(r, "event", None) == "assistant_throttle_unavailable"
         ]
-        assert len(records) == 1
-        assert records[0].levelno == logging.ERROR
+        assert len(records) == 3
+        assert all(r.levelno == logging.ERROR for r in records)
+        assert all("per process" in r.getMessage() for r in records)
+
+    def test_the_fallback_counts_users_apart(self):
+        """
+        GIVEN a store that is down and a budget of one
+        WHEN two users each send two messages, interleaved
+        THEN each user's first message is allowed and each user's second is refused
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+        first, second = uuid4(), uuid4()
+
+        # WHEN
+        outcomes = [
+            throttle.hit(first),
+            throttle.hit(second),
+            throttle.hit(first),
+            throttle.hit(second),
+        ]
+
+        # THEN
+        assert outcomes == [True, True, False, False]
+
+    def test_zero_means_no_limit_even_when_the_store_is_down(self):
+        """
+        GIVEN a budget of zero and a store that raises on every call
+        WHEN one user hits the throttle repeatedly
+        THEN every hit is allowed and the store is never touched, because the zero
+             limit returns before any call to it
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=0)
+        user_id = uuid4()
+
+        # WHEN
+        outcomes = [throttle.hit(user_id) for _ in range(5)]
+
+        # THEN
+        assert outcomes == [True] * 5
+        client.pipeline.assert_not_called()
+
+    def test_retry_after_uses_the_fallback_window_when_the_store_is_down(self):
+        """
+        GIVEN a store that is down and a user refused by the process-local count
+        WHEN 600 seconds into the window the user asks how long to wait
+        THEN the answer is the fallback's remaining time, not the full window
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+            assert throttle.hit(user_id) is False
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3000
+
+    def test_retry_after_is_the_full_window_once_the_fallback_window_has_closed(self):
+        """
+        GIVEN a store that is down and a user counted at t=0
+        WHEN retry_after is asked at t=7200, past the one-hour window
+        THEN the closed fallback entry is ignored and the answer is the full window
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=7200.0):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3600
 
     def test_the_failure_record_never_carries_the_user_or_its_digest(self, caplog):
         """
@@ -340,16 +621,109 @@ class TestRedisAssistantThrottle:
             assert digest not in str(record.__dict__)
             assert digest not in record.getMessage()
 
+    def test_the_global_key_is_the_prefix_and_all_and_counts_apart_from_users(self):
+        """
+        GIVEN a budget of one
+        WHEN the global key is hit twice
+        THEN the one stored key is assistant:chat:all, the second hit is refused, and a
+             user's own counter is untouched
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+
+        # WHEN
+        outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(2)]
+        user_id = uuid4()
+        user_allowed = throttle.hit(user_id)
+
+        # THEN
+        assert outcomes == [True, False]
+        assert user_allowed is True
+        assert set(fake.keys("*")) == {
+            b"assistant:chat:all",
+            f"assistant:chat:{rate_limit._digest(user_id)}".encode(),
+        }
+
+    def test_retry_after_key_is_the_ttl_of_the_global_key(self):
+        """
+        GIVEN a spent global counter with 100 seconds left
+        WHEN retry_after_key is asked for it
+        THEN it is that TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        throttle.hit_key(rate_limit.GLOBAL_KEY)
+        throttle.hit_key(rate_limit.GLOBAL_KEY)
+        fake.expire(b"assistant:chat:all", 100)
+
+        # WHEN/THEN
+        assert throttle.retry_after_key(rate_limit.GLOBAL_KEY) == 100
+
+    def test_the_global_key_is_counted_per_process_when_the_store_is_down(self):
+        """
+        GIVEN a store that is down, a budget of one and 600 seconds into the window
+        WHEN the global key is hit twice and its refusal asks how long to wait
+        THEN the second hit is refused by the process-local count, and the wait is the
+             fallback's remaining window
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(2)]
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
+
+        # THEN
+        assert outcomes == [True, False]
+        assert seconds == 3000
+
+    def test_zero_means_no_limit_for_a_key_and_never_touches_redis(self):
+        """
+        GIVEN a budget of zero and a client that fails on any call
+        WHEN the global key is hit
+        THEN it is allowed and the client is never used
+        """
+        client = MagicMock()
+        throttle = RedisAssistantThrottle(client, max_per_hour=0)
+
+        assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
+        assert client.mock_calls == []
+
+    def test_close_closes_the_redis_client(self):
+        """
+        GIVEN a Redis-backed throttle
+        WHEN it is closed
+        THEN its client is closed
+        """
+        # GIVEN
+        client = MagicMock()
+        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+
+        # WHEN
+        throttle.close()
+
+        # THEN
+        client.close.assert_called_once_with()
+
 
 class TestGetAssistantThrottle:
     """The factory selects the Redis backend only when configured."""
 
     @pytest.fixture(autouse=True)
     def _fresh_cache(self):
-        """Keep the process-wide cache from leaking between tests."""
+        """Keep the process-wide caches from leaking between tests."""
         rate_limit.get_assistant_throttle.cache_clear()
+        rate_limit.get_assistant_global_throttle.cache_clear()
         yield
         rate_limit.get_assistant_throttle.cache_clear()
+        rate_limit.get_assistant_global_throttle.cache_clear()
 
     def test_uses_redis_when_configured(self):
         """
@@ -388,3 +762,37 @@ class TestGetAssistantThrottle:
 
         # THEN
         assert isinstance(throttle, InMemoryAssistantThrottle)
+
+    def test_the_global_throttle_takes_its_own_budget_and_backend(self):
+        """
+        GIVEN per-user and global budgets that differ, with and without a redis_url
+        WHEN the global throttle is built
+        THEN it carries the global budget, on Redis when configured and in memory otherwise
+        """
+        # GIVEN
+        with_redis = SimpleNamespace(
+            redis_url="redis://cache:6379/0",
+            assistant_rate_limit_per_hour=60,
+            assistant_global_turns_per_hour=7,
+        )
+        without = SimpleNamespace(
+            redis_url="", assistant_rate_limit_per_hour=60, assistant_global_turns_per_hour=7
+        )
+
+        # WHEN
+        with (
+            patch.object(rate_limit, "get_settings", return_value=with_redis),
+            patch.object(rate_limit.redis, "from_url", return_value=MagicMock()),
+        ):
+            hosted = rate_limit.get_assistant_global_throttle()
+        rate_limit.get_assistant_global_throttle.cache_clear()
+        with patch.object(rate_limit, "get_settings", return_value=without):
+            local = rate_limit.get_assistant_global_throttle()
+            again = rate_limit.get_assistant_global_throttle()
+
+        # THEN
+        assert isinstance(hosted, RedisAssistantThrottle)
+        assert hosted._max == 7
+        assert isinstance(local, InMemoryAssistantThrottle)
+        assert local._max == 7
+        assert again is local

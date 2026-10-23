@@ -1,5 +1,7 @@
 """Unit tests for the chat, embeddings, and reranker model clients (fakes only, no network)."""
 
+import json
+
 import httpx
 import pytest
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -36,6 +38,67 @@ class TestMakeChatModel:
         assert model.model_name == settings.assistant_llm_model
         assert model.request_timeout == settings.assistant_llm_timeout_seconds
 
+    def test_caps_the_reply_at_the_query_token_setting(self):
+        """
+        GIVEN Settings with a query token cap of 77
+        WHEN make_chat_model builds a client
+        THEN the client caps its reply at 77 tokens, apart from the answer cap
+        """
+        # GIVEN
+        settings = _settings(assistant_query_max_tokens=77)
+
+        # WHEN
+        model = make_chat_model(settings)
+
+        # THEN
+        assert model.max_tokens == 77
+        assert settings.assistant_query_max_tokens != settings.assistant_answer_max_tokens
+
+    @pytest.mark.parametrize(
+        ("make", "setting"),
+        [
+            (make_chat_model, "assistant_query_max_tokens"),
+            (make_answer_model, "assistant_answer_max_tokens"),
+        ],
+    )
+    def test_the_request_payload_carries_the_token_cap(self, make, setting):
+        """
+        GIVEN a chat client whose HTTP transport is a recording fake
+        WHEN it is invoked
+        THEN the outgoing body holds max_completion_tokens equal to the role's setting
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "c",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "m",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
+
+        settings = _settings(assistant_query_max_tokens=77, assistant_answer_max_tokens=123)
+        model = make(settings)
+        model.root_client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        model.invoke("hello")
+
+        # THEN
+        assert json.loads(seen[0].content)["max_completion_tokens"] == getattr(settings, setting)
+
 
 class TestMakeAnswerModel:
     """make_answer_model points a ChatOpenAI client at the local answer llama-server."""
@@ -45,10 +108,11 @@ class TestMakeAnswerModel:
         GIVEN default Settings
         WHEN make_answer_model builds a client
         THEN it targets the answer model's base URL and name, is deterministic, caps the
-             reply at the configured tokens, and never retries a failed request
+             reply at the configured tokens, never retries a failed request, and asks
+             for the usage on the last streamed chunk
         """
         # GIVEN
-        settings = Settings(secret_key="test-secret-key")
+        settings = _settings()
 
         # WHEN
         model = make_answer_model(settings)
@@ -60,6 +124,7 @@ class TestMakeAnswerModel:
         assert model.temperature == 0
         assert model.max_tokens == settings.assistant_answer_max_tokens
         assert model.max_retries == 0
+        assert model.stream_usage is True
         assert model.request_timeout == settings.assistant_llm_timeout_seconds
 
     def test_follows_the_answer_settings_not_the_query_model_ones(self):
@@ -70,8 +135,7 @@ class TestMakeAnswerModel:
              query-transform ones
         """
         # GIVEN
-        settings = Settings(
-            secret_key="test-secret-key",  # pragma: allowlist secret
+        settings = _settings(
             assistant_answer_llm_base_url="http://127.0.0.1:9999/v1",
             assistant_answer_llm_model="answer-model",
             assistant_answer_max_tokens=123,
@@ -87,7 +151,7 @@ class TestMakeAnswerModel:
         assert answer.max_tokens == 123
         assert chat.openai_api_base == settings.assistant_llm_base_url
         assert chat.model_name == settings.assistant_llm_model
-        assert chat.max_tokens is None
+        assert chat.max_tokens == settings.assistant_query_max_tokens
 
 
 class TestMakeEmbeddings:
@@ -128,12 +192,12 @@ class TestMakeEmbeddings:
         # THEN
         assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
 
-    def test_sends_at_most_64_texts_per_request(self):
+    def test_batches_embedding_requests_below_hosted_limit(self):
         """
         GIVEN default Settings
         WHEN make_embeddings builds a client
-        THEN its chunk_size is 64, so llama-server answers one small batch instead
-             of the whole corpus, keeping each request's timeout bound small
+        THEN its chunk_size is at most 25, because the hosted embeddings API
+             (OVHcloud AI Endpoints) refuses more than 25 texts per request
         """
         # GIVEN
         settings = Settings(secret_key="test-secret-key")
@@ -142,7 +206,251 @@ class TestMakeEmbeddings:
         embeddings = make_embeddings(settings)
 
         # THEN
-        assert embeddings.chunk_size == 64
+        assert embeddings.chunk_size <= 25
+
+
+_API_KEY = "ovh-test-key"  # pragma: allowlist secret
+_REMOTE_URL = "https://models.example.test/v1"
+_BASE_URL_SETTINGS = (
+    "assistant_answer_llm_base_url",
+    "assistant_llm_base_url",
+    "assistant_embedding_base_url",
+)
+
+
+def _settings(**overrides) -> Settings:
+    """Settings with every role local at its default URL, unless an override says otherwise.
+
+    Init arguments beat the environment and .env, so a developer who points a role at a
+    hosted provider in their own .env does not change what these tests build.
+    """
+    isolated = {
+        "assistant_answer_provider": "local",
+        "assistant_llm_provider": "local",
+        "assistant_embedding_provider": "local",
+        "assistant_api_key_ovh": None,
+        "assistant_api_reasoning_effort": "none",
+        **{name: Settings.model_fields[name].default for name in _BASE_URL_SETTINGS},
+    }
+    return Settings(
+        secret_key="test-secret-key",  # pragma: allowlist secret
+        **{**isolated, **overrides},
+    )
+
+
+def _api_settings(**overrides) -> Settings:
+    """Settings with every role on the hosted API, at a remote URL, with a key."""
+    return _settings(
+        assistant_api_key_ovh=_API_KEY,
+        assistant_answer_provider="api",
+        assistant_llm_provider="api",
+        assistant_embedding_provider="api",
+        assistant_answer_llm_base_url=_REMOTE_URL,
+        assistant_llm_base_url=_REMOTE_URL,
+        assistant_embedding_base_url=_REMOTE_URL,
+        **overrides,
+    )
+
+
+class TestApiProvider:
+    """A role on the hosted API sends the key and, for chat models, switches reasoning off."""
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    def test_a_chat_client_carries_the_key_and_the_reasoning_switch(self, make):
+        """
+        GIVEN settings with the answer and query roles on the hosted API
+        WHEN a chat client is built
+        THEN it holds the configured key instead of the local placeholder and sends
+             reasoning_effort none in the request body
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        model = make(settings)
+
+        # THEN
+        assert model.openai_api_key is not None
+        assert model.openai_api_key.get_secret_value() == _API_KEY
+        assert model.extra_body == {"reasoning_effort": "none"}
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    @pytest.mark.parametrize(
+        ("effort", "expected"),
+        [("low", {"reasoning_effort": "low"}), (None, None)],
+    )
+    def test_the_reasoning_switch_follows_the_setting(self, make, effort, expected):
+        """
+        GIVEN settings with the hosted API and a reasoning effort of low, or none at all
+        WHEN a chat client is built
+        THEN it sends that effort, or no extra body when the setting is None
+        """
+        # GIVEN
+        settings = _api_settings(assistant_api_reasoning_effort=effort)
+
+        # WHEN
+        model = make(settings)
+
+        # THEN
+        assert model.extra_body == expected
+
+    def test_the_embeddings_client_carries_the_key(self):
+        """
+        GIVEN settings with the embedding role on the hosted API
+        WHEN make_embeddings builds a client
+        THEN it holds the configured key
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.openai_api_key is not None
+        assert embeddings.openai_api_key.get_secret_value() == _API_KEY
+
+    def test_the_answer_client_keeps_its_other_settings_in_api_mode(self):
+        """
+        GIVEN settings with the answer role on the hosted API
+        WHEN make_answer_model builds a client
+        THEN it is still deterministic, capped, asks for the usage on the last chunk, and
+             retries twice because the hosted API fails now and then
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        model = make_answer_model(settings)
+
+        # THEN
+        assert model.openai_api_base == _REMOTE_URL
+        assert model.temperature == 0
+        assert model.max_tokens == settings.assistant_answer_max_tokens
+        assert model.stream_usage is True
+        assert model.max_retries == 2
+
+    def test_each_role_follows_its_own_provider(self):
+        """
+        GIVEN only the answer role on the hosted API
+        WHEN the three clients are built
+        THEN the other two keep the local placeholder key and send no reasoning switch
+        """
+        # GIVEN
+        settings = _settings(
+            assistant_api_key_ovh=_API_KEY,
+            assistant_answer_provider="api",
+            assistant_answer_llm_base_url=_REMOTE_URL,
+        )
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert answer.openai_api_key.get_secret_value() == _API_KEY
+        assert chat.openai_api_key.get_secret_value() == "not-needed"
+        assert chat.extra_body is None
+        assert embeddings.openai_api_key.get_secret_value() == "not-needed"
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    def test_a_call_carries_a_bearer_header_and_the_reasoning_switch(self, make):
+        """
+        GIVEN an api-mode chat client whose HTTP transport is a recording fake
+        WHEN it is invoked
+        THEN the request carries Authorization: Bearer with the key, and a body that holds
+             reasoning_effort none
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "c",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "m",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
+
+        model = make(_api_settings())
+        model.root_client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        reply = model.invoke("hello")
+
+        # THEN
+        assert reply.content == "ok"
+        assert seen[0].headers["authorization"] == f"Bearer {_API_KEY}"
+        assert json.loads(seen[0].content)["reasoning_effort"] == "none"
+
+    def test_an_embeddings_call_carries_a_bearer_header(self):
+        """
+        GIVEN an api-mode embeddings client whose HTTP transport is a recording fake
+        WHEN it embeds a query
+        THEN the request carries Authorization: Bearer with the key
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "object": "list",
+                    "model": "m",
+                    "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2]}],
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                },
+            )
+
+        embeddings = make_embeddings(_api_settings())
+        embeddings.client._client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        vector = embeddings.embed_query("hello")
+
+        # THEN
+        assert vector == [0.1, 0.2]
+        assert seen[0].headers["authorization"] == f"Bearer {_API_KEY}"
+
+
+class TestLocalProviderIsUnchanged:
+    """A role on the local server keeps the placeholder key and no extra body."""
+
+    def test_local_clients_hold_the_placeholder_key_and_send_no_reasoning_switch(self):
+        """
+        GIVEN default settings, every role local
+        WHEN the three clients are built
+        THEN each holds the placeholder key, the chat clients send no extra body, and the
+             answer client still never retries
+        """
+        # GIVEN
+        settings = _settings()
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        for client in (answer, chat, embeddings):
+            assert client.openai_api_key.get_secret_value() == "not-needed"
+        assert answer.extra_body is None
+        assert chat.extra_body is None
+        assert answer.max_retries == 0
 
 
 class TestStripThinkBlock:

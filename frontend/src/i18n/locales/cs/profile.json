@@ -11,6 +11,7 @@
     "currentPassword": "Současné heslo",
     "newPassword": "Nové heslo",
     "confirmPassword": "Potvrdit nové heslo",
+    "currentIncorrect": "Současné heslo není správné",
     "update": "Aktualizovat heslo",
     "updating": "Aktualizace..."
   },
@@ -53,6 +54,7 @@
     "profileUpdated": "Profil aktualizován",
     "updateFailed": "Nepodařilo se aktualizovat profil",
     "passwordUpdated": "Heslo aktualizováno",
+    "passwordUpdatedSignedOut": "Heslo bylo změněno a všechna přihlášení, včetně tohoto, byla odhlášena. Přihlaste se znovu novým heslem.",
     "passwordFailed": "Nepodařilo se změnit heslo",
     "accountDeleted": "Účet smazán",
     "photoUpdated": "Profilová fotka aktualizována",
