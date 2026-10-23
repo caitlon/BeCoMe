@@ -1,7 +1,9 @@
 """Unit tests for query retrieval (fakes only, no network)."""
 
+import asyncio
 import json
 import re
+import threading
 import unicodedata
 import warnings
 from collections.abc import Callable
@@ -14,6 +16,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.vectorstores import InMemoryVectorStore
+from rank_bm25 import BM25Okapi
 
 from api.assistant.rag.models import LlamaServerReranker
 from api.assistant.rag.retrieval import (
@@ -1280,6 +1283,88 @@ class TestDocsRetrieverBm25Search:
 
         # THEN
         assert calls == []  # the cached index served the second search; no re-fetch
+
+    @pytest.mark.asyncio
+    async def test_building_and_scoring_the_index_run_off_the_event_loop(self, monkeypatch):
+        """
+        GIVEN a bm25 index whose build and scoring record the thread they run in
+        WHEN search() runs for the first time, with mode="bm25"
+        THEN both the build and the scoring ran in a worker thread, not in the loop's own,
+            and the ranking is the same as before
+        """
+        # GIVEN
+        threads: dict[str, int] = {}
+        original_init = BM25Okapi.__init__
+        original_scores = BM25Okapi.get_scores
+
+        def _recording_init(self, *args, **kwargs):
+            threads["build"] = threading.get_ident()
+            original_init(self, *args, **kwargs)
+
+        def _recording_scores(self, *args, **kwargs):
+            threads["score"] = threading.get_ident()
+            return original_scores(self, *args, **kwargs)
+
+        monkeypatch.setattr(BM25Okapi, "__init__", _recording_init)
+        monkeypatch.setattr(BM25Okapi, "get_scores", _recording_scores)
+        store = InMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        await store.aadd_documents(
+            [
+                _doc("The median is robust to outliers.", title="Median"),
+                _doc("The frontend uses React.", title="Frontend"),
+            ]
+        )
+        config = RetrievalConfig(mode="bm25", k=2, query_transform="none")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        results = await retriever.search("median")
+
+        # THEN
+        loop_thread = threading.get_ident()
+        assert threads["build"] != loop_thread
+        assert threads["score"] != loop_thread
+        assert [chunk.title for chunk in results] == ["Median", "Frontend"]
+
+    @pytest.mark.asyncio
+    async def test_two_concurrent_cold_searches_build_the_index_once(self, monkeypatch):
+        """
+        GIVEN a retriever that has not built its index yet and a store whose fetch yields
+            to the loop
+        WHEN two searches start at the same time
+        THEN the store is fetched once and the index built once, and both searches answer
+        """
+        # GIVEN
+        builds: list[int] = []
+        original_init = BM25Okapi.__init__
+
+        def _counting_init(self, *args, **kwargs):
+            builds.append(1)
+            original_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(BM25Okapi, "__init__", _counting_init)
+        store = InMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        await store.aadd_documents([_doc("The median and the mean.", title="Median")])
+        fetches: list[int] = []
+        original_fetch = store.asimilarity_search_with_score
+
+        async def _slow_fetch(*args, **kwargs):
+            fetches.append(1)
+            await asyncio.sleep(0.01)
+            return await original_fetch(*args, **kwargs)
+
+        store.asimilarity_search_with_score = _slow_fetch
+        config = RetrievalConfig(mode="bm25", k=1, query_transform="none")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        first, second = await asyncio.gather(retriever.search("median"), retriever.search("mean"))
+
+        # THEN
+        assert len(fetches) == 1
+        assert len(builds) == 1
+        assert [chunk.title for chunk in first] == ["Median"]
+        assert [chunk.title for chunk in second] == ["Median"]
 
     @pytest.mark.asyncio
     async def test_an_empty_collection_raises_a_clear_value_error(self):

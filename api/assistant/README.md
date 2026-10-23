@@ -594,9 +594,10 @@ there (`ASSISTANT_PRIVATE_CORPUS_DIRS` is a JSON list, `'["/abs/corpus"]'`).
    stays the same when only the other repository changed. Remove the proxy.
 4. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
    built once per process, and it builds its BM25 index from the collection's documents on the
-   first search that needs one (`hybrid`, the default mode, and `bm25`). Ingest swaps the table
-   under the same name, so dense search in a running process sees the new corpus at once. Only
-   the BM25 index keeps the old chunks until the restart, and in `hybrid` mode the fused ranking
+   first search that needs one (`hybrid`, the default mode, and `bm25`). The build and every BM25
+   scoring run in a worker thread, and concurrent first searches build one index. Ingest swaps the
+   table under the same name, so dense search in a running process sees the new corpus at once.
+   Only the BM25 index keeps the old chunks until the restart, and in `hybrid` mode the fused ranking
    then mixes new vectors with the old BM25 index.
 5. Ask a question about the changed page and check that the answer comes from it.
 
