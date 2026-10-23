@@ -16,8 +16,8 @@ Layer = Literal["public", "local"]
 Kind = Literal["markdown", "i18n_json", "text", "pdf", "latex"]
 
 #: Public documents that intentionally never ship to any reader, this assistant
-#: included: both discuss what the project deliberately does not publish.
-EXCLUDED_PUBLIC = ("docs/security.md", "docs/environments.md")
+#: included: they discuss what the project deliberately does not publish.
+EXCLUDED_PUBLIC = ("docs/security.md", "docs/environments.md", "docs/secrets.md")
 
 #: Suffix -> Kind. A file whose suffix is not here is not part of the corpus at all
 #: (images, stylesheets, .puml diagrams under docs/uml-diagrams/ and similar).
