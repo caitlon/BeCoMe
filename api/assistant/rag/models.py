@@ -360,6 +360,24 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     )
 
 
+def _check_rerank_result(result: Any) -> None:
+    """Check that one item of a rerank reply is well formed.
+
+    :param result: One entry of the reply's ``results`` list.
+    :raises TypeError: For an entry that is not an object, or whose ``index`` is not an
+        integer or whose ``relevance_score`` is not a number (booleans do not count).
+    :raises KeyError: For an object without ``index`` or ``relevance_score``.
+    """
+    if not isinstance(result, dict):
+        raise TypeError("a result is not an object")
+    index = result["index"]
+    score = result["relevance_score"]
+    if not isinstance(index, int) or isinstance(index, bool):
+        raise TypeError("a result index is not an integer")
+    if not isinstance(score, int | float) or isinstance(score, bool):
+        raise TypeError("a result score is not a number")
+
+
 class LlamaServerReranker:
     """Async client for llama-server's /v1/rerank endpoint.
 
@@ -412,14 +430,7 @@ class LlamaServerReranker:
             if not isinstance(results, list):
                 raise TypeError("results is not a list")
             for result in results:
-                if not isinstance(result, dict):
-                    raise TypeError("a result is not an object")
-                index = result["index"]
-                score = result["relevance_score"]
-                if not isinstance(index, int) or isinstance(index, bool):
-                    raise TypeError("a result index is not an integer")
-                if not isinstance(score, int | float) or isinstance(score, bool):
-                    raise TypeError("a result score is not a number")
+                _check_rerank_result(result)
         scores = [0.0] * len(texts)
         seen_indices: set[int] = set()
         for result in results:
