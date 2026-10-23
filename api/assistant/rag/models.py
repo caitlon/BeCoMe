@@ -40,7 +40,7 @@ _UNDECODABLE_REPLY = (json.JSONDecodeError, UnicodeDecodeError)
 
 # What the library raises when it parses one chunk of a stream that is not a completion chunk,
 # in ``_convert_chunk_to_generation_chunk``, which runs library code alone: the reply-shape
-# errors above, and a KeyError for a chunk whose ``choices`` is an object or has no ``delta``.
+# errors above, and a KeyError for a chunk whose ``choices`` is an object.
 _CHUNK_SHAPE_ERRORS = (*_REPLY_SHAPE_ERRORS, KeyError)
 
 

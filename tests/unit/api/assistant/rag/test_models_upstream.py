@@ -69,7 +69,7 @@ _BAD_STREAMS = {
     "a delta that is a string": 'data: {"choices":[{"index":0,"delta":"x"}]}\n\n',
     "a content that is a number": ('data: {"choices":[{"index":0,"delta":{"content":5}}]}\n\n'),
     "choices that is an object": 'data: {"choices":{"a":1}}\n\n',
-    "a choice without a delta": 'data: {"choices":[{}]}\n\n',
+    "a lone choice without a delta, skipped, so no chunk at all": 'data: {"choices":[{}]}\n\n',
     "a good chunk, then html": _CHUNK + "data: <html>\n\n",
     "a good chunk, then a string choices": _CHUNK + 'data: {"choices":"x"}\n\n',
     "a chunk cut inside a character": (
