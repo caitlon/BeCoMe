@@ -27,13 +27,6 @@ from pydantic import Field, PrivateAttr
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.roles import UpstreamRole, tag_role
 
-
-def tagged[ErrorT: Exception](error: ErrorT, role: UpstreamRole) -> ErrorT:
-    """Return an error carrying the role of the server it is supposed to have come from."""
-    tag_role(error, role)
-    return error
-
-
 # What a scripted reply reports as its token usage when the test gave it none.
 DEFAULT_USAGE: UsageMetadata = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
 
@@ -234,3 +227,9 @@ class StaticDocsRetriever:
         """
         self.queries.append(query)
         return list(self._chunks)
+
+
+def tagged[ErrorT: Exception](error: ErrorT, role: UpstreamRole) -> ErrorT:
+    """Return an error carrying the role of the server it is supposed to have come from."""
+    tag_role(error, role)
+    return error
