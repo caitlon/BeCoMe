@@ -270,13 +270,14 @@ and nothing else, so the answer says it found nothing. A failing model server, e
 vector database or application answers `503` with a fixed message. On any request until the
 retriever has been built once, that covers a vector database that is down, a URL that is not set,
 and a collection that is missing or that the role cannot read. A model server that answers
-`200` with a body that is no reply (an HTML page from a proxy, an `error` object, no `choices`)
-is a failing server too. The warning for such a `503` (`assistant_dependency_unavailable`, and
-`assistant_tool_unavailable` for a tool) carries the class of the error as `reason` and the server
-that failed as `role`: `answer` or `query` for the two chat models, `app_api` for the application,
-`vector_db` for the document index, or `unknown` when nothing tagged the failure (the embedding
-and rerank servers are not tagged yet and log `unknown`, or `vector_db` for a database error). The
-code that talks to a server writes the role on the exception (`roles.py`); the text of an error is
+`200` with a body that is no reply (an HTML page from a proxy, an `error` object, no `choices`,
+a body that is empty or cut off) is a failing server too. The warning for such a `503`
+(`assistant_dependency_unavailable`, and `assistant_tool_unavailable` for a tool) carries the class
+of the error as `reason` and the server that failed as `role`: `answer` or `query` for the two
+chat models, `app_api` for the application, `vector_db` for the document index, or `unknown` when
+nothing tagged the failure (the embedding and rerank servers are not tagged yet and log `unknown`,
+or `vector_db` for a database error). The code that talks to a server writes the role on the
+exception (`roles.py`); the text of an error is
 never read for it. A spent message budget answers `429`.
 
 ### Modes

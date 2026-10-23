@@ -22,6 +22,12 @@ from api.assistant.rag.models import (
 from api.assistant.roles import tagged_role
 from api.config import Settings
 
+
+def _json_bytes(content: bytes) -> httpx.Response:
+    """A 200 that says it is JSON and holds these bytes, whatever they are."""
+    return httpx.Response(200, headers={"content-type": "application/json"}, content=content)
+
+
 _HTML = httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>oops</html>")
 _MALFORMED_BODIES = {
     "html": _HTML,
@@ -30,6 +36,12 @@ _MALFORMED_BODIES = {
     "null choices": httpx.Response(200, json={"id": "c", "choices": None}),
     "empty choices": httpx.Response(200, json={"id": "c", "choices": []}),
     "choice without message": httpx.Response(200, json={"id": "c", "choices": [{"index": 0}]}),
+    "empty json body": _json_bytes(b""),
+    "html in a json reply": _json_bytes(b"<html>bad gateway</html>"),
+    "truncated json": _json_bytes(b'{"id":"c","choices":[{"index":0,"mess'),
+    "json cut inside a character": _json_bytes(
+        '{"choices":[{"message":{"content":"Př'.encode()[:-1]
+    ),
 }
 
 
