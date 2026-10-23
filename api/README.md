@@ -327,7 +327,7 @@ Environment variables (a `.env` file works too):
 | `DISPOSABLE_EMAIL_BLOCKING_ENABLED` | `true` | Registration rejects known disposable-mail domains; `false` turns the check off |
 | `MX_CHECK_ENABLED` | `true` | Registration rejects a domain that does not exist, has no MX, A, or AAAA record, or publishes a null MX (RFC 7505), even beside an A record. A timed-out or failed lookup lets the address through. `false` turns the check off |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
-| `BUCKET_NAME` | *optional* | Railway Storage Bucket name, set as a literal value with the three below (see `docs/secrets.md`) |
+| `BUCKET_NAME` | *optional* | Railway Storage Bucket name, set as a literal value, together with the three below |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
 | `BUCKET_ACCESS_KEY_ID` | *optional* | Bucket access key |
 | `BUCKET_SECRET_ACCESS_KEY` | *optional* | Bucket secret key |
