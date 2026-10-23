@@ -32,15 +32,19 @@ def _symlink_or_skip(link: Path, target: Path, target_is_directory: bool = False
 
 
 class TestExcludedPublic:
-    """The two internal-only documents never enter the manifest."""
+    """The three internal-only documents never enter the manifest."""
 
-    def test_excluded_public_lists_security_and_environments(self):
+    def test_excluded_public_lists_security_environments_and_secrets(self):
         """
         GIVEN the EXCLUDED_PUBLIC tuple
         WHEN inspected
-        THEN it names exactly the two documents the contract fixes
+        THEN it names exactly the three documents the contract fixes
         """
-        assert EXCLUDED_PUBLIC == ("docs/security.md", "docs/environments.md")
+        assert EXCLUDED_PUBLIC == (
+            "docs/security.md",
+            "docs/environments.md",
+            "docs/secrets.md",
+        )
 
 
 class TestPublicDocsWalk:
