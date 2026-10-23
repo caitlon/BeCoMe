@@ -273,7 +273,8 @@ and a collection that is missing or that the role cannot read. Requests that arr
 cold process each open an engine and fail or succeed on their own, so a database that is down does
 not queue them; one retriever is kept and the other engines are closed. A model server that answers
 `200` with a body that is no reply (an HTML page from a proxy, an `error` object, no `choices`,
-a body that is empty or cut off, a stream chunk of a recognisable wrong shape) is a failing
+a body that is empty or cut off, a stream chunk that is not valid JSON, is cut inside a
+character, or is a JSON object of the wrong shape) is a failing
 server too. A stream chunk that is valid JSON but not an object is not caught and ends in a
 `500`. The warning for such a `503` (`assistant_dependency_unavailable`, and
 `assistant_tool_unavailable` for a tool) carries the class of the error as `reason` and the server

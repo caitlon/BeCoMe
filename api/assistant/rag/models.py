@@ -38,9 +38,9 @@ _REPLY_SHAPE_ERRORS = (ValueError, TypeError, AttributeError)
 _UNDECODABLE_REPLY = (json.JSONDecodeError, UnicodeDecodeError)
 
 # What the library raises when it parses one chunk of a stream that is not a completion chunk,
-# in ``_convert_chunk_to_generation_chunk``: a TypeError for a field of the wrong type, an
-# AttributeError for a field that is not an object.
-_CHUNK_SHAPE_ERRORS = (TypeError, AttributeError)
+# in ``_convert_chunk_to_generation_chunk``, which runs library code alone: the reply-shape
+# errors above, and a KeyError for a chunk whose ``choices`` is an object or has no ``delta``.
+_CHUNK_SHAPE_ERRORS = (*_REPLY_SHAPE_ERRORS, KeyError)
 
 
 class MalformedModelResponseError(Exception):

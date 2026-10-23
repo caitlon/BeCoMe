@@ -54,6 +54,9 @@ _BAD_STREAMS = {
     "html": "data: <html>bad gateway</html>\n\n",
     "choices that is a string": 'data: {"choices":"x"}\n\n',
     "a delta that is a string": 'data: {"choices":[{"index":0,"delta":"x"}]}\n\n',
+    "a content that is a number": ('data: {"choices":[{"index":0,"delta":{"content":5}}]}\n\n'),
+    "choices that is an object": 'data: {"choices":{"a":1}}\n\n',
+    "a choice without a delta": 'data: {"choices":[{}]}\n\n',
     "a good chunk, then html": _CHUNK + "data: <html>\n\n",
     "a good chunk, then a string choices": _CHUNK + 'data: {"choices":"x"}\n\n',
     "a chunk cut inside a character": (
@@ -256,8 +259,8 @@ class TestChatModelOtherFailures:
         GIVEN a chat model whose streaming server sends a chunk that is not a completion
             chunk, first or after a good one
         WHEN it is streamed
-        THEN MalformedModelResponseError is raised, tagged with the role, whatever the
-            library raised for that chunk
+        THEN MalformedModelResponseError is raised, tagged with the role, whether the
+            chunk is not JSON or is JSON of the wrong shape
         """
         make, role = role_model
         reply = httpx.Response(
