@@ -23,9 +23,10 @@ variables of each environment are in [`environments.md`](environments.md).
 ## Inventory
 
 The backend reads these in `api/config.py` and nowhere else, except the three password
-variables at the end of the table. Those sit on the database, Redis and corpus services and
-reach the backend only through the references in `MIGRATION_DATABASE_URL`, `REDIS_URL` and
-`ASSISTANT_VECTOR_DB_URL`. `migrations/env.py` also reads `ALEMBIC_DATABASE_URL`, which
+variables at the end of the table. Those sit on the database, Redis and corpus services. The
+backend reaches them only through the references in `MIGRATION_DATABASE_URL`, `REDIS_URL` and
+`ASSISTANT_VECTOR_DB_URL`, and never holds the corpus owner's `POSTGRES_PASSWORD`, which only
+ingest uses. `migrations/env.py` also reads `ALEMBIC_DATABASE_URL`, which
 overrides `MIGRATION_DATABASE_URL` ([`environments.md`](environments.md)), so keep it unset
 on deployed services. The "Verify" column says how to check a value without printing it.
 A check with `curl` reads the key from a file, as the rotation rules below describe.
@@ -46,7 +47,7 @@ A check with `curl` reads the key from a file, as the rotation rules below descr
 | `ASSISTANT_API_KEY_OVH` | Hosted model calls on OVHcloud AI Endpoints | OVHcloud | Dev and test share one. Prod will have its own | `GET https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models` with the bearer key answers `200`. The endpoint also answers `200` with no key, so the result counts only next to a control request with a wrong key that answers `403` |
 | `ASSISTANT_LANGSMITH_API_KEY` | Sending assistant traces to LangSmith (EU) | LangSmith | Needed only where tracing is on | `GET https://eu.api.smith.langchain.com/api/v1/sessions?limit=1` with the `x-api-key` header answers `200` |
 | `ASSISTANT_VECTOR_DB_URL` | Password of the read-only `corpus_reader` role on the corpus database | Reference to `CORPUS_READER_PASSWORD` on the `<env>-vector` service | One per environment that has a corpus service | In-container connection with the backend's own `ASSISTANT_VECTOR_DB_URL` |
-| `POSTGRES_PASSWORD` | Password of the owner role on the `<env>-db` service (`postgres`) and on the `<env>-vector` service. `MIGRATION_DATABASE_URL` references the one on `<env>-db` | Railway Postgres of the environment | One per database service | Same check as `MIGRATION_DATABASE_URL` |
+| `POSTGRES_PASSWORD` | Password of the owner role on the `<env>-db` service (`postgres`) and on the `<env>-vector` service. `MIGRATION_DATABASE_URL` references the one on `<env>-db` | Railway Postgres of the environment | One per database service | On `<env>-db`, the same check as `MIGRATION_DATABASE_URL`. On `<env>-vector`, the hash check of the Postgres steps and the next ingest |
 | `REDIS_PASSWORD` | Password the `<env>-redis` service demands (`--requirepass`). `REDIS_URL` references it | Railway Redis of the environment | One per environment, set on the Redis service | Same check as `REDIS_URL` |
 | `CORPUS_READER_PASSWORD` | Password of `corpus_reader` on the `<env>-vector` service. `ASSISTANT_VECTOR_DB_URL` references it | Railway Postgres of the corpus service | One per environment that has a corpus service, set on that service | Same check as `ASSISTANT_VECTOR_DB_URL` |
 
@@ -255,9 +256,9 @@ that adds a second role.
 
 2. Write `roles.sql` under `umask 077` from the verifier files. The database logs DDL
    statements ([`security.md`](security.md#audit-logging)). The first line switches that off
-   for the session. The second stops a failing statement from being logged with its text,
-   verifier included, which Postgres does at the default `log_min_error_statement = error`
-   whatever `log_statement` says:
+   for the session. The second covers failing statements: at the default
+   `log_min_error_statement = error`, Postgres logs a failing statement with its text,
+   verifier included, whatever `log_statement` says:
 
    ```sh
    {
@@ -311,8 +312,8 @@ that adds a second role.
      'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -x CONFIG SET requirepass' < redis.password
    ```
 
-   A single argument reaches the remote shell as its command line, so `$REDIS_PASSWORD`
-   expands in the container, not on your machine.
+   The single quotes stop your shell from expanding `$REDIS_PASSWORD`. The one argument
+   reaches the container's shell as its command line, and that shell expands it.
 
    If Redis is asleep (App Sleep), SSH does not reach the container. Skip this step and omit
    `--skip-deploys` in the next one, which restarts Redis with the new password.
@@ -335,8 +336,9 @@ Where the environment has a corpus service, follow the Postgres steps with these
    `railway ssh -e <env> -s <env>-vector printenv POSTGRES_USER`, not with
    `railway variable list`, which prints every value of the service.
 2. In the `psql` command, pass the owner as `-U` and the database named by `POSTGRES_DB` of
-   that service as `-d`, in place of `postgres` and `railway`. Name the same two roles in the
-   `rolname IN (...)` list of the hash check.
+   that service as `-d`, in place of `postgres` and `railway`. In `roles.sql` and in the
+   `rolname IN (...)` list of the hash check, name `corpus_reader` and the owner in place of
+   `become_app` and `postgres`.
 3. Skip the `DATABASE_URL` step. `ASSISTANT_VECTOR_DB_URL` references
    `CORPUS_READER_PASSWORD`, so the backend redeploy picks it up.
 4. Set `CORPUS_READER_PASSWORD` and the service's `POSTGRES_PASSWORD` with
