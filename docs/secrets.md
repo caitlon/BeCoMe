@@ -37,7 +37,7 @@ how to check a value without printing it. `<env>` stands for `dev`, `test` or `p
 | `TURNSTILE_SECRET_KEY` | Server-side check of the bot-check token | Cloudflare dashboard, Turnstile, the widget | Prod has its own widget. Dev and test share one | POST to the Turnstile `siteverify` endpoint with the secret and a dummy token. `invalid-input-response` means the secret is right, `invalid-input-secret` means it is wrong |
 | `BUCKET_ACCESS_KEY_ID`, `BUCKET_SECRET_ACCESS_KEY` | Read and write access to the profile-photo bucket | Railway Bucket `<env>-photos` | One per environment | S3 `list_objects_v2` with the backend's own variables |
 | `BETTERSTACK_SOURCE_TOKEN` | Writing logs to a Better Stack source | Better Stack log source of the environment, EU region | One per environment | Logs from the current container arrive |
-| `SENTRY_DSN` | Sending events to Sentry. The key can only write events | Sentry client key | Per Sentry project | Not needed |
+| `SENTRY_DSN` | Sending backend events to Sentry. The key can only write events | Sentry, the backend project, client key | Per Sentry project | Events from the backend arrive in Sentry |
 | `ASSISTANT_API_KEY_OVH` | Hosted model calls on OVHcloud AI Endpoints | OVHcloud | Dev and test share one. Prod will have its own | `GET https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models` with the bearer key answers `200` |
 | `ASSISTANT_LANGSMITH_API_KEY` | Sending assistant traces to LangSmith (EU) | LangSmith | Needed only where tracing is on | `GET https://eu.api.smith.langchain.com/api/v1/sessions?limit=1` with the `x-api-key` header answers `200` |
 | `ASSISTANT_VECTOR_DB_URL` | Password of the read-only `corpus_reader` role on the corpus database | Reference to `CORPUS_READER_PASSWORD` on the `<env>-vector` service | One per environment that has a corpus service | The assistant answers instead of `503` |
@@ -53,8 +53,11 @@ the secret rotates.
 and on the current plan a new source can only be created in the `us_west` region. The
 tokens stay as they are, an accepted trade-off. The token only allows writing logs.
 
-`SENTRY_DSN` and `VITE_SENTRY_DSN` ship in the frontend bundle, so the DSN is effectively
-public. Nothing rotates it on a schedule.
+`VITE_SENTRY_DSN` is a frontend build argument and ships in the bundle, so that DSN is
+effectively public. `SENTRY_DSN` is a separate key of the backend Sentry project, read on
+the server only (`api/config.py`). Like any DSN it can only send events. Nothing rotates
+either on a schedule. To rotate the backend one, create a new client key in the Sentry
+project, set `SENTRY_DSN` with `--stdin`, redeploy, then disable the old key.
 
 ## CI secrets
 
