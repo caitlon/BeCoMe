@@ -722,9 +722,10 @@ then apply the `scripts/db/roles.sql` grants to it.
 4. Drop the old role: `DROP ROLE become_app;`. Rename `become_app_v2` back during a later
 quiet window if you want the canonical name restored.
 
-`SECRET_KEY` rotates the same way: add the new value, redeploy, verify, then remove the old
-one. Rotating it invalidates every existing session, which is the point when a leak is
-suspected.
+`SECRET_KEY` has no such window. The application reads one key, so rotating it means
+setting the new value and redeploying. Every existing session ends at that moment, which is
+the point when a leak is suspected. The inventory of every secret, with its source, scope and
+rotation steps, is in [`secrets.md`](secrets.md).
 
 ## GDPR: export and erasure
 
