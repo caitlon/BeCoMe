@@ -82,6 +82,12 @@ export const SCALE_EXCLUDES_OPINIONS_CODE = 'scale_excludes_opinions';
 /** A scale change gave a minimum that is not below the maximum. */
 export const SCALE_RANGE_INVALID_CODE = 'scale_range_invalid';
 
+/** Account deletion named a new admin who cannot take the project over. */
+export const INVALID_PROJECT_DISPOSITION_CODE = 'invalid_project_disposition';
+
+/** Account deletion did not cover exactly the projects the user still administers. */
+export const ACCOUNT_HAS_OWNED_PROJECTS_CODE = 'account_has_owned_projects';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;

@@ -233,8 +233,9 @@ it. Erasure then never silently drops other experts' contributions:
 ] }
 ```
 
-An owned project left without a disposition returns `409`, and a transfer to a non-member
-returns `422`. Erasure also removes the profile photo blob from object storage. The user's
+An owned project left without a disposition returns `409` with code `account_has_owned_projects`,
+and a transfer to a non-member (a demo account counts as one) returns `422` with code
+`invalid_project_disposition`. Erasure also removes the profile photo blob from object storage. The user's
 opinions in other projects go with the account, and each of those projects gets its result
 recalculated in the same transaction, or removed when no opinion is left.
 

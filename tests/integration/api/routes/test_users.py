@@ -340,6 +340,7 @@ class TestDeleteAccountDispositions:
 
         # THEN the deletion is rejected
         assert response.status_code == status.HTTP_409_CONFLICT
+        assert response.json()["code"] == "account_has_owned_projects"
 
     def test_transfer_to_non_member_rejected(self, client):
         """A transfer to someone who is not a project member is rejected."""
@@ -362,6 +363,7 @@ class TestDeleteAccountDispositions:
 
         # THEN the disposition is rejected as invalid
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert response.json()["code"] == "invalid_project_disposition"
 
     def test_transfer_to_demo_account_rejected(self, client):
         """A transfer naming a demo account as the erasure disposition is rejected.
@@ -404,6 +406,7 @@ class TestDeleteAccountDispositions:
 
         # THEN the disposition is rejected as invalid
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert response.json()["code"] == "invalid_project_disposition"
 
 
 class TestDeleteAccountRecalculatesResults:
