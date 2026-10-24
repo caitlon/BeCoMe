@@ -826,6 +826,18 @@ class Settings(BaseSettings):
             return self
 
         profile = self.environment.value
+        self._check_deploy_secret_and_stores(profile)
+        self._check_deploy_edge(profile)
+        self._check_deploy_runtime(profile)
+        self._check_deploy_turnstile(profile)
+        return self
+
+    def _check_deploy_secret_and_stores(self, profile: str) -> None:
+        """Require a strong secret, PostgreSQL and a Redis URL on a deployed service.
+
+        :param profile: Name of the deployed profile, for the error message.
+        :raises ValueError: If a check fails.
+        """
         if (
             self.secret_key in _INSECURE_SECRET_KEYS
             or len(self.secret_key) < _MIN_SECRET_KEY_LENGTH
@@ -839,6 +851,12 @@ class Settings(BaseSettings):
         if not self.redis_url:
             raise ValueError(f"redis_url is required in the {profile} profile")
 
+    def _check_deploy_edge(self, profile: str) -> None:
+        """Require the Cloudflare origin lock and real CORS and frontend origins.
+
+        :param profile: Name of the deployed profile, for the error message.
+        :raises ValueError: If a check fails.
+        """
         if not self.cloudflare_origin_secret:
             raise ValueError(
                 f"cloudflare_origin_secret is required in the {profile} profile so the "
@@ -860,6 +878,13 @@ class Settings(BaseSettings):
                 "loopback default mails out links nobody can open and no account can be "
                 "activated"
             )
+
+    def _check_deploy_runtime(self, profile: str) -> None:
+        """Require an email provider, debug off and an explicit migration URL.
+
+        :param profile: Name of the deployed profile, for the error message.
+        :raises ValueError: If a check fails.
+        """
         if not self.email_enabled:
             raise ValueError(
                 f"email_api_key is required in the {profile} profile with "
@@ -877,6 +902,13 @@ class Settings(BaseSettings):
                 "runs as the privileged role and the app keeps its least-privilege one; "
                 "set it explicitly even when it matches database_url"
             )
+
+    def _check_deploy_turnstile(self, profile: str) -> None:
+        """Require the secret and hostnames of the Turnstile bot check when it is on.
+
+        :param profile: Name of the deployed profile, for the error message.
+        :raises ValueError: If a check fails.
+        """
         if self.turnstile_enabled and not self.turnstile_secret_key:
             raise ValueError(
                 f"turnstile_secret_key is required in the {profile} profile; the check is "
@@ -889,7 +921,6 @@ class Settings(BaseSettings):
                 f"{profile} profile; a token naming a hostname outside the list is "
                 "refused, so an empty list refuses every request"
             )
-        return self
 
 
 @lru_cache
