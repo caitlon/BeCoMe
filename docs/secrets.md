@@ -217,26 +217,42 @@ stays out of the process list. Pass the file as `-H @"$S/cf.header"`. Every resp
 rulesets API carries the whole ruleset, with the secret of every API host, so send each one
 to a file in `"$S"` with `-o`, never to the terminal.
 
-1. Generate a random value into `"$S/origin.secret"`, without a trailing newline:
+1. Prepare everything before the redeploy, so step 4 is one command.
+   Generate the value without a trailing newline:
    `python -c 'import secrets; print(secrets.token_urlsafe(64), end="")' > "$S/origin.secret"`.
-   Save the current listing to `"$S/rule.json"` with the `curl` of step 5, and read the two
-   ids step 4 needs from it. These commands print only the ids:
+   Save the current listing to `"$S/rule.json"` with the `curl` of step 5. `<zone_id>` is the
+   id of the `becomify.app` zone, shown in the Cloudflare dashboard, and `<host>` is the full
+   host name, for example `api-atelier.becomify.app`. Read the two ids step 4 needs. These
+   commands print only the ids, and the second must not be empty:
 
    ```sh
-   jq -r '.result.id' "$S/rule.json"
-   jq -r '.result.rules[] | select(.expression | contains("\"<host>\"")) | .id' "$S/rule.json"
+   jq -r '.result.id' "$S/rule.json"     # <ruleset_id>
+   jq -r '.result.rules[] | select(.expression | contains("\"<host>\"")) | .id' "$S/rule.json"     # <rule_id>
    ```
 
-   `<zone_id>` is the id of the `becomify.app` zone, shown in the Cloudflare dashboard.
+   Build the body from the host's current rule, with the new value in place of the old one
+   and the read-only fields removed, then validate it with a dry run, which changes nothing:
+
+   ```sh
+   jq --rawfile v "$S/origin.secret" '.result.rules[]
+     | select(.expression | contains("\"<host>\""))
+     | del(.id, .version, .last_updated)
+     | .action_parameters.headers["X-Origin-Verify"].value = $v' \
+     "$S/rule.json" > "$S/patch.body.json"
+   curl -sS --fail -X PATCH -H @"$S/cf.header" -H 'Content-Type: application/json' \
+     --data-binary @"$S/patch.body.json" -o "$S/patch.response.json" \
+     "https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/<ruleset_id>/rules/<rule_id>?dry_run=true"
+   jq -r '.success' "$S/patch.response.json"
+   ```
+
+   The last line must print `true`.
 2. Set the variable from the file:
    `railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"`.
-3. Redeploy the backend once, and wait until the new deployment shows `SUCCESS` in
-   `railway deployment list -s <env>-backend -e <env>`.
-4. Update the rule of that host to the same value right away, with a `PATCH` on
-   `/zones/<zone_id>/rulesets/<ruleset_id>/rules/<rule_id>`. Build the JSON body with
-   `jq --rawfile` from `"$S/origin.secret"` into `"$S/patch.body.json"`, and send it with
-   `-H @"$S/cf.header"`, `-H 'Content-Type: application/json'`,
-   `--data-binary @"$S/patch.body.json"` and `-o "$S/patch.response.json"`.
+3. Redeploy the backend once, and wait until the newest row of
+   `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. If it shows `FAILED`,
+   stop here: the old container still runs with the old value and the rule is unchanged.
+4. Right away, send the same `curl` as the dry run in step 1 without `?dry_run=true`, and
+   check that `jq -r '.success' "$S/patch.response.json"` prints `true`.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
