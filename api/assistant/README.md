@@ -15,6 +15,9 @@ deployed service needs an image built with the `assistant` extra and a corpus da
 through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.example` and
 `env/.env.prod.example` list the variables.
 
+How the pipeline is built and why, from the corpus to the streamed answer, is explained in
+[How the assistant works](../../docs/assistant.md). This file covers running it.
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
