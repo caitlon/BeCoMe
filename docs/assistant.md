@@ -8,7 +8,7 @@ It is written for anyone who wants to know what happens behind the panel. How to
 is on [The assistant](user/assistant.md), and what it sends about you and your project is in
 [What the assistant sends](user/security.md#what-the-assistant-sends). How to run it on your own
 machine is in the
-[assistant's README](https://github.com/caitlon/BeCoMe/blob/dev/api/assistant/README.md).
+[assistant's README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ## Contents
 
@@ -52,9 +52,9 @@ has two layers.
 
 The **public layer** is in this repository: the pages of this documentation site, the root
 `README.md` and the READMEs of the examples, and the help and FAQ texts of the app in English and
-Czech. Three engineering pages are left out on purpose: the security posture, the environments, and
-the secrets runbook. They describe what the project deliberately does not publish, so the assistant
-must not quote them. This page is not left out. The assistant can read it, and it can answer "how
+Czech. Three engineering pages are left out on purpose: the security posture, the environment
+setup, and the secrets runbook. They cover infrastructure and security detail rather than the
+method or the app, and two of them are not published on this site either. This page is not left out. The assistant can read it, and it can answer "how
 do you work?" from it.
 
 The **local layer** holds published works that this repository does not redistribute: the article
@@ -75,12 +75,12 @@ Each document is cut at its headings (`#`, `##`, `###`), and a long section is c
 pieces of about 500 characters with a 10% overlap. Every passage keeps its heading path, such as
 "How it works > Step 2", which is what a citation shows.
 
-This was one of 22 variants measured on development questions. Nine variants tied on how often
-the right passage was among the first five. Cutting at headings was chosen among them because it
-is the one that keeps the section name. Semantic chunking, which cuts where the meaning shifts, came
+Twenty-two ways of cutting were measured on development questions, and nine of them tied on how
+often the right passage was among the first five. Cutting at headings was chosen among the nine
+because it is the one that keeps the section name. Semantic chunking, which cuts where the meaning shifts, came
 last: it made few large passages and found the right one in about half of the questions.
 
-Before a passage is indexed, a one-sentence caption is put in front of it, together with the
+Before a passage is indexed, a caption of one or two sentences is put in front of it, together with the
 document's title. The caption says what the passage is about in plain English, so a passage that
 only makes sense inside its section can still be found. The captions are written once, when the
 corpus is prepared, by a larger commercial model than the one that answers. The running server
@@ -110,19 +110,20 @@ PostgreSQL has no Czech text-search configuration.
 Most documents are in English, so a word search for a Czech question finds nothing. A Czech
 question is therefore translated into English before the search, by a model at temperature 0. A
 question that already reads as English is searched as written. On a held-out set of 37 questions,
-translation raised the share of Czech questions with the right passage among the first five from
-80% to 95%. English questions gained nothing from it, so they skip it and save almost half a
-second.
+translation by a small local model raised the share of Czech questions with the right passage among
+the first five from 80% to 95%. That small model has no host in the EU, so the deployed services
+translate with `Qwen3.5-9B` instead, and with it the share is 85%. English questions gained nothing
+from translation, so they skip it and save almost half a second.
 
-The search returns three passages. Three already held the right passage for 95% of the held-out
-questions, against 97% for five. Giving the model five passages did not make its answers more
+The search returns three passages. In the measured setup, three passages held the right one for 95%
+of the held-out questions, against 97% for five. Giving the model five passages did not make its answers more
 complete. It only added claims that the passages do not support.
 
 Two common additions were measured and left out:
 
 - **A reranker**, a second model that reorders the candidates, improved the meaning search alone
-  but barely changed the combined one. It costs half a second to a second per question and has no
-  host in the EU.
+  but barely changed the combined one. The reranker costs half a second to a second per question
+  and has no host in the EU.
 - **A hypothetical answer** used as the search query added nothing to the final setup and cost
   about two seconds per question.
 
@@ -142,11 +143,14 @@ are dropped. Each opinion carries the expert's name, position and values, and at
 are sent. A member who hid their opinions from other members' assistants is left out of the list
 entirely, though the result still counts them. Names, positions and descriptions are typed by
 users, so they are cleaned, shortened, and marked as data that the model must not follow as
-instructions. The full list of what is sent is in
+instructions. Nobody has checked them, so the model reports them as what was entered in the
+project, never as verified facts. The full list of what is sent is in
 [What the assistant sends](user/security.md#what-the-assistant-sends).
 
 Your earlier messages go along with the question, up to the last 20 and about 6,000 characters in
-total. The server keeps no history of its own. The conversation lives in your browser tab.
+total. The server keeps no conversation history to answer from. The conversation lives in your
+browser tab. Each turn is also kept in a trace record for 14 days, as
+[What the assistant sends](user/security.md#what-the-assistant-sends) explains.
 
 ## Why the code fetches the data instead of the model
 
@@ -184,13 +188,14 @@ the model towards English. When it is not sure, it adds nothing.
 
 `Qwen3.5-9B` was chosen over the smaller `Qwen3-4B` after both answered the sealed set.
 `Qwen3.5-9B` delivered more of the expected facts, and it put a claim not supported by the
-passages in 26% of its answers, against 68% for `Qwen3-4B`. `Qwen2.5-7B` and `EuroLLM-9B` did worse
-on both counts. Putting the whole public documentation into the model's input instead of three
-passages was not better either, and it used about 50 times as many input tokens.
+passages in 26% of its answers, against 68% for `Qwen3-4B`. On 64 development questions,
+`Qwen2.5-7B` and `EuroLLM-9B` did worse than `Qwen3.5-9B` on both counts. On the same questions,
+putting the whole public documentation into the model's input instead of three passages was not
+better either, and it used about 50 times as many input tokens.
 
 The measurements also show where the limit lies. The right passage reaches the model for more than
-nine questions in ten, yet answers carry only a little over half of the facts expected. The model
-that writes the answer is the weak step, not the search.
+nine questions in ten, yet on the sealed set the answers carried 47% of the expected facts. The
+model that writes the answer is the weak step, not the search.
 
 ## How citations and numbers are checked
 
@@ -201,13 +206,14 @@ without calling any model.
   that does not exist fails the check.
 - **Numbers.** Every number in the answer must appear in the passages, in the project data, in
   your own messages, or among the few constants the instructions pin (the 20% and 40% thresholds
-  and the divisors of the formulas). A rounded or shortened value counts as found, because the API
-  returns 14.1923076923 and the model writes 14.19.
+  and the divisors of the formulas). A rounded or shortened value counts as found: if the data
+  says 14.19, an answer that says 14.2 passes.
 
 A failed check does not block the answer and does not regenerate it. The answer arrives with a
 flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
-invalid. Answering again would cost another model call and could fail the same way, while the
-warning tells you what to verify. On the sealed set, 3% of the answers had a number the check
+invalid. With sources hidden, as on production, only the number warning can appear. Answering
+again would cost another model call and could fail the same way, while the warning tells you what
+to verify. On the sealed set, 3% of the answers had a number the check
 could not confirm, and 1% cited a passage that did not exist.
 
 The number check has limits. It sees the numbers but not what they belong to, so a real number
@@ -227,8 +233,8 @@ the search and the project data, must finish within 90 seconds, and the whole an
 
 ## Sources on production and on the test environments
 
-On the development and test environments, the answer shows its sources. Each `[n]` becomes a link
-to a list under the answer, where every source shows its document title and section and opens a
+On the development and test environments, the answer shows its sources. With sources on, each
+`[n]` becomes a link to a list under the answer, where every source shows its document title and section and opens a
 short excerpt. A source from the local layer is marked as a local copy and has no link. A `[n]`
 that points at no source is shown struck through.
 
@@ -256,7 +262,7 @@ exhausting the service:
 |---|---|
 | Messages per user | 60 an hour |
 | Requests per address | 20 a minute |
-| Answers across all users | 600 an hour |
+| Messages across all users | 600 an hour |
 | Answers at the same time | 8 per server process, 2 per user |
 | Length of one message | 4,000 characters |
 | Tool calls per answer (`agent` and `hybrid` only) | 4 |
@@ -280,8 +286,8 @@ them for training. Routers that pass requests on to compute mostly outside the E
 One answer uses about 1,000 tokens in total.
 
 The server talks to the provider through LangChain's client for that API, on the
-`/v1/chat/completions` and `/v1/embeddings` endpoints. Each role is configured separately, so each one can point at the hosted
-API or at a model server on a developer's machine:
+`/v1/chat/completions` and `/v1/embeddings` endpoints. Each role is configured separately, so each
+one can point at the hosted API or at a model server on a developer's machine:
 
 | Role | Provider setting | Model setting | Address setting |
 |---|---|---|---|
@@ -291,8 +297,8 @@ API or at a model server on a developer's machine:
 
 On the deployed services every role is set to `api`, and all three addresses are
 `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1`. One key, `ASSISTANT_API_KEY_OVH`, serves all
-three. It is sent only to a role set to `api`, and the server refuses to start a deployed service
-whose roles are not all hosted. Two details of the hosted API shape the code:
+three. It is sent only to a role set to `api`. When the assistant is switched on, the server
+refuses to start a deployed service whose roles are not all hosted. Two details of the hosted API shape the code:
 
 - `Qwen3.5-9B` reasons by default, and on this API it spends every token on reasoning. Each
   request therefore sends `reasoning_effort: "none"` (setting `ASSISTANT_API_REASONING_EFFORT`).
