@@ -206,21 +206,26 @@ hosts under `becomify.app` are `api` (prod), `api-atelier` (dev) and `api-harbor
 The value goes to two places, so it needs a holder that is not the terminal. Write the
 generated value into `"$S/origin.secret"`. Feed the file to Railway on standard input. Build
 the rule `PATCH` body from the same file, for example with `jq --rawfile`, so the value never
-appears on the command line. Never echo it. The Cloudflare API calls of steps 4 and 5 read the
-token from a header file. First put a token allowed to edit the zone's Transform Rules into
+appears on the command line. Never echo it. The Cloudflare API calls of steps 1, 4 and 5 read
+the token from a header file. First put a token allowed to edit the zone's Transform Rules into
 `CF_TOKEN`, from the environment or a file that sets it, never typed on a command line. It is
 not the Pages token of the CI secrets. Then write the header once with
-`printf 'Authorization: Bearer %s' "${CF_TOKEN:?}" > "$S/cf.header"`. The `:?` stops the
-command, and creates no file, when `CF_TOKEN` is empty or unset, so the procedure cannot reach step 4
-with a header that holds no token. `printf` is a shell builtin, so the token stays out of the
-process list. Pass the file as `-H @"$S/cf.header"`.
+`printf 'Authorization: Bearer %s' "${CF_TOKEN:?}" > "$S/cf.header"`. The `:?` stops
+the command, and creates no file, when `CF_TOKEN` is empty or unset, so the procedure cannot
+reach step 4 with a header that holds no token. `printf` is a shell builtin, so the token
+stays out of the process list. Pass the file as `-H @"$S/cf.header"`. Every response of the
+rulesets API carries the whole ruleset, with the secret of every API host, so send each one
+to a file in `"$S"` with `-o`, never to the terminal.
 
-1. Generate a random value into `"$S/origin.secret"`, without a trailing newline.
+1. Generate a random value into `"$S/origin.secret"`, without a trailing newline:
+   `python -c 'import secrets; print(secrets.token_urlsafe(64), end="")' > "$S/origin.secret"`.
+   Save the listing of step 5 now as well, because step 4 needs the ruleset id and the id of
+   the host's rule from it.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading
    `"$S/origin.secret"`.
 3. Redeploy the backend once.
-4. Update the rule of that host (a `PATCH` on the rule, with `-H @"$S/cf.header"`) to the
-   same value from `"$S/origin.secret"` right away.
+4. Update the rule of that host (a `PATCH` on the rule, with `-H @"$S/cf.header"` and
+   `-o "$S/patch.json"`) to the same value from `"$S/origin.secret"` right away.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
