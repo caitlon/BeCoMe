@@ -121,6 +121,22 @@ PHOTO_CONTENT_MISMATCH_CODE = "photo_content_mismatch"
 PHOTO_UNREADABLE_CODE = "photo_unreadable"
 PHOTO_DIMENSIONS_TOO_LARGE_CODE = "photo_dimensions_too_large"
 
+# The machine-readable half of the 401 a sign-in gets when the e-mail or the password is wrong.
+# One value for both, as they share a detail, so the code cannot say whether the account
+# exists. The SPA translates by it; the English sentence stays for any client matching on it.
+INVALID_CREDENTIALS_CODE = "invalid_credentials"
+
+# The machine-readable halves of the two 400s sign-up gets from the e-mail policy. Each depends
+# on the domain string alone, never on database state, so neither says whether an account exists.
+DISPOSABLE_EMAIL_DOMAIN_CODE = "disposable_email_domain"
+UNRESOLVABLE_EMAIL_DOMAIN_CODE = "unresolvable_email_domain"
+
+# The machine-readable halves of the two 422s a scale can get: an opinion value outside the
+# project's scale (POST /projects/{id}/opinions), and a scale whose minimum is not below its
+# maximum (PATCH /projects/{id}). Their details stay the exception messages, which carry numbers.
+VALUES_OUT_OF_RANGE_CODE = "values_out_of_range"
+SCALE_RANGE_INVALID_CODE = "scale_range_invalid"
+
 # The machine-readable half of the 403 the CSRF middleware sends. That answer is built in the
 # middleware, outside these handlers, so it takes the code from here and does not go through
 # ERROR_CODES. One value for both refusals (header absent, header wrong), as they share a body.
@@ -273,6 +289,11 @@ ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     PhotoContentMismatchError: PHOTO_CONTENT_MISMATCH_CODE,
     PhotoUnreadableError: PHOTO_UNREADABLE_CODE,
     PhotoDimensionsTooLargeError: PHOTO_DIMENSIONS_TOO_LARGE_CODE,
+    InvalidCredentialsError: INVALID_CREDENTIALS_CODE,
+    DisposableEmailDomainError: DISPOSABLE_EMAIL_DOMAIN_CODE,
+    UnresolvableEmailDomainError: UNRESOLVABLE_EMAIL_DOMAIN_CODE,
+    ValuesOutOfRangeError: VALUES_OUT_OF_RANGE_CODE,
+    ScaleRangeError: SCALE_RANGE_INVALID_CODE,
 }
 
 # Default mappings for base exception classes

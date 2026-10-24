@@ -142,7 +142,7 @@ describe('AssistantPrivacyCard', () => {
     expect(auth.refreshUser).not.toHaveBeenCalled();
   });
 
-  it('shows the server message when the refusal carries one', async () => {
+  it('shows the card message, not the English server detail, for an uncoded refusal', async () => {
     const user = userEvent.setup();
     mockUpdateCurrentUser.mockRejectedValueOnce(new HttpError('Too slow', 409));
     renderCard(createUser());
@@ -151,7 +151,10 @@ describe('AssistantPrivacyCard', () => {
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Error', description: 'Too slow' })
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Could not save the assistant setting',
+        })
       );
     });
   });

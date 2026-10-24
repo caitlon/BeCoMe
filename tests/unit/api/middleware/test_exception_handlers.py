@@ -26,6 +26,7 @@ from api.exceptions import (
     PhotoUnreadableError,
     ProjectNotFoundError,
     ScaleExcludesOpinionsError,
+    ScaleRangeError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
     UserAlreadyMemberError,
@@ -528,13 +529,50 @@ class TestInvitationAndPhotoErrorCodes:
                 "The image could not be read. Try saving it again as JPEG or PNG.",
                 "photo_unreadable",
             ),
+            (
+                InvalidCredentialsError(email="x@example.com", reason="invalid_password"),
+                status.HTTP_401_UNAUTHORIZED,
+                "Incorrect email or password",
+                "invalid_credentials",
+            ),
+            (
+                DisposableEmailDomainError("disposable email domain: mailinator.com"),
+                status.HTTP_400_BAD_REQUEST,
+                "That looks like a temporary address",
+                "disposable_email_domain",
+            ),
+            (
+                UnresolvableEmailDomainError("domain has no mail-capable DNS records: x"),
+                status.HTTP_400_BAD_REQUEST,
+                "We could not find that domain. Check for a typo.",
+                "unresolvable_email_domain",
+            ),
+            (
+                ValuesOutOfRangeError("All values must be within project scale [0.0, 100.0]"),
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "All values must be within project scale [0.0, 100.0]",
+                "values_out_of_range",
+            ),
+            (
+                ScaleRangeError("scale_min (5.0) must be less than scale_max (5.0)"),
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "scale_min (5.0) must be less than scale_max (5.0)",
+                "scale_range_invalid",
+            ),
+            (
+                ScaleExcludesOpinionsError("opinion 40 outside"),
+                status.HTTP_409_CONFLICT,
+                "Existing opinions fall outside the new scale. "
+                "Widen the range, or ask the experts to change their opinions first.",
+                "scale_excludes_opinions",
+            ),
         ],
     )
     def test_refusal_answers_with_its_status_detail_and_code(
         self, exc, expected_status, detail, code
     ):
         """
-        GIVEN an invitation or photo-upload refusal
+        GIVEN a refusal that has a code
         WHEN the handler builds the response
         THEN the body is exactly the fixed detail plus the refusal's own code
         """

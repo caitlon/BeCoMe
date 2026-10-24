@@ -248,7 +248,7 @@ describe('CreateProjectModal', () => {
     });
   });
 
-  it('shows the error message of an HTTP failure as the toast description', async () => {
+  it('shows the localized failure message, not the English server detail, for an HTTP failure', async () => {
     const user = userEvent.setup();
     mockCreateProject.mockRejectedValueOnce(new HttpError('boom', 400));
 
@@ -260,7 +260,10 @@ describe('CreateProjectModal', () => {
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ description: 'boom', variant: 'destructive' })
+        expect.objectContaining({
+          description: 'Failed to create project',
+          variant: 'destructive',
+        })
       );
     });
   });

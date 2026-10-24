@@ -477,6 +477,7 @@ class TestSubmitOpinion:
         # THEN
         assert response.status_code == 422
         assert "within project scale" in response.json()["detail"]
+        assert response.json()["code"] == "values_out_of_range"
 
     def test_requires_membership(self, client):
         """Returns 404 for non-members (project existence stays hidden)."""
