@@ -85,15 +85,18 @@ avg = FuzzyTriangleNumber.average([fuzzy1, fuzzy2])
 
 #### [expert_opinion.py](https://github.com/caitlon/BeCoMe/blob/prod/src/models/expert_opinion.py)
 
-`ExpertOpinion` pairs an expert ID with that expert's fuzzy assessment. Opinions compare by
-centroid, so sorting them puts the median in the middle.
+`ExpertOpinion` pairs an expert ID with that expert's fuzzy assessment. Opinions support equality and hashing but have no ordering, so `sorted(opinions)` raises `TypeError`. To sort them, use `BeCoMeCalculator.sort_by_centroid`, which returns a new list ordered by centroid.
 
 ```python
+from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
-opinion = ExpertOpinion("Expert1", FuzzyTriangleNumber(10.0, 15.0, 20.0))
-opinions_sorted = sorted([opinion1, opinion2, opinion3])  # by centroid
+opinions = [
+    ExpertOpinion("Expert1", FuzzyTriangleNumber(10.0, 15.0, 20.0)),
+    ExpertOpinion("Expert2", FuzzyTriangleNumber(1.0, 2.0, 3.0)),
+]
+opinions_sorted = BeCoMeCalculator().sort_by_centroid(opinions)  # Expert2, then Expert1
 ```
 
 #### [become_result.py](https://github.com/caitlon/BeCoMe/blob/prod/src/models/become_result.py)

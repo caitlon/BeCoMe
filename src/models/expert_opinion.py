@@ -10,7 +10,8 @@ class ExpertOpinion:
     Immutable representation of single expert's opinion.
 
     Combines expert identifier with their fuzzy triangular number opinion.
-    Supports comparison operations based on centroid for sorting.
+    Supports equality and hashing only, with no ordering. Sort opinions with an
+    explicit key, such as ``BeCoMeCalculator.sort_by_centroid``.
 
     :ivar expert_id: Unique identifier for the expert (read-only property)
     :ivar opinion: Expert's assessment as FuzzyTriangleNumber (read-only property)
@@ -74,19 +75,6 @@ class ExpertOpinion:
         :raises AttributeError: Always, as object is immutable
         """
         raise AttributeError(f"Cannot delete immutable ExpertOpinion attribute '{name}'")
-
-    def __lt__(self, other: ExpertOpinion) -> bool:
-        """
-        Compare expert opinions based on centroids.
-
-        :param other: Another ExpertOpinion to compare with
-        :return: True if this opinion's centroid is less than the other's
-        """
-        return self.centroid < other.centroid
-
-    def __le__(self, other: ExpertOpinion) -> bool:
-        """Less than or equal comparison based on centroid."""
-        return self.centroid <= other.centroid
 
     def __eq__(self, other: object) -> bool:
         """

@@ -49,9 +49,9 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 | exceptions.py | 4 | 100% |
 | interpreters/likert_interpreter.py | 24 | 100% |
 | models/become_result.py | 24 | 100% |
-| models/expert_opinion.py | 36 | 100% |
+| models/expert_opinion.py | 32 | 100% |
 | models/fuzzy_number.py | 48 | 100% |
-| **Total** | **164** | **100%** |
+| **Total** | **160** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
