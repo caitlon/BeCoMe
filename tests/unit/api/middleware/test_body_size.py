@@ -58,8 +58,8 @@ class TestBodySizeWiring:
     def test_real_app_rejects_oversized_body_before_validation(self):
         """GIVEN the real app WHEN a body over the default cap hits /calculate THEN it is 413.
 
-        Proves the guard is outermost: an oversized body is rejected before the route's
-        schema validation runs, so the payload never buffers into memory.
+        Proves the guard runs ahead of the route: an oversized body is rejected before the
+        route's schema validation runs, so the payload never buffers into memory.
         """
         from api.main import create_app
         from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES

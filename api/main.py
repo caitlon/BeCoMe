@@ -157,7 +157,21 @@ def create_app() -> FastAPI:
     # OPTIONS be answered before any limit check.
     app.add_middleware(SlowAPIMiddleware)
 
-    # CORS middleware for frontend integration (restricted for security)
+    # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
+    app.add_middleware(CSRFMiddleware)
+
+    # Request/response logging with correlation IDs.
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # Body-size guard, the outermost middleware after CORS: it drops an over-large request
+    # body before any other middleware buffers or logs it.
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    # CORS middleware for frontend integration (restricted for security). Added last, so
+    # it is outermost: a refusal produced by any middleware inside it (the CSRF 403, the
+    # body-size 413, the rate-limit 429) still carries the CORS headers, without which
+    # the browser hides the response from the SPA. It also answers preflight OPTIONS on
+    # its own, before the rate limit or the request log ever see them.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -183,16 +197,6 @@ def create_app() -> FastAPI:
         expose_headers=["X-CSRF-Token", "Retry-After"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
-
-    # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
-    app.add_middleware(CSRFMiddleware)
-
-    # Request/response logging with correlation IDs.
-    app.add_middleware(RequestLoggingMiddleware)
-
-    # Body-size guard (outermost: added last so it runs first and drops an over-large
-    # request body before any other middleware buffers or logs it).
-    app.add_middleware(BodySizeLimitMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)

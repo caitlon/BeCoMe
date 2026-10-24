@@ -167,6 +167,79 @@ class TestCorsAllowedHeaders:
         assert "x-turnstile-token" in response.headers["access-control-allow-headers"].lower()
 
 
+class TestCorsOnRefusals:
+    """A refusal from a guard middleware still reaches the SPA as a readable response.
+
+    The SPA and the API sit on different hosts, so the browser hides any response that
+    lacks Access-Control-Allow-Origin and the SPA sees a bare network error instead of
+    the status and the reason. Every middleware that answers on its own therefore has to
+    sit inside CORS.
+    """
+
+    _ORIGIN = "https://app.example.com"
+
+    @pytest.fixture
+    def client(self, monkeypatch, tmp_path) -> Iterator[TestClient]:
+        """An app whose only allowed origin is _ORIGIN, built outside the repository's .env."""
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", f'["{self._ORIGIN}"]')
+        get_settings.cache_clear()
+        try:
+            yield TestClient(create_app())
+        finally:
+            get_settings.cache_clear()
+
+    def _assert_readable_cross_origin(self, response) -> None:
+        assert response.headers.get("access-control-allow-origin") == self._ORIGIN
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
+    def test_csrf_refusal_carries_cors_headers(self, client):
+        """
+        GIVEN a cookie-authenticated mutation from the allowed origin without a CSRF token
+        WHEN the CSRF check refuses it
+        THEN the 403 carries the CORS headers, so the SPA can read why
+        """
+        from uuid import uuid4
+
+        from api.auth.cookies import ACCESS_COOKIE
+        from api.auth.jwt import create_access_token
+
+        # The cookie goes in as a raw header: the client's jar keeps __Host- cookies
+        # for https only, and this client talks plain http.
+        token = create_access_token(uuid4(), sid="session-1")
+        response = client.post(
+            "/api/v1/projects",
+            json={},
+            headers={"Origin": self._ORIGIN, "Cookie": f"{ACCESS_COOKIE}={token}"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF token missing or invalid"
+        self._assert_readable_cross_origin(response)
+
+    def test_body_size_refusal_carries_cors_headers(self, client):
+        """
+        GIVEN a request from the allowed origin declaring a body above the limit
+        WHEN the body-size guard refuses it
+        THEN the 413 carries the CORS headers
+        """
+        from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
+
+        response = client.post(
+            "/api/v1/calculate",
+            content=b"x" * (DEFAULT_MAX_BODY_BYTES + 1),
+            headers={"Origin": self._ORIGIN, "Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 413
+        self._assert_readable_cross_origin(response)
+
+
 class TestSentryInit:
     """Sentry is initialised so no credential can ride along on an event."""
 

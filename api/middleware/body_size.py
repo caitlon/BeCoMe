@@ -45,8 +45,8 @@ class BodySizeLimitMiddleware:
 
         declared = self._declared_length(scope)
         if declared is not None and declared > self._max_body_bytes:
-            # This record carries no request_id: the middleware is added last and so
-            # runs first, before RequestLoggingMiddleware binds the correlation id.
+            # This record carries no request_id: the middleware runs before
+            # RequestLoggingMiddleware binds the correlation id.
             # That ordering is the whole point, since the body is refused before
             # anything buffers it, so the missing id is a consequence, not an oversight.
             logger.warning(
