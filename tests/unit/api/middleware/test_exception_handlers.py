@@ -10,6 +10,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 
 from api.exceptions import (
+    AccountHasOwnedProjectsError,
     AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
@@ -17,6 +18,7 @@ from api.exceptions import (
     EmailNotVerifiedError,
     ExampleProjectInvitationError,
     InvalidCredentialsError,
+    InvalidProjectDispositionError,
     InvitationNotFoundError,
     NotFoundError,
     PhotoContentMismatchError,
@@ -565,6 +567,19 @@ class TestInvitationAndPhotoErrorCodes:
                 "Existing opinions fall outside the new scale. "
                 "Widen the range, or ask the experts to change their opinions first.",
                 "scale_excludes_opinions",
+            ),
+            (
+                InvalidProjectDispositionError("The new admin must be a member of the project."),
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "The new admin must be a member of the project.",
+                "invalid_project_disposition",
+            ),
+            (
+                AccountHasOwnedProjectsError("no disposition for a project"),
+                status.HTTP_409_CONFLICT,
+                "Cannot delete your account while you are the admin of one or more projects. "
+                "Transfer ownership or delete those projects first.",
+                "account_has_owned_projects",
             ),
         ],
     )
