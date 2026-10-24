@@ -4,7 +4,8 @@ What is actually implemented in BeCoMe to keep the product and its users' data s
 to operate the pieces that need runbooks. This is a description of the running system, not a
 wishlist. Deployment topology lives in [`environments.md`](environments.md). The academic
 threat model (attack trees, residual-risk argument) is kept outside this repository, and this
-page does not repeat it.
+page does not repeat it. Where each provider that handles user data runs, and how that was
+checked, is in [`data-location.md`](data-location.md).
 
 ## Contents
 
@@ -869,6 +870,15 @@ per-session statement and idle-in-transaction timeouts client-side through libpq
 so a single runaway query cannot monopolize the database. A laptop run outside tests,
 whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
 because the local Docker database has no TLS.
+
+The connection stays on `sslmode=require` and does not use `verify-full`. The databases run
+Railway's `postgres-ssl` image, which signs the server certificate with a root CA that it
+generates itself on its own volume, not with a public CA. The image regenerates the certificate,
+with a new root, on boot when the certificate is missing, close to expiry or lacks `DNS:localhost`,
+and after a backup restore. A pinned root (`sslrootcert` with `verify-full`) would break silently
+at the next regeneration, and the backend or the assistant could no longer connect. The traffic
+runs only on Railway's private network (see Network exposure below), so the residual risk is an
+active man-in-the-middle inside the project's private network.
 
 ### Network exposure
 

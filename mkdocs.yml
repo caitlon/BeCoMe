@@ -126,6 +126,7 @@ nav:
       - How the assistant works: assistant.md
       - A worked example: user/worked-example.md
       - Your data and your account: user/security.md
+      - Where the data is processed: data-location.md
   - The method:
       - How it works: method-description.md
       - Diagrams: uml-diagrams/README.md

@@ -2,7 +2,7 @@
   "meta": {
     "title": "Ochrana osobních údajů",
     "subtitle": "Co o vás tato služba uchovává, proč a jak si to vzít zpět.",
-    "updated": "Aktualizováno 21. října 2026"
+    "updated": "Aktualizováno 24. října 2026"
   },
   "controller": {
     "heading": "Kdo za to odpovídá",
@@ -40,9 +40,9 @@
     "heading": "Kdo další s údaji nakládá",
     "intro": "Jménem správce zpracovává údaje několik poskytovatelů:",
     "items": [
-      "Railway hostuje aplikaci a její databázi v Amsterdamu, tedy v Evropské unii.",
-      "Cloudflare zajišťuje doručování webu a provozuje kontrolu robotů, která chrání formuláře pro přihlášení, registraci, obnovu hesla a opětovné zaslání ověřovacího e-mailu.",
-      "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Jeho rozhraní je ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
+      "Railway hostuje aplikaci, její databáze, úložiště relací a limitů požadavků a profilové fotografie v Amsterdamu, tedy v Evropské unii.",
+      "Cloudflare zajišťuje doručování webu a provozuje kontrolu robotů, která chrání formuláře pro přihlášení, registraci, obnovu hesla a opětovné zaslání ověřovacího e-mailu. Každý požadavek zpracovává v datovém centru nejbližším návštěvníkovi, což použitý tarif neomezuje na Evropskou unii, a kontrola robotů přijímá vaši IP adresu.",
+      "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Zprávy odesílá z Irska, ale údaje o účtu včetně záznamů o zprávách uchovává ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
       "Sentry přijímá hlášení o chybách z prohlížeče i ze serveru, ve svém frankfurtském regionu. Prohlížeč mu navíc při každém zobrazení stránky posílá krátký záznam o relaci, který služba označuje jako release health. Server zhruba u každého desátého požadavku odesílá výkonnostní trasu s cestou, URL a časy databázových dotazů. Přístupové tokeny a tokeny pro obnovu hesla se odstraňují dříve, než cokoli z toho odejde.",
       "Better Stack přijímá výše popsané serverové záznamy včetně IP adres, ve svém datovém regionu v Evropské unii.",
       "OVHcloud provozuje v Evropské unii model AI, na kterém běží asistent. Co dostává, popisuje oddíl o asistentovi níže.",
@@ -66,7 +66,7 @@
     "items": [
       "K modelu odchází vaše otázka, nejvýše 20 posledních zpráv konverzace, několik úryvků z dokumentace BeCoMe a z publikovaných článků a údaje projektu otevřeného v panelu: jeho název, popis, škála a výsledek a názory v něm, u každého člena jméno, příjmení, pozice a hodnoty. Týká se to všech členů projektu, nejen vás. Vaše e-mailová adresa, ID účtu ani fotka se nikdy neposílají.",
       "Model běží v OVHcloud AI Endpoints v Evropské unii (Gravelines, Francie). OVHcloud otázky ani odpovědi neukládá a nepoužívá je k trénování modelů.",
-      "Aby šlo najít a opravit chyby, zaznamená se každá otázka jako trasa v LangSmith, kterou provozuje společnost LangChain, Inc.: vše výše uvedené, co odchází k modelu, a k tomu odpověď. Trasy se ukládají v Evropské unii (Nizozemsko) a po 14 dnech se mažou. LangChain je americká společnost a může k nim přistupovat ze Spojených států; tento přenos kryjí standardní smluvní doložky EU v její smlouvě o zpracování a o jejich kopii si můžete napsat na výše uvedenou adresu. Před odesláním trasy se jména a pozice členů projektu nahradí označením jako „Expert 1“. Funguje to pro jména zapsaná tak, jak jsou v projektu; překlep nebo zdrobnělina v otázce může projít beze změny.",
+      "Aby šlo najít a opravit chyby, zaznamená se každá otázka jako trasa v LangSmith, kterou provozuje společnost LangChain, Inc.: vše výše uvedené, co odchází k modelu, a k tomu odpověď. Trasy se ukládají v Evropské unii (Nizozemsko) a po 14 dnech se mažou. LangChain je americká společnost a může k nim přistupovat ze Spojených států; tento přenos kryjí standardní smluvní doložky EU v její smlouvě o zpracování a o jejich kopii si můžete napsat na výše uvedenou adresu. Před odesláním trasy se jména a pozice členů projektu nahradí označením jako „Expert 1“. Jména se rozpoznají i v českých pádech a bez diakritiky, ale překlep, zdrobnělina, pozice přeložená modelem nebo jméno někoho mimo projekt projdou beze změny.",
       "Konverzace se uchovává jen v záložce vašeho prohlížeče. Smaže se, když záložku zavřete nebo se odhlásíte, a služba ji na svých serverech neukládá.",
       "Vaše vlastní otázky a názory se posílají, aby služba mohla poskytnout to, o co žádáte (čl. 6 odst. 1 písm. b) GDPR). Názory ostatních členů a trasy stojí na oprávněném zájmu podle čl. 6 odst. 1 písm. f): zájmu členů porozumět společnému výsledku a zájmu správce na správných odpovědích asistenta.",
       "Můžete vznést námitku. V profilu zapněte „Skrýt moje názory před asistentem ostatních členů“. Od té chvíle asistent ostatních členů vaše názory vůbec nevidí: ani jméno, ani pozici, ani hodnoty. Váš vlastní asistent vám je ukazuje dál. Výsledek projektu, třeba průměr a počet expertů, se počítá jako dřív a váš názor v něm zůstává. Pokud v projektu nikdo jiný námitku nevznesl, dají se vaše hodnoty dopočítat z výsledku a ostatních názorů; asistent má tento výpočet zakázaný. Ostatní členové si také mohou všimnout, že jeden názor chybí.",
