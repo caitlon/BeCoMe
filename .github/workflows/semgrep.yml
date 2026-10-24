@@ -2,8 +2,8 @@ name: Semgrep
 
 # Static analysis, supply chain and secrets scanning through the Semgrep AppSec Platform.
 # On a pull request `semgrep ci` reports only what the diff adds; the weekly and the manual
-# runs scan the whole tree. Findings and triage live on the platform, and its GitHub app
-# comments on the pull request.
+# runs scan the whole tree. Findings and triage live on the platform. On a pull request the
+# `semgrep-comment` job posts one summary comment, kept up to date on every push.
 #
 # There is deliberately no push trigger, not even for a change to this file. Railway deploys
 # a `dev` commit only after the checks on it pass, so a red full scan there would hold the
@@ -42,6 +42,95 @@ jobs:
           persist-credentials: false
 
       - name: Run Semgrep
-        run: semgrep ci
+        run: semgrep ci --json-output=semgrep.json
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semgrep-results
+          path: semgrep.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Finding messages and code lines are left out of the comment on purpose: only the path,
+  # the line, the rule id and the severity reach it. The comment is found by its hidden
+  # marker and by its author, so a comment quoting the marker is never overwritten.
+  semgrep-comment:
+    name: semgrep/comment
+    needs: semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Download Semgrep results
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: semgrep-results
+          path: results
+
+      - name: Post the summary comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker='<!-- semgrep-summary -->'
+          platform='https://semgrep.dev/orgs/-/findings'
+          if [ -f results/semgrep.json ]; then
+            total=$(jq '.results | length' results/semgrep.json)
+            errors=$(jq '.errors | length' results/semgrep.json)
+            count() { jq --arg s "$1" '[.results[] | select(.extra.severity == $s)] | length' results/semgrep.json; }
+            if [ "$total" -eq 0 ]; then
+              title='Semgrep: no new findings'
+            else
+              title="Semgrep: $total new findings"
+            fi
+            {
+              echo "$marker"
+              echo "### $title"
+              echo
+              echo '| Severity | Count |'
+              echo '| --- | --- |'
+              echo "| Error | $(count ERROR) |"
+              echo "| Warning | $(count WARNING) |"
+              echo "| Info | $(count INFO) |"
+              echo "| Scan errors | $errors |"
+              if [ "$total" -gt 0 ]; then
+                echo
+                jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' results/semgrep.json
+                if [ "$total" -gt 10 ]; then
+                  echo "- ... and $((total - 10)) more"
+                fi
+              fi
+              echo
+              echo "[Workflow run]($RUN_URL) | [Findings on the platform]($platform)"
+            } > comment.md
+          else
+            {
+              echo "$marker"
+              echo '### Semgrep: the scan produced no result'
+              echo
+              echo "See the [workflow run]($RUN_URL) for the reason."
+            } > comment.md
+          fi
+
+          comments=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id")
+          existing=$(echo "$comments" | head -n 1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@comment.md
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@comment.md
+          fi
