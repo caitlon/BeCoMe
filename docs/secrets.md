@@ -208,21 +208,22 @@ generated value into `"$S/origin.secret"`. Feed the file to Railway on standard 
 the rule `PATCH` body from the same file, for example with `jq --rawfile`, so the value never
 appears on the command line. Never echo it. The Cloudflare API calls of steps 4 and 5 read the
 token from a header file. Write it once with
-`printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN" > "$S/cf.header"`, from a token
-held in the environment, so it never appears on a command line. Pass it as
-`-H @"$S/cf.header"`.
+`printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN" > "$S/cf.header"`. The token is
+one with edit rights on the zone's rulesets, and it reaches the shell from the environment or
+a file, never typed on a command line. Pass it as `-H @"$S/cf.header"`.
 
 1. Generate a random value into that file, without a trailing newline.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading the
    file.
 3. Redeploy the backend once.
-4. Update the rule of that host (a `PATCH` on the rule) to the same value from the file right
-   away.
+4. Update the rule of that host (a `PATCH` on the rule, with `-H @"$S/cf.header"`) to the
+   same value from the file right away.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
 
    ```sh
+   rm -f "$S/rule.json"
    curl -sS --fail -H @"$S/cf.header" -o "$S/rule.json" \
      "https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/phases/http_request_late_transform/entrypoint"
    ```
@@ -395,14 +396,13 @@ This covers `EMAIL_API_KEY`, `TURNSTILE_SECRET_KEY`, `ASSISTANT_API_KEY_OVH` and
 `ASSISTANT_LANGSMITH_API_KEY`.
 
 1. Create the new key at the provider.
-2. Find every environment that holds the old key by comparing the hash of the variable in
-   each backend:
-   `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`,
-   with `<VARIABLE>` replaced by the variable's name, so it reads `$EMAIL_API_KEY`, say, for
-   `dev`, `test` and `prod`. Equal hashes mean a shared key, except the empty-string hash
-   `e3b0c442...`, which means the variable is unset there. Revoking a shared key in the last
-   step breaks every environment that still holds it, so do not revoke before prod has been
-   checked, which needs the owner's go like any prod step.
+2. Find every environment that holds the old key. Run
+   `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`
+   once for each of `dev`, `test` and `prod`, with `<VARIABLE>` replaced by the variable's
+   name, for example `$EMAIL_API_KEY`. Equal hashes mean a shared key. The empty-string hash
+   `e3b0c442...` means the variable is unset or empty there. The prod run needs the owner's
+   go like any prod step. Do not revoke the old key until it has run, because revoking a
+   shared key in the last step breaks every environment that still holds it.
 3. Set the variable with `--stdin --skip-deploys` on every environment that shares the old
    key, before the next step.
 4. Redeploy the backend of each of those environments once.
