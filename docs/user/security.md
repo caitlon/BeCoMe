@@ -54,8 +54,8 @@ your browser tab and is erased when you close the tab or sign out.
 For 14 days each turn, the answer included, is also recorded in a trace store in the EU, with
 member names and positions replaced by labels. The store is run by a US company (LangChain), and
 the EU standard contractual clauses cover that transfer. Names are also found in their Czech case
-forms and without diacritics, but a typo, a nickname, a position the model translates, and the
-name of a person who is not in the project pass through unchanged. The
+forms and without diacritics, but a typo, a diminutive or nickname, a position the model
+translates, and the name of a person who is not in the project pass through unchanged. The
 [Privacy notice](https://www.becomify.app/privacy) has the details, and
 [Where the data is processed](../data-location.md) lists where each service runs.
 

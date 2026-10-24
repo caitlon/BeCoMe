@@ -871,14 +871,17 @@ so a single runaway query cannot monopolize the database. A laptop run outside t
 whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
 because the local Docker database has no TLS.
 
-The connection stays on `sslmode=require` and does not use `verify-full`. The databases run
-Railway's `postgres-ssl` image, which signs the server certificate with a root CA that it
+It stops at `require` and does not use `verify-full`. The databases run Railway's
+`postgres-ssl` image, whose `init-ssl.sh` signs the server certificate with a root CA that it
 generates itself on its own volume, not with a public CA. The image regenerates the certificate,
 with a new root, on boot when the certificate is missing, close to expiry or lacks `DNS:localhost`,
 and after a backup restore. A pinned root (`sslrootcert` with `verify-full`) would break silently
-at the next regeneration, and the backend or the assistant could no longer connect. The traffic
-runs only on Railway's private network (see Network exposure below), so the residual risk is an
-active man-in-the-middle inside the project's private network.
+at the next regeneration, and the backend could no longer reach the application database or the
+assistant's corpus database. The backend reaches both by their private-network names (see Network
+exposure below), so for its connections the residual risk is an active man-in-the-middle inside
+the project's private network. The temporary public proxy that a dump or a corpus ingest opens
+uses the same unverified `require`, so for the length of such a run the risk extends to anyone on
+the path between the developer's machine and that proxy.
 
 ### Network exposure
 
