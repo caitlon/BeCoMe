@@ -50,8 +50,8 @@ Asking many questions within one minute hits a shorter limit, and the error look
 wait a minute. When no wait time is known, the error says to try again later.
 
 **The assistant is temporarily unavailable.** The assistant is busy or the model is not responding.
-The same message appears when the assistant is switched off on the server. Try again in a few
-minutes.
+Outside a project, the same message appears when the assistant is switched off on the server. Try
+again in a few minutes.
 
 **This project is not available.** The project was deleted, or you are no longer a member. The
 message offers two buttons. **Ask without the project** switches to the **Method and app** panel,
