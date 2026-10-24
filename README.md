@@ -17,6 +17,7 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 - [How BeCoMe answers it](#how-become-answers-it)
 - [One real case and two examples](#one-real-case-and-two-examples)
 - [Try it](#try-it)
+- [The assistant](#the-assistant)
 - [Where the method comes from](#where-the-method-comes-from)
 - [Project status](#project-status)
 - [For developers](#for-developers)
@@ -60,6 +61,10 @@ To run one of the cases from a terminal instead:
 uv sync --extra dev
 uv run python -m examples.analyze_budget_case
 ```
+
+## The assistant
+
+Signed-in users can ask an AI assistant how the method works and what their own project's result means. It answers from this documentation, from the published papers and the thesis behind the method, and from the data of the project it is asked about. It sees only what you see as a member of that project, and it only reads: it cannot change a project, an opinion, or an account. The models run in the EU, at OVHcloud AI Endpoints. [How the assistant works](https://docs.becomify.app/assistant/) explains how an answer is put together and why.
 
 ## Where the method comes from
 
