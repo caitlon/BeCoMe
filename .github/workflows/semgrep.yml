@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: semgrep-${{ github.ref }}
+  group: semgrep-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
