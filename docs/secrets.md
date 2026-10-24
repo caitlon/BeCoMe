@@ -208,9 +208,11 @@ generated value into `"$S/origin.secret"`. Feed the file to Railway on standard 
 the rule `PATCH` body from the same file, for example with `jq --rawfile`, so the value never
 appears on the command line. Never echo it. The Cloudflare API calls of steps 4 and 5 read the
 token from a header file. Write it once with
-`printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN" > "$S/cf.header"`. The token is
-one allowed to edit the zone's Transform Rules. It reaches the shell from the environment, for
-example by sourcing the env file that holds it, and is never typed on a command line. Pass it as `-H @"$S/cf.header"`.
+`printf 'Authorization: Bearer %s' "$CF_TOKEN" > "$S/cf.header"`, where `CF_TOKEN` holds a
+token allowed to edit the zone's Transform Rules, not the Pages token of the CI secrets. It
+reaches the shell from the environment, for example by sourcing the env file that holds it,
+and is never typed on a command line. `printf` is a shell builtin, so the token stays out of
+the process list. Pass the file as `-H @"$S/cf.header"`.
 
 1. Generate a random value into that file, without a trailing newline.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading the
@@ -240,7 +242,8 @@ example by sourcing the env file that holds it, and is never typed on a command 
    the value in the rule of that host. `-j` matters, because it keeps `jq` from appending a
    newline that would change the hash. `<host>` is the full host name, for example
    `api-atelier.becomify.app`. The empty-string hash `e3b0c442...` from the third line means
-   either a short label, which matches no rule, or a failed listing. The `rm -f` makes sure a
+   it found no value: a short label, which matches no rule, a failed listing or an empty rule
+   value. The `rm -f` makes sure a
    failed listing leaves no file, so an older listing cannot pass for the current one.
 
 On a mismatch requests are not rejected. Every request is keyed under one shared constant
