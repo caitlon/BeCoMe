@@ -13,6 +13,7 @@ from api.auth.logging import log_account_deletion, log_data_export, log_password
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.db.models import Project
 from api.dependencies import (
+    get_calculation_service,
     get_data_export_service,
     get_project_membership_service,
     get_project_service,
@@ -42,6 +43,7 @@ from api.schemas.auth import (
     UserResponse,
 )
 from api.schemas.data_export import DataExportResponse
+from api.services.calculation_service import CalculationService
 from api.services.data_export_service import DataExportService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
@@ -239,6 +241,7 @@ def delete_current_user(
     ],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
     data: DeleteAccountRequest | None = None,
 ) -> None:
     """Delete the authenticated user's account (GDPR Article 17, right to erasure).
@@ -248,7 +251,8 @@ def delete_current_user(
     keeps erasure from silently destroying other experts' contributions while still
     letting the user leave. The profile photo blob is removed from object storage too.
     Every token issued for this account is invalidated (M2), so a still-warm cache
-    entry cannot serve the deleted account past this request.
+    entry cannot serve the deleted account past this request. Results of projects that lose
+    an opinion are recalculated in the same transaction as the account deletion.
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
@@ -257,6 +261,7 @@ def delete_current_user(
     :param membership_service: Membership service (validates transfer targets)
     :param storage_service: Storage service (None when not configured)
     :param store: Revocation store (invalidates tokens issued before the deletion)
+    :param calculation_service: Calculation service (recalculates affected project results)
     :param data: Per-owned-project dispositions (transfer or delete)
     :raises AccountHasOwnedProjectsError: If an owned project has no disposition
     :raises InvalidProjectDispositionError: If a transfer target is not another member
@@ -308,7 +313,7 @@ def delete_current_user(
         with suppress(StorageDeleteError):
             storage_service.delete(current_user.photo_url)
 
-    service.delete_user(current_user)
+    service.delete_user(current_user, calculation_service)
 
     # M2: revoke the deleted user's tokens so the account cannot outlive its data
     # via a still-warm cache entry (decode rejects the token before the cache).

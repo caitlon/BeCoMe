@@ -11,6 +11,7 @@ from api.exceptions import (
     InvalidCredentialsError,
     UserExistsError,
 )
+from api.services.calculation_service import CalculationService
 from api.services.user_service import UserService
 
 
@@ -574,4 +575,76 @@ class TestUserServiceDeleteUser:
 
         # THEN
         mock_session.delete.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+
+    def test_recalculates_each_project_that_lost_an_opinion(self):
+        """Recalculates every project the user had an opinion in, in the same transaction."""
+        # GIVEN a user with opinions in two projects
+        user = User(id=uuid4(), email="gone@example.com", hashed_password="xxx", first_name="Gone")
+        project_ids = [uuid4(), uuid4()]
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = project_ids
+        calculation_service = MagicMock(spec=CalculationService)
+        service = UserService(mock_session)
+
+        # WHEN
+        service.delete_user(user, calculation_service)
+
+        # THEN only those projects are recalculated and one commit follows the deletion
+        assert [c.args[0] for c in calculation_service.stage_recalculation.call_args_list] == (
+            project_ids
+        )
+        calculation_service.recalculate.assert_not_called()
+        mock_session.delete.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+
+    def test_recalculates_after_the_user_is_flushed_out(self):
+        """The cascade runs on flush, so recalculation must come after it and before commit."""
+        # GIVEN
+        user = User(id=uuid4(), email="order@example.com", hashed_password="xxx", first_name="O")
+        calls = MagicMock()
+        mock_session = calls.session
+        mock_session.exec.return_value.all.return_value = [uuid4()]
+        calculation_service = calls.calculation_service
+        service = UserService(mock_session)
+
+        # WHEN
+        service.delete_user(user, calculation_service)
+
+        # THEN
+        expected = [
+            "session.delete",
+            "session.flush",
+            "calculation_service.stage_recalculation",
+            "session.commit",
+        ]
+        assert [c[0] for c in calls.mock_calls if c[0] in expected] == expected
+
+    def test_failed_recalculation_commits_nothing(self):
+        """An error while recalculating propagates before the commit, so nothing persists."""
+        # GIVEN
+        user = User(id=uuid4(), email="fail@example.com", hashed_password="xxx", first_name="F")
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [uuid4()]
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.stage_recalculation.side_effect = RuntimeError("boom")
+        service = UserService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(RuntimeError, match="boom"):
+            service.delete_user(user, calculation_service)
+        mock_session.commit.assert_not_called()
+
+    def test_skips_the_opinion_lookup_without_a_calculation_service(self):
+        """Without a calculation service the account is deleted and nothing else is queried."""
+        # GIVEN
+        user = User(id=uuid4(), email="plain@example.com", hashed_password="xxx", first_name="P")
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        service.delete_user(user)
+
+        # THEN
+        mock_session.exec.assert_not_called()
         mock_session.commit.assert_called_once()

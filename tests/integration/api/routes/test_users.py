@@ -1,5 +1,7 @@
 """Tests for DELETE /api/v1/users/me endpoint."""
 
+import csv
+import io
 from unittest.mock import patch
 from uuid import UUID
 
@@ -402,6 +404,83 @@ class TestDeleteAccountDispositions:
 
         # THEN the disposition is rejected as invalid
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TestDeleteAccountRecalculatesResults:
+    """Erasure drops the user's opinions elsewhere, so those results are recalculated."""
+
+    @staticmethod
+    def _submit(client, token, project_id, lower, peak, upper):
+        """Save an opinion in the project for the token's user."""
+        response = client.post(
+            f"/api/v1/projects/{project_id}/opinions",
+            json={"position": "Expert", "lower_bound": lower, "peak": peak, "upper_bound": upper},
+            headers=auth_header(token),
+        )
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
+
+    def test_result_no_longer_counts_the_deleted_member(self, client):
+        """A project that keeps other opinions ends with a result computed without the user."""
+        # GIVEN a project where the owner and a member both gave an opinion
+        owner = register_and_login(client, "recalc-owner@example.com")
+        project_id = create_project(client, owner, "Recalc")["id"]
+        member, _ = _add_expert(client, owner, project_id, "recalc-member@example.com")
+        self._submit(client, owner, project_id, 10.0, 20.0, 30.0)
+        self._submit(client, member, project_id, 70.0, 80.0, 90.0)
+        before = client.get(f"/api/v1/projects/{project_id}/result", headers=auth_header(owner))
+        assert before.json()["num_experts"] == 2
+
+        # WHEN the member deletes their account
+        response = client.delete("/api/v1/users/me", headers=auth_header(member))
+
+        # THEN the result counts only the owner's opinion
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        after = client.get(
+            f"/api/v1/projects/{project_id}/result", headers=auth_header(owner)
+        ).json()
+        assert after["num_experts"] == 1
+        assert after["arithmetic_mean"]["peak"] == 20.0
+        assert after["best_compromise"]["peak"] == 20.0
+
+    def test_csv_export_uses_the_recalculated_result(self, client):
+        """The export reads the stored result, so it shows the values without the user."""
+        # GIVEN a project where the owner and a member both gave an opinion
+        owner = register_and_login(client, "csv-owner@example.com")
+        project_id = create_project(client, owner, "Csv Recalc")["id"]
+        member, _ = _add_expert(client, owner, project_id, "csv-member@example.com")
+        self._submit(client, owner, project_id, 10.0, 20.0, 30.0)
+        self._submit(client, member, project_id, 70.0, 80.0, 90.0)
+
+        # WHEN the member deletes their account and the owner exports the result
+        client.delete("/api/v1/users/me", headers=auth_header(member))
+        response = client.get(
+            f"/api/v1/projects/{project_id}/result/export?format=csv",
+            headers=auth_header(owner),
+        )
+
+        # THEN the exported summary counts only the owner's opinion
+        assert response.status_code == status.HTTP_200_OK
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        summary = {row[0]: row for row in rows if row}
+        assert summary["Experts"][1] == "1"
+        assert float(summary["Best Compromise (\u0393\u03a9Mean)"][2]) == 20.0
+
+    def test_result_is_removed_when_the_only_opinion_goes(self, client):
+        """A project whose only opinion belonged to the user ends with no result."""
+        # GIVEN a project where only the member gave an opinion
+        owner = register_and_login(client, "solo-owner@example.com")
+        project_id = create_project(client, owner, "Solo")["id"]
+        member, _ = _add_expert(client, owner, project_id, "solo-member@example.com")
+        self._submit(client, member, project_id, 40.0, 50.0, 60.0)
+
+        # WHEN the member deletes their account
+        response = client.delete("/api/v1/users/me", headers=auth_header(member))
+
+        # THEN the project has no result left
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        after = client.get(f"/api/v1/projects/{project_id}/result", headers=auth_header(owner))
+        assert after.status_code == status.HTTP_200_OK
+        assert after.json() is None
 
 
 class TestChangePasswordRevokesSessions:

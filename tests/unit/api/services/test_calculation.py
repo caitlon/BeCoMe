@@ -269,3 +269,53 @@ class TestCalculationServiceRecalculate:
         assert result.best_compromise_upper == 80.0
         mock_session.add.assert_called()
         mock_session.commit.assert_called()
+
+
+class TestCalculationServiceStageRecalculation:
+    """Tests for CalculationService.stage_recalculation method."""
+
+    def test_flushes_result_without_committing(self):
+        """Stages the new result in the caller's transaction and leaves the commit to it."""
+        # GIVEN
+        service, project_id = _build_single_opinion_service(20.0, 50.0, 80.0)
+
+        # WHEN
+        result = service.stage_recalculation(project_id)
+
+        # THEN
+        assert result is not None
+        assert result.best_compromise_peak == 50.0
+        service.session.add.assert_called_once_with(result)
+        service.session.flush.assert_called_once()
+        service.session.commit.assert_not_called()
+
+    def test_deletes_result_without_committing_when_no_opinions(self):
+        """Stages the removal of the result when no opinions are left, without a commit."""
+        # GIVEN
+        project_id = uuid4()
+        existing_result = CalculationResult(id=uuid4(), project_id=project_id, num_experts=1)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        mock_session.exec.return_value.first.return_value = existing_result
+        service = CalculationService(mock_session)
+
+        # WHEN
+        result = service.stage_recalculation(project_id)
+
+        # THEN
+        assert result is None
+        mock_session.delete.assert_called_once_with(existing_result)
+        mock_session.flush.assert_called_once()
+        mock_session.commit.assert_not_called()
+
+    def test_recalculate_commits_and_refreshes_the_staged_result(self):
+        """recalculate keeps committing on its own and returns the refreshed result."""
+        # GIVEN
+        service, project_id = _build_single_opinion_service(20.0, 50.0, 80.0)
+
+        # WHEN
+        result = service.recalculate(project_id)
+
+        # THEN
+        service.session.commit.assert_called_once()
+        service.session.refresh.assert_called_once_with(result)
