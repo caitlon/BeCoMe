@@ -199,7 +199,31 @@ describe('useAssistantConfig', () => {
 
       const second = renderHook(() => useAssistantConfig(true), { wrapper: wrapperForBoth });
       await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(4);
     });
+  });
+
+  it('does not request again on focus or reconnect after a success', async () => {
+    mockGetAssistantConfig.mockResolvedValue({
+      enabled: true, model: 'm', mode: 'hybrid', collection: 'c',
+    });
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
   });
 
   it('does not request again when the connection comes back after a 404', async () => {

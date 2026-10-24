@@ -16,10 +16,10 @@ const mayRequestAgain = (query: Query<AssistantConfigResponse, HttpError>): bool
  * cached error is not re-requested on window focus, reconnect or remount (for
  * a cached error that takes `retryOnMount`, not `refetchOnMount`).
  *
- * Any other failure (a network error, a 5xx) is transient. It is retried under
- * the app's normal policy, and if it still fails, a later focus, reconnect or
- * remount asks again, so the assistant appears once the server is back
- * without a page reload. A query with no data counts as stale whatever
+ * Every other error is asked for again on a later focus, reconnect or remount,
+ * so the assistant appears once the server is back without a page reload. A
+ * network error or a 5xx is also retried at once under `shouldRetryQuery`.
+ * A query with no data counts as stale whatever
  * `staleTime` says, which is what lets those triggers fire. After a success
  * staleTime is infinite because this value cannot change for the life of a
  * session -- the server process would have to restart with a different flag.
