@@ -163,7 +163,8 @@ below it, and a long signed-in name is truncated.
 ## Assistant
 
 The assistant panel is behind the build flag `VITE_ASSISTANT_ENABLED`. It is off by default,
-and a default build carries no assistant code, strings, i18n keys or endpoint paths. The
+and a default build carries no assistant code, strings, i18n keys or endpoint paths. CI checks this
+with `scripts/ci/check-assistant-bundle.sh` on a build without the flag and a build with it. The
 panel, its triggers, the privacy card on the profile page, the documentation section and the
 onboarding tour step are lazy chunks that exist only when the flag is set.
 Build with the flag to include it:

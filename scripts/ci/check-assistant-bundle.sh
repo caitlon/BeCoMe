@@ -38,13 +38,14 @@ fi
 CHUNK_PREFIXES=(AssistantRoot AssistantGuide AssistantPrivacyCard triggers)
 
 # Strings that live only in the assistant code: its API paths and a label from each
-# locale's assistant.json. The i18n catalogs are bundled together with the assistant
+# locale's assistant.json and a string from the panel itself. The i18n catalogs are bundled together with the assistant
 # namespace, so the labels also prove the namespace stays out of an unflagged build.
 STRINGS=(
   "assistant/chat/stream"
   "assistant/config"
   "Explain this result"
   "Vysvětlit výsledek"
+  "The assistant can be wrong"
 )
 
 FOUND=()

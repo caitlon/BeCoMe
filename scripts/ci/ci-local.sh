@@ -41,7 +41,7 @@ run_test() {
       --cov=src --cov=api --cov-report=term-missing
   cd "$PROJECT_ROOT/frontend"
   npm run test:run
-  npm run build
+  env -u VITE_ASSISTANT_ENABLED npm run build
   "$PROJECT_ROOT/scripts/ci/check-assistant-bundle.sh" "$PROJECT_ROOT/frontend/dist" absent
   VITE_ASSISTANT_ENABLED=true npm run build
   "$PROJECT_ROOT/scripts/ci/check-assistant-bundle.sh" "$PROJECT_ROOT/frontend/dist" present
