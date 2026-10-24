@@ -419,6 +419,41 @@ describe('useAssistantChat', () => {
       expect(result.current.draft).toBe('');
     });
 
+    it('leaves the cancelled question out of the next request, which then has no two questions in a row', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'q0');
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+      act(() => result.current.cancel());
+      await waitFor(() => expect(result.current.messages[1].status).toBe('cancelled'));
+
+      expect(result.current.messages[0]).toMatchObject({ role: 'user', content: 'q0', status: 'done' });
+      ask(result, 'q1');
+
+      expect(mockStreamAssistantMessage.mock.calls[1][0].history).toEqual([]);
+    });
+
+    it('keeps an earlier complete exchange in the history and drops only the cancelled one', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'q0');
+      stream.done({ ...RESPONSE, answer: 'a0' });
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+      ask(result, 'q1');
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[3].content).toBe('Partial'));
+      act(() => result.current.cancel());
+      await waitFor(() => expect(result.current.messages[3].status).toBe('cancelled'));
+
+      ask(result, 'q2');
+
+      expect(mockStreamAssistantMessage.mock.calls[2][0].history).toEqual([
+        { role: 'user', content: 'q0' },
+        { role: 'assistant', content: 'a0' },
+      ]);
+    });
+
     it('applies no event that arrives after the cancel, even from a reader that ignores the signal', async () => {
       let release: () => void = () => undefined;
       const gate = new Promise<void>((resolve) => {
@@ -894,39 +929,33 @@ describe('useAssistantChat', () => {
       await waitFor(() => expect(result.current.isPending).toBe(false));
       ask(result, 'next');
 
-      // q1 failed before any answer, so its question is not sent either.
+      // A question is sent only with its complete answer, so q1, q2 and q3 are left out.
       expect(mockStreamAssistantMessage.mock.calls[5][0].history).toEqual([
         { role: 'user', content: 'q0' },
         { role: 'assistant', content: 'a0' },
-        { role: 'user', content: 'q2' },
-        { role: 'user', content: 'q3' },
         { role: 'user', content: 'q4' },
         { role: 'assistant', content: 'a4' },
       ]);
     });
 
-    it('starts the window on a question, never between a question and its answer', async () => {
-      // Ten answered exchanges, then a question whose answer was cut: 21 messages count as
-      // sent, so the last 20 would begin with the answer to the first question.
-      const thread: AssistantMessage[] = [];
-      for (let i = 0; i < 10; i += 1) {
+    it('starts the window on a question, never on an answer whose question is gone', () => {
+      // A stored list is cut to its last messages, which can leave an answer first.
+      const thread: AssistantMessage[] = [storedMessage(0, 'assistant', 'done', 'a-1')];
+      for (let i = 0; i < 3; i += 1) {
         thread.push(storedMessage(thread.length, 'user', 'done', `q${i}`));
         thread.push(storedMessage(thread.length, 'assistant', 'done', `a${i}`));
       }
-      thread.push(storedMessage(thread.length, 'user', 'done', 'q10'));
-      thread.push(storedMessage(thread.length, 'assistant', 'cut', 'part'));
       seed(thread);
       mockStreamAssistantMessage.mockClear();
       openStream().done();
       const { result } = setup();
 
-      expect(result.current.historyWindowStart).toBe(2);
+      expect(result.current.historyWindowStart).toBe(1);
       ask(result, 'next');
 
       const { history } = mockStreamAssistantMessage.mock.calls[0][0];
-      expect(history[0]).toEqual({ role: 'user', content: 'q1' });
-      expect(history).toHaveLength(19);
-      expect(history[18]).toEqual({ role: 'user', content: 'q10' });
+      expect(history[0]).toEqual({ role: 'user', content: 'q0' });
+      expect(history).toHaveLength(6);
     });
 
     it('exposes the index of the oldest message inside the window', async () => {
@@ -979,13 +1008,13 @@ describe('useAssistantChat', () => {
       expect(result.current.messages[0].status).toBe('done');
     });
 
-    it('counts a question that is sent but not yet answered as the start of the window', () => {
+    it('does not count a question that is sent but not yet answered in the window', () => {
       openStream();
       const { result } = setup();
 
       ask(result, 'unanswered');
 
-      expect(result.current.historyWindowStart).toBe(0);
+      expect(result.current.historyWindowStart).toBe(-1);
     });
 
     it('reports -1 when nothing has been answered', () => {

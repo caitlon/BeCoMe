@@ -132,14 +132,21 @@ export function clearAssistantHistory(): void {
 
 // Only a message that was sent and answered in full goes back to the server: a
 // partial, failed, cut or cancelled answer would teach the model words it never said.
+// A question goes with its answer or not at all, so a question left without a complete
+// answer never makes two user turns in a row.
 function historyWindow(messages: AssistantMessage[]): number[] {
   const indexes: number[] = [];
   messages.forEach((m, index) => {
-    if (m.status === "done") indexes.push(index);
+    if (m.status !== "done") return;
+    const next = messages[index + 1];
+    if (m.role === "assistant" || (next?.role === "assistant" && next.status === "done")) {
+      indexes.push(index);
+    }
   });
   const sent = indexes.slice(-MAX_HISTORY_ENTRIES);
-  // A turn whose answer was cut leaves its question in the list alone, which can move the
-  // cut of 20 onto an answer; the window then starts at the next question instead.
+  // A list that begins with an answer whose question is gone (the stored list is cut to
+  // its last messages) would send that answer alone; the window starts at the next
+  // question instead.
   while (sent.length > 0 && messages[sent[0]].role === "assistant") sent.shift();
   return sent;
 }
@@ -213,8 +220,8 @@ function markFailed(m: AssistantMessage): AssistantMessage {
 }
 
 // A retried turn is asked again, so its earlier copy of the question is marked failed, as
-// a refused one is: otherwise the next request would carry the question twice. Only the
-// last turn is looked at, since the panel offers a retry on the last answer alone.
+// a refused one is. Only the last turn is looked at, since the panel offers a retry on the
+// last answer alone.
 function failRetriedQuestion(messages: AssistantMessage[], text: string): AssistantMessage[] {
   const answer = messages[messages.length - 1];
   const question = messages[messages.length - 2];
@@ -356,8 +363,7 @@ export function useAssistantChat({
       patchAnswer(patch, true);
 
     // Nothing was answered, so the question goes back into the box, unless the
-    // user has already started typing another one. The question is marked as
-    // failed too, so the next request does not carry it a second time.
+    // user has already started typing another one. The question is marked as failed too.
     const restoreDraft = () => {
       setDraft((d) => d || text);
       // No write is asked for: this always runs in the same tick as the settle that
