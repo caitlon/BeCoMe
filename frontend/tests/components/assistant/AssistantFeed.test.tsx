@@ -427,11 +427,17 @@ describe('AssistantFeed', () => {
       expect(screen.getByTestId('ui')).toHaveTextContent(/^false\//);
     });
 
-    it('offers only the project list when the conversation is not about a project', () => {
-      renderFeed({ messages: [user('Q?'), failure(404)], projectScoped: false });
+    it('reads a 404 outside a project as the assistant being unavailable and offers a retry', () => {
+      const onRetry = vi.fn();
+      renderFeed({ messages: [user('Q?'), failure(404)], projectScoped: false, onRetry });
 
+      expect(screen.getByText('The assistant is temporarily unavailable.')).toBeInTheDocument();
+      expect(screen.queryByText('This project is not available.')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Ask without the project' })).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'Open projects' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open projects' })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(onRetry).toHaveBeenCalledWith('Q?');
     });
 
     it('offers it only on the last answer', () => {

@@ -110,7 +110,7 @@ export function AssistantFeed({
   const [openedWithId] = useState(() => (last?.status === "pending" ? undefined : last?.id));
   const previous = messages[messages.length - 2];
   const failed = !isPending && last?.role === "assistant" && (last.status === "error" || last.status === "cut");
-  const projectGone = failed && last.error?.code === 404;
+  const projectGone = failed && projectScoped && last.error?.code === 404;
   const retryWaited = useRetryAfterElapsed(failed ? last : undefined);
 
   // Only the last answer can be tried again, and only with its own question. These
@@ -124,9 +124,9 @@ export function AssistantFeed({
   const notFound = useMemo<NotFoundActions | undefined>(
     () =>
       projectGone
-        ? { onAskWithout: projectScoped ? () => openAssistant(null) : undefined, onOpenProjects: closeAssistant }
+        ? { onAskWithout: () => openAssistant(null), onOpenProjects: closeAssistant }
         : undefined,
-    [projectGone, projectScoped, openAssistant, closeAssistant],
+    [projectGone, openAssistant, closeAssistant],
   );
 
   // The divider says where the next request's memory begins, so there is nothing to
@@ -160,6 +160,7 @@ export function AssistantFeed({
                     message={message}
                     onRetry={isLast ? handleRetry : undefined}
                     notFound={isLast ? notFound : undefined}
+                    projectScoped={projectScoped}
                     announce={isLast && message.id !== openedWithId}
                   />
                 )}
