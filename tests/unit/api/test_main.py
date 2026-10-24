@@ -1,5 +1,6 @@
 """Tests for application factory wiring in api.main."""
 
+import asyncio
 import logging
 import os
 import subprocess
@@ -705,3 +706,129 @@ class TestAssistantShutdown:
 
         # THEN
         shutdown.assert_not_called()
+
+
+class TestStartupChecksWiring:
+    """The lifespan runs the startup checks in the background, and never in a test run."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    def _run_app(monkeypatch, tmp_path, *, testing: bool, checks) -> None:
+        """Start and stop the app with ``run_startup_checks`` replaced.
+
+        :param testing: The value of ``TESTING`` for the app's settings.
+        :param checks: The coroutine function standing in for ``run_startup_checks``.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("TESTING", "1" if testing else "0")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.main.run_startup_checks", new=checks),
+        ):
+            app = create_app()
+            with TestClient(app):
+                pass
+
+    def test_nothing_is_scheduled_in_a_test_run(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING set
+        WHEN the app starts and stops
+        THEN the startup checks never ran, so the suite never reaches a network
+        """
+        # GIVEN
+        checks = AsyncMock()
+
+        # WHEN
+        self._run_app(monkeypatch, tmp_path, testing=True, checks=checks)
+
+        # THEN
+        checks.assert_not_called()
+
+    def test_the_checks_run_in_the_background_once_the_app_has_started(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING unset
+        WHEN the app starts and stops
+        THEN the checks ran once, with the app's settings, and the app answered while they
+             were still running
+        """
+        # GIVEN
+        import threading
+
+        started = threading.Event()
+        release = threading.Event()
+        seen = []
+
+        async def checks(settings):
+            seen.append(settings)
+            started.set()
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("TESTING", "0")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+
+        # WHEN
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.main.run_startup_checks", new=checks),
+            TestClient(create_app()) as client,
+        ):
+            assert started.wait(timeout=5)
+            response = client.get("/api/v1/health")
+            release.set()
+
+        # THEN
+        assert response.status_code == 200
+        assert len(seen) == 1
+        assert seen[0].testing is False
+
+    def test_a_check_still_running_is_cancelled_when_the_app_stops(self, monkeypatch, tmp_path):
+        """
+        GIVEN a startup check that never finishes
+        WHEN the app stops
+        THEN the check was cancelled, and the app stopped without waiting for it
+        """
+        # GIVEN
+        cancelled = []
+
+        async def checks(settings):
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        # WHEN
+        self._run_app(monkeypatch, tmp_path, testing=False, checks=checks)
+
+        # THEN
+        assert cancelled == [True]

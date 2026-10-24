@@ -1,8 +1,9 @@
 """FastAPI application entry point."""
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -24,6 +25,7 @@ from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
+from api.startup_checks import run_startup_checks
 
 logger = logging.getLogger("api.main")
 
@@ -34,6 +36,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     The startup and shutdown records carry the running version and active
     profile so the journal pins which build and environment served the run.
+    The backends are checked in a background task once the app has started, so
+    the app serves at once, and the task is cancelled if it is still running at
+    shutdown. Test runs skip the checks, which would reach the network.
     """
     settings = get_settings()
     lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}
@@ -43,7 +48,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # instead of paying the TCP + TLS + auth cost (a no-op for SQLite/test runs).
     warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
+    checks = None if settings.testing else asyncio.create_task(run_startup_checks(settings))
     yield
+    if checks is not None:
+        checks.cancel()
+        with suppress(asyncio.CancelledError):
+            await checks
     if settings.assistant_enabled:
         # Imported only when the flag is on, like the router in create_app(), so a
         # deployed process never loads the assistant package.
