@@ -5,12 +5,19 @@ per-field ``max_length`` on a schema does not protect against a memory-exhaustio
 flood. This middleware caps the body at the transport layer instead: it rejects a
 declared ``Content-Length`` above the limit up front, and counts bytes for chunked
 bodies so no request can buffer more than the limit regardless of the declared size.
+
+A chunked body cannot be refused up front, so the wrapped ``receive`` raises
+:class:`RequestBodyTooLarge` once the count passes the cap. That exception never
+reaches an exception handler as itself: the ``BaseHTTPMiddleware`` layers between this
+middleware and the routes read the body through anyio task groups, which wrap it in a
+nested ``ExceptionGroup``, and FastAPI then turns it into a 400 "error parsing the
+body". So the middleware answers the 413 itself, and drops whatever the app sent after
+the overflow.
 """
 
 import logging
+from dataclasses import dataclass
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("api.request")
@@ -24,11 +31,27 @@ DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024
 
 # A domain event, not an *Error.
 class RequestBodyTooLarge(Exception):  # noqa: N818
-    """Raised when a streamed request body passes the configured byte limit."""
+    """Raised inside the app when a streamed request body passes the configured limit.
+
+    An internal signal that stops the body from being read, not an error the client
+    sees: :class:`BodySizeLimitMiddleware` answers the 413 itself.
+    """
+
+
+@dataclass
+class _StreamState:
+    """What happened to one request, shared by its wrapped ``receive`` and ``send``."""
+
+    overflowed: bool = False
+    response_started: bool = False
 
 
 class BodySizeLimitMiddleware:
     """Reject requests whose body exceeds ``max_body_bytes``.
+
+    A declared ``Content-Length`` over the limit is refused before the app runs. A
+    chunked body is counted as it streams; once it passes the limit the read is
+    aborted, the app's own answer is discarded and a 413 is sent in its place.
 
     :param app: The wrapped ASGI application.
     :param max_body_bytes: Largest request body accepted, in bytes.
@@ -64,9 +87,37 @@ class BodySizeLimitMiddleware:
             await self._send_too_large(send)
             return
 
-        await self._app(scope, self._capped_receive(receive), send)
+        state = _StreamState()
+        try:
+            await self._app(
+                scope, self._capped_receive(receive, state), self._guarded_send(send, state)
+            )
+        except Exception:
+            # The overflow reaches here wrapped in ExceptionGroups, or as whatever the
+            # app made of it. Once a response is on the wire there is nothing to replace.
+            if not state.overflowed or state.response_started:
+                raise
 
-    def _capped_receive(self, receive: Receive) -> Receive:
+        if not state.overflowed or state.response_started:
+            return
+
+        # RequestLoggingMiddleware runs inside this one and stores its id in the shared
+        # scope state, so a body refused mid-stream can be tied to its request.
+        request_id = scope.get("state", {}).get("request_id")
+        logger.warning(
+            "Request body rejected",
+            extra={
+                "event": "request_body_rejected",
+                "reason": "streamed_overflow",
+                "request_id": request_id,
+                "limit_bytes": self._max_body_bytes,
+                "method": scope.get("method"),
+                "path": scope.get("path"),
+            },
+        )
+        await self._send_too_large(send, request_id)
+
+    def _capped_receive(self, receive: Receive, state: _StreamState) -> Receive:
         """Wrap ``receive`` so a body streamed past the limit aborts the request."""
         seen = 0
 
@@ -76,8 +127,26 @@ class BodySizeLimitMiddleware:
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
                 if seen > self._max_body_bytes:
+                    state.overflowed = True
                     raise RequestBodyTooLarge
             return message
+
+        return wrapped
+
+    @staticmethod
+    def _guarded_send(send: Send, state: _StreamState) -> Send:
+        """Wrap ``send`` so nothing the app sends after an overflow reaches the client.
+
+        The app answers an aborted body with a 400 of its own. A response that had
+        already started before the overflow is left alone, since it cannot be replaced.
+        """
+
+        async def wrapped(message: Message) -> None:
+            if state.overflowed and not state.response_started:
+                return
+            if message["type"] == "http.response.start":
+                state.response_started = True
+            await send(message)
 
         return wrapped
 
@@ -101,42 +170,18 @@ class BodySizeLimitMiddleware:
         return False
 
     @staticmethod
-    async def _send_too_large(send: Send) -> None:
-        """Emit a 413 response directly, without invoking the downstream app."""
+    async def _send_too_large(send: Send, request_id: str | None = None) -> None:
+        """Emit a 413 response directly, without the downstream app's answer.
+
+        :param send: The ASGI send callable.
+        :param request_id: Correlation id to echo as ``x-request-id``, when one is known.
+        """
         body = b'{"detail":"Request body too large"}'
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(body)).encode()),
-                ],
-            }
-        )
+        headers = [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ]
+        if request_id:
+            headers.append((b"x-request-id", request_id.encode()))
+        await send({"type": "http.response.start", "status": 413, "headers": headers})
         await send({"type": "http.response.body", "body": body})
-
-
-def body_too_large_handler(request: Request, exc: Exception) -> Response:
-    """Return a 413 when a chunked body streams past the limit mid-request.
-
-    Registered as the handler for :class:`RequestBodyTooLarge`, which is raised from
-    the wrapped ``receive`` once a body without a trustworthy ``Content-Length``
-    exceeds the cap. Buffering stops at that point, so memory stays bounded.
-
-    :param request: The incoming request.
-    :param exc: The raised :class:`RequestBodyTooLarge`.
-    :return: A 413 JSON response.
-    """
-    # The configured cap belongs to the middleware instance and is not reachable from
-    # this handler, so the record states what happened without guessing the number.
-    logger.warning(
-        "Request body rejected",
-        extra={
-            "event": "request_body_rejected",
-            "reason": "streamed_overflow",
-            "method": request.method,
-            "path": request.url.path,
-        },
-    )
-    return JSONResponse(status_code=413, content={"detail": "Request body too large"})

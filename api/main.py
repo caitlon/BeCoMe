@@ -14,11 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.config import Environment, Settings, get_settings
 from api.db.engine import create_db_and_tables, warm_up_connection_pool
 from api.logging_config import setup_logging
-from api.middleware.body_size import (
-    BodySizeLimitMiddleware,
-    RequestBodyTooLarge,
-    body_too_large_handler,
-)
+from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
@@ -146,7 +142,6 @@ def create_app() -> FastAPI:
     # Rate limiting setup
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(RequestBodyTooLarge, body_too_large_handler)
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)

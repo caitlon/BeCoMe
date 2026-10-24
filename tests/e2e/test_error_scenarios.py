@@ -149,3 +149,33 @@ class TestWeakPassword:
 
         # THEN
         assert response.status_code == 422
+
+
+@pytest.mark.e2e
+class TestOversizedChunkedBody:
+    """A body sent without Content-Length is still capped, with a 413."""
+
+    def test_chunked_body_over_the_cap_returns_413(self, http_client):
+        """
+        GIVEN a JSON body sent in chunks, with no Content-Length, larger than the cap
+        WHEN it is posted to /calculate on the running server
+        THEN the server answers 413, not the 400 of a body that failed to parse
+        """
+        from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
+
+        def chunks():
+            yield b'{"experts":"'
+            for _ in range(DEFAULT_MAX_BODY_BYTES // 65536 + 2):
+                yield b"x" * 65536
+            yield b'"}'
+
+        # WHEN
+        response = http_client.post(
+            "/calculate",
+            content=chunks(),
+            headers={"Content-Type": "application/json"},
+        )
+
+        # THEN
+        assert response.status_code == 413
+        assert response.json() == {"detail": "Request body too large"}
