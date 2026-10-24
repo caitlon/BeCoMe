@@ -78,6 +78,7 @@ from `secrets.*` in `.github/workflows/`.
 |--------|---------|--------|
 | `SONAR_TOKEN` | The SonarCloud job in `ci.yml` | SonarCloud |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | The publish job in `docs.yml`, which deploys the site to Cloudflare Pages | Cloudflare |
+| `SEMGREP_APP_TOKEN` | `semgrep.yml`, which sends scan results to the Semgrep AppSec Platform | Semgrep AppSec Platform |
 | `GITHUB_TOKEN` | `pr-size.yml` | Issued by GitHub for each run, nothing to rotate |
 
 ## Variables that are not secrets
