@@ -24,6 +24,7 @@ from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
+from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 from api.startup_checks import run_startup_checks
 
@@ -70,9 +71,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def _init_sentry(settings: Settings) -> None:
     """Initialise Sentry error tracking when a DSN is configured.
 
-    The FastAPI integration is auto-detected, so unhandled exceptions and
-    request context are reported without extra wiring. A no-op when the DSN is
-    unset, which keeps development and tests offline.
+    The FastAPI integration is auto-detected and adds request context. An
+    exception a route raises is reported by ``UnhandledErrorMiddleware``; one
+    that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
+    integration. A no-op when the DSN is unset, which keeps development and
+    tests offline.
 
     :param settings: Application settings.
     """
@@ -148,7 +151,11 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestBodyTooLarge, body_too_large_handler)
 
-    # Security headers middleware (added first, executes last)
+    # Innermost: answers an exception no handler maps with a 500 that then passes back out
+    # through every middleware below, CORS included.
+    app.add_middleware(UnhandledErrorMiddleware)
+
+    # Security headers middleware (executes after everything but the error guard)
     app.add_middleware(SecurityHeadersMiddleware)
 
     # Rate limiting: SlowAPIMiddleware enforces the limiter's default_limits on every
