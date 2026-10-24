@@ -1,0 +1,47 @@
+name: Semgrep
+
+# Static analysis, supply chain and secrets scanning through the Semgrep AppSec Platform.
+# On a pull request `semgrep ci` reports only what the diff adds; the weekly and the manual
+# runs scan the whole tree. Findings and triage live on the platform, and its GitHub app
+# comments on the pull request.
+#
+# There is deliberately no push trigger, not even for a change to this file. Railway deploys
+# a `dev` commit only after the checks on it pass, so a red full scan there would hold the
+# deploy over findings that were already in the tree. Nor is this a required check yet.
+on:
+  pull_request:
+    branches: [dev, test, prod]
+  schedule:
+    - cron: "37 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    name: semgrep/ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Dependabot and fork pull requests get no repository secrets, so the scan could not
+    # reach the platform.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    container:
+      image: semgrep/semgrep:1.182.1
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run Semgrep
+        run: semgrep ci
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
