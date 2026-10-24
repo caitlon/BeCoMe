@@ -123,6 +123,7 @@ nav:
       - Running a decision: user/running-a-decision.md
       - Reading the result: user/reading-the-result.md
       - The assistant: user/assistant.md
+      - How the assistant works: assistant.md
       - A worked example: user/worked-example.md
       - Your data and your account: user/security.md
   - The method:
