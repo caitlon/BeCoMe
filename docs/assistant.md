@@ -317,6 +317,8 @@ on either works with both. The hosted answer model delivered as many facts as th
 testing, but it made more claims that the passages do not support. It also varies between runs at
 temperature 0: repeated, 18 of 32 answers came back word for word the same. Where the data goes
 and who processes it is in [What the assistant sends](user/security.md#what-the-assistant-sends).
+Every service that handles data, with the region it runs in, is listed in
+[Where the data is processed](data-location.md).
 
 ## How the decisions were measured
 
