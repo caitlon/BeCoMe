@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 
 dependencies = [
-    "pydantic==2.13.5",
+    "pydantic==2.14.1",
 ]
 
 [project.optional-dependencies]
@@ -16,24 +16,24 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
-    "pytest-postgresql==9.1.0",
+    "pytest-postgresql==9.1.1",
     "pytest-xdist==3.8.0",
-    "hypothesis==6.168.3",
-    "ruff==0.16.9",
-    "mypy==2.3.1",
+    "hypothesis==6.170.1",
+    "ruff==0.17.1",
+    "mypy==2.4.0",
     "pip-audit==2.10.1",
     "bandit[toml]==1.9.4",
     "detect-secrets==1.5.0",
-    "pre-commit==4.6.2",
+    "pre-commit==4.7.0",
     "pip==26.2.1",
     "types-passlib==1.7.7.20260211",
-    "boto3-stubs[s3]==1.43.104",
+    "boto3-stubs[s3]==1.43.114",
     "mutmut==3.8.0",
-    "locust==2.46.6",
-    "fakeredis==2.38.0",
+    "locust==2.46.7",
+    "fakeredis==2.40.0",
 ]
 viz = [
-    "numpy==2.5.3",
+    "numpy==2.5.4",
     "pandas==3.0.6",
     "matplotlib==3.11.2",
     "plotly==7.1.0",
@@ -43,7 +43,7 @@ viz = [
 ]
 notebook = [
     "jupyter==1.1.1",
-    "ipykernel==7.3.0",
+    "ipykernel==7.4.0",
     "ipywidgets==8.1.9",
     "notebook==7.6.3",
 ]
@@ -54,33 +54,33 @@ docs = [
     # pulls the per-directory READMEs onto the site instead of copying them, and because
     # `scripts/docs/toc.py` imports its slug function to get the same anchors the site
     # and GitHub use.
-    "pymdown-extensions==12.1",
+    "pymdown-extensions==12.3",
     # Arrives with mkdocs anyway. Named because that same script imports it directly,
     # and an undeclared import is one dependency bump away from a puzzling failure.
-    "markdown==3.11",
+    "markdown==3.11.1",
 ]
 api = [
-    "fastapi==0.141.1",
+    "fastapi==0.143.3",
     "uvicorn[standard]==0.54.0",
-    "pydantic-settings==2.15.0",
+    "pydantic-settings==2.16.0",
     "httpx==0.28.1",
     "sqlmodel==0.0.44",
     "alembic==1.20.0",
     "psycopg2==2.9.13",
     # Lowercase on purpose: Dependabot's uv updater matches names case-sensitively.
-    "pyjwt==2.15.0",
+    "pyjwt==2.15.1",
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.32",
     "email-validator==2.3.0",
-    "boto3==1.43.104",
+    "boto3==1.43.114",
     "slowapi==0.1.10",
     "bleach==6.4.0",
     "pillow==13.0.0",
-    "sentry-sdk[fastapi]==2.71.0",
+    "sentry-sdk[fastapi]==2.72.0",
     "logtail-python==0.5.1",
     "reportlab==5.0.1",
     "redis==8.1.0",
-    "dnspython==2.8.0",
+    "dnspython==2.9.0",
 ]
 assistant = [
     # Newest mutually compatible releases, audited with pip-audit: the agent stack
@@ -90,22 +90,22 @@ assistant = [
     # Keep this order: each package comes after the packages it depends on. Dependabot
     # bumps a group one package at a time in the order listed here, so a package listed
     # before its dependency is tried against the old pin and the whole run fails.
-    "langsmith==0.14.1",
-    "langchain-core==1.6.5",
-    "langchain-text-splitters==1.1.2",
-    "openai==3.20.0",
-    "langchain-openai==1.6.6",
+    "langsmith==0.14.11",
+    "langchain-core==1.6.12",
+    "langchain-text-splitters==1.1.3",
+    "openai==3.33.0",
+    "langchain-openai==1.7.2",
     "psycopg[binary]==3.3.6",
-    "langchain-postgres==0.0.18",
-    "langgraph==1.2.12",
-    "langchain==1.4.3",
+    "langchain-postgres==0.0.19",
+    "langgraph==1.2.16",
+    "langchain==1.4.6",
     "pypdf==6.21.2",  # security fixes
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
     # dense-search test uses - raises NameError at call time without
     # this, not an ImportError at import time. Same pin already used by the viz extra.
-    "numpy==2.5.3",
+    "numpy==2.5.4",
     "rank-bm25==0.2.2",
 ]
 
