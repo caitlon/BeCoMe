@@ -266,6 +266,19 @@ describe('useAssistantChat', () => {
       expect(result.current.messages[1].error).toBeUndefined();
     });
 
+    it('stores no timing when the done answer carries a null one', async () => {
+      const stream = openStream();
+      const { result } = setup();
+
+      ask(result);
+      stream.done({ ...RESPONSE, timing: null });
+
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+      expect(result.current.messages[1].status).toBe('done');
+      expect(result.current.messages[1].timing).toBeUndefined();
+      expect(stored()![1]).not.toHaveProperty('timing');
+    });
+
     it('keeps the partial text when the stream reports an error', async () => {
       const stream = openStream();
       const { result } = setup();

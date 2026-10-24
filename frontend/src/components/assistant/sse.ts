@@ -138,8 +138,8 @@ function isChatResponse(payload: Record<string, unknown>): payload is Record<str
     typeof checks.citations_valid === "boolean" &&
     typeof checks.numbers_grounded === "boolean" &&
     Array.isArray(checks.ungrounded_numbers) &&
-    (payload.usage === undefined || isRecord(payload.usage)) &&
-    (payload.timing === undefined || isRecord(payload.timing))
+    (payload.usage == null || isRecord(payload.usage)) &&
+    (payload.timing == null || isRecord(payload.timing))
   );
 }
 

@@ -187,7 +187,7 @@ function applyEvent(m: AssistantMessage, event: AssistantSseEvent): AssistantMes
         sources: event.response.sources,
         toolsUsed: event.response.tools_used,
         checks: event.response.checks,
-        timing: event.response.timing,
+        timing: event.response.timing ?? undefined,
       };
     case "error":
       return { ...m, status: "error", error: { code: event.code, detail: event.detail } };
@@ -221,7 +221,8 @@ function markFailed(m: AssistantMessage): AssistantMessage {
 
 // A retried turn is asked again, so its earlier copy of the question is marked failed, as
 // a refused one is. Only the last turn is looked at, since the panel offers a retry on the
-// last answer alone.
+// last answer alone. Nothing reads the mark today: historyWindow already drops a question
+// whose answer is not done, so it only keeps the stored status of the two copies apart.
 function failRetriedQuestion(messages: AssistantMessage[], text: string): AssistantMessage[] {
   const answer = messages[messages.length - 1];
   const question = messages[messages.length - 2];

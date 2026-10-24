@@ -216,6 +216,6 @@ export interface AssistantChatResponse {
   sources: SourceRef[];
   tools_used: string[];
   checks: AnswerChecks;
-  usage?: TurnUsage;
-  timing?: TurnTiming;
+  usage?: TurnUsage | null;
+  timing?: TurnTiming | null;
 }

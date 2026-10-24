@@ -222,6 +222,18 @@ describe('AssistantFeed', () => {
 
       expect(screen.queryByRole('separator')).not.toBeInTheDocument();
     });
+
+    it('is not drawn when only a cancelled turn, whose question is no longer sent, lies before it', () => {
+      const cancelled = [
+        user('q0'),
+        answer('part', { status: 'cancelled' }),
+        ...thread.slice(2, 4),
+      ];
+
+      renderFeed({ messages: cancelled, historyWindowStart: 2 });
+
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    });
   });
 
   describe('trying again', () => {

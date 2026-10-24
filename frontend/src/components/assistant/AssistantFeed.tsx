@@ -130,9 +130,11 @@ export function AssistantFeed({
   );
 
   // The divider says where the next request's memory begins, so there is nothing to
-  // say when no answered message lies before that point.
+  // say when no answer lies before that point. A question counts for nothing here: a
+  // cancelled or cut turn leaves its question marked done, yet it is no longer sent.
   const separatorAt =
-    historyWindowStart > 0 && messages.slice(0, historyWindowStart).some((m) => m.status === "done")
+    historyWindowStart > 0 &&
+    messages.slice(0, historyWindowStart).some((m) => m.role === "assistant" && m.status === "done")
       ? historyWindowStart
       : -1;
 
