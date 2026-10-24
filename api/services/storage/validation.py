@@ -4,7 +4,7 @@ import logging
 from io import BytesIO
 from typing import Final
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 logger = logging.getLogger("api.service.storage")
 
@@ -92,7 +92,8 @@ def validate_image_dimensions(content: bytes) -> bool:
     try:
         with Image.open(BytesIO(content)) as image:
             width, height = image.size
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError):
+    # UnidentifiedImageError is an OSError
+    except (Image.DecompressionBombError, OSError, ValueError):
         return False
 
     if width < 1 or height < 1:

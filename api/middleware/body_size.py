@@ -22,7 +22,8 @@ logger = logging.getLogger("api.request")
 DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024
 
 
-class RequestBodyTooLarge(Exception):  # noqa: N818, a domain event, not an *Error
+# A domain event, not an *Error.
+class RequestBodyTooLarge(Exception):  # noqa: N818
     """Raised when a streamed request body passes the configured byte limit."""
 
 

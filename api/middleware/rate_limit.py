@@ -56,7 +56,8 @@ limiter = build_limiter(get_settings())
 
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
-LIMIT_PWD_RESET = "3/minute"  # noqa: S105, a rate window, not a credential
+# A rate window, not a credential.
+LIMIT_PWD_RESET = "3/minute"  # noqa: S105
 LIMIT_STANDARD = "60/minute"  # Normal API endpoints
 LIMIT_WRITE = "30/minute"  # Writes that also trigger a DB write plus recalculation
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse

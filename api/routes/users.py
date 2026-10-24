@@ -65,6 +65,8 @@ logger = logging.getLogger("api.route.users")
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
+_PHOTO_NOT_FOUND = "Photo not found"
+
 
 def _photo_upload_rejected(reason: str, user_id: UUID, **fields: object) -> None:
     """Record a refused photo upload.
@@ -94,7 +96,7 @@ def _photo_not_found(reason: str, user_id: UUID) -> None:
     :param user_id: User whose photo was requested.
     """
     logger.debug(
-        "Photo not found",
+        _PHOTO_NOT_FOUND,
         extra={"event": "photo_not_found", "reason": reason, "user_id": str(user_id)},
     )
 
@@ -469,12 +471,12 @@ def get_user_photo(
     """
     if storage_service is None:
         _photo_not_found("no_storage", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     user = user_service.get_by_id(user_id)
     if user is None or not user.photo_url:
         _photo_not_found("no_user_or_key", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     # A storage fault must not surface here: this endpoint is public, and the raw
     # exception text carries the bucket host and object key.
@@ -484,13 +486,11 @@ def get_user_photo(
         # The bucket layer already logged the fault with its own s3_open_failed event;
         # this only records that the caller was answered 404 because of it.
         _photo_not_found("storage_error", user_id)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found"
-        ) from err
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND) from err
 
     if stored is None:
         _photo_not_found("object_missing", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     # The version has to match the key being served, not merely be present. This route
     # always serves whatever photo the account holds now, so a stale or invented `v`

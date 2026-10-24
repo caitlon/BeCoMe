@@ -65,9 +65,9 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
         {t("resendVerification.action")}
       </SubmitButton>
       {status === "success" && (
-        <p role="status" className="text-sm text-success">
+        <output className="block text-sm text-success">
           {t("resendVerification.success")}
-        </p>
+        </output>
       )}
       {status === "error" && (
         <p role="alert" className="text-sm text-destructive">
