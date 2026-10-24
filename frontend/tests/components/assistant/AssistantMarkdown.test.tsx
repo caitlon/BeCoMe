@@ -37,6 +37,32 @@ describe('AssistantMarkdown', () => {
     expect(screen.getByText('body')).toBeInTheDocument();
   });
 
+  it('renders each heading as its own paragraph block, not glued to its neighbours', () => {
+    const { container } = renderMarkdown('## A\n## B');
+
+    expect(container.querySelectorAll('p')).toHaveLength(2);
+    expect(screen.getByText('A').tagName).toBe('P');
+    expect(screen.getByText('B').tagName).toBe('P');
+    expect(container.textContent).not.toBe('AB');
+  });
+
+  it('keeps a heading and the list right after it in separate blocks', () => {
+    const { container } = renderMarkdown('## Steps\n- one\n- two');
+
+    const heading = screen.getByText('Steps');
+    expect(heading.tagName).toBe('P');
+    expect(heading.closest('li')).toBeNull();
+    expect(container.querySelector('ul')?.contains(heading)).toBe(false);
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+  });
+
+  it.each(['#', '###', '######'])('emphasises a %s heading and still emits no heading element', (marks) => {
+    const { container } = renderMarkdown(`${marks} Title`);
+
+    expect(screen.getByText('Title')).toHaveClass('font-semibold');
+    expect(container.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+  });
+
   it('shows a markdown link as its text, never as an anchor', () => {
     renderMarkdown('[the docs](https://docs.becomify.app/user/reading-the-result)');
 
@@ -156,6 +182,21 @@ describe('AssistantMarkdown', () => {
       await userEvent.click(screen.getByRole('link', { name: '[2]' }));
 
       expect(window.location.hash).toBe('');
+    });
+
+    it('turns [n] in a heading into the same anchor as in a paragraph', () => {
+      renderMarkdown('## Heading [1]', { sourceNumbers: [1] });
+
+      const cite = screen.getByRole('link', { name: '[1]' });
+      expect(cite).toHaveAttribute('href', '#assistant-src-m1-1');
+      expect(cite.closest('p')).toHaveTextContent('Heading [1]');
+    });
+
+    it('strikes through [n] without a source in a heading', () => {
+      renderMarkdown('## Heading [4]', { sourceNumbers: [1] });
+
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(screen.getByText('[4]').closest('s')).not.toBeNull();
     });
 
     it('strikes through [n] without a source: no link, not focusable, hint for screen readers', () => {
