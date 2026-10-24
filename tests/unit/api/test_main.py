@@ -266,6 +266,8 @@ class TestUnhandledErrorResponse:
 
         @app.get(self._PATH)
         def _boom() -> None:
+            # Stands in for a parsed request body held in a local, such as a password.
+            plaintext_secret = "local-value-that-must-not-reach-sentry"  # noqa: F841
             raise RuntimeError("boom")
 
         try:
@@ -312,6 +314,7 @@ class TestUnhandledErrorResponse:
         GIVEN Sentry initialised with a transport that keeps every envelope
         WHEN a route raises an exception no handler maps
         THEN exactly one error event reaches Sentry, carrying that exception as unhandled
+        AND no frame local of the failing route
         """
         import sentry_sdk
         from sentry_sdk.transport import Transport
@@ -326,7 +329,7 @@ class TestUnhandledErrorResponse:
 
         transport = _KeepEnvelopes()
         previous = sentry_sdk.get_client()
-        sentry_sdk.init(dsn=_FAKE_DSN, transport=transport)
+        sentry_sdk.init(dsn=_FAKE_DSN, transport=transport, include_local_variables=False)
         try:
             self._get(client)
             sentry_sdk.flush()
@@ -345,6 +348,15 @@ class TestUnhandledErrorResponse:
         # Unhandled, as the Starlette integration reported it before: Sentry ranks issue
         # priority, and with it the high-priority alert, on that flag.
         assert reported["mechanism"]["handled"] is False
+        # The report is built by hand, so check it still honours the client's switch
+        # that keeps frame locals out of the event.
+        frames = [
+            frame
+            for value in events[0]["exception"]["values"]
+            for frame in value.get("stacktrace", {}).get("frames", [])
+        ]
+        assert frames
+        assert all("vars" not in frame for frame in frames)
 
 
 class TestSentryInit:

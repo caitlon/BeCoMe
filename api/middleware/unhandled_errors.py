@@ -21,8 +21,9 @@ class UnhandledErrorMiddleware:
     The exception is not re-raised, so it is reported to Sentry here, marked unhandled as the
     Starlette integration marked it before: Sentry ranks issue priority on that flag. The
     ERROR record the handler writes would also reach Sentry through the logging integration,
-    as a handled event; this report goes first, so Sentry's dedupe drops that one. Once the response has started (a stream that fails midway) a 500
-    can no longer be sent, and the exception goes on to ``ServerErrorMiddleware`` as before.
+    as a handled event; this report goes first, so Sentry's dedupe drops that one. Once the
+    response has started (a stream that fails midway) a 500 can no longer be sent, and the
+    exception goes on to ``ServerErrorMiddleware`` as before.
     """
 
     def __init__(self, app: ASGIApp) -> None:
