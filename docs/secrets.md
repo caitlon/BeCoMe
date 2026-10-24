@@ -209,8 +209,8 @@ the rule `PATCH` body from the same file, for example with `jq --rawfile`, so th
 appears on the command line. Never echo it. The Cloudflare API calls of steps 4 and 5 read the
 token from a header file. Write it once with
 `printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN" > "$S/cf.header"`. The token is
-one with edit rights on the zone's rulesets, and it reaches the shell from the environment or
-a file, never typed on a command line. Pass it as `-H @"$S/cf.header"`.
+one allowed to edit the zone's Transform Rules. It reaches the shell from the environment, for
+example by sourcing the env file that holds it, and is never typed on a command line. Pass it as `-H @"$S/cf.header"`.
 
 1. Generate a random value into that file, without a trailing newline.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading the
@@ -240,7 +240,8 @@ a file, never typed on a command line. Pass it as `-H @"$S/cf.header"`.
    the value in the rule of that host. `-j` matters, because it keeps `jq` from appending a
    newline that would change the hash. `<host>` is the full host name, for example
    `api-atelier.becomify.app`. The empty-string hash `e3b0c442...` from the third line means
-   either a short label, which matches no rule, or a failed listing.
+   either a short label, which matches no rule, or a failed listing. The `rm -f` makes sure a
+   failed listing leaves no file, so an older listing cannot pass for the current one.
 
 On a mismatch requests are not rejected. Every request is keyed under one shared constant
 for rate limiting instead, so all callers share one rate-limit bucket, which shows up as `429`
@@ -398,11 +399,12 @@ This covers `EMAIL_API_KEY`, `TURNSTILE_SECRET_KEY`, `ASSISTANT_API_KEY_OVH` and
 1. Create the new key at the provider.
 2. Find every environment that holds the old key. Run
    `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`
-   once for each of `dev`, `test` and `prod`, with `<VARIABLE>` replaced by the variable's
-   name, for example `$EMAIL_API_KEY`. Equal hashes mean a shared key. The empty-string hash
-   `e3b0c442...` means the variable is unset or empty there. The prod run needs the owner's
-   go like any prod step. Do not revoke the old key until it has run, because revoking a
-   shared key in the last step breaks every environment that still holds it.
+   once for each of `dev`, `test` and `prod`, with `<VARIABLE>` replaced by the bare variable
+   name, for example `EMAIL_API_KEY`, so the command reads `"$EMAIL_API_KEY"`. Equal hashes
+   mean a shared key, unless both are `e3b0c442...`, the hash of an unset or empty variable.
+   The prod run needs the owner's go like any prod step. Do not revoke the old key until the
+   prod run is done, because revoking a shared key in the last step breaks every environment
+   that still holds it.
 3. Set the variable with `--stdin --skip-deploys` on every environment that shares the old
    key, before the next step.
 4. Redeploy the backend of each of those environments once.
