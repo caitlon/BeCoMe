@@ -154,6 +154,24 @@ def create_token_pair(user_id: UUID, sid: str | None = None) -> TokenPair:
     )
 
 
+def _ensure_session_not_revoked(store: RevocationStore, sid: str, jti: str) -> None:
+    """Refuse a token whose session was revoked (fail-closed: a store error becomes a 401).
+
+    :param store: Revocation store consulted for the session id
+    :param sid: Session id carried by the token
+    :param jti: Token ID, attached to the rejection record
+    :raises TokenError: If the session is revoked or the store is unavailable
+    """
+    try:
+        session_revoked = store.is_session_revoked(sid)
+    except RevocationStoreError as e:
+        raise _reject(
+            "store_unavailable", _STORE_UNAVAILABLE_DETAIL, op="is_session_revoked"
+        ) from e
+    if session_revoked:
+        raise _reject("session_revoked", _REVOKED_DETAIL, jti=jti, sid=sid)
+
+
 def decode_token(token: str, expected_type: str, store: RevocationStore) -> TokenPayload:
     """Decode and validate a JWT token.
 
@@ -202,14 +220,7 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
         # revokes the whole family, so a stolen token cannot outlive detection.
         sid: str | None = payload.get("sid")
         if sid:
-            try:
-                session_revoked = store.is_session_revoked(sid)
-            except RevocationStoreError as e:
-                raise _reject(
-                    "store_unavailable", _STORE_UNAVAILABLE_DETAIL, op="is_session_revoked"
-                ) from e
-            if session_revoked:
-                raise _reject("session_revoked", _REVOKED_DETAIL, jti=jti, sid=sid)
+            _ensure_session_not_revoked(store, sid, jti)
 
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
