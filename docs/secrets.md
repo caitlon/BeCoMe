@@ -222,37 +222,52 @@ to a file in `"$S"` with `-o`, never to the terminal.
    `python -c 'import secrets; print(secrets.token_urlsafe(64), end="")' > "$S/origin.secret"`.
    Save the current listing to `"$S/rule.json"` with the `curl` of step 5. `<zone_id>` is the
    id of the `becomify.app` zone, shown in the Cloudflare dashboard, and `<host>` is the full
-   host name, for example `api-atelier.becomify.app`. Read the two ids step 4 needs. These
-   commands print only the ids, and the second must not be empty:
+   host name, for example `api-atelier.becomify.app`. The first command below prints the
+   ruleset id, the second the id of the host's rule, which must be exactly one id. Neither
+   prints a value:
 
    ```sh
-   jq -r '.result.id' "$S/rule.json"     # <ruleset_id>
-   jq -r '.result.rules[] | select(.expression | contains("\"<host>\"")) | .id' "$S/rule.json"     # <rule_id>
+   jq -r '.result.id' "$S/rule.json"
+   jq -r '.result.rules[] | select(.expression | contains("\"<host>\"")) | .id' "$S/rule.json"
    ```
 
-   Build the body from the host's current rule, with the new value in place of the old one
-   and the read-only fields removed, then validate it with a dry run, which changes nothing:
+   Put the two ids into the rule's address, build the body from the host's current rule with
+   the new value in place of the old one and the read-only fields removed, and validate it
+   with a dry run, which changes nothing:
 
    ```sh
+   U="https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/<ruleset_id>/rules/<rule_id>"
    jq --rawfile v "$S/origin.secret" '.result.rules[]
      | select(.expression | contains("\"<host>\""))
      | del(.id, .version, .last_updated)
      | .action_parameters.headers["X-Origin-Verify"].value = $v' \
      "$S/rule.json" > "$S/patch.body.json"
-   curl -sS --fail -X PATCH -H @"$S/cf.header" -H 'Content-Type: application/json' \
-     --data-binary @"$S/patch.body.json" -o "$S/patch.response.json" \
-     "https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/<ruleset_id>/rules/<rule_id>?dry_run=true"
-   jq -r '.success' "$S/patch.response.json"
+   rm -f "$S/patch.response.json"
+   curl -sS --fail-with-body -X PATCH -H @"$S/cf.header" -H 'Content-Type: application/json' \
+     --data-binary @"$S/patch.body.json" -o "$S/patch.response.json" "$U?dry_run=true"
+   jq -c '.success, .errors' "$S/patch.response.json"
    ```
 
-   The last line must print `true`.
+   The last line must print `true` and `[]`. On a rejected body `.errors` says why.
 2. Set the variable from the file:
    `railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"`.
 3. Redeploy the backend once, and wait until the newest row of
    `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. If it shows `FAILED`,
-   stop here: the old container still runs with the old value and the rule is unchanged.
-4. Right away, send the same `curl` as the dry run in step 1 without `?dry_run=true`, and
-   check that `jq -r '.success' "$S/patch.response.json"` prints `true`.
+   the old container still runs with the old value and the rule is unchanged, but the
+   variable already holds the new value, so the next deploy of any kind would bring the
+   mismatch. Fix the cause, redeploy, and continue with step 4.
+4. Right away, send the validated body for real, in the same shell, so `U` still holds the
+   address the dry run checked:
+
+   ```sh
+   rm -f "$S/patch.response.json"
+   curl -sS --fail-with-body -X PATCH -H @"$S/cf.header" -H 'Content-Type: application/json' \
+     --data-binary @"$S/patch.body.json" -o "$S/patch.response.json" "$U"
+   jq -c '.success, .errors' "$S/patch.response.json"
+   ```
+
+   It must print `true` and `[]`. If it does not, the backend already expects the new value
+   while the rule still sends the old one, so fix the cause and run the block again at once.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
