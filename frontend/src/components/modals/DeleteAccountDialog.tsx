@@ -55,6 +55,7 @@ export function DeleteAccountDialog({
   const loadOwnedProjects = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
+    setFailedMessage(null);
     try {
       const projects = await api.getProjects();
       const owned = projects.filter((p) => p.role === "admin");
