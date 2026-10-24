@@ -267,7 +267,7 @@ class TestUnhandledErrorResponse:
         @app.get(self._PATH)
         def _boom() -> None:
             # Stands in for a parsed request body held in a local, such as a password.
-            plaintext_secret = "local-value-that-must-not-reach-sentry"  # noqa: F841
+            parsed_field = "local-value-that-must-not-reach-sentry"  # noqa: F841
             raise RuntimeError("boom")
 
         try:
