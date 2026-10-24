@@ -124,7 +124,7 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev and test backends, it also installs the `assistant` extra at build time, and prod does not set it yet.
+The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev, test and prod backends, it also installs the `assistant` extra at build time.
 
 | Variable | dev | test | prod |
 |----------|-----|------|------|
@@ -152,7 +152,7 @@ Log format follows the deploy, not the profile. `api/logging_config.py` emits hu
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
-`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod leaves it unset, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
+`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod sets it to `true`, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
 The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question (for `ASSISTANT_LLM_MODEL`, the first question the language check does not take for English, since only the default `translate_en` query transform uses it; the check looks for a word such as "the" or "how"). Set each one explicitly on `dev` and `test`:
 
