@@ -50,7 +50,8 @@ Asking many questions within one minute hits a shorter limit, and the error look
 wait a minute. When no wait time is known, the error says to try again later.
 
 **The assistant is temporarily unavailable.** The assistant is busy or the model is not responding.
-Try again in a few minutes.
+Outside a project, the same message appears when the assistant is switched off on the server. Try
+again in a few minutes.
 
 **This project is not available.** The project was deleted, or you are no longer a member. The
 message offers two buttons. **Ask without the project** switches to the **Method and app** panel,
@@ -59,8 +60,9 @@ where you can ask again. **Open projects** closes the panel and takes you to you
 **Something went wrong.** Any other error. Try again; if it keeps happening, try later.
 
 **The connection dropped.** The part of the answer that arrived stays on screen. Pressing **Stop**
-does the same and marks the answer as stopped. Either way the partial answer is not sent with your
-next question. Under an error, **Try again** sends the question once more.
+does the same and marks the answer as stopped. Either way neither the partial answer nor the
+question it belonged to is sent with your next question, so repeat what you asked if the follow-up
+depends on it. Under an error, **Try again** sends the question once more.
 
 An orange warning under an answer means the assistant wrote numbers it could not match to the
 documentation or to your project's data. Do not rely on those numbers until you have found them on
