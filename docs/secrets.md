@@ -217,13 +217,14 @@ stays out of the process list. Pass the file as `-H @"$S/cf.header"`. Every resp
 rulesets API carries the whole ruleset, with the secret of every API host, so send each one
 to a file in `"$S"` with `-o`, never to the terminal.
 
-1. Prepare everything before the redeploy, so step 4 is one command.
+1. Prepare everything before the redeploy, so step 4 is a single short block.
    Generate the value without a trailing newline:
    `python -c 'import secrets; print(secrets.token_urlsafe(64), end="")' > "$S/origin.secret"`.
    Save the current listing to `"$S/rule.json"` with the `curl` of step 5. `<zone_id>` is the
    id of the `becomify.app` zone, shown in the Cloudflare dashboard, and `<host>` is the full
    host name, for example `api-atelier.becomify.app`. The first command below prints the
-   ruleset id, the second the id of the host's rule, which must be exactly one id. Neither
+   ruleset id, `<ruleset_id>`, the second the id of the host's rule, `<rule_id>`, which must
+   be exactly one id. Neither
    prints a value:
 
    ```sh
@@ -245,10 +246,12 @@ to a file in `"$S"` with `-o`, never to the terminal.
    rm -f "$S/patch.response.json"
    curl -sS --fail-with-body -X PATCH -H @"$S/cf.header" -H 'Content-Type: application/json' \
      --data-binary @"$S/patch.body.json" -o "$S/patch.response.json" "$U?dry_run=true"
-   jq -c '.success, .errors' "$S/patch.response.json"
+   jq -c '.success, .errors, (.result == null)' "$S/patch.response.json"
    ```
 
-   The last line must print `true` and `[]`. On a rejected body `.errors` says why.
+   The last line must print `true`, `[]` and `true`. The third value proves the dry run
+   stored nothing, since a real update returns the whole ruleset in `.result`, so never print
+   `.result` itself. On a rejected body `.errors` says why.
 2. Set the variable from the file:
    `railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"`.
 3. Redeploy the backend once, and wait until the newest row of
