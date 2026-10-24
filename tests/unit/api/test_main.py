@@ -240,6 +240,109 @@ class TestCorsOnRefusals:
         self._assert_readable_cross_origin(response)
 
 
+class TestUnhandledErrorResponse:
+    """An exception no handler catches still answers a 500 the SPA can read.
+
+    Starlette sends the 500 for an unhandled exception from ServerErrorMiddleware, which
+    sits outside every user middleware, CORS included, so that answer had no CORS headers
+    and the browser turned it into a network error.
+    """
+
+    _ORIGIN = "https://app.example.com"
+    _PATH = "/api/v1/test-unhandled-error"
+
+    @pytest.fixture
+    def client(self, monkeypatch, tmp_path) -> Iterator[TestClient]:
+        """An app with one route that raises, built outside the repository's .env."""
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", f'["{self._ORIGIN}"]')
+        get_settings.cache_clear()
+        app = create_app()
+
+        @app.get(self._PATH)
+        def _boom() -> None:
+            raise RuntimeError("boom")
+
+        try:
+            yield TestClient(app, raise_server_exceptions=False)
+        finally:
+            get_settings.cache_clear()
+
+    def _get(self, client: TestClient):
+        return client.get(self._PATH, headers={"Origin": self._ORIGIN, "X-Request-ID": "req-500"})
+
+    def test_carries_cors_headers(self, client):
+        """
+        GIVEN a route that raises an exception no handler maps
+        WHEN the allowed origin calls it
+        THEN the opaque 500 carries the CORS headers, so the SPA can read it
+        """
+        response = self._get(client)
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Internal server error"}
+        assert response.headers.get("access-control-allow-origin") == self._ORIGIN
+        assert response.headers.get("access-control-allow-credentials") == "true"
+        assert response.headers.get("x-request-id") == "req-500"
+
+    def test_logs_the_exception_with_the_request_id(self, client):
+        """
+        GIVEN a route that raises an exception no handler maps
+        WHEN it is called with a correlation ID
+        THEN one ERROR record carries the traceback and that request id
+        """
+        with captured_log_records("api.exception") as records:
+            self._get(client)
+
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.ERROR
+        assert record.exc_info is not None
+        assert isinstance(record.exc_info[1], RuntimeError)
+        assert record.request_id == "req-500"  # type: ignore[attr-defined]
+
+    def test_reports_the_exception_to_sentry(self, client):
+        """
+        GIVEN Sentry initialised with a transport that keeps every envelope
+        WHEN a route raises an exception no handler maps
+        THEN exactly one error event reaches Sentry, carrying that exception
+        """
+        import sentry_sdk
+        from sentry_sdk.transport import Transport
+
+        class _KeepEnvelopes(Transport):
+            def __init__(self) -> None:
+                super().__init__()
+                self.envelopes: list = []
+
+            def capture_envelope(self, envelope) -> None:
+                self.envelopes.append(envelope)
+
+        transport = _KeepEnvelopes()
+        previous = sentry_sdk.get_client()
+        sentry_sdk.init(dsn=_FAKE_DSN, transport=transport)
+        try:
+            self._get(client)
+            sentry_sdk.flush()
+        finally:
+            sentry_sdk.get_global_scope().set_client(previous)
+
+        events = [
+            item.payload.json
+            for envelope in transport.envelopes
+            for item in envelope.items
+            if item.type == "event"
+        ]
+        assert len(events) == 1
+        exception_types = [entry["type"] for entry in events[0]["exception"]["values"]]
+        assert exception_types[-1] == "RuntimeError"
+
+
 class TestSentryInit:
     """Sentry is initialised so no credential can ride along on an event."""
 
