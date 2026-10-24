@@ -66,6 +66,17 @@ describe('readAssistantSseStream', () => {
     ]);
   });
 
+  // The panel reads neither usage nor timing off the answer, so it is not lost without them.
+  it.each([
+    ['usage', { ...DONE_PAYLOAD, usage: undefined }],
+    ['timing', { ...DONE_PAYLOAD, timing: undefined }],
+    ['usage and timing', { ...DONE_PAYLOAD, usage: undefined, timing: undefined }],
+  ])('yields the done response when it carries no %s', async (_label, payload) => {
+    const events = await collect(streamFromChunks([frame('done', payload)]));
+
+    expect(events).toEqual([{ type: 'done', response: JSON.parse(JSON.stringify(payload)) }]);
+  });
+
   it('yields an error event in place of done', async () => {
     const events = await collect(
       streamFromChunks([
