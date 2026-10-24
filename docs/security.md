@@ -717,14 +717,19 @@ there is never a window where the application cannot connect:
 
 1. Create a replacement login with the same grants: `CREATE ROLE become_app_v2 LOGIN ...`,
 then apply the `scripts/db/roles.sql` grants to it.
+Run the statement in a session that first sets `log_statement = 'none'` and
+`log_min_error_statement = 'panic'`, and give the password as a SCRAM verifier, as in
+[`secrets.md`](secrets.md#database-and-redis-credentials). With `log_statement = 'ddl'`
+the password text would otherwise reach the log.
 2. Point the environment's `DATABASE_URL` at `become_app_v2` in Railway and redeploy.
-3. Confirm health is `200` and that `pg_stat_activity` shows connections from the new role.
+3. Confirm the new container started and that `pg_stat_activity` shows connections from the new role.
 4. Drop the old role: `DROP ROLE become_app;`. Rename `become_app_v2` back during a later
 quiet window if you want the canonical name restored.
 
-`SECRET_KEY` rotates the same way: add the new value, redeploy, verify, then remove the old
-one. Rotating it invalidates every existing session, which is the point when a leak is
-suspected.
+`SECRET_KEY` has no such window. The application reads one key, so rotating it means
+setting the new value and redeploying. Every existing session ends at that moment, which is
+the point when a leak is suspected. The inventory of every secret, with its source, scope and
+rotation steps, is in [`secrets.md`](secrets.md).
 
 ## GDPR: export and erasure
 

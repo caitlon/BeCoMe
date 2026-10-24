@@ -102,8 +102,10 @@ markdown_extensions:
 # The leading slash matters. `exclude_docs` takes gitignore syntax, where a bare
 # `security.md` matches at ANY depth, so it would silently swallow the short
 # user-facing `user/security.md` alongside the engineering document it is aimed at.
+# `secrets.md` stays off the site the same way: it is an operations runbook, not product docs.
 exclude_docs: |
   /security.md
+  /secrets.md
   uml-diagrams/generate_diagrams.py
 
 validation:
