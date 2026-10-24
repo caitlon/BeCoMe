@@ -117,9 +117,9 @@ translate with `Qwen3.5-9B` instead, and with it the share is 85%. English quest
 from translation, so they skip it and save almost half a second.
 
 The search returns three passages. With the small local translator, three passages held the right
-one for 95% of the held-out questions, against 97% for five. With the deployed translator the
-figures are 89% and 92%. Giving the model five passages did not make its answers more
-complete. It only added claims that the passages do not support.
+one for 92% of the held-out questions, against 97% for five. With the deployed translator, the same
+measurement gives 89% for three passages and 92% for five. Giving the model five passages did not
+make its answers more complete. It only added claims that the passages do not support.
 
 Two common additions were measured and left out:
 
@@ -195,10 +195,10 @@ passages in 26% of its answers, against 68% for `Qwen3-4B`. On 64 development qu
 questions that are about the documentation, putting the whole public documentation into the model's
 input instead of three passages was not better either, and it used about 50 times as many tokens.
 
-The measurements also show where the limit lies. On the held-out questions, the deployed search puts
-the right passage in front of the model for about nine questions in ten. On the separate sealed
-set, the answers carried 47% of the expected facts. The model that writes the answer is the weak
-step, not the search.
+The measurements also show where the limit lies. On the held-out questions, the search with the
+deployed translator puts the right passage in front of the model for about nine questions in ten. On
+the separate sealed set, the answers carried 47% of the expected facts. The model that writes the
+answer is the weak step, not the search.
 
 ## How citations and numbers are checked
 
