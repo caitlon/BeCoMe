@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useAssistantConfig } from '@/components/assistant/useAssistantConfig';
-import { HttpError } from '@/lib/errors';
+import { HttpError, NetworkError, ServerError } from '@/lib/errors';
 
 const mockGetAssistantConfig = vi.fn();
 vi.mock('@/components/assistant/assistant-api', () => ({
@@ -22,6 +22,7 @@ describe('useAssistantConfig', () => {
 
   afterEach(() => {
     focusManager.setFocused(undefined);
+    onlineManager.setOnline(true);
   });
 
   it('returns the config on success', async () => {
@@ -98,6 +99,146 @@ describe('useAssistantConfig', () => {
     await act(async () => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a transient failure', () => {
+    const config = { enabled: true, model: 'm', mode: 'hybrid', collection: 'c' };
+
+    // Default retry policy with no backoff, so the retries run inside the test.
+    function sharedClient() {
+      const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+      const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      );
+      return sharedClientWrapper;
+    }
+
+    async function regainFocus() {
+      // The client refetches on focus from an async listener, so let it run.
+      await act(async () => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    it('is retried when the server answers 502 and recovers', async () => {
+      mockGetAssistantConfig
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockResolvedValueOnce(config);
+
+      const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClient() });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(2);
+    });
+
+    it('is retried when the network fails and recovers', async () => {
+      mockGetAssistantConfig
+        .mockRejectedValueOnce(new NetworkError())
+        .mockResolvedValueOnce(config);
+
+      const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClient() });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(2);
+    });
+
+    it('is requested again on window focus once the retries are spent', async () => {
+      mockGetAssistantConfig
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockResolvedValueOnce(config);
+
+      const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClient() });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(3);
+
+      await regainFocus();
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(4);
+    });
+
+    it('is requested again when the connection comes back', async () => {
+      mockGetAssistantConfig
+        .mockRejectedValueOnce(new NetworkError())
+        .mockRejectedValueOnce(new NetworkError())
+        .mockRejectedValueOnce(new NetworkError())
+        .mockResolvedValueOnce(config);
+
+      const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClient() });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      await act(async () => {
+        onlineManager.setOnline(false);
+        onlineManager.setOnline(true);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(4);
+    });
+
+    it('is requested again when the hook remounts', async () => {
+      mockGetAssistantConfig
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockRejectedValueOnce(new ServerError('Bad Gateway', 502))
+        .mockResolvedValueOnce(config);
+      const wrapperForBoth = sharedClient();
+
+      const first = renderHook(() => useAssistantConfig(true), { wrapper: wrapperForBoth });
+      await waitFor(() => expect(first.result.current.isError).toBe(true));
+      first.unmount();
+
+      const second = renderHook(() => useAssistantConfig(true), { wrapper: wrapperForBoth });
+      await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+      expect(mockGetAssistantConfig).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  it('does not request again on focus or reconnect after a success', async () => {
+    mockGetAssistantConfig.mockResolvedValue({
+      enabled: true, model: 'm', mode: 'hybrid', collection: 'c',
+    });
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request again when the connection comes back after a 404', async () => {
+    mockGetAssistantConfig.mockRejectedValue(new HttpError('Not Found', 404));
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    await act(async () => {
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
