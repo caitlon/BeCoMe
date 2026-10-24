@@ -206,7 +206,11 @@ hosts under `becomify.app` are `api` (prod), `api-atelier` (dev) and `api-harbor
 The value goes to two places, so it needs a holder that is not the terminal. Write the
 generated value into `"$S/origin.secret"`. Feed the file to Railway on standard input. Build
 the rule `PATCH` body from the same file, for example with `jq --rawfile`, so the value never
-appears on the command line. Never echo it.
+appears on the command line. Never echo it. The Cloudflare API calls of steps 4 and 5 read the
+token from a header file. Write it once with
+`printf 'Authorization: Bearer %s' "$CLOUDFLARE_API_TOKEN" > "$S/cf.header"`, from a token
+held in the environment, so it never appears on a command line. Pass it as
+`-H @"$S/cf.header"`.
 
 1. Generate a random value into that file, without a trailing newline.
 2. Set `CLOUDFLARE_ORIGIN_SECRET` on the backend with `--stdin --skip-deploys`, reading the
@@ -216,12 +220,10 @@ appears on the command line. Never echo it.
    away.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
-   `-o` writes it to a file instead of the terminal, and `"$S/cf.header"` holds the
-   `Authorization: Bearer ...` line for the Cloudflare API token, written with `printf '%s'`
-   like any value file:
+   `-o` writes it to a file instead of the terminal:
 
    ```sh
-   curl -s -H @"$S/cf.header" -o "$S/rule.json" \
+   curl -sS --fail -H @"$S/cf.header" -o "$S/rule.json" \
      "https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/phases/http_request_late_transform/entrypoint"
    ```
 
@@ -236,7 +238,8 @@ appears on the command line. Never echo it.
    The first line hashes the value in the container, the second the value file, the third
    the value in the rule of that host. `-j` matters, because it keeps `jq` from appending a
    newline that would change the hash. `<host>` is the full host name, for example
-   `api-atelier.becomify.app`; the short label matches no rule and hashes the empty string.
+   `api-atelier.becomify.app`. The empty-string hash `e3b0c442...` from the third line means
+   either a short label, which matches no rule, or a failed listing.
 
 On a mismatch requests are not rejected. Every request is keyed under one shared constant
 for rate limiting instead, so all callers share one rate-limit bucket, which shows up as `429`
@@ -394,9 +397,12 @@ This covers `EMAIL_API_KEY`, `TURNSTILE_SECRET_KEY`, `ASSISTANT_API_KEY_OVH` and
 1. Create the new key at the provider.
 2. Find every environment that holds the old key by comparing the hash of the variable in
    each backend:
-   `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`
-   for `dev`, `test` and `prod`. Equal hashes mean a shared key, and revoking it in the
-   last step breaks every environment that still holds it.
+   `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`,
+   with `<VARIABLE>` replaced by the variable's name, so it reads `$EMAIL_API_KEY`, say, for
+   `dev`, `test` and `prod`. Equal hashes mean a shared key, except the empty-string hash
+   `e3b0c442...`, which means the variable is unset there. Revoking a shared key in the last
+   step breaks every environment that still holds it, so do not revoke before prod has been
+   checked, which needs the owner's go like any prod step.
 3. Set the variable with `--stdin --skip-deploys` on every environment that shares the old
    key, before the next step.
 4. Redeploy the backend of each of those environments once.
