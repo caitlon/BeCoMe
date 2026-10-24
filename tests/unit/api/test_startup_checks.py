@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -152,24 +153,83 @@ class TestRedis:
 
 @pytest.mark.asyncio
 class TestRunStartupChecks:
-    async def test_a_fault_in_a_check_is_logged_and_not_raised(self, monkeypatch, caplog):
+    async def test_checks_redis_and_skips_the_assistant_when_it_is_off(self, monkeypatch):
+        """
+        GIVEN the assistant switched off
+        WHEN the startup checks run
+        THEN Redis is checked and the assistant's module is never imported
+        """
+        # GIVEN
+        checked = []
+
+        async def check_redis(settings):
+            checked.append("redis")
+
+        monkeypatch.setattr(startup_checks, "check_redis", check_redis)
+        monkeypatch.delitem(sys.modules, "api.assistant.startup", raising=False)
+
+        # WHEN
+        await startup_checks.run_startup_checks(_settings(assistant_enabled=False))
+
+        # THEN
+        assert checked == ["redis"]
+        assert "api.assistant.startup" not in sys.modules
+
+    async def test_checks_the_assistant_too_when_it_is_on(self, monkeypatch):
+        """
+        GIVEN the assistant switched on
+        WHEN the startup checks run
+        THEN both Redis and the assistant's backends are checked, with the same settings
+        """
+        # GIVEN
+        from api.assistant import startup
+
+        calls = []
+
+        async def check_redis(settings):
+            calls.append(("redis", settings))
+
+        async def check_assistant_backends(settings):
+            calls.append(("assistant", settings))
+
+        monkeypatch.setattr(startup_checks, "check_redis", check_redis)
+        monkeypatch.setattr(startup, "check_assistant_backends", check_assistant_backends)
+        settings = _settings(assistant_enabled=True)
+
+        # WHEN
+        await startup_checks.run_startup_checks(settings)
+
+        # THEN
+        assert calls == [("redis", settings), ("assistant", settings)]
+
+    async def test_a_failing_redis_check_does_not_stop_the_assistant_check(
+        self, monkeypatch, caplog
+    ):
         """
         GIVEN a Redis check that raises something unforeseen
         WHEN the startup checks run
-        THEN nothing is raised and one ERROR names the class and none of the error's text
+        THEN nothing is raised, one ERROR names the class, and the assistant's check still ran
         """
-
         # GIVEN
+        from api.assistant import startup
+
+        ran = []
+
         async def check_redis(settings):
             raise RuntimeError("secret-host")
 
+        async def check_assistant_backends(settings):
+            ran.append(True)
+
         monkeypatch.setattr(startup_checks, "check_redis", check_redis)
+        monkeypatch.setattr(startup, "check_assistant_backends", check_assistant_backends)
 
         # WHEN
-        await startup_checks.run_startup_checks(_settings())
+        await startup_checks.run_startup_checks(_settings(assistant_enabled=True))
 
         # THEN
         (record,) = _records(caplog, logging.ERROR)
         assert record.event == "startup_checks_crashed"
         assert record.reason == "RuntimeError"
         assert "secret-host" not in " ".join(str(v) for v in vars(record).values())
+        assert ran == [True]

@@ -288,6 +288,18 @@ application, or `unknown` when nothing tagged the failure. The
 code that talks to a server writes the role on the exception (`roles.py`); the text of an error is
 never read for it. A spent message budget answers `429`.
 
+The backends are also checked once when the process starts, in a background task, so the app
+serves at once and a failed check never stops the start or changes `/health`. Each of the answer
+model, the embedding server and the document index gets one small real request, the query model
+and the reranker only when the retrieval config uses them. A failing one is logged at `ERROR` as
+`assistant_backend_check_failed` with the same `role` as above and the class of the error as
+`reason`, never its text; a probe that exceeds `ASSISTANT_LLM_TIMEOUT_SECONDS` has reason
+`TimeoutError`. The document-index probe builds the retriever and keeps it, so the corpus
+database pool is open from startup. Its `reason` is `AssistantUnavailableError`, and the
+underlying class is on the `assistant_dependency_unavailable` warning logged just before it.
+When all pass, `assistant_backends_checked` records the count and the time in milliseconds. Test
+runs skip the check.
+
 ### Modes
 
 `ASSISTANT_MODE` picks how a turn runs:

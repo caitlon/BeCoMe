@@ -6,6 +6,9 @@ answers 200. These checks reach each backend once at startup and log a failure a
 level Sentry records as an event. They only log: a provider outage must not stop a deploy or a
 wake from App Sleep, and the app is serving before they finish, because the lifespan runs them
 as a background task.
+
+The assistant's own backends are checked by ``api/assistant/startup.py``, imported only when
+the assistant is enabled, so a process with it off never loads the assistant package.
 """
 
 import asyncio
@@ -50,13 +53,18 @@ async def check_redis(settings: Settings) -> None:
 async def run_startup_checks(settings: Settings) -> None:
     """Check every backend of this process at once, never raising.
 
-    A failure is logged by the check that met it; a fault in a check itself is logged here,
-    and does not stop the other checks, so the background task that runs this ends quietly
-    whatever happens.
+    Redis is checked always, the assistant's backends when the assistant is enabled. A failure
+    is logged by the check that met it; a fault in a check itself is logged here, and does not
+    stop the other check, so the background task that runs this ends quietly whatever happens.
 
     :param settings: Application settings.
     """
     checks = [check_redis(settings)]
+    if settings.assistant_enabled:
+        # Imported only when the flag is on, like the router in create_app().
+        from api.assistant.startup import check_assistant_backends
+
+        checks.append(check_assistant_backends(settings))
     for outcome in await asyncio.gather(*checks, return_exceptions=True):
         if isinstance(outcome, Exception):
             logger.error(
