@@ -52,10 +52,10 @@ has two layers.
 
 The **public layer** is in this repository: the pages of this documentation site, the root
 `README.md` and the READMEs of the examples, and the help and FAQ texts of the app in English and
-Czech. Three engineering pages are left out on purpose: the security posture, the environment
-setup, and the secrets runbook. They cover infrastructure and security detail rather than the
-method or the app, and two of them are not published on this site either. This page is not left out. The assistant can read it, and it can answer "how
-do you work?" from it.
+Czech. Three engineering pages are left out on purpose: the security posture, the environment setup,
+and the secrets runbook. They cover infrastructure and security detail rather than the method or the
+app, and two of them are not published on this site either. This page is not left out. The assistant
+can read it, and it can answer "how do you work?" from it.
 
 The **local layer** holds published works that this repository does not redistribute: the article
 that introduced the method, the bachelor thesis the app grew out of, and the papers behind the
@@ -77,14 +77,15 @@ pieces of about 500 characters with a 10% overlap. Every passage keeps its headi
 
 Twenty-two ways of cutting were measured on development questions, and nine of them tied on how
 often the right passage was among the first five. Cutting at headings was chosen among the nine
-because it is the one that keeps the section name. Semantic chunking, which cuts where the meaning shifts, came
-last: it made few large passages and found the right one in about half of the questions.
+because it is the one that keeps the section name. Semantic chunking, which cuts where the meaning
+shifts, came last: it made few large passages and found the right one in about half of the
+questions.
 
-Before a passage is indexed, a caption of one or two sentences is put in front of it, together with the
-document's title. The caption says what the passage is about in plain English, so a passage that
+Before a passage is indexed, a caption of one or two sentences is put in front of it, together with
+the document's title. The caption says what the passage is about in plain English, so a passage that
 only makes sense inside its section can still be found. The captions are written once, when the
-corpus is prepared, by a larger commercial model than the one that answers. The running server
-never calls it.
+corpus is prepared, by a larger commercial model than the one that answers. The running server never
+calls it.
 
 Captions were the strongest single improvement measured. With them, the right passage was among the
 first five for 87% of the development questions instead of 73%. Captions written by a small local
@@ -115,8 +116,9 @@ the first five from 80% to 95%. That small model has no host in the EU, so the d
 translate with `Qwen3.5-9B` instead, and with it the share is 85%. English questions gained nothing
 from translation, so they skip it and save almost half a second.
 
-The search returns three passages. In the measured setup, three passages held the right one for 95%
-of the held-out questions, against 97% for five. Giving the model five passages did not make its answers more
+The search returns three passages. With the small local translator, three passages held the right
+one for 95% of the held-out questions, against 97% for five. With the deployed translator the
+figures are 89% and 92%. Giving the model five passages did not make its answers more
 complete. It only added claims that the passages do not support.
 
 Two common additions were measured and left out:
@@ -189,13 +191,14 @@ the model towards English. When it is not sure, it adds nothing.
 `Qwen3.5-9B` was chosen over the smaller `Qwen3-4B` after both answered the sealed set.
 `Qwen3.5-9B` delivered more of the expected facts, and it put a claim not supported by the
 passages in 26% of its answers, against 68% for `Qwen3-4B`. On 64 development questions,
-`Qwen2.5-7B` and `EuroLLM-9B` did worse than `Qwen3.5-9B` on both counts. On the same questions,
-putting the whole public documentation into the model's input instead of three passages was not
-better either, and it used about 50 times as many input tokens.
+`Qwen2.5-7B` and `EuroLLM-9B` did worse than `Qwen3.5-9B` on both counts. On the 52 of those
+questions that are about the documentation, putting the whole public documentation into the model's
+input instead of three passages was not better either, and it used about 50 times as many tokens.
 
-The measurements also show where the limit lies. The right passage reaches the model for more than
-nine questions in ten, yet on the sealed set the answers carried 47% of the expected facts. The
-model that writes the answer is the weak step, not the search.
+The measurements also show where the limit lies. On the held-out questions, the deployed search puts
+the right passage in front of the model for about nine questions in ten. On the separate sealed
+set, the answers carried 47% of the expected facts. The model that writes the answer is the weak
+step, not the search.
 
 ## How citations and numbers are checked
 
@@ -233,10 +236,10 @@ the search and the project data, must finish within 90 seconds, and the whole an
 
 ## Sources on production and on the test environments
 
-On the development and test environments, the answer shows its sources. With sources on, each
-`[n]` becomes a link to a list under the answer, where every source shows its document title and section and opens a
-short excerpt. A source from the local layer is marked as a local copy and has no link. A `[n]`
-that points at no source is shown struck through.
+On the development and test environments, the answer shows its sources. With sources on, each `[n]`
+becomes a link to a list under the answer, where every source shows its document title and section
+and opens a short excerpt. A source from the local layer is marked as a local copy. No source links
+to its original document yet. A `[n]` that points at no source is shown struck through.
 
 Production does not show sources for now. The setting `ASSISTANT_SHOW_SOURCES` is off there, and it
 works on the server, not only in the panel. The server removes the `[n]` markers from the answer,
@@ -269,6 +272,8 @@ exhausting the service:
 | Search and project data, before the stream opens | 90 seconds |
 | Whole answer | 180 seconds |
 
+The two time limits are ceilings, not typical times. Most answers arrive within a minute.
+
 A refused message gets a plain explanation in the panel, and a limit refusal says how long to wait.
 The server never shows the text of an internal error.
 
@@ -297,8 +302,9 @@ one can point at the hosted API or at a model server on a developer's machine:
 
 On the deployed services every role is set to `api`, and all three addresses are
 `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1`. One key, `ASSISTANT_API_KEY_OVH`, serves all
-three. It is sent only to a role set to `api`. When the assistant is switched on, the server
-refuses to start a deployed service whose roles are not all hosted. Two details of the hosted API shape the code:
+three. It is sent only to a role set to `api`. When the assistant is switched on, the server refuses
+to start a deployed service whose roles are not all hosted. Two details of the hosted API shape the
+code:
 
 - `Qwen3.5-9B` reasons by default, and on this API it spends every token on reasoning. Each
   request therefore sends `reasoning_effort: "none"` (setting `ASSISTANT_API_REASONING_EFFORT`).
