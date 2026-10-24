@@ -233,7 +233,10 @@ class TestLogin:
 
         # THEN
         assert response.status_code == 401
-        assert "Incorrect email or password" in response.json()["detail"]
+        assert response.json() == {
+            "detail": "Incorrect email or password",
+            "code": "invalid_credentials",
+        }
 
     def test_login_nonexistent_user_fails(self, client):
         """Login with non-existent email returns 401."""
@@ -243,8 +246,12 @@ class TestLogin:
             data={"username": "nobody@example.com", "password": "anypassword"},
         )
 
-        # THEN
+        # THEN: the same body as a wrong password, so the code reveals nothing about the account
         assert response.status_code == 401
+        assert response.json() == {
+            "detail": "Incorrect email or password",
+            "code": "invalid_credentials",
+        }
 
     def test_login_with_different_case_email_works(self, client):
         """Login works with email in different case than registered."""
