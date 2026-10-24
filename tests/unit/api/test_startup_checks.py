@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -165,14 +166,14 @@ class TestRunStartupChecks:
             checked.append("redis")
 
         monkeypatch.setattr(startup_checks, "check_redis", check_redis)
-        monkeypatch.delitem(__import__("sys").modules, "api.assistant.startup", raising=False)
+        monkeypatch.delitem(sys.modules, "api.assistant.startup", raising=False)
 
         # WHEN
         await startup_checks.run_startup_checks(_settings(assistant_enabled=False))
 
         # THEN
         assert checked == ["redis"]
-        assert "api.assistant.startup" not in __import__("sys").modules
+        assert "api.assistant.startup" not in sys.modules
 
     async def test_checks_the_assistant_too_when_it_is_on(self, monkeypatch):
         """

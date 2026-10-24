@@ -294,8 +294,11 @@ model, the embedding server and the document index gets one small real request, 
 and the reranker only when the retrieval config uses them. A failing one is logged at `ERROR` as
 `assistant_backend_check_failed` with the same `role` as above and the class of the error as
 `reason`, never its text; a probe that exceeds `ASSISTANT_LLM_TIMEOUT_SECONDS` has reason
-`TimeoutError`. When all pass, `assistant_backends_checked` records the count and the time in
-milliseconds. Test runs skip the check.
+`TimeoutError`. The document-index probe builds the retriever and keeps it, so the corpus
+database pool is open from startup. Its `reason` is `AssistantUnavailableError`, and the
+underlying class is on the `assistant_dependency_unavailable` warning logged just before it.
+When all pass, `assistant_backends_checked` records the count and the time in milliseconds. Test
+runs skip the check.
 
 ### Modes
 

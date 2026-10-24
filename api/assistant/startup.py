@@ -44,17 +44,11 @@ async def _probe_chat(model: BaseChatModel) -> None:
 
 
 async def _probe_embedding(settings: Settings) -> None:
-    """Embed one short text with a client built from the settings, and close it.
+    """Embed one short text with a client built from the settings.
 
     :param settings: Application settings.
     """
-    embeddings = make_embeddings(settings)
-    try:
-        await embeddings.aembed_query(_PROBE_TEXT)
-    finally:
-        client = getattr(embeddings, "root_async_client", None)
-        if client is not None:
-            await client.close()
+    await make_embeddings(settings).aembed_query(_PROBE_TEXT)
 
 
 async def _probe_rerank(settings: Settings) -> None:
