@@ -508,8 +508,9 @@ carries no note.
 
 Text a model writes reaches the browser only through the optional assistant panel, which
 renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
-`ul`, `ol`, `li`, `code`, `br`, with `unwrapDisallowed`), loads no raw-HTML plugin, and
-turns a source into a link only when its URL is `https://`.
+`ul`, `ol`, `li`, `code`, `br`, and `h1` to `h6` re-rendered as semibold paragraphs, with
+`unwrapDisallowed`), loads no raw-HTML plugin, and turns a source into a link only when its URL
+is `https://`.
 
 ## Configuration and profiles
 
