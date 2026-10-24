@@ -46,25 +46,59 @@ jobs:
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
-      - name: Upload Semgrep results
+      # The full report carries finding messages and the matched code, and artifacts of a
+      # public repository can be downloaded. Only what the comment reads is kept: path, line,
+      # rule id and severity per finding, and one empty object per scan error. A missing or
+      # unreadable report leaves no file, so the comment says the scan produced no result.
+      - name: Reduce the Semgrep report
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          python3 -I - <<'PY'
+          import json
+          import sys
+
+          try:
+              with open("semgrep.json", encoding="utf-8") as f:
+                  data = json.load(f)
+              results = [
+                  {
+                      "path": r["path"],
+                      "start": {"line": r["start"]["line"]},
+                      "check_id": r["check_id"],
+                      "extra": {"severity": r["extra"]["severity"]},
+                  }
+                  for r in data.get("results") or []
+              ]
+              errors = [{} for _ in data.get("errors") or []]
+          except (OSError, ValueError, KeyError, TypeError, AttributeError):
+              sys.exit(0)
+
+          with open("semgrep-summary.json", "w", encoding="utf-8") as f:
+              json.dump({"results": results, "errors": errors}, f)
+          PY
+
+      - name: Upload Semgrep summary
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: semgrep-results
-          path: semgrep.json
+          path: semgrep-summary.json
           retention-days: 7
           if-no-files-found: ignore
+          overwrite: true
 
   # Finding messages and code lines are left out of the comment on purpose: only the path,
   # the line, the rule id and the severity reach it. The comment is found by its hidden
   # marker and by its author, so a comment quoting the marker is never overwritten.
+  # `!cancelled()` rather than `always()`: a run cancelled by a newer push must not touch
+  # the shared comment.
   semgrep-comment:
     name: semgrep/comment
     needs: semgrep
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     if: >-
-      always() && github.event_name == 'pull_request' &&
+      !cancelled() && github.event_name == 'pull_request' &&
       github.actor != 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository
     permissions:
@@ -88,12 +122,20 @@ jobs:
         run: |
           marker='<!-- semgrep-summary -->'
           platform='https://semgrep.dev/orgs/-/findings'
-          if [ -f results/semgrep.json ]; then
-            total=$(jq '.results | length' results/semgrep.json)
-            errors=$(jq '.errors | length' results/semgrep.json)
-            count() { jq --arg s "$1" '[.results[] | select(.extra.severity == $s)] | length' results/semgrep.json; }
+          data=''
+          if [ -f results/semgrep-summary.json ]; then
+            data=$(jq -ce '{results: (.results // []), errors: (.errors // [])}
+              | select((.results | type) == "array" and (.errors | type) == "array")' \
+              results/semgrep-summary.json 2>/dev/null) || data=''
+          fi
+          if [ -n "$data" ]; then
+            total=$(jq '.results | length' <<< "$data")
+            errors=$(jq '.errors | length' <<< "$data")
+            count() { jq --arg s "$1" '[.results[] | select(.extra.severity == $s)] | length' <<< "$data"; }
             if [ "$total" -eq 0 ]; then
               title='Semgrep: no new findings'
+            elif [ "$total" -eq 1 ]; then
+              title='Semgrep: 1 new finding'
             else
               title="Semgrep: $total new findings"
             fi
@@ -109,7 +151,7 @@ jobs:
               echo "| Scan errors | $errors |"
               if [ "$total" -gt 0 ]; then
                 echo
-                jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' results/semgrep.json
+                jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' <<< "$data"
                 if [ "$total" -gt 10 ]; then
                   echo "- ... and $((total - 10)) more"
                 fi
