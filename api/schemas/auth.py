@@ -104,7 +104,8 @@ class TokenResponse(BaseModel):
 
     access_token: str = Field(..., repr=False)
     refresh_token: str | None = Field(None, repr=False)
-    token_type: str = "bearer"  # noqa: S105, an OAuth2 scheme name, not a credential
+    # An OAuth2 scheme name, not a credential.
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int = 0  # Access token lifetime in seconds
 
 

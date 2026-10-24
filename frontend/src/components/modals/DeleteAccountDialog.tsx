@@ -122,13 +122,12 @@ export function DeleteAccountDialog({
 
         <div className="py-2">
           {loading ? (
-            <div
+            <output
               className="flex justify-center py-6"
-              role="status"
               aria-label={tCommon("a11y.loading")}
             >
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
+            </output>
           ) : (
             <>
               {ownedProjects.length > 0 && (

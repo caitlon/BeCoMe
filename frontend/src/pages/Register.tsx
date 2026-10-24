@@ -39,20 +39,25 @@ type RegisterFormData = {
 const getEmailRequirements = (
   email: string,
   t: (key: string) => string
-): Requirement[] => [
-  {
-    label: t("emailRequirements.hasAt"),
-    met: email.includes("@"),
-  },
-  {
-    label: t("emailRequirements.hasDomain"),
-    met: /@.+\..+/.test(email),
-  },
-  {
-    label: t("emailRequirements.noSpaces"),
-    met: !email.includes(" "),
-  },
-];
+): Requirement[] => {
+  // A dot with at least one character on each side, after the first "@". A regex
+  // such as /@.+\..+/ backtracks quadratically on long input; this scan is linear.
+  const at = email.indexOf("@");
+  return [
+    {
+      label: t("emailRequirements.hasAt"),
+      met: email.includes("@"),
+    },
+    {
+      label: t("emailRequirements.hasDomain"),
+      met: at >= 0 && email.slice(at + 2, -1).includes("."),
+    },
+    {
+      label: t("emailRequirements.noSpaces"),
+      met: !email.includes(" "),
+    },
+  ];
+};
 
 const Register = () => {
   const { t, i18n } = useTranslation("auth");

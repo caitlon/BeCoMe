@@ -21,6 +21,9 @@ ALGORITHM = "HS256"
 # unreachable store, stay visible in a stream filtered to WARNING.
 _ROUTINE_REJECTIONS = frozenset({"invalid_or_expired", "invalid_user_id"})
 
+_STORE_UNAVAILABLE_DETAIL = "Revocation store unavailable"
+_REVOKED_DETAIL = "Token has been revoked"
+
 
 class TokenError(Exception):
     """Raised when token validation fails."""
@@ -52,7 +55,8 @@ class TokenPair:
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"  # noqa: S105, an OAuth2 scheme name, not a credential
+    # An OAuth2 scheme name, not a credential.
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int = 0  # Access token lifetime in seconds
     jti: str = ""  # Shared jti of this access/refresh pair
     sid: str = ""  # Session id shared across the whole rotation family
@@ -189,10 +193,10 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
             revoked = store.is_jti_revoked(jti)
         except RevocationStoreError as e:
             raise _reject(
-                "store_unavailable", "Revocation store unavailable", op="is_jti_revoked"
+                "store_unavailable", _STORE_UNAVAILABLE_DETAIL, op="is_jti_revoked"
             ) from e
         if revoked:
-            raise _reject("jti_revoked", "Token has been revoked", jti=jti)
+            raise _reject("jti_revoked", _REVOKED_DETAIL, jti=jti)
 
         # Reject any token whose session (sid) was revoked. Refresh-token reuse
         # revokes the whole family, so a stolen token cannot outlive detection.
@@ -202,10 +206,10 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
                 session_revoked = store.is_session_revoked(sid)
             except RevocationStoreError as e:
                 raise _reject(
-                    "store_unavailable", "Revocation store unavailable", op="is_session_revoked"
+                    "store_unavailable", _STORE_UNAVAILABLE_DETAIL, op="is_session_revoked"
                 ) from e
             if session_revoked:
-                raise _reject("session_revoked", "Token has been revoked", jti=jti, sid=sid)
+                raise _reject("session_revoked", _REVOKED_DETAIL, jti=jti, sid=sid)
 
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
@@ -218,12 +222,12 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
             valid_after = store.get_user_valid_after(user_id)
         except RevocationStoreError as e:
             raise _reject(
-                "store_unavailable", "Revocation store unavailable", op="get_user_valid_after"
+                "store_unavailable", _STORE_UNAVAILABLE_DETAIL, op="get_user_valid_after"
             ) from e
         if valid_after is not None and datetime.fromtimestamp(payload["iat"], tz=UTC) < valid_after:
             raise _reject(
                 "issued_before_valid_after",
-                "Token has been revoked",
+                _REVOKED_DETAIL,
                 jti=jti,
                 user_id=str(user_id),
             )
