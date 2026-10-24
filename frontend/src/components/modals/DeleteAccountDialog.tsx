@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { logger } from "@/lib/logger";
 import type { Member, ProjectDisposition, ProjectWithRole } from "@/types/api";
 
@@ -49,7 +50,7 @@ export function DeleteAccountDialog({
   const [membersByProject, setMembersByProject] = useState<Record<string, Member[]>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failedMessage, setFailedMessage] = useState<string | null>(null);
 
   const loadOwnedProjects = useCallback(async () => {
     setLoading(true);
@@ -58,10 +59,15 @@ export function DeleteAccountDialog({
       const projects = await api.getProjects();
       const owned = projects.filter((p) => p.role === "admin");
       const entries = await Promise.all(
-        owned.map(
-          async (p) =>
-            [p.id, (await api.getMembers(p.id)).filter((m) => m.user_id !== currentUserId)] as const
-        )
+        owned.map(async (p) => {
+          // The example project cannot take invitations, so every member besides its admin is
+          // a demo account, which the API never accepts as a new admin: offer only deletion.
+          if (p.is_example) return [p.id, []] as const;
+          return [
+            p.id,
+            (await api.getMembers(p.id)).filter((m) => m.user_id !== currentUserId),
+          ] as const;
+        })
       );
       setOwnedProjects(owned);
       setMembersByProject(Object.fromEntries(entries));
@@ -96,13 +102,13 @@ export function DeleteAccountDialog({
 
   const handleConfirm = async () => {
     setSubmitting(true);
-    setFailed(false);
+    setFailedMessage(null);
     try {
       await api.deleteAccount(buildDispositions());
       await onConfirmed();
     } catch (err) {
       logger.error("Account deletion failed", { error: String(err) });
-      setFailed(true);
+      setFailedMessage(describeError(err, tCommon, t("deleteAccount.failed")));
       setSubmitting(false);
     }
   };
@@ -165,9 +171,9 @@ export function DeleteAccountDialog({
               <p className="text-sm font-medium text-destructive">
                 {t("deleteModal.details.noUndo")}
               </p>
-              {(loadError || failed) && (
+              {(loadError || failedMessage) && (
                 <p className="text-sm text-destructive mt-2" role="alert">
-                  {loadError ? t("deleteAccount.loadFailed") : t("deleteAccount.failed")}
+                  {loadError ? t("deleteAccount.loadFailed") : failedMessage}
                 </p>
               )}
             </>

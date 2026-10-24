@@ -20,6 +20,8 @@ import {
   VALUES_OUT_OF_RANGE_CODE,
   SCALE_EXCLUDES_OPINIONS_CODE,
   SCALE_RANGE_INVALID_CODE,
+  INVALID_PROJECT_DISPOSITION_CODE,
+  ACCOUNT_HAS_OWNED_PROJECTS_CODE,
 } from '@/lib/errors';
 
 /**
@@ -45,6 +47,8 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
   [VALUES_OUT_OF_RANGE_CODE]: 'errors.valuesOutOfRange',
   [SCALE_EXCLUDES_OPINIONS_CODE]: 'errors.scaleExcludesOpinions',
   [SCALE_RANGE_INVALID_CODE]: 'errors.scaleRangeInvalid',
+  [INVALID_PROJECT_DISPOSITION_CODE]: 'errors.invalidProjectDisposition',
+  [ACCOUNT_HAS_OWNED_PROJECTS_CODE]: 'errors.accountHasOwnedProjects',
 };
 
 /**

@@ -15,6 +15,8 @@ import {
   VALUES_OUT_OF_RANGE_CODE,
   SCALE_EXCLUDES_OPINIONS_CODE,
   SCALE_RANGE_INVALID_CODE,
+  INVALID_PROJECT_DISPOSITION_CODE,
+  ACCOUNT_HAS_OWNED_PROJECTS_CODE,
   INVITEE_NOT_FOUND_CODE,
   ALREADY_INVITED_CODE,
   ALREADY_MEMBER_CODE,
@@ -102,6 +104,8 @@ describe('describeError', () => {
     [VALUES_OUT_OF_RANGE_CODE, 422, 'errors.valuesOutOfRange'],
     [SCALE_EXCLUDES_OPINIONS_CODE, 409, 'errors.scaleExcludesOpinions'],
     [SCALE_RANGE_INVALID_CODE, 422, 'errors.scaleRangeInvalid'],
+    [INVALID_PROJECT_DISPOSITION_CODE, 422, 'errors.invalidProjectDisposition'],
+    [ACCOUNT_HAS_OWNED_PROJECTS_CODE, 409, 'errors.accountHasOwnedProjects'],
   ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
     expect(
       describeError(new HttpError('English server detail', status, code), t, 'fallback')
@@ -127,6 +131,8 @@ describe('describeError', () => {
       VALUES_OUT_OF_RANGE_CODE,
       SCALE_EXCLUDES_OPINIONS_CODE,
       SCALE_RANGE_INVALID_CODE,
+      INVALID_PROJECT_DISPOSITION_CODE,
+      ACCOUNT_HAS_OWNED_PROJECTS_CODE,
     ]).toEqual([
       'invitee_not_found',
       'already_invited',
@@ -145,6 +151,8 @@ describe('describeError', () => {
       'values_out_of_range',
       'scale_excludes_opinions',
       'scale_range_invalid',
+      'invalid_project_disposition',
+      'account_has_owned_projects',
     ]);
   });
 
