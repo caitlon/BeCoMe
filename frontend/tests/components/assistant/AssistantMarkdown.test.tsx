@@ -28,7 +28,7 @@ describe('AssistantMarkdown', () => {
     expect(screen.getByText('code').tagName).toBe('CODE');
   });
 
-  it('shows a heading as plain text, not as a heading element', () => {
+  it('emits no heading element for a heading', () => {
     const { container } = renderMarkdown('# Title\n\nbody');
 
     expect(container.querySelector('h1')).toBeNull();
@@ -56,7 +56,7 @@ describe('AssistantMarkdown', () => {
     expect(container.querySelectorAll('li')).toHaveLength(2);
   });
 
-  it.each(['#', '###', '######'])('emphasises a %s heading and still emits no heading element', (marks) => {
+  it.each(['#', '##', '###', '####', '#####', '######'])('emphasises a %s heading and still emits no heading element', (marks) => {
     const { container } = renderMarkdown(`${marks} Title`);
 
     expect(screen.getByText('Title')).toHaveClass('font-semibold');
