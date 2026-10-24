@@ -19,7 +19,12 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 import { useAuthSubmit } from '@/hooks/use-auth-submit';
-import { ServerError, RateLimitError } from '@/lib/errors';
+import {
+  ServerError,
+  RateLimitError,
+  UnauthorizedError,
+  INVALID_CREDENTIALS_CODE,
+} from '@/lib/errors';
 
 const messages = {
   successTitle: 'Success',
@@ -145,6 +150,42 @@ describe('useAuthSubmit', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Error',
       description: 'Too many attempts. Please wait a moment and try again.',
+      variant: 'destructive',
+    });
+  });
+
+  it('shows the translated line for a wrong email or password, not the API sentence', async () => {
+    const action = vi
+      .fn()
+      .mockRejectedValue(
+        new UnauthorizedError('Incorrect email or password (server wording)', INVALID_CREDENTIALS_CODE)
+      );
+
+    const { result } = renderHook(() => useAuthSubmit(messages), { wrapper: i18nWrapper });
+
+    await act(async () => {
+      await result.current.execute(action);
+    });
+
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Error',
+      description: 'Incorrect email or password.',
+      variant: 'destructive',
+    });
+  });
+
+  it('shows the fallback for a 401 that carries no code', async () => {
+    const action = vi.fn().mockRejectedValue(new UnauthorizedError('Not authenticated'));
+
+    const { result } = renderHook(() => useAuthSubmit(messages), { wrapper: i18nWrapper });
+
+    await act(async () => {
+      await result.current.execute(action);
+    });
+
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Error',
+      description: 'Something went wrong',
       variant: 'destructive',
     });
   });

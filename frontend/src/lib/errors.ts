@@ -64,6 +64,24 @@ export const PHOTO_DIMENSIONS_TOO_LARGE_CODE = 'photo_dimensions_too_large';
  */
 export const CSRF_INVALID_CODE = 'csrf_invalid';
 
+/** The sign-in was refused: the email or the password is wrong, and the API does not say which. */
+export const INVALID_CREDENTIALS_CODE = 'invalid_credentials';
+
+/** The sign-up email is on a disposable-address list. */
+export const DISPOSABLE_EMAIL_DOMAIN_CODE = 'disposable_email_domain';
+
+/** The sign-up email's domain has no mail servers, usually a typo. */
+export const UNRESOLVABLE_EMAIL_DOMAIN_CODE = 'unresolvable_email_domain';
+
+/** An opinion value lies outside the project's scale. */
+export const VALUES_OUT_OF_RANGE_CODE = 'values_out_of_range';
+
+/** A scale change would leave an existing opinion outside the new range. */
+export const SCALE_EXCLUDES_OPINIONS_CODE = 'scale_excludes_opinions';
+
+/** A scale change gave a minimum that is not below the maximum. */
+export const SCALE_RANGE_INVALID_CODE = 'scale_range_invalid';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;

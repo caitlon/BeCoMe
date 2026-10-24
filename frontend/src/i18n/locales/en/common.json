@@ -163,6 +163,12 @@
     "photoUnreadable": "The image could not be read. Save it again as JPEG or PNG.",
     "photoDimensionsTooLarge": "The image is too large. Each side can be at most 8192 pixels and the whole image about 16 megapixels (for example 4096 × 4096).",
     "sessionChanged": "Your session has changed, for example after signing in again in another tab. Reload the page to continue.",
+    "invalidCredentials": "Incorrect email or password.",
+    "disposableEmailDomain": "That looks like a temporary address. Use an email address you will keep.",
+    "unresolvableEmailDomain": "We could not find that domain. Check the email address for a typo.",
+    "valuesOutOfRange": "Some values lie outside the project's scale. Reload the page to see the current scale.",
+    "scaleExcludesOpinions": "Existing opinions fall outside the new scale. Widen the range, or ask the experts to change their opinions first.",
+    "scaleRangeInvalid": "The scale is not valid. The minimum must be lower than the maximum.",
     "retry": "Try again",
     "logoutFailedTitle": "Sign-out failed",
     "logoutFailed": "Sign-out did not go through. Your session may still be active. Please try again."
