@@ -18,11 +18,10 @@ const mayRequestAgain = (query: Query<AssistantConfigResponse, HttpError>): bool
  *
  * Every other error is asked for again on a later focus, reconnect or remount,
  * so the assistant appears once the server is back without a page reload. A
- * network error or a 5xx is also retried at once under `shouldRetryQuery`.
- * A query with no data counts as stale whatever
- * `staleTime` says, which is what lets those triggers fire. After a success
- * staleTime is infinite because this value cannot change for the life of a
- * session -- the server process would have to restart with a different flag.
+ * network error or a 5xx is also retried first, under `shouldRetryQuery`. A query with no data
+ * counts as stale whatever `staleTime` says, which is what lets those triggers fire. After a
+ * success staleTime is infinite because this value cannot change for the life of a session --
+ * the server process would have to restart with a different flag.
  */
 export function useAssistantConfig(enabled: boolean): UseQueryResult<AssistantConfigResponse, HttpError> {
   return useQuery<AssistantConfigResponse, HttpError>({
