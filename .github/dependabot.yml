@@ -61,6 +61,18 @@ updates:
         update-types:
           - "major"
 
+  - package-ecosystem: "npm"
+    directory: "/.railway"
+    schedule:
+      interval: "monthly"
+    reviewers:
+      - "caitlon"
+    assignees:
+      - "caitlon"
+    labels:
+      - "dependencies"
+      - "area:infra"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

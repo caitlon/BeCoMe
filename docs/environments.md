@@ -124,7 +124,17 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend), the pre-deploy migration, one replica in `europe-west4`, and a restart on failure up to three times. App Sleep is on for dev and test only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone. Because each service has its own settings, the old trap of one root config file read by every service is gone. Railway does not apply the file on a push. To change settings, run `npm ci` in `.railway/`, then `railway config plan --environment <env>` to preview and `railway config apply --environment <env>` to write, both from the repository root. Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev, test and prod backends, it also installs the `assistant` extra at build time.
+The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend), the pre-deploy migration, one replica in `europe-west4` (Railway key `europe-west4-drams3a`), and a restart on failure up to three times. App Sleep is on for dev and test only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone.
+
+To change the settings, you need Railway CLI 5.42.1 or newer. Run these steps from the repository root:
+
+1. Run `npm ci` in `.railway/`.
+2. Run `railway config plan --environment <env>` and read the plan. It must not delete anything.
+3. Run `railway config apply --environment <env>`.
+
+Railway does not apply the file on a push, so a change to it reaches an environment only through `apply`. An environment whose frontend still has a Railway Config File path set refuses the plan, and `railway config migrate cutover --service <env>-frontend` clears it once.
+
+Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev, test and prod backends, it also installs the `assistant` extra at build time.
 
 | Variable | dev | test | prod |
 |----------|-----|------|------|

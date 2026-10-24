@@ -39,7 +39,7 @@ export default defineRailway((ctx) => {
     // Pin to a single replica: scale intentionally, never accidentally. One
     // uvicorn worker per replica (see UVICORN_WORKERS in docker/Dockerfile)
     // keeps the memory footprint predictable and bounded on Railway.
-    replicas: { "europe-west4": 1 },
+    replicas: { "europe-west4-drams3a": 1 },
     deploy,
   });
 
@@ -54,11 +54,12 @@ export default defineRailway((ctx) => {
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     healthcheck: "/",
     healthcheckTimeout: 30,
-    replicas: { "europe-west4": 1 },
+    replicas: { "europe-west4-drams3a": 1 },
     deploy,
   });
 
   return project("become-api", {
+    // Read by the Railway CLI; not in the SDK's ProjectDefinition type.
     variables: { managed: false },
     resources: [backend, frontend],
   });
