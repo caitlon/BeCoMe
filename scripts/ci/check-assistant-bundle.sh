@@ -37,9 +37,11 @@ fi
 # Lazy chunks, named after their source files (vite.config.ts sets no chunk naming).
 CHUNK_PREFIXES=(AssistantRoot AssistantGuide AssistantPrivacyCard triggers)
 
-# Strings that live only in the assistant code: its API paths and a label from each
-# locale's assistant.json and a string from the panel itself. The i18n catalogs are bundled together with the assistant
-# namespace, so the labels also prove the namespace stays out of an unflagged build.
+# Strings that live only in the assistant code: its API paths, a label from each
+# locale's assistant.json, and the panel footer, a second string from the English
+# catalog, so a rename of either key is caught. The i18n catalogs are bundled together
+# with the assistant namespace, so the labels also prove the namespace stays out of an
+# unflagged build.
 STRINGS=(
   "assistant/chat/stream"
   "assistant/config"
