@@ -60,6 +60,7 @@ export default defineRailway((ctx) => {
 
   return project("become-api", {
     // Read by the Railway CLI; not in the SDK's ProjectDefinition type.
+    // @ts-expect-error -- see above
     variables: { managed: false },
     resources: [backend, frontend],
   });
