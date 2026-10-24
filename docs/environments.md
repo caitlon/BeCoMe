@@ -140,7 +140,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
 | `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | test values | prod values |
-| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
+| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | literal values from `dev-photos` | literal values from `test-photos` | literal values from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
 
@@ -178,7 +178,7 @@ A deployed service with the assistant enabled refuses to start unless `ASSISTANT
 
 ## Photo storage
 
-Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
+Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. The backend reads `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY`, set on the service as literal values copied from the bucket's credentials. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
 
 ## Email delivery
 

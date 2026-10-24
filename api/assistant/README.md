@@ -602,8 +602,8 @@ first setup is in the sections above and in `docs/environments.md`.
 When: after a change to any source the corpus is built from reaches the environment's branch.
 `build_manifest()` in `api/assistant/rag/corpus.py` is the reference for the file list:
 
-- the pages under `docs/`, except `docs/security.md` and `docs/environments.md`; a new page joins
-  at the next ingest, with no list to edit;
+- the pages under `docs/`, except `docs/security.md`, `docs/environments.md` and
+  `docs/secrets.md` (`EXCLUDED_PUBLIC`); any other new page joins at the next ingest;
 - the module READMEs those pages include by snippet (`docs/dev/*.md`, for example `api/README.md`
   and `src/README.md`), which the loader (`loaders.py`) pulls into the page when it loads it;
 - the extra READMEs in `PUBLIC_EXTRA_READMES`;

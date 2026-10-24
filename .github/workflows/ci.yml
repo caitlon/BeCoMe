@@ -102,9 +102,9 @@ jobs:
 
       # Not the renamed-heading case: the strict build below already fails on that, and
       # was watched doing it. What it cannot see is a heading added with no entry, since
-      # nothing is broken then and the map is merely short. It also never reads two of
-      # these documents, `docs/security.md` and `examples/data/README.md`, which do not
-      # ship to the site and are read on GitHub alone.
+      # nothing is broken then and the map is merely short. It also never reads
+      # the documents `docs/security.md`, `docs/secrets.md` and `examples/data/README.md`,
+      # which do not ship to the site and are read on GitHub alone.
       - name: Check the tables of contents
         run: uv run --extra docs python scripts/docs/toc.py --check
 
