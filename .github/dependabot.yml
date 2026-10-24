@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     reviewers:
       - "caitlon"
     assignees:
@@ -28,6 +30,8 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     reviewers:
       - "caitlon"
     assignees:
@@ -65,6 +69,8 @@ updates:
     directory: "/.railway"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     reviewers:
       - "caitlon"
     assignees:
@@ -77,6 +83,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     reviewers:
       - "caitlon"
     assignees:
