@@ -5,10 +5,14 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from tests.shared.helpers import captured_log_records
 
@@ -720,14 +724,14 @@ class TestStartupChecksWiring:
         get_settings.cache_clear()
 
     @staticmethod
-    def _run_app(monkeypatch, tmp_path, *, testing: bool, checks) -> None:
-        """Start and stop the app with ``run_startup_checks`` replaced.
+    @contextmanager
+    def _running_app(monkeypatch, tmp_path, *, testing: bool, checks) -> Iterator[TestClient]:
+        """Run the app under its lifespan with ``run_startup_checks`` replaced.
 
         :param testing: The value of ``TESTING`` for the app's settings.
         :param checks: The coroutine function standing in for ``run_startup_checks``.
+        :return: The test client, inside the lifespan; the app stops when the block ends.
         """
-        from fastapi.testclient import TestClient
-
         from api.config import get_settings
         from api.main import create_app
 
@@ -742,10 +746,9 @@ class TestStartupChecksWiring:
             patch("api.main.create_db_and_tables"),
             patch("api.main.warm_up_connection_pool"),
             patch("api.main.run_startup_checks", new=checks),
+            TestClient(create_app()) as client,
         ):
-            app = create_app()
-            with TestClient(app):
-                pass
+            yield client
 
     def test_nothing_is_scheduled_in_a_test_run(self, monkeypatch, tmp_path):
         """
@@ -757,7 +760,8 @@ class TestStartupChecksWiring:
         checks = AsyncMock()
 
         # WHEN
-        self._run_app(monkeypatch, tmp_path, testing=True, checks=checks)
+        with self._running_app(monkeypatch, tmp_path, testing=True, checks=checks):
+            pass
 
         # THEN
         checks.assert_not_called()
@@ -770,8 +774,6 @@ class TestStartupChecksWiring:
              were still running
         """
         # GIVEN
-        import threading
-
         started = threading.Event()
         release = threading.Event()
         seen = []
@@ -782,26 +784,8 @@ class TestStartupChecksWiring:
             while not release.is_set():
                 await asyncio.sleep(0.01)
 
-        from fastapi.testclient import TestClient
-
-        from api.config import get_settings
-        from api.main import create_app
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("APP_ENV", "dev")
-        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
-        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
-        monkeypatch.setenv("TESTING", "0")
-        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
-        get_settings.cache_clear()
-
         # WHEN
-        with (
-            patch("api.main.create_db_and_tables"),
-            patch("api.main.warm_up_connection_pool"),
-            patch("api.main.run_startup_checks", new=checks),
-            TestClient(create_app()) as client,
-        ):
+        with self._running_app(monkeypatch, tmp_path, testing=False, checks=checks) as client:
             assert started.wait(timeout=5)
             response = client.get("/api/v1/health")
             release.set()
@@ -811,24 +795,39 @@ class TestStartupChecksWiring:
         assert len(seen) == 1
         assert seen[0].testing is False
 
-    def test_a_check_still_running_is_cancelled_when_the_app_stops(self, monkeypatch, tmp_path):
+    def test_a_check_still_running_is_cancelled_before_the_app_logs_its_stop(
+        self, monkeypatch, tmp_path
+    ):
         """
         GIVEN a startup check that never finishes
         WHEN the app stops
-        THEN the check was cancelled, and the app stopped without waiting for it
+        THEN the check had been cancelled by the time the shutdown record was written. The
+             test client cancels leftover tasks when its loop closes, which is after that
+             record, so only the lifespan's own cancel can satisfy this.
         """
         # GIVEN
+        started = threading.Event()
         cancelled = []
+        cancelled_at_shutdown = []
 
         async def checks(settings):
+            started.set()
             try:
                 await asyncio.sleep(60)
             except asyncio.CancelledError:
                 cancelled.append(True)
                 raise
 
+        def record(message, *args, **kwargs):
+            if kwargs.get("extra", {}).get("event") == "app_shutdown":
+                cancelled_at_shutdown.append(list(cancelled))
+
         # WHEN
-        self._run_app(monkeypatch, tmp_path, testing=False, checks=checks)
+        with (
+            patch("api.main.logger.info", side_effect=record),
+            self._running_app(monkeypatch, tmp_path, testing=False, checks=checks),
+        ):
+            assert started.wait(timeout=5)
 
         # THEN
-        assert cancelled == [True]
+        assert cancelled_at_shutdown == [[True]]
