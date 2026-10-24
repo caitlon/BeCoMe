@@ -22,7 +22,8 @@ export default defineRailway((ctx) => {
   const env = environmentOf(ctx.environment);
   // dev and test sleep when idle to save cost; prod never sleeps.
   const deploy = {
-    restartPolicyType: "ON_FAILURE",
+    // Restart on failure: Railway's default policy, which it stores as null,
+    // so only the retry cap is set here.
     restartPolicyMaxRetries: 3,
     sleepApplication: env === "prod" ? null : true,
   } as const;
