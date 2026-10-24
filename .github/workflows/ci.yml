@@ -330,6 +330,27 @@ jobs:
         working-directory: frontend
         run: npm run test:coverage
 
+      # The assistant is switched on at build time by VITE_ASSISTANT_ENABLED, and the
+      # claim is that a build without it carries none of the feature. Nothing else in
+      # CI runs `vite build`, so this is the only place the claim is tested. The flag-on
+      # build is the positive control: without it a renamed marker would let the absent
+      # check pass for the wrong reason. Each build empties dist/ first.
+      - name: Build the frontend without the assistant
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check the assistant is absent from that build
+        run: ./scripts/ci/check-assistant-bundle.sh frontend/dist absent
+
+      - name: Build the frontend with the assistant
+        working-directory: frontend
+        env:
+          VITE_ASSISTANT_ENABLED: "true"
+        run: npm run build
+
+      - name: Check the assistant is present in that build
+        run: ./scripts/ci/check-assistant-bundle.sh frontend/dist present
+
       - name: Upload frontend coverage report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
