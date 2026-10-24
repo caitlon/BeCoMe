@@ -71,9 +71,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def _init_sentry(settings: Settings) -> None:
     """Initialise Sentry error tracking when a DSN is configured.
 
-    The FastAPI integration is auto-detected, so unhandled exceptions and
-    request context are reported without extra wiring. A no-op when the DSN is
-    unset, which keeps development and tests offline.
+    The FastAPI integration is auto-detected and adds request context. An
+    exception a route raises is reported by ``UnhandledErrorMiddleware``; one
+    that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
+    integration. A no-op when the DSN is unset, which keeps development and
+    tests offline.
 
     :param settings: Application settings.
     """

@@ -17,9 +17,11 @@ class UnhandledErrorMiddleware:
     first, this middleware sits innermost, just outside the routes, and its 500 travels back
     out through all of them.
 
-    The exception is not re-raised, so it is reported to Sentry here. Once the response
-    has started (a stream that fails midway) a 500 can no longer be sent, and the exception
-    goes on to ``ServerErrorMiddleware`` as before.
+    The exception is not re-raised, so it is reported to Sentry here explicitly. The ERROR
+    record the handler writes would also reach Sentry through the logging integration, and
+    Sentry's dedupe keeps one event; the explicit call keeps the report independent of that
+    integration's settings. Once the response has started (a stream that fails midway) a 500
+    can no longer be sent, and the exception goes on to ``ServerErrorMiddleware`` as before.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -54,5 +56,5 @@ class UnhandledErrorMiddleware:
             if response_started:
                 raise
             sentry_sdk.capture_exception(exc)
-            response = unhandled_exception_handler(Request(scope), exc)
+            response = unhandled_exception_handler(Request(scope, receive), exc)
             await response(scope, receive, send)

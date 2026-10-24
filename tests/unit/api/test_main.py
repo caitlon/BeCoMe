@@ -280,7 +280,7 @@ class TestUnhandledErrorResponse:
         """
         GIVEN a route that raises an exception no handler maps
         WHEN the allowed origin calls it
-        THEN the opaque 500 carries the CORS headers, so the SPA can read it
+        THEN the opaque 500 carries the CORS and security headers, so the SPA can read it
         """
         response = self._get(client)
 
@@ -289,6 +289,7 @@ class TestUnhandledErrorResponse:
         assert response.headers.get("access-control-allow-origin") == self._ORIGIN
         assert response.headers.get("access-control-allow-credentials") == "true"
         assert response.headers.get("x-request-id") == "req-500"
+        assert response.headers.get("x-content-type-options") == "nosniff"
 
     def test_logs_the_exception_with_the_request_id(self, client):
         """
