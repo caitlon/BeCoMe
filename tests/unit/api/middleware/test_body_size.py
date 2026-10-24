@@ -1,9 +1,11 @@
 """Tests for the request body size limit middleware."""
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.types import Message, Receive, Scope, Send
 
-from api.middleware.body_size import BodySizeLimitMiddleware
+from api.middleware.body_size import BodySizeLimitMiddleware, RequestBodyTooLarge
 from tests.shared.helpers import captured_log_records
 
 
@@ -76,6 +78,109 @@ class TestChunkedBodyLimit:
 
         assert response.status_code == 200
         assert response.json()["length"] == 60
+
+
+_SCOPE: Scope = {"type": "http", "method": "POST", "path": "/echo", "headers": []}
+
+
+def _chunked_receive(*chunks: bytes) -> Receive:
+    """Build a ``receive`` that yields the chunks as streamed ``http.request`` messages."""
+    messages: list[Message] = [
+        {"type": "http.request", "body": chunk, "more_body": index < len(chunks) - 1}
+        for index, chunk in enumerate(chunks)
+    ]
+
+    async def receive() -> Message:
+        return messages.pop(0)
+
+    return receive
+
+
+def _collecting_send() -> tuple[Send, list[Message]]:
+    """Build a ``send`` that records every message it is given."""
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    return send, sent
+
+
+class TestStreamedOverflowOnRawApp:
+    """The middleware's overflow handling, driven with a bare ASGI app and no FastAPI."""
+
+    @pytest.mark.asyncio
+    async def test_unrelated_exception_propagates_and_nothing_is_sent(self):
+        """
+        GIVEN an app that raises without reading past the cap
+        WHEN the middleware runs it
+        THEN the exception propagates and no 413 is sent
+        """
+
+        async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            raise RuntimeError("boom")
+
+        send, sent = _collecting_send()
+        middleware = BodySizeLimitMiddleware(app, max_body_bytes=10)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await middleware(_SCOPE, _chunked_receive(b"x" * 5), send)
+
+        assert sent == []
+
+    @pytest.mark.asyncio
+    async def test_overflow_after_the_response_started_is_not_replaced(self):
+        """
+        GIVEN an app that has started its response and then reads past the cap
+        WHEN the middleware runs it
+        THEN the overflow propagates, the app's start is kept and no 413 is sent
+        """
+
+        async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"a", "more_body": True})
+            await receive()
+            await receive()
+
+        send, sent = _collecting_send()
+        middleware = BodySizeLimitMiddleware(app, max_body_bytes=10)
+
+        with pytest.raises(RequestBodyTooLarge):
+            await middleware(_SCOPE, _chunked_receive(b"x" * 6, b"x" * 6), send)
+
+        starts = [m for m in sent if m["type"] == "http.response.start"]
+        assert [m["status"] for m in starts] == [200]
+
+    @pytest.mark.asyncio
+    async def test_app_that_finishes_its_started_response_after_overflow_is_kept(self):
+        """
+        GIVEN an app that started a response, caught the overflow and finished the response
+        WHEN the middleware runs it
+        THEN every message the app sent reaches the client and no 413 is added
+        """
+
+        async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"a", "more_body": True})
+            try:
+                await receive()
+                await receive()
+            except RequestBodyTooLarge:
+                pass
+            await send({"type": "http.response.body", "body": b"b"})
+
+        send, sent = _collecting_send()
+        middleware = BodySizeLimitMiddleware(app, max_body_bytes=10)
+
+        await middleware(_SCOPE, _chunked_receive(b"x" * 6, b"x" * 6), send)
+
+        assert [m["type"] for m in sent] == [
+            "http.response.start",
+            "http.response.body",
+            "http.response.body",
+        ]
+        assert sent[0]["status"] == 200
+        assert [m["body"] for m in sent[1:]] == [b"a", b"b"]
 
 
 class TestBodySizeWiring:

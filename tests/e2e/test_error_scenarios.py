@@ -179,3 +179,4 @@ class TestOversizedChunkedBody:
         # THEN
         assert response.status_code == 413
         assert response.json() == {"detail": "Request body too large"}
+        assert response.headers.get("x-request-id")

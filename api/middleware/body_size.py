@@ -7,12 +7,17 @@ declared ``Content-Length`` above the limit up front, and counts bytes for chunk
 bodies so no request can buffer more than the limit regardless of the declared size.
 
 A chunked body cannot be refused up front, so the wrapped ``receive`` raises
-:class:`RequestBodyTooLarge` once the count passes the cap. That exception never
-reaches an exception handler as itself: the ``BaseHTTPMiddleware`` layers between this
-middleware and the routes read the body through anyio task groups, which wrap it in a
-nested ``ExceptionGroup``, and FastAPI then turns it into a 400 "error parsing the
-body". So the middleware answers the 413 itself, and drops whatever the app sent after
-the overflow.
+:class:`RequestBodyTooLarge` once the count passes the cap. The app cannot be left to
+turn that into the answer. FastAPI's body reader turns any exception raised while it
+reads the body of a route with a body model into its own 400 "There was an error
+parsing the body", with or without other middleware. On a route that reads the body
+itself, the ``BaseHTTPMiddleware`` layers between this middleware and the routes wrap
+the exception in nested ``ExceptionGroup`` objects, so no handler registered for
+:class:`RequestBodyTooLarge` matches it either. So the middleware answers the 413
+itself, and drops whatever the app sent after the overflow. The access line written by
+``RequestLoggingMiddleware``, which runs inside this middleware, still records the
+app's status (a 400) for such a request; the ``streamed_overflow`` record with the same
+request id says what the client got.
 """
 
 import logging
