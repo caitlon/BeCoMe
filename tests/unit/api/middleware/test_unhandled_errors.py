@@ -8,7 +8,7 @@ from starlette.types import Message, Receive, Scope, Send
 
 from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 
-CAPTURE_PATH = "api.middleware.unhandled_errors.sentry_sdk.capture_exception"
+CAPTURE_PATH = "api.middleware.unhandled_errors._report_unhandled"
 
 
 def _http_scope() -> Scope:

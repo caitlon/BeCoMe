@@ -311,7 +311,7 @@ class TestUnhandledErrorResponse:
         """
         GIVEN Sentry initialised with a transport that keeps every envelope
         WHEN a route raises an exception no handler maps
-        THEN exactly one error event reaches Sentry, carrying that exception
+        THEN exactly one error event reaches Sentry, carrying that exception as unhandled
         """
         import sentry_sdk
         from sentry_sdk.transport import Transport
@@ -340,8 +340,11 @@ class TestUnhandledErrorResponse:
             if item.type == "event"
         ]
         assert len(events) == 1
-        exception_types = [entry["type"] for entry in events[0]["exception"]["values"]]
-        assert exception_types[-1] == "RuntimeError"
+        reported = events[0]["exception"]["values"][-1]
+        assert reported["type"] == "RuntimeError"
+        # Unhandled, as the Starlette integration reported it before: Sentry ranks issue
+        # priority, and with it the high-priority alert, on that flag.
+        assert reported["mechanism"]["handled"] is False
 
 
 class TestSentryInit:

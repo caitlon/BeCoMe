@@ -1,6 +1,7 @@
 """Turn an exception no handler maps into a 500 inside the middleware stack."""
 
 import sentry_sdk
+from sentry_sdk.utils import event_from_exception
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -17,10 +18,10 @@ class UnhandledErrorMiddleware:
     first, this middleware sits innermost, just outside the routes, and its 500 travels back
     out through all of them.
 
-    The exception is not re-raised, so it is reported to Sentry here explicitly. The ERROR
-    record the handler writes would also reach Sentry through the logging integration, and
-    Sentry's dedupe keeps one event; the explicit call keeps the report independent of that
-    integration's settings. Once the response has started (a stream that fails midway) a 500
+    The exception is not re-raised, so it is reported to Sentry here, marked unhandled as the
+    Starlette integration marked it before: Sentry ranks issue priority on that flag. The
+    ERROR record the handler writes would also reach Sentry through the logging integration,
+    as a handled event; this report goes first, so Sentry's dedupe drops that one. Once the response has started (a stream that fails midway) a 500
     can no longer be sent, and the exception goes on to ``ServerErrorMiddleware`` as before.
     """
 
@@ -55,6 +56,19 @@ class UnhandledErrorMiddleware:
         except Exception as exc:
             if response_started:
                 raise
-            sentry_sdk.capture_exception(exc)
+            _report_unhandled(exc)
             response = unhandled_exception_handler(Request(scope, receive), exc)
             await response(scope, receive, send)
+
+
+def _report_unhandled(exc: Exception) -> None:
+    """Send ``exc`` to Sentry as an unhandled exception.
+
+    :param exc: The exception the app raised.
+    """
+    event, hint = event_from_exception(
+        exc,
+        client_options=sentry_sdk.get_client().options,
+        mechanism={"type": "starlette", "handled": False},
+    )
+    sentry_sdk.capture_event(event, hint=hint)
