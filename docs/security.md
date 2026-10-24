@@ -726,7 +726,7 @@ quiet window if you want the canonical name restored.
 
 `SECRET_KEY` has no such window. The application reads one key, so rotating it means
 setting the new value and redeploying. Every existing session ends at that moment, which is
-the point when a leak is suspected. The inventory of every secret, with its source, scope and
+the point when a leak is suspected. The inventory of every secret, with its source and
 rotation steps, is in [`secrets.md`](secrets.md).
 
 ## GDPR: export and erasure

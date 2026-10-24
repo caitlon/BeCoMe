@@ -99,7 +99,8 @@ special handling.
   `--stdin` from a file or a pipe, for example `pbpaste | railway variable set KEY --stdin ...`,
   never by pasting into a prompt that echoes what you type.
 - Batch the changes of one environment: set every variable with `--skip-deploys`, then
-  redeploy the backend once with `railway redeploy -y -s <env>-backend -e <env>`.
+  redeploy the backend once with `railway redeploy -y -s <env>-backend -e <env>`. The Redis
+  password deploys its own service first, see [Redis](#redis).
 - In a `curl` check, pass the key from a file, never in the arguments: `-H @file` for a
   header, `--data-urlencode secret@file` for a form field. Arguments show up in the process
   list and the shell history.
@@ -119,8 +120,8 @@ special handling.
 
 ### Checking credentials from the container
 
-After the redeploy, save the script below as `check.py` and run it inside the new backend
-container with `railway ssh -e <env> -s <env>-backend python - < check.py`. It connects with
+After the redeploy, save the script below as `"$S/check.py"` and run it inside the new backend
+container with `railway ssh -e <env> -s <env>-backend python - < "$S/check.py"`. It connects with
 the variables the container itself holds and prints variable names and, on a failure, the
 exception type only, because the message of a malformed URL can echo the password. The
 production image has `psycopg2`, `redis` and `boto3`, and no `psycopg` 3, which arrives with
@@ -214,10 +215,17 @@ appears on the command line. Never echo it.
 4. Update the rule of that host (a `PATCH` on the rule) to the same value from the file right
    away.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
-   the `http_request_late_transform` entrypoint ruleset. Save its listing, which contains
-   the secret, to `"$S/rule.json"`:
-   `GET /zones/<zone_id>/rulesets/phases/http_request_late_transform/entrypoint`. Then
-   compute each hash:
+   the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
+   `-o` writes it to a file instead of the terminal, and `"$S/cf.header"` holds the
+   `Authorization: Bearer ...` line for the Cloudflare API token, written with `printf '%s'`
+   like any value file:
+
+   ```sh
+   curl -s -H @"$S/cf.header" -o "$S/rule.json" \
+     "https://api.cloudflare.com/client/v4/zones/<zone_id>/rulesets/phases/http_request_late_transform/entrypoint"
+   ```
+
+   Then compute each hash:
 
    ```sh
    railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$CLOUDFLARE_ORIGIN_SECRET" | sha256sum'
@@ -227,7 +235,8 @@ appears on the command line. Never echo it.
 
    The first line hashes the value in the container, the second the value file, the third
    the value in the rule of that host. `-j` matters, because it keeps `jq` from appending a
-   newline that would change the hash.
+   newline that would change the hash. `<host>` is the full host name, for example
+   `api-atelier.becomify.app`; the short label matches no rule and hashes the empty string.
 
 On a mismatch requests are not rejected. Every request is keyed under one shared constant
 for rate limiting instead, so all callers share one rate-limit bucket, which shows up as `429`
@@ -331,7 +340,10 @@ that adds a second role. After the backend redeploy, run the in-container check 
 
 #### Redis
 
-1. Generate the password into `"$S/redis.password"`, as in step 1 of the Postgres roles.
+1. Generate the password into `"$S/redis.password"` with
+   `python -c 'import secrets; print(secrets.token_hex(32), end="")'`. Hex output never
+   starts with `-`, so Redis cannot read the value as an option of `--requirepass`, and it
+   needs no percent-encoding in `REDIS_URL`.
 2. Set `REDIS_PASSWORD` on the Redis service without `--skip-deploys`:
    `railway variable set REDIS_PASSWORD --stdin -s <env>-redis -e <env> < "$S/redis.password"`.
    Railway starts a new Redis deployment with the new value, and Redis is unavailable for a
@@ -363,7 +375,7 @@ Where the environment has a corpus service, follow the Postgres steps with these
    `railway ssh -e <env> -s <env>-vector printenv POSTGRES_USER`, not with
    `railway variable list`, which prints every value of the service.
 2. In the `psql` command, pass the owner as `-U` and the database named by `POSTGRES_DB` of
-   that service as `-d`, in place of `postgres` and `railway`. In `roles.sql` and in the
+   that service as `-d`, in place of `postgres` and `railway`. In `"$S/roles.sql"` and in the
    `rolname IN (...)` list of the hash check, name `corpus_reader` and the owner in place of
    `become_app` and `postgres`.
 3. Skip the `DATABASE_URL` step. `ASSISTANT_VECTOR_DB_URL` references
@@ -380,18 +392,23 @@ This covers `EMAIL_API_KEY`, `TURNSTILE_SECRET_KEY`, `ASSISTANT_API_KEY_OVH` and
 `ASSISTANT_LANGSMITH_API_KEY`.
 
 1. Create the new key at the provider.
-2. Set the variable with `--stdin --skip-deploys` on every environment that shares the old
+2. Find every environment that holds the old key by comparing the hash of the variable in
+   each backend:
+   `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`
+   for `dev`, `test` and `prod`. Equal hashes mean a shared key, and revoking it in the
+   last step breaks every environment that still holds it.
+3. Set the variable with `--stdin --skip-deploys` on every environment that shares the old
    key, before the next step.
-3. Redeploy the backend of each of those environments once.
-4. Check the new key as in the inventory table.
-5. Revoke the old key at the provider.
+4. Redeploy the backend of each of those environments once.
+5. Check the new key as in the inventory table.
+6. Revoke the old key at the provider.
 
 Per provider:
 
 - **Resend.** Give the key "Sending access", restricted to the sending domain.
 - **Turnstile.** The project's Cloudflare API token has no Turnstile permission, so rotate in
   the dashboard: open Turnstile, the widget, and rotate the secret key. Keep the grace period,
-  so the old secret still works while services switch, and it needs no revoking in step 5. The
+  so the old secret still works while services switch, and it needs no revoking in step 6. The
   site key `VITE_TURNSTILE_SITE_KEY` stays.
 - **LangSmith.** The key matters only where tracing is on.
 
