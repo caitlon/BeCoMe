@@ -49,7 +49,8 @@ jobs:
       # The full report carries finding messages and the matched code, and artifacts of a
       # public repository can be downloaded. Only what the comment reads is kept: path, line,
       # rule id and severity per finding, and one empty object per scan error. A missing or
-      # unreadable report leaves no file, so the comment says the scan produced no result.
+      # unreadable report leaves no new file, so the comment says the scan produced no result;
+      # on a re-run, though, the summary of an earlier attempt may remain if this one writes none.
       - name: Reduce the Semgrep report
         if: always() && github.event_name == 'pull_request'
         run: |
@@ -70,7 +71,8 @@ jobs:
                   for r in data.get("results") or []
               ]
               errors = [{} for _ in data.get("errors") or []]
-          except (OSError, ValueError, KeyError, TypeError, AttributeError):
+          except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+              print(f"::warning::Semgrep report could not be reduced: {type(exc).__name__}: {exc}")
               sys.exit(0)
 
           with open("semgrep-summary.json", "w", encoding="utf-8") as f:
@@ -124,14 +126,12 @@ jobs:
           platform='https://semgrep.dev/orgs/-/findings'
           data=''
           if [ -f results/semgrep-summary.json ]; then
-            data=$(jq -ce '{results: (.results // []), errors: (.errors // [])}
-              | select((.results | type) == "array" and (.errors | type) == "array")' \
+            data=$(jq -ce 'select((.results | type) == "array" and (.errors | type) == "array")' \
               results/semgrep-summary.json 2>/dev/null) || data=''
           fi
           if [ -n "$data" ]; then
             total=$(jq '.results | length' <<< "$data")
             errors=$(jq '.errors | length' <<< "$data")
-            count() { jq --arg s "$1" '[.results[] | select(.extra.severity == $s)] | length' <<< "$data"; }
             if [ "$total" -eq 0 ]; then
               title='Semgrep: no new findings'
             elif [ "$total" -eq 1 ]; then
@@ -139,16 +139,27 @@ jobs:
             else
               title="Semgrep: $total new findings"
             fi
+            if [ "$errors" -eq 1 ]; then
+              title="$title, 1 scan error"
+            elif [ "$errors" -gt 1 ]; then
+              title="$title, $errors scan errors"
+            fi
             {
               echo "$marker"
               echo "### $title"
-              echo
-              echo '| Severity | Count |'
-              echo '| --- | --- |'
-              echo "| Error | $(count ERROR) |"
-              echo "| Warning | $(count WARNING) |"
-              echo "| Info | $(count INFO) |"
-              echo "| Scan errors | $errors |"
+              if [ "$total" -gt 0 ] || [ "$errors" -gt 0 ]; then
+                echo
+                echo '| Severity | Count |'
+                echo '| --- | --- |'
+                jq -r '["CRITICAL", "ERROR", "HIGH", "WARNING", "MEDIUM", "LOW", "INFO"] as $order
+                  | .results | group_by(.extra.severity)
+                  | map({s: .[0].extra.severity, n: length})
+                  | sort_by(.s as $s | [($order | index($s) // 99), ($s | tostring | ascii_downcase)])
+                  | .[] | "| \(.s | tostring | ascii_downcase | .[:1] as $h | ($h | ascii_upcase) + .[1:]) | \(.n) |"' <<< "$data"
+                if [ "$errors" -gt 0 ]; then
+                  echo "| Scan errors | $errors |"
+                fi
+              fi
               if [ "$total" -gt 0 ]; then
                 echo
                 jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' <<< "$data"
