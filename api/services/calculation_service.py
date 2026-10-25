@@ -63,6 +63,7 @@ class CalculationService(BaseService):
         :param project_id: Project UUID
         :return: CalculationResult if opinions exist, None otherwise
         """
+        # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
         self._session.exec(
             select(Project).where(Project.id == project_id).with_for_update(key_share=True)
         ).first()
