@@ -29,6 +29,7 @@ from api.db.models import (
     User,
 )
 from api.services.calculation_service import CalculationService
+from api.services.project_service import ProjectService
 
 # Skip all tests in this module if PostgreSQL is not installed
 pytestmark = pytest.mark.skipif(
@@ -421,6 +422,49 @@ class TestConcurrentRecalculation:
         # THEN
         assert still_waiting
         assert self._stored_expert_count(pg_engine, project_id) == 2
+
+    def test_project_delete_during_opinion_write_does_not_deadlock(self, pg_engine):
+        """
+        GIVEN a project with a stored result and an opinion write that holds the project lock
+        WHEN the project is deleted before that write recalculates
+        THEN the delete waits for the write instead of deadlocking, and the project is gone
+        """
+        # GIVEN: a project with one committed opinion and its stored result
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+        with self._open_session(pg_engine) as setup:
+            self._flush_opinion(setup, project_id, user_1_id)
+            CalculationService(setup).stage_recalculation(project_id)
+            setup.commit()
+        write_holds_lock = threading.Event()
+
+        def delete_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                assert write_holds_lock.wait(timeout=10)
+                ProjectService(session).delete_project(project_id)
+
+        # WHEN: the delete starts while the opinion write holds the project lock, and the
+        # write then recalculates, which updates the result row
+        with self._open_session(pg_engine) as write, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(write, project_id, user_2_id)
+            write.exec(
+                select(Project).where(Project.id == project_id).with_for_update(key_share=True)
+            )
+            future = executor.submit(delete_transaction)
+            write_holds_lock.set()
+            time.sleep(0.5)
+            CalculationService(write).stage_recalculation(project_id)
+            write.commit()
+            future.result(timeout=30)
+
+        # THEN
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
+            assert (
+                check.exec(
+                    select(CalculationResult).where(CalculationResult.project_id == project_id)
+                ).first()
+                is None
+            )
 
 
 class TestSavepointAndPartialRollback:
