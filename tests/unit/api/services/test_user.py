@@ -579,20 +579,21 @@ class TestUserServiceDeleteUser:
 
     def test_recalculates_each_project_that_lost_an_opinion(self):
         """Recalculates every project the user had an opinion in, in the same transaction."""
-        # GIVEN a user with opinions in two projects
+        # GIVEN a user with opinions in three projects
         user = User(id=uuid4(), email="gone@example.com", hashed_password="xxx", first_name="Gone")
-        project_ids = [uuid4(), uuid4()]
+        project_ids = [uuid4(), uuid4(), uuid4()]
         mock_session = MagicMock()
-        mock_session.exec.return_value.all.return_value = project_ids
+        mock_session.exec.return_value.all.return_value = sorted(project_ids, reverse=True)
         calculation_service = MagicMock(spec=CalculationService)
         service = UserService(mock_session)
 
         # WHEN
         service.delete_user(user, calculation_service)
 
-        # THEN only those projects are recalculated and one commit follows the deletion
+        # THEN those projects are recalculated in id order (so concurrent deletions lock them
+        # in the same order) and one commit follows the deletion
         assert [c.args[0] for c in calculation_service.stage_recalculation.call_args_list] == (
-            project_ids
+            sorted(project_ids)
         )
         calculation_service.recalculate.assert_not_called()
         mock_session.delete.assert_called_once_with(user)

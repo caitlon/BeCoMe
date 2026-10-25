@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlmodel import Session, select
 
-from api.db.models import CalculationResult, ExpertOpinion
+from api.db.models import CalculationResult, ExpertOpinion, Project
 from api.services.base import BaseService
 from api.services.mappers import BeCoMeResultMapper
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -57,9 +57,16 @@ class CalculationService(BaseService):
         Does what :meth:`recalculate` does but only flushes, so the caller commits
         together with its own changes (or rolls everything back).
 
+        Locks the project row first, so concurrent recalculations of one project run one
+        after another and none computes without an opinion another has just changed.
+
         :param project_id: Project UUID
         :return: CalculationResult if opinions exist, None otherwise
         """
+        # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
+        self._session.exec(
+            select(Project).where(Project.id == project_id).with_for_update(key_share=True)
+        ).first()
         opinions = self._get_opinions(project_id)
 
         if not opinions:

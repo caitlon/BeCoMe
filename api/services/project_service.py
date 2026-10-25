@@ -153,6 +153,13 @@ class ProjectService(BaseService):
         if not project:
             raise ProjectNotFoundError(f"Project {project_id} not found")
 
+        # An opinion write locks the project row before the result row, so the delete
+        # takes the project first too; otherwise it deletes the result, then waits for
+        # the project, and the two transactions deadlock.
+        self._session.exec(
+            select(Project).where(Project.id == project_id).with_for_update()
+        ).first()
+
         self._delete_and_commit(project)
         logger.info(
             "Project deleted",
