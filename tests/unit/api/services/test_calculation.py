@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
+from sqlalchemy.dialects import postgresql
+
 from api.db.models import CalculationResult, ExpertOpinion, Project
 from api.services.calculation_service import CalculationService
 
@@ -288,6 +290,21 @@ class TestCalculationServiceStageRecalculation:
         service.session.add.assert_called_once_with(result)
         service.session.flush.assert_called_once()
         service.session.commit.assert_not_called()
+
+    def test_locks_the_project_row_before_reading_opinions(self):
+        """The first statement locks the project row in a mode that does not block opinion inserts."""
+        # GIVEN
+        service, project_id = _build_single_opinion_service(20.0, 50.0, 80.0)
+
+        # WHEN
+        service.stage_recalculation(project_id)
+
+        # THEN the lock comes before the opinions query
+        first, second = (c.args[0] for c in service.session.exec.call_args_list[:2])
+        first_sql = str(first.compile(dialect=postgresql.dialect()))
+        assert "FROM projects" in first_sql
+        assert first_sql.endswith("FOR NO KEY UPDATE")
+        assert "expert_opinions" in str(second.compile(dialect=postgresql.dialect()))
 
     def test_deletes_result_without_committing_when_no_opinions(self):
         """Stages the removal of the result when no opinions are left, without a commit."""

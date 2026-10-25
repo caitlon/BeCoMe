@@ -7,15 +7,17 @@ Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 """
 
 import shutil
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlmodel import SQLModel, select
+from sqlmodel import Session, SQLModel, select
 
 from api.db.models import (
     CalculationResult,
@@ -26,6 +28,7 @@ from api.db.models import (
     ProjectMember,
     User,
 )
+from api.services.calculation_service import CalculationService
 
 # Skip all tests in this module if PostgreSQL is not installed
 pytestmark = pytest.mark.skipif(
@@ -294,6 +297,130 @@ class TestConcurrentAccess:
         # THEN: exactly one should succeed
         assert results["success"] == 1
         assert results["errors"] == 4
+
+
+class TestConcurrentRecalculation:
+    """Tests that concurrent opinion changes in one project leave a complete result."""
+
+    @staticmethod
+    def _seed_project(pg_engine) -> tuple[UUID, UUID, UUID]:
+        """Commit a project with two experts and return (project_id, user_1_id, user_2_id)."""
+        with Session(pg_engine) as setup:
+            admin = User(
+                email="admin@example.com", hashed_password="x", first_name="A", last_name="A"
+            )
+            expert_1 = User(
+                email="one@example.com", hashed_password="x", first_name="One", last_name="One"
+            )
+            expert_2 = User(
+                email="two@example.com", hashed_password="x", first_name="Two", last_name="Two"
+            )
+            setup.add_all([admin, expert_1, expert_2])
+            setup.flush()
+            project = Project(name="Concurrent", admin_id=admin.id)
+            setup.add(project)
+            setup.commit()
+            return project.id, expert_1.id, expert_2.id
+
+    @staticmethod
+    def _open_session(pg_engine) -> Session:
+        """Open a session that fails on a lock wait instead of hanging a broken run."""
+        session = Session(pg_engine)
+        session.exec(text("SET lock_timeout = '5s'"))
+        return session
+
+    @staticmethod
+    def _flush_opinion(session: Session, project_id: UUID, user_id: UUID) -> None:
+        """Add an opinion and flush it, which takes a key-share lock on the project row."""
+        session.add(
+            ExpertOpinion(
+                project_id=project_id,
+                user_id=user_id,
+                position="Expert",
+                lower_bound=10.0,
+                peak=20.0,
+                upper_bound=30.0,
+            )
+        )
+        session.flush()
+
+    @staticmethod
+    def _stored_expert_count(pg_engine, project_id: UUID) -> int:
+        """Read num_experts of the committed result."""
+        with Session(pg_engine) as check:
+            return (
+                check.exec(
+                    select(CalculationResult).where(CalculationResult.project_id == project_id)
+                )
+                .one()
+                .num_experts
+            )
+
+    def test_second_recalculation_waits_and_sees_the_first_opinion(self, pg_engine):
+        """
+        GIVEN two transactions that each add an opinion to the same project
+        WHEN the first has staged its recalculation and the second starts its own
+        THEN the second waits for the first to commit, so the stored result counts both
+        """
+        # GIVEN: a project and two experts, committed
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+
+        def second_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                self._flush_opinion(session, project_id, user_2_id)
+                CalculationService(session).stage_recalculation(project_id)
+                session.commit()
+
+        # WHEN: the first transaction holds the project lock while the second tries to run
+        with self._open_session(pg_engine) as first, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(first, project_id, user_1_id)
+            CalculationService(first).stage_recalculation(project_id)
+            future = executor.submit(second_transaction)
+            time.sleep(1.0)
+            still_waiting = not future.done()
+            first.commit()
+            future.result(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert self._stored_expert_count(pg_engine, project_id) == 2
+
+    def test_both_opinions_flushed_before_either_recalculation_does_not_deadlock(self, pg_engine):
+        """
+        GIVEN two transactions that have both flushed an opinion into the same project
+        WHEN each then stages its recalculation
+        THEN the second waits for the first without a deadlock, and the result counts both
+        """
+        # GIVEN: a project and two experts, committed
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+        second_flushed = threading.Event()
+        go = threading.Event()
+
+        def second_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                self._flush_opinion(session, project_id, user_2_id)
+                second_flushed.set()
+                go.wait(timeout=10)
+                CalculationService(session).stage_recalculation(project_id)
+                session.commit()
+
+        # WHEN: both opinions are flushed, then the first transaction recalculates
+        with self._open_session(pg_engine) as first, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(first, project_id, user_1_id)
+            future = executor.submit(second_transaction)
+            try:
+                assert second_flushed.wait(timeout=10)
+                CalculationService(first).stage_recalculation(project_id)
+            finally:
+                go.set()
+            time.sleep(1.0)
+            still_waiting = not future.done()
+            first.commit()
+            future.result(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert self._stored_expert_count(pg_engine, project_id) == 2
 
 
 class TestSavepointAndPartialRollback:

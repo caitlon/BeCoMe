@@ -190,7 +190,9 @@ class UserService(BaseService):
 
         The user's opinions go with the account (FK cascade). When a calculation service is
         given, the result of every project that lost an opinion is recalculated in the same
-        transaction, so a failure leaves both the account and the results untouched.
+        transaction, so a failure leaves both the account and the results untouched. Projects
+        are recalculated in id order, so two concurrent deletions lock shared projects in the
+        same order and cannot deadlock.
 
         :param user: User to delete
         :param calculation_service: Recalculates results of projects that lose an opinion
@@ -201,7 +203,7 @@ class UserService(BaseService):
             statement = (
                 select(ExpertOpinion.project_id).where(ExpertOpinion.user_id == user_id).distinct()
             )
-            project_ids = list(self._session.exec(statement).all())
+            project_ids = sorted(self._session.exec(statement).all())
 
         self._session.delete(user)
         self._session.flush()
