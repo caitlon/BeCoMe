@@ -7,6 +7,7 @@ import pytest
 
 from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
 from api.exceptions import MemberNotFoundError
+from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 
 
@@ -101,6 +102,106 @@ class TestProjectMembershipServiceRemoveMember:
 
         # THEN
         assert mock_session.delete.call_args_list == [call(membership), call(opinion)]
+        mock_session.commit.assert_called_once()
+        assert discarded is True
+
+    def test_stages_recalculation_when_an_opinion_is_discarded(self):
+        """The result is staged after the deletes are flushed, in the one commit."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        opinion = ExpertOpinion(
+            project_id=project_id,
+            user_id=user_id,
+            lower_bound=1.0,
+            peak=2.0,
+            upper_bound=3.0,
+        )
+        calls = MagicMock()
+        calls.session.exec.return_value.first.side_effect = [membership, opinion]
+        service = ProjectMembershipService(calls.session)
+
+        # WHEN
+        discarded = service.remove_member(project_id, user_id, calls.calculation_service)
+
+        # THEN
+        expected = [
+            "session.delete",
+            "session.delete",
+            "session.flush",
+            "calculation_service.stage_recalculation",
+            "session.commit",
+        ]
+        assert [c[0] for c in calls.mock_calls if c[0] in set(expected)] == expected
+        calls.calculation_service.stage_recalculation.assert_called_once_with(project_id)
+        calls.session.commit.assert_called_once()
+        assert discarded is True
+
+    def test_stages_no_recalculation_when_no_opinion_was_discarded(self):
+        """A member without an opinion changes no result, so nothing is recalculated."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [membership, None]
+        calculation_service = MagicMock(spec=CalculationService)
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        discarded = service.remove_member(project_id, user_id, calculation_service)
+
+        # THEN
+        calculation_service.stage_recalculation.assert_not_called()
+        mock_session.commit.assert_called_once()
+        assert discarded is False
+
+    def test_failed_recalculation_commits_nothing(self):
+        """An error while staging the result propagates before the commit."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        opinion = ExpertOpinion(
+            project_id=project_id,
+            user_id=user_id,
+            lower_bound=1.0,
+            peak=2.0,
+            upper_bound=3.0,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [membership, opinion]
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.stage_recalculation.side_effect = RuntimeError("boom")
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(RuntimeError, match="boom"):
+            service.remove_member(project_id, user_id, calculation_service)
+        mock_session.commit.assert_not_called()
+
+    def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
+        """Without a calculation service the removal is one commit, nothing recalculated."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        opinion = ExpertOpinion(
+            project_id=project_id,
+            user_id=user_id,
+            lower_bound=1.0,
+            peak=2.0,
+            upper_bound=3.0,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [membership, opinion]
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        discarded = service.remove_member(project_id, user_id)
+
+        # THEN
         mock_session.commit.assert_called_once()
         assert discarded is True
 

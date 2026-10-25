@@ -8,6 +8,7 @@ import pytest
 
 from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
+from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 
 
@@ -178,6 +179,69 @@ class TestOpinionServiceUpsertOpinion:
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 
+    @staticmethod
+    def _upsert(service, project_id, user_id, calculation_service=None):
+        return service.upsert_opinion(
+            project_id=project_id,
+            user_id=user_id,
+            position="Expert",
+            lower_bound=10.0,
+            peak=20.0,
+            upper_bound=30.0,
+            calculation_service=calculation_service,
+        )
+
+    def test_stages_recalculation_between_flush_and_commit(self):
+        """The result is staged after the opinion is flushed, in the one commit."""
+        # GIVEN
+        project_id = uuid4()
+        calls = MagicMock()
+        calls.session.exec.return_value.first.return_value = None
+        service = OpinionService(calls.session)
+
+        # WHEN
+        self._upsert(service, project_id, uuid4(), calls.calculation_service)
+
+        # THEN
+        expected = [
+            "session.add",
+            "session.flush",
+            "calculation_service.stage_recalculation",
+            "session.commit",
+            "session.refresh",
+        ]
+        assert [c[0] for c in calls.mock_calls if c[0] in expected] == expected
+        calls.calculation_service.stage_recalculation.assert_called_once_with(project_id)
+        calls.session.commit.assert_called_once()
+
+    def test_failed_recalculation_commits_nothing(self):
+        """An error while staging the result propagates before the commit."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.stage_recalculation.side_effect = RuntimeError("boom")
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(RuntimeError, match="boom"):
+            self._upsert(service, uuid4(), uuid4(), calculation_service)
+        mock_session.commit.assert_not_called()
+
+    def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
+        """Callers that recalculate themselves get one commit and no recalculation."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = OpinionService(mock_session)
+
+        # WHEN
+        self._upsert(service, uuid4(), uuid4())
+
+        # THEN
+        mock_session.commit.assert_called_once()
+        mock_session.flush.assert_called_once()
+
 
 class TestOpinionServiceDeleteOpinion:
     """Tests for OpinionService.delete_opinion method."""
@@ -219,6 +283,64 @@ class TestOpinionServiceDeleteOpinion:
         # WHEN/THEN
         with pytest.raises(OpinionNotFoundError):
             service.delete_opinion(uuid4(), uuid4())
+
+    def test_stages_recalculation_between_flush_and_commit(self):
+        """The result is staged after the opinion is flushed out, in the one commit."""
+        # GIVEN
+        project_id = uuid4()
+        existing = ExpertOpinion(
+            id=uuid4(),
+            project_id=project_id,
+            user_id=uuid4(),
+            position="Expert",
+            lower_bound=20.0,
+            peak=50.0,
+            upper_bound=80.0,
+        )
+        calls = MagicMock()
+        calls.session.exec.return_value.first.return_value = existing
+        service = OpinionService(calls.session)
+
+        # WHEN
+        service.delete_opinion(project_id, existing.user_id, calls.calculation_service)
+
+        # THEN
+        expected = [
+            "session.delete",
+            "session.flush",
+            "calculation_service.stage_recalculation",
+            "session.commit",
+        ]
+        assert [c[0] for c in calls.mock_calls if c[0] in expected] == expected
+        calls.calculation_service.stage_recalculation.assert_called_once_with(project_id)
+        calls.session.commit.assert_called_once()
+
+    def test_failed_recalculation_commits_nothing(self):
+        """An error while staging the result propagates before the commit."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = MagicMock(spec=ExpertOpinion)
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.stage_recalculation.side_effect = RuntimeError("boom")
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(RuntimeError, match="boom"):
+            service.delete_opinion(uuid4(), uuid4(), calculation_service)
+        mock_session.commit.assert_not_called()
+
+    def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
+        """Without a calculation service the opinion goes in one commit, nothing recalculated."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = MagicMock(spec=ExpertOpinion)
+        service = OpinionService(mock_session)
+
+        # WHEN
+        service.delete_opinion(uuid4(), uuid4())
+
+        # THEN
+        mock_session.commit.assert_called_once()
 
 
 class TestOpinionServiceValidateValuesInRange:

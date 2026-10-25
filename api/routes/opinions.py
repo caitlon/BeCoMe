@@ -135,9 +135,8 @@ def submit_opinion(
         lower_bound=data.lower_bound,
         peak=data.peak,
         upper_bound=data.upper_bound,
+        calculation_service=calculation_service,
     )
-
-    calculation_service.recalculate(project.id)
 
     return OpinionResponse.from_model(result.opinion, current_user, show_email=True)
 
@@ -167,8 +166,7 @@ def delete_opinion(
     :param opinion_service: Opinion service
     :param calculation_service: Calculation service
     """
-    opinion_service.delete_opinion(project.id, current_user.id)
-    calculation_service.recalculate(project.id)
+    opinion_service.delete_opinion(project.id, current_user.id, calculation_service)
 
 
 @router.get("/{project_id}/result", summary="Get calculation result")
