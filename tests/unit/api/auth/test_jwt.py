@@ -508,6 +508,24 @@ def test_decode_fails_closed_when_store_unavailable():
         decode_access_token(token, Down())
 
 
+def test_decode_fails_closed_when_session_store_unavailable():
+    """A store error during the session revocation check surfaces as a TokenError."""
+
+    # GIVEN a store whose token check passes but whose session check is down
+    class SessionDown:
+        def is_jti_revoked(self, _jti):
+            return False
+
+        def is_session_revoked(self, _sid):
+            raise RevocationStoreError("down")
+
+    token = create_access_token(uuid4(), sid="session-1")
+
+    # WHEN / THEN the token is rejected instead of being accepted
+    with pytest.raises(TokenError, match="unavailable"):
+        decode_access_token(token, SessionDown())
+
+
 def test_decode_rejects_token_older_than_valid_after(store):
     """A token issued before the user's valid_after cutoff is rejected (M1)."""
     user_id = uuid4()

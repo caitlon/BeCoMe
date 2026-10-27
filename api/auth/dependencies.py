@@ -27,6 +27,8 @@ logger = logging.getLogger("api.security")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
+_INVALID_CREDENTIALS_DETAIL = "Could not validate credentials"
+
 
 def _get_access_token(
     cookie_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
@@ -74,7 +76,7 @@ async def get_current_user(
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail=_INVALID_CREDENTIALS_DETAIL,
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -130,7 +132,7 @@ async def get_current_user_fresh(
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail=_INVALID_CREDENTIALS_DETAIL,
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -164,7 +166,7 @@ def get_current_token_payload(
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail=_INVALID_CREDENTIALS_DETAIL,
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:

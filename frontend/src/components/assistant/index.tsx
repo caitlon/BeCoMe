@@ -15,8 +15,9 @@ import { logger } from "@/lib/logger";
  * path), the profile privacy card chunk and the documentation guide chunk
  * reaches `dist/`. That only holds for
  * `vite build`; `vite dev` serves unbundled ESM and never tree-shakes. The
- * real check is a production build plus a grep of `dist/assets` for the
- * chunk names.
+ * real check is scripts/ci/check-assistant-bundle.sh, which CI runs on a
+ * production build without the flag (no assistant chunk, API path or label
+ * in `dist/`) and on one with it (all of them present).
  *
  * Only a build with the variable set to exactly `true` includes the
  * assistant: a developer's own frontend/.env.development.local (gitignored

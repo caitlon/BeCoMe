@@ -4,7 +4,8 @@ What is actually implemented in BeCoMe to keep the product and its users' data s
 to operate the pieces that need runbooks. This is a description of the running system, not a
 wishlist. Deployment topology lives in [`environments.md`](environments.md). The academic
 threat model (attack trees, residual-risk argument) is kept outside this repository, and this
-page does not repeat it.
+page does not repeat it. Where each provider that handles user data runs, and how that was
+checked, is in [`data-location.md`](data-location.md).
 
 ## Contents
 
@@ -508,8 +509,9 @@ carries no note.
 
 Text a model writes reaches the browser only through the optional assistant panel, which
 renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
-`ul`, `ol`, `li`, `code`, `br`, with `unwrapDisallowed`), loads no raw-HTML plugin, and
-turns a source into a link only when its URL is `https://`.
+`ul`, `ol`, `li`, `code`, `br`, and `h1` to `h6` re-rendered as semibold paragraphs, with
+`unwrapDisallowed`), loads no raw-HTML plugin, and turns a source into a link only when its URL
+is `https://`.
 
 ## Configuration and profiles
 
@@ -717,10 +719,8 @@ there is never a window where the application cannot connect:
 
 1. Create a replacement login with the same grants: `CREATE ROLE become_app_v2 LOGIN ...`,
 then apply the `scripts/db/roles.sql` grants to it.
-Run the statement in a session that first sets `log_statement = 'none'` and
-`log_min_error_statement = 'panic'`, and give the password as a SCRAM verifier, as in
-[`secrets.md`](secrets.md#database-and-redis-credentials). With `log_statement = 'ddl'`
-the password text would otherwise reach the log.
+Set the password as a SCRAM verifier in a session with statement logging switched off, as in
+[`secrets.md`](secrets.md#postgres-roles).
 2. Point the environment's `DATABASE_URL` at `become_app_v2` in Railway and redeploy.
 3. Confirm the new container started and that `pg_stat_activity` shows connections from the new role.
 4. Drop the old role: `DROP ROLE become_app;`. Rename `become_app_v2` back during a later
@@ -728,7 +728,7 @@ quiet window if you want the canonical name restored.
 
 `SECRET_KEY` has no such window. The application reads one key, so rotating it means
 setting the new value and redeploying. Every existing session ends at that moment, which is
-the point when a leak is suspected. The inventory of every secret, with its source, scope and
+the point when a leak is suspected. The inventory of every secret, with its source and
 rotation steps, is in [`secrets.md`](secrets.md).
 
 ## GDPR: export and erasure
@@ -745,11 +745,10 @@ too.
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
-opinion in one transaction, and the route recalculates the project result afterwards
-(`api/routes/projects.py`). Otherwise the row would outlive the membership: it carries the
-person's name, stated position, and (for the admin) email, it reaches every remaining member and every
-export, and `RequireProjectAccess` would no longer let the person concerned withdraw it
-themselves.
+opinion, and recalculates the project result, all in one transaction. Without that, the
+opinion row would outlive the membership: it carries the person's name, stated position,
+and (for the admin) email, it reaches every remaining member and every export, and
+`RequireProjectAccess` would no longer let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
@@ -870,6 +869,18 @@ per-session statement and idle-in-transaction timeouts client-side through libpq
 so a single runaway query cannot monopolize the database. A laptop run outside tests,
 whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
 because the local Docker database has no TLS.
+
+It stops at `require` and does not use `verify-full`. The databases run Railway's
+`postgres-ssl` image, whose `init-ssl.sh` signs the server certificate with a root CA that it
+generates itself on its own volume, not with a public CA. The image regenerates the certificate,
+with a new root, on boot when the certificate is missing, close to expiry or lacks `DNS:localhost`,
+and after a backup restore. A pinned root (`sslrootcert` with `verify-full`) would break silently
+at the next regeneration, and the backend could no longer reach the application database or the
+assistant's corpus database. The backend reaches both by their private-network names (see Network
+exposure below), so for its connections the residual risk is an active man-in-the-middle inside
+the project's private network. The temporary public proxy that a dump or a corpus ingest opens
+uses the same unverified `require`, so for the length of such a run the risk extends to anyone on
+the path between the developer's machine and that proxy.
 
 ### Network exposure
 

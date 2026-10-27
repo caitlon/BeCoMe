@@ -176,9 +176,15 @@ export function expectSectionIds(container: HTMLElement, ids: string[]) {
  * Returns matching link elements for further assertions.
  */
 export function getGithubLinks() {
-  return screen.getAllByRole('link').filter(
-    (link) => link.getAttribute('href')?.includes('github.com')
-  );
+  return screen.getAllByRole('link').filter((link) => {
+    const href = link.getAttribute('href');
+    if (!href) return false;
+    try {
+      return new URL(href).hostname === 'github.com';
+    } catch {
+      return false;
+    }
+  });
 }
 
 export * from '@testing-library/react'

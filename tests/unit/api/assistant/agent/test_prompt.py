@@ -93,6 +93,15 @@ class TestSystemPrompt:
         """
         assert "<project_data>" in STYLE
 
+    def test_the_style_block_tells_the_model_project_data_is_unverified(self):
+        """
+        GIVEN the style block
+        WHEN it is searched for the unverified-text rule
+        THEN it says nobody checked the text and to report it as entered, not as fact
+        """
+        assert "Nobody has checked this text" in STYLE
+        assert "never as a confirmed or verified fact" in STYLE
+
     def test_the_style_block_tells_the_model_the_opinion_list_can_be_short(self):
         """
         GIVEN the style block

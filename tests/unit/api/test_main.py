@@ -1,13 +1,18 @@
 """Tests for application factory wiring in api.main."""
 
+import asyncio
 import logging
 import os
 import subprocess
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from tests.shared.helpers import captured_log_records
 
@@ -160,6 +165,198 @@ class TestCorsAllowedHeaders:
 
         assert response.status_code == 200
         assert "x-turnstile-token" in response.headers["access-control-allow-headers"].lower()
+
+
+class TestCorsOnRefusals:
+    """A refusal from a guard middleware still reaches the SPA as a readable response.
+
+    The SPA and the API sit on different hosts, so the browser hides any response that
+    lacks Access-Control-Allow-Origin and the SPA sees a bare network error instead of
+    the status and the reason. Every middleware that answers on its own therefore has to
+    sit inside CORS.
+    """
+
+    _ORIGIN = "https://app.example.com"
+
+    @pytest.fixture
+    def client(self, monkeypatch, tmp_path) -> Iterator[TestClient]:
+        """An app whose only allowed origin is _ORIGIN, built outside the repository's .env."""
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", f'["{self._ORIGIN}"]')
+        get_settings.cache_clear()
+        try:
+            yield TestClient(create_app())
+        finally:
+            get_settings.cache_clear()
+
+    def _assert_readable_cross_origin(self, response) -> None:
+        assert response.headers.get("access-control-allow-origin") == self._ORIGIN
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
+    def test_csrf_refusal_carries_cors_headers(self, client):
+        """
+        GIVEN a cookie-authenticated mutation from the allowed origin without a CSRF token
+        WHEN the CSRF check refuses it
+        THEN the 403 carries the CORS headers, so the SPA can read why
+        """
+        from uuid import uuid4
+
+        from api.auth.cookies import ACCESS_COOKIE
+        from api.auth.jwt import create_access_token
+
+        # The cookie goes in as a raw header: the client's jar keeps __Host- cookies
+        # for https only, and this client talks plain http.
+        token = create_access_token(uuid4(), sid="session-1")
+        response = client.post(
+            "/api/v1/projects",
+            json={},
+            headers={"Origin": self._ORIGIN, "Cookie": f"{ACCESS_COOKIE}={token}"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "CSRF token missing or invalid"
+        self._assert_readable_cross_origin(response)
+
+    def test_body_size_refusal_carries_cors_headers(self, client):
+        """
+        GIVEN a request from the allowed origin declaring a body above the limit
+        WHEN the body-size guard refuses it
+        THEN the 413 carries the CORS headers
+        """
+        from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
+
+        response = client.post(
+            "/api/v1/calculate",
+            content=b"x" * (DEFAULT_MAX_BODY_BYTES + 1),
+            headers={"Origin": self._ORIGIN, "Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 413
+        self._assert_readable_cross_origin(response)
+
+
+class TestUnhandledErrorResponse:
+    """An exception no handler catches still answers a 500 the SPA can read.
+
+    Starlette sends the 500 for an unhandled exception from ServerErrorMiddleware, which
+    sits outside every user middleware, CORS included, so that answer had no CORS headers
+    and the browser turned it into a network error.
+    """
+
+    _ORIGIN = "https://app.example.com"
+    _PATH = "/api/v1/test-unhandled-error"
+
+    @pytest.fixture
+    def client(self, monkeypatch, tmp_path) -> Iterator[TestClient]:
+        """An app with one route that raises, built outside the repository's .env."""
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", f'["{self._ORIGIN}"]')
+        get_settings.cache_clear()
+        app = create_app()
+
+        @app.get(self._PATH)
+        def _boom() -> None:
+            # Stands in for a parsed request body held in a local, such as a password.
+            parsed_field = "local-value-that-must-not-reach-sentry"  # noqa: F841
+            raise RuntimeError("boom")
+
+        try:
+            yield TestClient(app, raise_server_exceptions=False)
+        finally:
+            get_settings.cache_clear()
+
+    def _get(self, client: TestClient):
+        return client.get(self._PATH, headers={"Origin": self._ORIGIN, "X-Request-ID": "req-500"})
+
+    def test_carries_cors_headers(self, client):
+        """
+        GIVEN a route that raises an exception no handler maps
+        WHEN the allowed origin calls it
+        THEN the opaque 500 carries the CORS and security headers, so the SPA can read it
+        """
+        response = self._get(client)
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Internal server error"}
+        assert response.headers.get("access-control-allow-origin") == self._ORIGIN
+        assert response.headers.get("access-control-allow-credentials") == "true"
+        assert response.headers.get("x-request-id") == "req-500"
+        assert response.headers.get("x-content-type-options") == "nosniff"
+
+    def test_logs_the_exception_with_the_request_id(self, client):
+        """
+        GIVEN a route that raises an exception no handler maps
+        WHEN it is called with a correlation ID
+        THEN one ERROR record carries the traceback and that request id
+        """
+        with captured_log_records("api.exception") as records:
+            self._get(client)
+
+        assert len(records) == 1
+        record = records[0]
+        assert record.levelno == logging.ERROR
+        assert record.exc_info is not None
+        assert isinstance(record.exc_info[1], RuntimeError)
+        assert record.request_id == "req-500"  # type: ignore[attr-defined]
+
+    def test_reports_the_exception_to_sentry(self, client):
+        """
+        GIVEN Sentry initialised with a transport that keeps every envelope
+        WHEN a route raises an exception no handler maps
+        THEN exactly one error event reaches Sentry, carrying that exception as unhandled
+        AND no frame local of the failing route
+        """
+        import sentry_sdk
+        from sentry_sdk.transport import Transport
+
+        class _KeepEnvelopes(Transport):
+            def __init__(self) -> None:
+                super().__init__()
+                self.envelopes: list = []
+
+            def capture_envelope(self, envelope) -> None:
+                self.envelopes.append(envelope)
+
+        transport = _KeepEnvelopes()
+        previous = sentry_sdk.get_client()
+        sentry_sdk.init(dsn=_FAKE_DSN, transport=transport, include_local_variables=False)
+        try:
+            self._get(client)
+            sentry_sdk.flush()
+        finally:
+            sentry_sdk.get_global_scope().set_client(previous)
+
+        events = [
+            item.payload.json
+            for envelope in transport.envelopes
+            for item in envelope.items
+            if item.type == "event"
+        ]
+        assert len(events) == 1
+        reported = events[0]["exception"]["values"][-1]
+        assert reported["type"] == "RuntimeError"
+        # Unhandled, as the Starlette integration reported it before: Sentry ranks issue
+        # priority, and with it the high-priority alert, on that flag.
+        assert reported["mechanism"]["handled"] is False
+        # The report is built by hand, so check it still honours the client's switch
+        # that keeps frame locals out of the event.
+        frames = [
+            frame
+            for value in events[0]["exception"]["values"]
+            for frame in value.get("stacktrace", {}).get("frames", [])
+        ]
+        assert frames
+        assert all("vars" not in frame for frame in frames)
 
 
 class TestSentryInit:
@@ -705,3 +902,124 @@ class TestAssistantShutdown:
 
         # THEN
         shutdown.assert_not_called()
+
+
+class TestStartupChecksWiring:
+    """The lifespan runs the startup checks in the background, and never in a test run."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    @contextmanager
+    def _running_app(monkeypatch, tmp_path, *, testing: bool, checks) -> Iterator[TestClient]:
+        """Run the app under its lifespan with ``run_startup_checks`` replaced.
+
+        :param testing: The value of ``TESTING`` for the app's settings.
+        :param checks: The coroutine function standing in for ``run_startup_checks``.
+        :return: The test client, inside the lifespan; the app stops when the block ends.
+        """
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("TESTING", "1" if testing else "0")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.main.run_startup_checks", new=checks),
+            TestClient(create_app()) as client,
+        ):
+            yield client
+
+    def test_nothing_is_scheduled_in_a_test_run(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING set
+        WHEN the app starts and stops
+        THEN the startup checks never ran, so the suite never reaches a network
+        """
+        # GIVEN
+        checks = AsyncMock()
+
+        # WHEN
+        with self._running_app(monkeypatch, tmp_path, testing=True, checks=checks):
+            pass
+
+        # THEN
+        checks.assert_not_called()
+
+    def test_the_checks_run_in_the_background_once_the_app_has_started(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING unset
+        WHEN the app starts and stops
+        THEN the checks ran once, with the app's settings, and the app answered while they
+             were still running
+        """
+        # GIVEN
+        started = threading.Event()
+        release = threading.Event()
+        seen = []
+
+        async def checks(settings):
+            seen.append(settings)
+            started.set()
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+
+        # WHEN
+        with self._running_app(monkeypatch, tmp_path, testing=False, checks=checks) as client:
+            assert started.wait(timeout=5)
+            response = client.get("/api/v1/health")
+            release.set()
+
+        # THEN
+        assert response.status_code == 200
+        assert len(seen) == 1
+        assert seen[0].testing is False
+
+    def test_a_check_still_running_is_cancelled_before_the_app_logs_its_stop(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a startup check that never finishes
+        WHEN the app stops
+        THEN the check had been cancelled by the time the shutdown record was written. The
+             test client cancels leftover tasks when its loop closes, which is after that
+             record, so only the lifespan's own cancel can satisfy this.
+        """
+        # GIVEN
+        started = threading.Event()
+        cancelled = []
+        cancelled_at_shutdown = []
+
+        async def checks(settings):
+            started.set()
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        def record(message, *args, **kwargs):
+            if kwargs.get("extra", {}).get("event") == "app_shutdown":
+                cancelled_at_shutdown.append(list(cancelled))
+
+        # WHEN
+        with (
+            patch("api.main.logger.info", side_effect=record),
+            self._running_app(monkeypatch, tmp_path, testing=False, checks=checks),
+        ):
+            assert started.wait(timeout=5)
+
+        # THEN
+        assert cancelled_at_shutdown == [[True]]

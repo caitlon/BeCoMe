@@ -105,6 +105,8 @@ _RESEND_ACCEPTED = "If that address still needs confirming, a new link is on its
 
 _VERIFICATION_COMPLETE = "Your email address is confirmed. You can sign in now."
 
+_INVALID_REFRESH_DETAIL = "Invalid or expired refresh token"
+
 
 def _set_session_cookies(response: Response, token_pair: TokenPair) -> None:
     """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
@@ -172,7 +174,7 @@ async def _send_quietly(send: Awaitable[None], event: str) -> None:
         # warning would only ever be a breadcrumb on some later event. Every endpoint
         # here answers 2xx regardless, so a provider outage is otherwise invisible:
         # signup would be down indefinitely with nothing to alert on.
-        logger.error("Transactional email send failed", exc_info=True, extra={"event": event})
+        logger.exception("Transactional email send failed", extra={"event": event})
 
 
 @router.post(
@@ -542,7 +544,7 @@ def refresh_token(
     if refresh is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+            detail=_INVALID_REFRESH_DETAIL,
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
@@ -550,7 +552,7 @@ def refresh_token(
     except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+            detail=_INVALID_REFRESH_DETAIL,
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
 
@@ -569,7 +571,7 @@ def refresh_token(
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired refresh token",
+                detail=_INVALID_REFRESH_DETAIL,
                 headers={"WWW-Authenticate": "Bearer"},
             )
         _set_session_cookies(response, token_pair)

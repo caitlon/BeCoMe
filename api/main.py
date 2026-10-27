@@ -1,8 +1,9 @@
 """FastAPI application entry point."""
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -13,17 +14,15 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.config import Environment, Settings, get_settings
 from api.db.engine import create_db_and_tables, warm_up_connection_pool
 from api.logging_config import setup_logging
-from api.middleware.body_size import (
-    BodySizeLimitMiddleware,
-    RequestBodyTooLarge,
-    body_too_large_handler,
-)
+from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
+from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
+from api.startup_checks import run_startup_checks
 
 logger = logging.getLogger("api.main")
 
@@ -34,6 +33,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     The startup and shutdown records carry the running version and active
     profile so the journal pins which build and environment served the run.
+    The backends are checked in a background task once the app has started, so
+    the app serves at once, and the task is cancelled if it is still running at
+    shutdown. Test runs skip the checks, which would reach the network.
     """
     settings = get_settings()
     lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}
@@ -43,7 +45,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # instead of paying the TCP + TLS + auth cost (a no-op for SQLite/test runs).
     warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
+    checks = None if settings.testing else asyncio.create_task(run_startup_checks(settings))
     yield
+    if checks is not None:
+        checks.cancel()
+        with suppress(asyncio.CancelledError):
+            await checks
     if settings.assistant_enabled:
         # Imported only when the flag is on, like the router in create_app(), so a
         # deployed process never loads the assistant package.
@@ -60,9 +67,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def _init_sentry(settings: Settings) -> None:
     """Initialise Sentry error tracking when a DSN is configured.
 
-    The FastAPI integration is auto-detected, so unhandled exceptions and
-    request context are reported without extra wiring. A no-op when the DSN is
-    unset, which keeps development and tests offline.
+    The FastAPI integration is auto-detected and adds request context. An
+    exception a route raises is reported by ``UnhandledErrorMiddleware``; one
+    that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
+    integration. A no-op when the DSN is unset, which keeps development and
+    tests offline.
 
     :param settings: Application settings.
     """
@@ -136,9 +145,12 @@ def create_app() -> FastAPI:
     # Rate limiting setup
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(RequestBodyTooLarge, body_too_large_handler)
 
-    # Security headers middleware (added first, executes last)
+    # Innermost: answers an exception no handler maps with a 500 that then passes back out
+    # through every middleware below, CORS included.
+    app.add_middleware(UnhandledErrorMiddleware)
+
+    # Security headers middleware (executes after everything but the error guard)
     app.add_middleware(SecurityHeadersMiddleware)
 
     # Rate limiting: SlowAPIMiddleware enforces the limiter's default_limits on every
@@ -147,7 +159,21 @@ def create_app() -> FastAPI:
     # OPTIONS be answered before any limit check.
     app.add_middleware(SlowAPIMiddleware)
 
-    # CORS middleware for frontend integration (restricted for security)
+    # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
+    app.add_middleware(CSRFMiddleware)
+
+    # Request/response logging with correlation IDs.
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # Body-size guard, the outermost middleware after CORS: it drops an over-large request
+    # body before any other middleware buffers or logs it.
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    # CORS middleware for frontend integration (restricted for security). Added last, so
+    # it is outermost: a refusal produced by any middleware inside it (the CSRF 403, the
+    # body-size 413, the rate-limit 429) still carries the CORS headers, without which
+    # the browser hides the response from the SPA. It also answers preflight OPTIONS on
+    # its own, before the rate limit or the request log ever see them.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -173,16 +199,6 @@ def create_app() -> FastAPI:
         expose_headers=["X-CSRF-Token", "Retry-After"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
-
-    # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
-    app.add_middleware(CSRFMiddleware)
-
-    # Request/response logging with correlation IDs.
-    app.add_middleware(RequestLoggingMiddleware)
-
-    # Body-size guard (outermost: added last so it runs first and drops an over-large
-    # request body before any other middleware buffers or logs it).
-    app.add_middleware(BodySizeLimitMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)

@@ -9,6 +9,14 @@ import {
   HttpError,
   TURNSTILE_REFUSED_CODE,
   CSRF_INVALID_CODE,
+  INVALID_CREDENTIALS_CODE,
+  DISPOSABLE_EMAIL_DOMAIN_CODE,
+  UNRESOLVABLE_EMAIL_DOMAIN_CODE,
+  VALUES_OUT_OF_RANGE_CODE,
+  SCALE_EXCLUDES_OPINIONS_CODE,
+  SCALE_RANGE_INVALID_CODE,
+  INVALID_PROJECT_DISPOSITION_CODE,
+  ACCOUNT_HAS_OWNED_PROJECTS_CODE,
   INVITEE_NOT_FOUND_CODE,
   ALREADY_INVITED_CODE,
   ALREADY_MEMBER_CODE,
@@ -90,6 +98,14 @@ describe('describeError', () => {
     [PHOTO_UNREADABLE_CODE, 400, 'errors.photoUnreadable'],
     [PHOTO_DIMENSIONS_TOO_LARGE_CODE, 400, 'errors.photoDimensionsTooLarge'],
     [CSRF_INVALID_CODE, 403, 'errors.sessionChanged'],
+    [INVALID_CREDENTIALS_CODE, 401, 'errors.invalidCredentials'],
+    [DISPOSABLE_EMAIL_DOMAIN_CODE, 400, 'errors.disposableEmailDomain'],
+    [UNRESOLVABLE_EMAIL_DOMAIN_CODE, 400, 'errors.unresolvableEmailDomain'],
+    [VALUES_OUT_OF_RANGE_CODE, 422, 'errors.valuesOutOfRange'],
+    [SCALE_EXCLUDES_OPINIONS_CODE, 409, 'errors.scaleExcludesOpinions'],
+    [SCALE_RANGE_INVALID_CODE, 422, 'errors.scaleRangeInvalid'],
+    [INVALID_PROJECT_DISPOSITION_CODE, 422, 'errors.invalidProjectDisposition'],
+    [ACCOUNT_HAS_OWNED_PROJECTS_CODE, 409, 'errors.accountHasOwnedProjects'],
   ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
     expect(
       describeError(new HttpError('English server detail', status, code), t, 'fallback')
@@ -109,6 +125,14 @@ describe('describeError', () => {
       PHOTO_UNREADABLE_CODE,
       PHOTO_DIMENSIONS_TOO_LARGE_CODE,
       CSRF_INVALID_CODE,
+      INVALID_CREDENTIALS_CODE,
+      DISPOSABLE_EMAIL_DOMAIN_CODE,
+      UNRESOLVABLE_EMAIL_DOMAIN_CODE,
+      VALUES_OUT_OF_RANGE_CODE,
+      SCALE_EXCLUDES_OPINIONS_CODE,
+      SCALE_RANGE_INVALID_CODE,
+      INVALID_PROJECT_DISPOSITION_CODE,
+      ACCOUNT_HAS_OWNED_PROJECTS_CODE,
     ]).toEqual([
       'invitee_not_found',
       'already_invited',
@@ -121,6 +145,14 @@ describe('describeError', () => {
       'photo_unreadable',
       'photo_dimensions_too_large',
       'csrf_invalid',
+      'invalid_credentials',
+      'disposable_email_domain',
+      'unresolvable_email_domain',
+      'values_out_of_range',
+      'scale_excludes_opinions',
+      'scale_range_invalid',
+      'invalid_project_disposition',
+      'account_has_owned_projects',
     ]);
   });
 
@@ -138,23 +170,21 @@ describe('describeError', () => {
   });
 
   it.each(['something_else', 'constructor'])(
-    'keeps the server message for an HttpError whose code (%s) is not a known refusal',
+    'returns the fallback, not the English server message, for a 4xx whose code (%s) is not a known refusal',
     (code) => {
-      expect(describeError(new HttpError('Conflict', 409, code), t, 'fallback')).toBe('Conflict');
+      expect(describeError(new HttpError('Conflict', 409, code), t, 'fallback')).toBe('fallback');
     }
   );
 
-  it('leaves a 403 with no code alone, so the unverified-account text still shows', () => {
+  it('returns the fallback for a 4xx with no code, whatever English detail it carries', () => {
     expect(describeError(new ForbiddenError('Email not verified'), t, 'fallback')).toBe(
-      'Email not verified'
+      'fallback'
     );
-  });
-
-  it('uses the error message for other HttpError instances (401, 409, etc.)', () => {
     expect(describeError(new UnauthorizedError('Invalid credentials'), t, 'fallback')).toBe(
-      'Invalid credentials'
+      'fallback'
     );
-    expect(describeError(new HttpError('Conflict', 409), t, 'fallback')).toBe('Conflict');
+    expect(describeError(new HttpError('Conflict', 409), t, 'fallback')).toBe('fallback');
+    expect(describeError(new HttpError('Project not found', 404), t, 'fallback')).toBe('fallback');
   });
 
   it('uses the error message for a plain Error', () => {

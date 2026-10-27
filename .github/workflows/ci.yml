@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -90,7 +90,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -119,7 +119,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -202,7 +202,7 @@ jobs:
           exit 1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -238,7 +238,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -293,7 +293,7 @@ jobs:
 
       - name: Upload Python coverage XML
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: python-coverage-xml
           path: coverage.xml
@@ -301,7 +301,7 @@ jobs:
 
       - name: Upload Python coverage HTML
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: python-coverage-report
           path: htmlcov/
@@ -316,7 +316,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -330,9 +330,30 @@ jobs:
         working-directory: frontend
         run: npm run test:coverage
 
+      # The assistant is switched on at build time by VITE_ASSISTANT_ENABLED, and the
+      # claim is that a build without it carries none of the feature. Nothing else in
+      # CI runs `vite build`, so this is the only place the claim is tested. The flag-on
+      # build is the positive control: without it a renamed marker would let the absent
+      # check pass for the wrong reason. Each build empties dist/ first.
+      - name: Build the frontend without the assistant
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check the assistant is absent from that build
+        run: ./scripts/ci/check-assistant-bundle.sh frontend/dist absent
+
+      - name: Build the frontend with the assistant
+        working-directory: frontend
+        env:
+          VITE_ASSISTANT_ENABLED: "true"
+        run: npm run build
+
+      - name: Check the assistant is present in that build
+        run: ./scripts/ci/check-assistant-bundle.sh frontend/dist present
+
       - name: Upload frontend coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: frontend-coverage-report
           path: frontend/coverage/
@@ -365,7 +386,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -414,11 +435,12 @@ jobs:
   e2e-shard:
     name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
-    # Running this inside mcr.microsoft.com/playwright was tried and dropped. The image
-    # carries the browsers, which saves the 22s to 63s the download costs here, but it
-    # carries no C toolchain, and psycopg2 ships no wheels and builds from source. Adding
-    # build-essential and libpq-dev back through apt costs about what the download cost,
-    # and leaves the image tag needing to track the @playwright/test version by hand.
+    # The browsers and their system libraries come from the official Playwright image,
+    # through scripts/ci/playwright-image.sh, so apt never runs here. The job itself
+    # stays on the runner: psycopg2 builds from source and the image has no C toolchain.
+    # The timeout is there because a stalled network step used to wait for GitHub's
+    # six-hour limit; a shard takes two to six minutes.
+    timeout-minutes: 30
     strategy:
       # One browser failing should not cancel the others: knowing whether a break is
       # webkit-only or everywhere is most of what the split buys.
@@ -429,25 +451,18 @@ jobs:
           # when the slowest one does. Sharding is by test rather than by file, because
           # `fullyParallel` is on: the two webkit halves hold 36 and 35 tests.
           - name: webkit-1
-            browsers: webkit
             projects: --project=webkit --shard=1/2
           - name: webkit-2
-            browsers: webkit
             projects: --project=webkit --shard=2/2
           - name: firefox-1
-            browsers: firefox
             projects: --project=firefox --shard=1/2
           - name: firefox-2
-            browsers: firefox
             projects: --project=firefox --shard=2/2
           - name: chromium
-            browsers: chromium
             projects: --project=chromium
           # The two single-browser projects travel together, away from the chromium
-          # specs they used to ride along with. Both are Desktop Chrome, so this shard
-          # downloads the same browser and no second one.
+          # specs they used to ride along with. Both are Desktop Chrome.
           - name: chrome-audits
-            browsers: chromium
             projects: --project=wcag-audit
     needs: lint
     env:
@@ -483,7 +498,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
 
@@ -494,7 +509,7 @@ jobs:
         run: uv sync --locked --extra dev --extra api
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -504,18 +519,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.browsers }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-${{ matrix.browsers }}-
-
-      # Only this shard's browser, rather than all three: two of them would go unused.
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps ${{ matrix.browsers }}
+      - name: Pull Playwright image
+        timeout-minutes: 5
+        run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
         run: |
@@ -545,19 +551,17 @@ jobs:
           MX_CHECK_ENABLED: "false"
 
       - name: Run E2E tests
-        working-directory: frontend
-        run: npx playwright test ${{ matrix.projects }}
+        run: scripts/ci/playwright-image.sh run test ${{ matrix.projects }}
 
       # Alone, at one worker, which is the concurrency its baselines were recorded at.
       # Eight tests and 31 seconds, so giving them their own pass costs almost nothing.
       - name: Run visual regression tests
         if: matrix.name == 'chrome-audits'
-        working-directory: frontend
-        run: npx playwright test --project=visual-regression --workers=1
+        run: scripts/ci/playwright-image.sh run test --project=visual-regression --workers=1
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: playwright-report-${{ matrix.name }}
           path: frontend/playwright-report/
@@ -569,7 +573,7 @@ jobs:
       # reason to publish them when a downloaded artifact debugs the run just as well.
       - name: Upload API log
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: e2e-api-log-${{ matrix.name }}
           path: /tmp/become-e2e-api.log
@@ -616,13 +620,13 @@ jobs:
           fetch-depth: 0
 
       - name: Download Python coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: python-coverage-xml
           path: .
 
       - name: Download frontend coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: frontend-coverage-report
           path: frontend/coverage/

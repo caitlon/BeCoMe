@@ -15,6 +15,9 @@ deployed service needs an image built with the `assistant` extra and a corpus da
 through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.example` and
 `env/.env.prod.example` list the variables.
 
+How the pipeline is built and why, from the corpus to the streamed answer, is explained in
+[How the assistant works](../../docs/assistant.md). This file covers running it.
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
@@ -75,13 +78,15 @@ through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.exampl
 6. Seed the data for questions about "my project": `uv run python
    scripts/assistant/seed_eval_fixtures.py --output supplementary/assistant-eval/fixtures.json`
    creates in the configured local database one activated user, `eval-owner@example.test`,
-   who owns the product's example project (Floods case, 13 experts) and a second one built from
-   the pendlers case study (22 experts, calculated). The password is `--password` or generated
-   and printed once on stderr, as soon as the account exists. An existing account keeps its
-   password, so `--password` has no effect on a rerun; a second run changes nothing and says
-   "already present". The JSON (user id, and per project its key, id, name, expert count and
-   result numbers) is what an evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
-   touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
+   who owns the product's example project (Floods case, 13 experts) and a second one built
+   from the pendlers case study (22 experts, calculated). The password is `--password`, or
+   the script asks for it (hidden) when it has to create the account; an empty answer, or no
+   terminal to ask on, exits with 2 and creates no account. An existing account keeps its
+   password and is not asked again, so `--password` has no effect on a rerun; a second run
+   changes nothing and says "already present". The JSON (user id, and per project its key,
+   id, name, expert count and result numbers) is what an evaluation run reads; the keys are
+   listed in the script's docstring. It exits with 2 and touches nothing unless the profile
+   is `dev` and the database is SQLite or on a loopback host.
 
    Answer evaluation: `scripts/assistant/eval_answers.py` asks every question of a JSONL file as
    one single-turn chat through the real chat route, in-process and as the user the fixtures
@@ -242,20 +247,28 @@ token `usage` of the turn. Each source carries a `snippet`, the first words of t
 plain text, at most 240 characters.
 
 `ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev and test through an
-environment variable) decides whether the client is sent the sources. While it is off, `sources`
-is an empty list, the answer text has no `[n]` marker and no link target after one, and
+environment variable) decides whether the client is sent the sources. While it is off, `sources` is
+an empty list, the answer text has no `[n]` marker and no link target after one, and
 `checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
-blanks before a marker go with it, except that a marker opening a line keeps the indent before
-it and drops the blanks after it. A bracket that writes one number (`[7]`, `[source 2]`) is
-always removed, even when no such source exists. A bracket that writes several numbers or a
-range (`[1, 2]`, `[1-3]`) is removed only when each number in it is a source of the turn, so a
-fuzzy number such as `[6, 8, 11]` or `[5, 5, 5]`, or a scale such as `[0, 1]`, stays. A bracket
-inside a bracket is taken first, so `[[1]2]` goes whole. Removal reads citations as the
-citation check does, so a form that check does not recognise, such as the full-width dagger
-form `【1†source】`, stays in the text. The stream holds a piece back while a marker may still
-be forming in it, and a bracket that never closes holds the rest of the answer until the end,
-so a marker is never sent in part. The checks still run on the text the model wrote, and the
-system prompt is the same in both states.
+blanks before a marker go with it, except that a marker opening a line keeps the indent before it
+and drops the blanks after it. A bracket that writes one number (`[7]`, `[source 2]`) is always
+removed, even when no such source exists. A bracket that writes several numbers or a range
+(`[1, 2]`, `[1-3]`) is removed only when each number in it is a source of the turn, so a fuzzy
+number such as `[6, 8, 11]` or `[5, 5, 5]`, or a scale such as `[0, 1]`, stays. A bracket whose
+whole content is the name of an internal tag or tool, which the model sometimes writes as if it
+were a source, is removed the same way. Such names are `[project_data]`, `[project result]`,
+`[tool result]`, `[System Instruction]`, the tool names such as `[search_docs]` or
+`[get_project_result]`, and bare words such as `[source]`, `[docs]`, `[data]` or `[zdroj]`, in any
+case and with `_`, `-` or blanks between words. The list is fixed, so other bracketed words such as
+`[a_ij]` or `[TODO]` stay, and so does a name written as the text of a markdown link,
+`[docs](https://...)`, with its link. Removal does not look at code spans, so a name inside
+backticks goes too. A bracket inside a bracket is taken first, so `[[1]2]` goes whole. Numbered
+citations are read as the citation check reads them, so a form that check does not recognise, such
+as the full-width dagger form `【1†source】`, stays in the text; the internal names are known only to
+the removal, not to the citation check or the history clean-up. The stream holds a piece back while
+a marker may still be forming in it, and a bracket that never closes holds the rest of the answer
+until the end, so a marker is never sent in part. The checks still run on the text the model wrote,
+and the system prompt is the same in both states.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads
@@ -284,6 +297,18 @@ two chat models, `embedding`, `rerank`, `vector_db` for the document index, `app
 application, or `unknown` when nothing tagged the failure. The
 code that talks to a server writes the role on the exception (`roles.py`); the text of an error is
 never read for it. A spent message budget answers `429`.
+
+The backends are also checked once when the process starts, in a background task, so the app
+serves at once and a failed check never stops the start or changes `/health`. Each of the answer
+model, the embedding server and the document index gets one small real request, the query model
+and the reranker only when the retrieval config uses them. A failing one is logged at `ERROR` as
+`assistant_backend_check_failed` with the same `role` as above and the class of the error as
+`reason`, never its text; a probe that exceeds `ASSISTANT_LLM_TIMEOUT_SECONDS` has reason
+`TimeoutError`. The document-index probe builds the retriever and keeps it, so the corpus
+database pool is open from startup. Its `reason` is `AssistantUnavailableError`, and the
+underlying class is on the `assistant_dependency_unavailable` warning logged just before it.
+When all pass, `assistant_backends_checked` records the count and the time in milliseconds. Test
+runs skip the check.
 
 ### Modes
 

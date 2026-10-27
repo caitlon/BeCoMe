@@ -3,12 +3,13 @@
 import logging
 from uuid import UUID
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from api.auth.password import hash_password, verify_password
-from api.db.models import User
+from api.db.models import ExpertOpinion, User
 from api.exceptions import CurrentPasswordIncorrectError, InvalidCredentialsError, UserExistsError
 from api.services.base import BaseService
+from api.services.calculation_service import CalculationService
 from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
 
@@ -182,13 +183,37 @@ class UserService(BaseService):
         self.verify_current_password(user, current_password)
         return self.set_password(user, new_password)
 
-    def delete_user(self, user: User) -> None:
+    def delete_user(
+        self, user: User, calculation_service: CalculationService | None = None
+    ) -> None:
         """Delete user account.
 
+        The user's opinions go with the account (FK cascade). When a calculation service is
+        given, the result of every project that lost an opinion is recalculated in the same
+        transaction, so a failure leaves both the account and the results untouched. Those
+        projects are locked in id order before the account is deleted, so two concurrent
+        deletions lock shared projects in the same order, and a project deletion, which locks
+        its project first, cannot deadlock with this one.
+
         :param user: User to delete
+        :param calculation_service: Recalculates results of projects that lose an opinion
         """
         user_id = user.id
-        self._delete_and_commit(user)
+        project_ids: list[UUID] = []
+        if calculation_service is not None:
+            statement = (
+                select(ExpertOpinion.project_id).where(ExpertOpinion.user_id == user_id).distinct()
+            )
+            project_ids = sorted(self._session.exec(statement).all())
+            for project_id in project_ids:
+                calculation_service.lock_project(project_id)
+
+        self._session.delete(user)
+        self._session.flush()
+        if calculation_service is not None:
+            for project_id in project_ids:
+                calculation_service.stage_recalculation(project_id)
+        self._session.commit()
         self._invalidate_cache(user_id)
         logger.info(
             "User deleted",

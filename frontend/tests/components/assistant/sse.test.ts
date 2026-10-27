@@ -66,6 +66,26 @@ describe('readAssistantSseStream', () => {
     ]);
   });
 
+  // The panel reads neither usage nor timing off the answer, so it is not lost without them.
+  it.each([
+    ['usage', { ...DONE_PAYLOAD, usage: undefined }],
+    ['timing', { ...DONE_PAYLOAD, timing: undefined }],
+    ['usage and timing', { ...DONE_PAYLOAD, usage: undefined, timing: undefined }],
+  ])('yields the done response when it carries no %s', async (_label, payload) => {
+    const events = await collect(streamFromChunks([frame('done', payload)]));
+
+    expect(events).toEqual([{ type: 'done', response: JSON.parse(JSON.stringify(payload)) }]);
+  });
+
+  it.each([
+    ['usage', { ...DONE_PAYLOAD, usage: null }],
+    ['timing', { ...DONE_PAYLOAD, timing: null }],
+  ])('yields the done response when its %s is null', async (_label, payload) => {
+    const events = await collect(streamFromChunks([frame('done', payload)]));
+
+    expect(events).toEqual([{ type: 'done', response: JSON.parse(JSON.stringify(payload)) }]);
+  });
+
   it('yields an error event in place of done', async () => {
     const events = await collect(
       streamFromChunks([
@@ -305,6 +325,10 @@ describe('readAssistantSseStream', () => {
     [
       'a done whose timing is a string',
       `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, timing: 'fast' })}\n\n`,
+    ],
+    [
+      'a done whose usage is a string',
+      `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, usage: 'x' })}\n\n`,
     ],
     ['a token block with no data line', 'event: token\n\n'],
     ['a done block with no data line', 'event: done\n\n'],

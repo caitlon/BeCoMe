@@ -3318,11 +3318,15 @@ class _Exchange:
 
     :ivar status: The status of the response the app started, or None if it started none.
     :ivar receive_calls: How many times the app asked for the next message.
+    :ivar gone_at: The event loop's clock when the client vanished, or None if it stayed.
+    :ivar ended_at: The event loop's clock when the app call returned.
     """
 
     def __init__(self) -> None:
         self.status: int | None = None
         self.receive_calls = 0
+        self.gone_at: float | None = None
+        self.ended_at = 0.0
 
 
 async def _drive(app, path: str, token: str, *, disconnect_after: float | None) -> _Exchange:
@@ -3362,8 +3366,14 @@ async def _drive(app, path: str, token: str, *, disconnect_after: float | None) 
     exchange = _Exchange()
     client_gone = asyncio.Event()
     response_complete = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def vanish() -> None:
+        exchange.gone_at = loop.time()
+        client_gone.set()
+
     if disconnect_after is not None:
-        asyncio.get_running_loop().call_later(disconnect_after, client_gone.set)
+        loop.call_later(disconnect_after, vanish)
     body_delivered = False
 
     async def receive():
@@ -3390,6 +3400,7 @@ async def _drive(app, path: str, token: str, *, disconnect_after: float | None) 
             response_complete.set()
 
     await asyncio.wait_for(app(scope, receive, send), timeout=15)
+    exchange.ended_at = loop.time()
     return exchange
 
 
@@ -3428,7 +3439,9 @@ class TestClientDisconnect:
         (record,) = _disconnect_records(route_records)
         assert record.levelno == logging.INFO
         assert record.route == "chat"
-        assert 100 <= record.duration_ms < 5000
+        assert exchange.gone_at is not None
+        assert 0 <= exchange.ended_at - exchange.gone_at < 5
+        assert record.duration_ms < 5000
         assert _timeout_records(service_records) == []
         assert [r for r in route_records if r.levelno >= logging.ERROR] == []
         assert deps.get_turn_slots().holders == {}
@@ -3462,7 +3475,9 @@ class TestClientDisconnect:
         assert retriever.cancelled
         (record,) = _disconnect_records(route_records)
         assert record.route == "chat_stream"
-        assert 100 <= record.duration_ms < 5000
+        assert exchange.gone_at is not None
+        assert 0 <= exchange.ended_at - exchange.gone_at < 5
+        assert record.duration_ms < 5000
         assert _timeout_records(service_records) == []
         assert deps.get_turn_slots().holders == {}
 

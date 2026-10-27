@@ -10,7 +10,8 @@ cumulative size passes the limit, so an over-large upload never fully buffers.
 from typing import Protocol
 
 
-class UploadTooLarge(Exception):  # noqa: N818, a domain event, not an *Error
+# A domain event, not an *Error.
+class UploadTooLarge(Exception):  # noqa: N818
     """Raised when an upload exceeds the permitted size."""
 
 

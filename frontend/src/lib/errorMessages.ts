@@ -14,6 +14,14 @@ import {
   PHOTO_UNREADABLE_CODE,
   PHOTO_DIMENSIONS_TOO_LARGE_CODE,
   CSRF_INVALID_CODE,
+  INVALID_CREDENTIALS_CODE,
+  DISPOSABLE_EMAIL_DOMAIN_CODE,
+  UNRESOLVABLE_EMAIL_DOMAIN_CODE,
+  VALUES_OUT_OF_RANGE_CODE,
+  SCALE_EXCLUDES_OPINIONS_CODE,
+  SCALE_RANGE_INVALID_CODE,
+  INVALID_PROJECT_DISPOSITION_CODE,
+  ACCOUNT_HAS_OWNED_PROJECTS_CODE,
 } from '@/lib/errors';
 
 /**
@@ -33,6 +41,14 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
   [PHOTO_UNREADABLE_CODE]: 'errors.photoUnreadable',
   [PHOTO_DIMENSIONS_TOO_LARGE_CODE]: 'errors.photoDimensionsTooLarge',
   [CSRF_INVALID_CODE]: 'errors.sessionChanged',
+  [INVALID_CREDENTIALS_CODE]: 'errors.invalidCredentials',
+  [DISPOSABLE_EMAIL_DOMAIN_CODE]: 'errors.disposableEmailDomain',
+  [UNRESOLVABLE_EMAIL_DOMAIN_CODE]: 'errors.unresolvableEmailDomain',
+  [VALUES_OUT_OF_RANGE_CODE]: 'errors.valuesOutOfRange',
+  [SCALE_EXCLUDES_OPINIONS_CODE]: 'errors.scaleExcludesOpinions',
+  [SCALE_RANGE_INVALID_CODE]: 'errors.scaleRangeInvalid',
+  [INVALID_PROJECT_DISPOSITION_CODE]: 'errors.invalidProjectDisposition',
+  [ACCOUNT_HAS_OWNED_PROJECTS_CODE]: 'errors.accountHasOwnedProjects',
 };
 
 /**
@@ -47,9 +63,11 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
  * check did not go through, not whatever the API happened to say. The same goes
  * for every refusal the API names with a `code` (an unknown invitee, a photo that
  * is too large, and so on): each gets a translated line of its own. Any other
- * HttpError (401, 409, other 4xx) and plain Error instances use their own
- * message, since those already carry a message meant to be read. Anything else
- * falls back to the caller-supplied default.
+ * HttpError (a 4xx with no code, or one this map does not know) gets the
+ * caller-supplied default as well, never its own message: the server `detail` is
+ * always English, so showing it is the bug this function exists to prevent, while
+ * the default is the caller's already translated line. A plain Error keeps its own
+ * message. Anything else falls back to the caller-supplied default.
  *
  * `t` must resolve keys in the common namespace, where the `errors.*` lines live.
  */
@@ -83,7 +101,7 @@ export function describeError(
     return t(REFUSAL_MESSAGE_KEYS[error.code]);
   }
   if (error instanceof HttpError) {
-    return error.message;
+    return fallback;
   }
   if (error instanceof Error) {
     return error.message;

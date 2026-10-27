@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import { DeleteAccountDialog } from '@/components/modals/DeleteAccountDialog';
+import { HttpError } from '@/lib/errors';
 import type { Member, ProjectWithRole } from '@/types/api';
 
 const mockApi = {
@@ -114,6 +115,114 @@ describe('DeleteAccountDialog', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('offers the members of a regular project as new admins', async () => {
+    mockApi.getProjects.mockResolvedValue([ownedProject()]);
+    mockApi.getMembers.mockResolvedValue([member()]);
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(await screen.findByRole('combobox'));
+
+    expect(await screen.findByRole('option', { name: 'Delete this project' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Transfer to Jane Roe' })).toBeInTheDocument();
+  });
+
+  it('offers only deletion for the example project, whose other members are demo experts', async () => {
+    mockApi.getProjects.mockResolvedValue([ownedProject({ is_example: true })]);
+    mockApi.getMembers.mockResolvedValue([
+      member({ user_id: 'demo-1', first_name: 'Demo', last_name: 'Expert' }),
+    ]);
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(await screen.findByRole('combobox'));
+
+    expect(await screen.findByRole('option', { name: 'Delete this project' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Transfer to/ })).not.toBeInTheDocument();
+    expect(mockApi.getMembers).not.toHaveBeenCalled();
+  });
+
+  it('asks for the members of the regular project only and deletes the example project', async () => {
+    mockApi.getProjects.mockResolvedValue([
+      ownedProject({ id: 'example-1', name: 'Example Project', is_example: true }),
+      ownedProject({ id: 'proj-2', name: 'Regular Project' }),
+    ]);
+    mockApi.getMembers.mockResolvedValue([member()]);
+    const user = userEvent.setup();
+    renderDialog();
+
+    expect(await screen.findByText('Regular Project')).toBeInTheDocument();
+    expect(mockApi.getMembers).toHaveBeenCalledTimes(1);
+    expect(mockApi.getMembers).toHaveBeenCalledWith('proj-2');
+
+    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith([
+        { project_id: 'example-1', action: 'delete' },
+        { project_id: 'proj-2', action: 'delete' },
+      ]);
+    });
+  });
+
+  it.each([
+    [
+      new HttpError('English server detail', 422, 'invalid_project_disposition'),
+      'One of the chosen new admins cannot take over the project. Choose another member or delete the project.',
+    ],
+    [
+      new HttpError('English server detail', 409, 'account_has_owned_projects'),
+      'Your projects changed while this dialog was open. Close it and try again.',
+    ],
+    [
+      new HttpError('English server detail', 422, 'some_other_code'),
+      'Account deletion failed. Please try again.',
+    ],
+  ])('shows the translated line for a refused deletion (%s)', async (error, message) => {
+    mockApi.deleteAccount.mockRejectedValueOnce(error);
+    const user = userEvent.setup();
+    const { onConfirmed } = renderDialog();
+
+    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('clears the message of a refused deletion when the dialog is reopened', async () => {
+    mockApi.deleteAccount.mockRejectedValueOnce(
+      new HttpError('English server detail', 409, 'account_has_owned_projects')
+    );
+    const user = userEvent.setup();
+    const props = {
+      onOpenChange: vi.fn(),
+      currentUserId: CURRENT_USER_ID,
+      onConfirmed: vi.fn().mockResolvedValue(undefined),
+    };
+    const { rerender } = render(<DeleteAccountDialog open {...props} />);
+
+    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Your projects changed while this dialog was open. Close it and try again.'
+    );
+
+    rerender(<DeleteAccountDialog open={false} {...props} />);
+    rerender(<DeleteAccountDialog open {...props} />);
+
+    await waitFor(() => expect(mockApi.getProjects).toHaveBeenCalledTimes(2));
+    await screen.findByRole('button', { name: 'Delete My Account' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeEnabled()
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('reports a load error and blocks deletion when projects fail to load', async () => {

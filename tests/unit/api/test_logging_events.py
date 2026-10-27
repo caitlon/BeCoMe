@@ -18,11 +18,14 @@ from uuid import uuid4
 import httpx
 import pytest
 import redis
+from fastapi import FastAPI
+from fastapi import Request as FastAPIRequest
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from api.auth import cookies, email_throttle, login_throttle, revocation_store
 from api.auth import jwt as jwt_module
-from api.middleware.body_size import RequestBodyTooLarge, body_too_large_handler
+from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
 from api.routes import invitations as invitations_route
 from api.routes import users as users_route
@@ -111,22 +114,33 @@ class TestBodySizeRejectionLogging:
 
     def test_streamed_overflow_logs_event(self):
         """
-        GIVEN a body that streamed past the cap
-        WHEN the handler answers 413
+        GIVEN a chunked body that streams past the cap
+        WHEN the middleware answers 413
         THEN a request_body_rejected warning names the streamed_overflow reason
         """
         # GIVEN
-        request = _request(method="POST", path="/api/v1/calculate")
+        app = FastAPI()
+        app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=100)
+
+        @app.post("/api/v1/calculate")
+        async def calculate(request: FastAPIRequest) -> dict[str, int]:
+            return {"length": len(await request.body())}
+
+        def chunks():
+            yield b"x" * 80
+            yield b"x" * 80
 
         # WHEN
         with patch("api.middleware.body_size.logger") as mock_logger:
-            response = body_too_large_handler(request, RequestBodyTooLarge())
+            response = TestClient(app).post("/api/v1/calculate", content=chunks())
 
         # THEN
+        mock_logger.warning.assert_called_once()
         extra = _extras(mock_logger.warning.call_args)
         assert extra["event"] == "request_body_rejected"
         assert extra["reason"] == "streamed_overflow"
         assert extra["path"] == "/api/v1/calculate"
+        assert extra["limit_bytes"] == 100
         assert response.status_code == 413
 
 

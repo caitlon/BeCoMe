@@ -171,6 +171,24 @@ describe('Register', () => {
     });
   });
 
+  // The inner space keeps the "no spaces" item unmet, so the checklist stays visible
+  // (a trailing space would not do: the email input strips it).
+  it.each([
+    ['a @b.co', 'met'],
+    ['a @b', 'not met'],
+    ['a @.c', 'not met'],
+    ['a @b.', 'not met'],
+    ['a b.co', 'not met'],
+  ])('marks the domain requirement for %j as %s', async (email, state) => {
+    const user = userEvent.setup();
+    render(<Register />);
+
+    await user.type(getEmailInput(), email);
+
+    const item = screen.getByText('A domain (e.g., gmail.com)').parentElement;
+    expect(item).toHaveTextContent(`A domain (e.g., gmail.com) ${state}`);
+  });
+
   it('shows password requirements checklist when password entered', async () => {
     const user = userEvent.setup();
     render(<Register />);

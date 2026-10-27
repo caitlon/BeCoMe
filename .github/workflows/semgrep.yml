@@ -1,0 +1,189 @@
+name: Semgrep
+
+# Static analysis, supply chain and secrets scanning through the Semgrep AppSec Platform.
+# On a pull request `semgrep ci` reports only what the diff adds; the weekly and the manual
+# runs scan the whole tree. Findings and triage live on the platform. On a pull request the
+# `semgrep-comment` job posts one summary comment, kept up to date on every push.
+#
+# There is deliberately no push trigger, not even for a change to this file. Railway deploys
+# a `dev` commit only after the checks on it pass, so a red full scan there would hold the
+# deploy over findings that were already in the tree. Nor is this a required check yet.
+on:
+  pull_request:
+    branches: [dev, test, prod]
+  schedule:
+    - cron: "37 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    name: semgrep/ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Dependabot and fork pull requests get no repository secrets, so the scan could not
+    # reach the platform.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    container:
+      image: semgrep/semgrep:1.182.1
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run Semgrep
+        run: semgrep ci --json-output=semgrep.json
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      # The full report carries finding messages and the matched code, and artifacts of a
+      # public repository can be downloaded. Only what the comment reads is kept: path, line,
+      # rule id and severity per finding, and one empty object per scan error. A missing or
+      # unreadable report leaves no new file, so the comment says the scan produced no result;
+      # on a re-run, though, the summary of an earlier attempt may remain if this one writes none.
+      - name: Reduce the Semgrep report
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          python3 -I - <<'PY'
+          import json
+          import sys
+
+          try:
+              with open("semgrep.json", encoding="utf-8") as f:
+                  data = json.load(f)
+              results = [
+                  {
+                      "path": r["path"],
+                      "start": {"line": r["start"]["line"]},
+                      "check_id": r["check_id"],
+                      "extra": {"severity": r["extra"]["severity"]},
+                  }
+                  for r in data.get("results") or []
+              ]
+              errors = [{} for _ in data.get("errors") or []]
+          except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+              print(f"::warning::Semgrep report could not be reduced: {type(exc).__name__}: {exc}")
+              sys.exit(0)
+
+          with open("semgrep-summary.json", "w", encoding="utf-8") as f:
+              json.dump({"results": results, "errors": errors}, f)
+          PY
+
+      - name: Upload Semgrep summary
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: semgrep-results
+          path: semgrep-summary.json
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+
+  # Finding messages and code lines are left out of the comment on purpose: only the path,
+  # the line, the rule id and the severity reach it. The comment is found by its hidden
+  # marker and by its author, so a comment quoting the marker is never overwritten.
+  # `!cancelled()` rather than `always()`: a run cancelled by a newer push must not touch
+  # the shared comment.
+  semgrep-comment:
+    name: semgrep/comment
+    needs: semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: >-
+      !cancelled() && github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Download Semgrep results
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: semgrep-results
+          path: results
+
+      - name: Post the summary comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker='<!-- semgrep-summary -->'
+          platform='https://semgrep.dev/orgs/-/findings'
+          data=''
+          if [ -f results/semgrep-summary.json ]; then
+            data=$(jq -ce 'select((.results | type) == "array" and (.errors | type) == "array")' \
+              results/semgrep-summary.json 2>/dev/null) || data=''
+          fi
+          if [ -n "$data" ]; then
+            total=$(jq '.results | length' <<< "$data")
+            errors=$(jq '.errors | length' <<< "$data")
+            if [ "$total" -eq 0 ]; then
+              title='Semgrep: no new findings'
+            elif [ "$total" -eq 1 ]; then
+              title='Semgrep: 1 new finding'
+            else
+              title="Semgrep: $total new findings"
+            fi
+            if [ "$errors" -eq 1 ]; then
+              title="$title, 1 scan error"
+            elif [ "$errors" -gt 1 ]; then
+              title="$title, $errors scan errors"
+            fi
+            {
+              echo "$marker"
+              echo "### $title"
+              if [ "$total" -gt 0 ] || [ "$errors" -gt 0 ]; then
+                echo
+                echo '| Severity | Count |'
+                echo '| --- | --- |'
+                jq -r '["CRITICAL", "ERROR", "HIGH", "WARNING", "MEDIUM", "LOW", "INFO"] as $order
+                  | .results | group_by(.extra.severity)
+                  | map({s: .[0].extra.severity, n: length})
+                  | sort_by(.s as $s | [($order | index($s) // 99), ($s | tostring | ascii_downcase)])
+                  | .[] | "| \(.s | tostring | ascii_downcase | .[:1] as $h | ($h | ascii_upcase) + .[1:]) | \(.n) |"' <<< "$data"
+                if [ "$errors" -gt 0 ]; then
+                  echo "| Scan errors | $errors |"
+                fi
+              fi
+              if [ "$total" -gt 0 ]; then
+                echo
+                jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' <<< "$data"
+                if [ "$total" -gt 10 ]; then
+                  echo "- ... and $((total - 10)) more"
+                fi
+              fi
+              echo
+              echo "[Workflow run]($RUN_URL) | [Findings on the platform]($platform)"
+            } > comment.md
+          else
+            {
+              echo "$marker"
+              echo '### Semgrep: the scan produced no result'
+              echo
+              echo "See the [workflow run]($RUN_URL) for the reason."
+            } > comment.md
+          fi
+
+          comments=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id")
+          existing=$(echo "$comments" | head -n 1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@comment.md
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@comment.md
+          fi

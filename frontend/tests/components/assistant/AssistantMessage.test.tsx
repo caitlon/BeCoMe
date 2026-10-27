@@ -31,8 +31,8 @@ const localSource = {
   layer: 'local' as const,
 };
 
-function renderMessage(message: Partial<Message>, onRetry?: () => void) {
-  return render(<AssistantMessage message={{ ...base, ...message }} onRetry={onRetry} />);
+function renderMessage(message: Partial<Message>, onRetry?: () => void, projectScoped = true) {
+  return render(<AssistantMessage message={{ ...base, ...message }} onRetry={onRetry} projectScoped={projectScoped} />);
 }
 
 const rowButton = (name: RegExp) => screen.getByRole('button', { name });
@@ -375,6 +375,15 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('It may have been deleted or you are no longer a member.')).toBeInTheDocument();
     });
 
+    it('reads a 404 outside a project as the assistant being unavailable, with no hint', () => {
+      renderMessage({ status: 'error', content: '', error: { code: 404, detail: 'x' } }, undefined, false);
+
+      expect(screen.getByText('The assistant is temporarily unavailable.')).toBeInTheDocument();
+      expect(screen.queryByText('This project is not available.')).not.toBeInTheDocument();
+      expect(screen.queryByText('It may have been deleted or you are no longer a member.')).not.toBeInTheDocument();
+      expect(screen.queryByText('The model is not responding.')).not.toBeInTheDocument();
+    });
+
     it('falls back to the generic message when an error message has no error object', () => {
       renderMessage({ status: 'error', content: '' });
 
@@ -427,18 +436,18 @@ describe('AssistantMessage', () => {
 
     it('is an alert only when told to announce it', () => {
       const failed: Partial<Message> = { status: 'error', content: '', error: { code: 503, detail: 'x' } };
-      const { unmount } = render(<AssistantMessage message={{ ...base, ...failed }} announce />);
+      const { unmount } = render(<AssistantMessage message={{ ...base, ...failed }} projectScoped announce />);
       expect(screen.getByRole('alert')).toHaveTextContent('The assistant is temporarily unavailable.');
       unmount();
 
-      render(<AssistantMessage message={{ ...base, ...failed }} />);
+      render(<AssistantMessage message={{ ...base, ...failed }} projectScoped />);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('offers the two ways out of a missing project when given them, and not otherwise', async () => {
       const notFound = { onAskWithout: vi.fn(), onOpenProjects: vi.fn() };
       const gone: Partial<Message> = { status: 'error', content: '', error: { code: 404, detail: 'x' } };
-      const { unmount } = render(<AssistantMessage message={{ ...base, ...gone }} notFound={notFound} />);
+      const { unmount } = render(<AssistantMessage message={{ ...base, ...gone }} projectScoped notFound={notFound} />);
 
       await userEvent.click(screen.getByRole('button', { name: 'Ask without the project' }));
       await userEvent.click(screen.getByRole('link', { name: 'Open projects' }));

@@ -26,8 +26,7 @@ const KNOWN_TOOLS = new Set([
 
 /** The ways out of a project that is gone (a 404 on the last answer). */
 export interface NotFoundActions {
-  /** Absent in a conversation that is not about a project: there is nothing to ask without. */
-  readonly onAskWithout?: () => void;
+  readonly onAskWithout: () => void;
   readonly onOpenProjects: () => void;
 }
 
@@ -38,6 +37,8 @@ interface FailureBlockProps {
   readonly error?: AssistantMessageError;
   readonly onRetry?: () => void;
   readonly notFound?: NotFoundActions;
+  /** Whether the conversation is about a project, which is what a 404 then says is gone. */
+  readonly projectScoped: boolean;
   /** Announce the block to screen readers; off for a block that was already there. */
   readonly announce?: boolean;
 }
@@ -47,11 +48,9 @@ function NotFoundButtons({ actions }: { readonly actions: NotFoundActions }) {
 
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      {actions.onAskWithout && (
-        <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
-          {t("message.askWithout")}
-        </Button>
-      )}
+      <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
+        {t("message.askWithout")}
+      </Button>
       <Button asChild variant="ghost" size="sm">
         <Link to="/projects" onClick={actions.onOpenProjects}>
           {t("message.openProjects")}
@@ -66,7 +65,7 @@ function NotFoundButtons({ actions }: { readonly actions: NotFoundActions }) {
  * from fixed copy: `error.detail` is whatever the server or the network said, and is
  * never shown.
  */
-function FailureBlock({ cut, hasText, error, onRetry, notFound, announce }: FailureBlockProps) {
+function FailureBlock({ cut, hasText, error, onRetry, notFound, projectScoped, announce }: FailureBlockProps) {
   const { t } = useTranslation("assistant");
   let title = t("message.errors.generic");
   let hint: string | null = null;
@@ -83,9 +82,13 @@ function FailureBlock({ cut, hasText, error, onRetry, notFound, announce }: Fail
   } else if (error?.code === 503) {
     title = t("message.errors.unavailable");
     hint = t("message.errors.unavailableHint");
-  } else if (error?.code === 404) {
+  } else if (error?.code === 404 && projectScoped) {
     title = t("message.errors.notFound");
     hint = t("message.errors.notFoundHint");
+  } else if (error?.code === 404) {
+    // Outside a project there is none to be gone: the route itself is not there, which
+    // is the assistant being switched off.
+    title = t("message.errors.unavailable");
   }
 
   return (
@@ -146,10 +149,11 @@ export interface AssistantMessageProps {
   readonly message: AssistantMessageData;
   readonly onRetry?: () => void;
   readonly notFound?: NotFoundActions;
+  readonly projectScoped: boolean;
   readonly announce?: boolean;
 }
 
-function AssistantAnswer({ message, onRetry, notFound, announce }: AssistantMessageProps) {
+function AssistantAnswer({ message, onRetry, notFound, projectScoped, announce }: AssistantMessageProps) {
   const { t } = useTranslation("assistant");
   const [openN, setOpenN] = useState<number | null>(null);
   // A fresh object per citation click, so citing the row that is already open scrolls again.
@@ -211,6 +215,7 @@ function AssistantAnswer({ message, onRetry, notFound, announce }: AssistantMess
           error={message.error}
           onRetry={onRetry}
           notFound={notFound}
+          projectScoped={projectScoped}
           announce={announce}
         />
       )}
@@ -232,6 +237,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   message,
   onRetry,
   notFound,
+  projectScoped,
   announce,
 }: AssistantMessageProps) {
   if (message.role === "user") {
@@ -241,5 +247,13 @@ export const AssistantMessage = memo(function AssistantMessage({
       </div>
     );
   }
-  return <AssistantAnswer message={message} onRetry={onRetry} notFound={notFound} announce={announce} />;
+  return (
+    <AssistantAnswer
+      message={message}
+      onRetry={onRetry}
+      notFound={notFound}
+      projectScoped={projectScoped}
+      announce={announce}
+    />
+  );
 });

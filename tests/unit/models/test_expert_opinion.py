@@ -1,5 +1,7 @@
 """Unit tests for ExpertOpinion class."""
 
+import operator
+
 import pytest
 
 from src.models.expert_opinion import ExpertOpinion
@@ -59,44 +61,7 @@ class TestExpertOpinionCreation:
 
 
 class TestExpertOpinionComparison:
-    """Test cases for comparison operators."""
-
-    def test_less_than_comparison(self):
-        """Test __lt__ operator based on centroids."""
-        # GIVEN
-        opinion1 = ExpertOpinion(
-            expert_id="E1",
-            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
-        )
-        opinion2 = ExpertOpinion(
-            expert_id="E2",
-            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
-        )
-
-        # WHEN/THEN
-        assert opinion1 < opinion2
-        assert not opinion2 < opinion1
-
-    def test_less_than_or_equal_comparison(self):
-        """Test __le__ operator."""
-        # GIVEN
-        opinion1 = ExpertOpinion(
-            expert_id="E1",
-            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
-        )
-        opinion2 = ExpertOpinion(
-            expert_id="E2",
-            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
-        )
-        opinion3 = ExpertOpinion(
-            expert_id="E3",
-            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
-        )
-
-        # WHEN/THEN
-        assert opinion1 <= opinion2
-        assert opinion1 <= opinion3
-        assert not opinion3 <= opinion1
+    """Test cases for equality and the absence of ordering."""
 
     def test_equality_comparison(self, standard_fuzzy):
         """Test __eq__ operator."""
@@ -131,61 +96,60 @@ class TestExpertOpinionComparison:
         assert expert_opinion_e1 != 42
         assert expert_opinion_e1 is not None
 
+    def test_opinions_with_equal_centroids_are_not_equal(self):
+        """Test that a centroid tie does not make two opinions equal."""
+        # GIVEN
+        opinion1 = ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        )
+        opinion2 = ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=0.0, peak=2.0, upper_bound=4.0),
+        )
 
-class TestExpertOpinionSorting:
-    """Test cases for sorting expert opinions."""
+        # WHEN/THEN
+        assert opinion1.centroid == opinion2.centroid
+        assert opinion1 != opinion2
 
-    def test_sorting_three_opinions(self):
-        """Test sorting a list of expert opinions by centroid."""
+    @pytest.mark.parametrize(
+        "operator_function",
+        [operator.lt, operator.le, operator.gt, operator.ge],
+        ids=["lt", "le", "gt", "ge"],
+    )
+    def test_ordering_operators_raise_type_error(self, operator_function):
+        """Test that opinions define no ordering, even when centroids are equal."""
+        # GIVEN
+        opinion1 = ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        )
+        opinion2 = ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=0.0, peak=2.0, upper_bound=4.0),
+        )
+
+        # WHEN/THEN
+        with pytest.raises(TypeError):
+            operator_function(opinion1, opinion2)
+
+    def test_sorted_without_key_raises_type_error(self):
+        """Test that sorting opinions needs an explicit key."""
         # GIVEN
         opinions = [
             ExpertOpinion(
-                expert_id="E3",
-                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
-            ),
-            ExpertOpinion(
                 expert_id="E1",
-                opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
+                opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
+                opinion=FuzzyTriangleNumber(lower_bound=0.0, peak=2.0, upper_bound=4.0),
             ),
         ]
 
-        # WHEN
-        sorted_opinions = sorted(opinions)
-
-        # THEN
-        assert sorted_opinions[0].expert_id == "E1"
-        assert sorted_opinions[1].expert_id == "E2"
-        assert sorted_opinions[2].expert_id == "E3"
-
-    def test_sorting_excel_example(self):
-        """Test sorting with data similar to Excel example."""
-        # GIVEN
-        opinions = [
-            ExpertOpinion(
-                expert_id="Project manager",
-                opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=15.0),
-            ),
-            ExpertOpinion(
-                expert_id="Product owner",
-                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=11.0, upper_bound=14.0),
-            ),
-            ExpertOpinion(
-                expert_id="Software architect",
-                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
-            ),
-        ]
-
-        # WHEN
-        sorted_opinions = sorted(opinions)
-
-        # THEN
-        assert sorted_opinions[0].expert_id == "Software architect"
-        assert sorted_opinions[1].expert_id == "Product owner"
-        assert sorted_opinions[2].expert_id == "Project manager"
+        # WHEN/THEN
+        with pytest.raises(TypeError):
+            sorted(opinions)
 
 
 class TestExpertOpinionStringRepresentation:
