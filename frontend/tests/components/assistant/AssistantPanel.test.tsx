@@ -9,6 +9,8 @@ import { queryKeys } from '@/lib/queryKeys';
 import { AssistantPanel } from '@/components/assistant/AssistantPanel';
 import type { AssistantMessage } from '@/components/assistant/useAssistantChat';
 import '@/components/assistant/i18n';
+import enAssistant from '@/i18n/locales/en/assistant.json';
+import csAssistant from '@/i18n/locales/cs/assistant.json';
 
 let mockIsDesktop = true;
 vi.mock('@/hooks/use-media-query', () => ({ useMediaQuery: () => mockIsDesktop }));
@@ -110,12 +112,22 @@ describe('AssistantPanel', () => {
 
     for (const text of [
       'What does the result mean?',
-      'Why is the confidence moderate?',
+      'What does the confidence level mean?',
       'How is the best compromise computed?',
     ]) {
       expect(screen.getByRole('button', { name: text })).toBeInTheDocument();
     }
     expect(screen.queryByRole('button', { name: 'What is a fuzzy opinion?' })).not.toBeInTheDocument();
+  });
+
+  it('offers no project suggestion that names a confidence level', () => {
+    // The panel cannot know the level the result screen shows, so a suggestion naming one can contradict it.
+    for (const text of enAssistant.empty.suggestionsProject) {
+      expect(text).not.toMatch(/\b(high|moderate|low)\b/i);
+    }
+    for (const text of csAssistant.empty.suggestionsProject) {
+      expect(text).not.toMatch(/(vysok|střední|nízk)/i);
+    }
   });
 
   it('leaves the project page able to refetch the shared project query while it is open', async () => {
