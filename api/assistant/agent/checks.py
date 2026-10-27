@@ -372,11 +372,51 @@ def _replace_citations(text: str, filler: str) -> str:
     return "".join(pieces)
 
 
+# The names a model writes in brackets as if they were citations, though they are not sources:
+# the ``<project_data>`` tag that wraps the project facts (``api/assistant/agent/prompt.py``,
+# ``tools.py``), the system prompt, the tool results and the tool names themselves, and the
+# source words with no number. They are the forms found in recorded answers; a fixed list, so
+# that a formula such as ``[a_ij]`` or a placeholder such as ``[TODO]`` stays. Written in
+# lowercase with a space between words: :func:`_is_internal_name` reads ``_`` and ``-`` as one.
+_INTERNAL_NAMES = frozenset(
+    {
+        "project data",
+        "project result",
+        "tool result",
+        "tool results",
+        "search docs",
+        "get project result",
+        "get project opinions",
+        "system instruction",
+        "system instructions",
+        "source",
+        "sources",
+        "doc",
+        "docs",
+        "document",
+        "documents",
+        "data",
+        "zdroj",
+        "zdroje",
+    }
+)
+_NAME_SEPARATORS = str.maketrans("_-", "  ")
+
 # Spaces and tabs, not line breaks: what is dropped along with a citation.
 _BLANKS = " \t\u00a0\u202f"
 _OPENERS = {"]": "[", "\u3011": "\u3010"}
 # What a link target is read in: not yet started, waiting for its parenthesis, inside it.
 _NO_LINK, _LINK_AHEAD, _LINK_OPEN = range(3)
+
+
+def _is_internal_name(content: str) -> bool:
+    """Tell whether the text inside a bracket is one of the fixed internal names.
+
+    :param content: The text between the brackets.
+    :return: True when, trimmed and in lowercase, with ``_`` and ``-`` read as a space, it is
+        in ``_INTERNAL_NAMES``.
+    """
+    return content.strip().lower().translate(_NAME_SEPARATORS) in _INTERNAL_NAMES
 
 
 def remove_citations(text: str, source_numbers: Collection[int]) -> str:
@@ -390,9 +430,13 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     citation goes together with the spaces and tabs before it and with a markdown link target
     right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
     opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
-    that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike :func:`strip_citations`,
-    which leaves a space, this returns text meant to be shown. The result has no citation
-    left, so removing again changes nothing.
+    whose whole content is one of a fixed set of internal names that models write as if they
+    were sources (``[project_data]``, ``[Tool Result]``, ``[search_docs]``, ``[System
+    Instruction]``, ``[source]``, ``[data]``; case, ``_``, ``-`` and a space are alike) goes
+    the same way as a single number. A bracket that is neither, such as ``[11.54, 14.19]``,
+    ``[a_ij]`` or ``[TODO]``, stays. Unlike :func:`strip_citations`, which leaves a space,
+    this returns text meant to be shown. The result has none of them left, so removing again
+    changes nothing.
 
     :param text: The text to clean.
     :param source_numbers: The source numbers handed out this turn, one-based.
@@ -403,8 +447,8 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
 
 
 class CitationStreamFilter:
-    """Removes citations from an answer as its pieces arrive, by the rule of
-    :func:`remove_citations`.
+    """Removes citations and bracketed internal names from an answer as its pieces arrive,
+    by the rule of :func:`remove_citations`.
 
     The reading carries over from one piece to the next, so the pieces let out joined are
     exactly ``remove_citations`` of the whole text, however it was cut, in time that grows
@@ -515,7 +559,9 @@ class CitationStreamFilter:
         self._append(closer)
 
     def _is_removable(self, content: str) -> bool:
-        """Tell whether the text inside a bracket is a citation that has to go."""
+        """Tell whether the text inside a bracket is a citation or an internal name to remove."""
+        if _is_internal_name(content):
+            return True
         numbers = _cited_numbers(content)
         if numbers is None:
             return False
