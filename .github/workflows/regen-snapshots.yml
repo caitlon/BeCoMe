@@ -1,10 +1,11 @@
 name: Regenerate Visual Snapshots
 
 # Manually regenerates Playwright visual-regression baselines on the amd64 CI
-# runner (the only environment whose rendering matches the E2E job) and uploads
-# the updated *-linux.png files as an artifact. Use after an intentional layout
-# change shifts the whole-page project-results snapshots; then download the
-# artifact and commit the PNGs onto the feature branch.
+# runner, inside the Playwright image the E2E job uses (the only environment whose
+# rendering matches that job), and uploads the updated *-linux.png files as an
+# artifact. Use after an intentional layout change shifts the whole-page
+# project-results snapshots; then download the artifact and commit the PNGs onto
+# the feature branch.
 #
 # Run it from the Actions tab (or `gh workflow run regen-snapshots.yml
 # -f branch=<feature-branch>`). Uploading an artifact needs only the default
@@ -91,9 +92,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps
+      - name: Pull Playwright image
+        timeout-minutes: 5
+        run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
         run: |
@@ -111,10 +112,9 @@ jobs:
           DEBUG: "false"
 
       - name: Update snapshots
-        working-directory: frontend
         env:
           GREP: ${{ inputs.grep }}
-        run: npx playwright test visual-regression --update-snapshots -g "$GREP"
+        run: scripts/ci/playwright-image.sh run test visual-regression --update-snapshots -g "$GREP"
 
       - name: Upload regenerated snapshots
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
