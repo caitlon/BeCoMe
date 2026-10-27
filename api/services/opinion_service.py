@@ -79,6 +79,7 @@ class OpinionService(BaseService):
 
         When a calculation service is given, the project's result is recalculated in the
         same transaction, so a failure leaves both the opinion and the result untouched.
+        The project row is locked before the opinion, in the order a project deletion takes them.
 
         :param project_id: Project UUID
         :param user_id: User UUID
@@ -89,6 +90,8 @@ class OpinionService(BaseService):
         :param calculation_service: Recalculates the project's result with the new opinion
         :return: UpsertResult with opinion and creation flag
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         existing = self.get_user_opinion(project_id, user_id)
 
         if existing:
@@ -138,12 +141,15 @@ class OpinionService(BaseService):
 
         When a calculation service is given, the project's result is recalculated in the
         same transaction, so a failure leaves both the opinion and the result untouched.
+        The project row is locked before the opinion, in the order a project deletion takes them.
 
         :param project_id: Project UUID
         :param user_id: User UUID
         :param calculation_service: Recalculates the project's result without the opinion
         :raises OpinionNotFoundError: If opinion doesn't exist
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         opinion = self.get_user_opinion(project_id, user_id)
         if not opinion:
             raise OpinionNotFoundError("Opinion not found")

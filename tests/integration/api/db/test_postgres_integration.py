@@ -9,6 +9,7 @@ Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 import shutil
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -29,7 +30,10 @@ from api.db.models import (
     User,
 )
 from api.services.calculation_service import CalculationService
+from api.services.opinion_service import OpinionService
+from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
+from api.services.user_service import UserService
 
 # Skip all tests in this module if PostgreSQL is not installed
 pytestmark = pytest.mark.skipif(
@@ -465,6 +469,164 @@ class TestConcurrentRecalculation:
                 ).first()
                 is None
             )
+
+
+class TestProjectDeleteAgainstOpinionWriters:
+    """Tests that deleting a project while a writer changes its opinions does not deadlock."""
+
+    @staticmethod
+    def _seed_expert_with_opinion(pg_engine) -> tuple[UUID, UUID]:
+        """Commit a project, one expert member, the opinion and the result; return the ids."""
+        project_id, expert_id, _ = TestConcurrentRecalculation._seed_project(pg_engine)
+        with TestConcurrentRecalculation._open_session(pg_engine) as setup:
+            setup.add(
+                ProjectMember(project_id=project_id, user_id=expert_id, role=MemberRole.EXPERT)
+            )
+            TestConcurrentRecalculation._flush_opinion(setup, project_id, expert_id)
+            CalculationService(setup).stage_recalculation(project_id)
+            setup.commit()
+        return project_id, expert_id
+
+    @staticmethod
+    def _race_with_project_delete(
+        pg_engine, monkeypatch, project_id: UUID, write: Callable[[Session], object]
+    ) -> list[BaseException]:
+        """Run ``write`` and delete the project while the write is about to recalculate.
+
+        The write pauses just before it stages the recalculation, when it has already changed
+        its own rows; the delete starts there and takes every lock it can get.
+
+        :return: Errors raised by either transaction
+        """
+        paused = threading.Event()
+        stage = CalculationService.stage_recalculation
+
+        def pausing_stage(service: CalculationService, pid: UUID) -> CalculationResult | None:
+            paused.set()
+            time.sleep(1.0)
+            return stage(service, pid)
+
+        monkeypatch.setattr(CalculationService, "stage_recalculation", pausing_stage)
+
+        def write_transaction() -> None:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                write(session)
+
+        def delete_transaction() -> None:
+            assert paused.wait(timeout=10)
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                ProjectService(session).delete_project(project_id)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(write_transaction), executor.submit(delete_transaction)]
+            errors = [future.exception(timeout=30) for future in futures]
+        return [error for error in errors if error is not None]
+
+    @staticmethod
+    def _assert_project_gone(pg_engine, project_id: UUID) -> None:
+        """Check that the project and its opinions are deleted."""
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
+            assert (
+                check.exec(
+                    select(ExpertOpinion).where(ExpertOpinion.project_id == project_id)
+                ).first()
+                is None
+            )
+
+    def test_opinion_update(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert's committed opinion
+        WHEN the expert updates it while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).upsert_opinion(
+                project_id, expert_id, "Expert", 11.0, 21.0, 31.0, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_opinion_delete(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert's committed opinion
+        WHEN the expert withdraws it while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).delete_opinion(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_member_removal(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the member is removed while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: ProjectMembershipService(session).remove_member(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_account_deletion(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the expert deletes the account while the admin deletes the project
+        THEN neither transaction deadlocks, and both the project and the account are gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: UserService(session).delete_user(
+                session.get(User, expert_id), CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+        with Session(pg_engine) as check:
+            assert check.get(User, expert_id) is None
 
 
 class TestSavepointAndPartialRollback:

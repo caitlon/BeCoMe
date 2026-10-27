@@ -51,6 +51,20 @@ class CalculationService(BaseService):
             self._session.refresh(saved)
         return saved
 
+    def lock_project(self, project_id: UUID) -> None:
+        """Lock the project row for the rest of the caller's transaction.
+
+        A writer that changes a project's opinions or members calls this before touching
+        those rows, so it takes the project lock first, as ``ProjectService.delete_project``
+        does; otherwise the two wait for each other's rows and deadlock.
+
+        :param project_id: Project UUID
+        """
+        # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
+        self._session.exec(
+            select(Project).where(Project.id == project_id).with_for_update(key_share=True)
+        ).first()
+
     def stage_recalculation(self, project_id: UUID) -> CalculationResult | None:
         """Recalculate a project's result inside the caller's transaction.
 
@@ -63,10 +77,7 @@ class CalculationService(BaseService):
         :param project_id: Project UUID
         :return: CalculationResult if opinions exist, None otherwise
         """
-        # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
-        self._session.exec(
-            select(Project).where(Project.id == project_id).with_for_update(key_share=True)
-        ).first()
+        self.lock_project(project_id)
         opinions = self._get_opinions(project_id)
 
         if not opinions:

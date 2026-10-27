@@ -56,7 +56,8 @@ class ProjectMembershipService(BaseService):
 
         When a calculation service is given and an opinion was discarded, the project's
         result is recalculated in the same transaction, so a failure leaves the
-        membership, the opinion and the result untouched.
+        membership, the opinion and the result untouched. The project row is locked before
+        the membership and the opinion, in the order a project deletion takes them.
 
         :param project_id: Project ID
         :param user_id: User ID to remove
@@ -64,6 +65,8 @@ class ProjectMembershipService(BaseService):
         :return: True when an opinion was discarded
         :raises MemberNotFoundError: If user is not a member of the project
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
