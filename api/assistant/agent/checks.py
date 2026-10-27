@@ -531,26 +531,43 @@ class CitationStreamFilter:
         """Read characters until the queue is empty; a failed link target is queued again."""
         while queue:
             char = queue.popleft()
-            if self._link == _NAME_AHEAD:
-                if char != "(":
-                    self._remove_name()
-                self._link = _NO_LINK
-            elif self._link == _LINK_AHEAD:
-                self._link = _NO_LINK
-                if char == "(":
-                    self._link, self._target = _LINK_OPEN, []
-                    continue
-            elif self._link == _LINK_OPEN:
-                if char == ")":
-                    self._link = _NO_LINK
-                elif char in "()[]" or char.isspace():
-                    # Not a link target after all: read it again as ordinary text.
-                    self._link = _NO_LINK
-                    queue.extendleft(reversed(["(", *self._target, char]))
-                else:
-                    self._target.append(char)
-                continue
-            self._place(char)
+            if not self._follow_link(char, queue):
+                self._place(char)
+
+    def _follow_link(self, char: str, queue: deque[str]) -> bool:
+        """Settle what the link state does with a character.
+
+        :param char: The character just taken from the queue.
+        :param queue: The characters still to read; a failed link target is queued again.
+        :return: True when the character belongs to a link target and is consumed, False when
+            it is ordinary text that still has to be placed.
+        """
+        if self._link == _NAME_AHEAD:
+            if char != "(":
+                self._remove_name()
+            self._link = _NO_LINK
+            return False
+        if self._link == _LINK_AHEAD:
+            self._link = _NO_LINK
+            if char == "(":
+                self._link, self._target = _LINK_OPEN, []
+                return True
+            return False
+        if self._link == _LINK_OPEN:
+            self._read_target(char, queue)
+            return True
+        return False
+
+    def _read_target(self, char: str, queue: deque[str]) -> None:
+        """Take a character of a link target, or give the target up as ordinary text."""
+        if char == ")":
+            self._link = _NO_LINK
+        elif char in "()[]" or char.isspace():
+            # Not a link target after all: read it again as ordinary text.
+            self._link = _NO_LINK
+            queue.extendleft(reversed(["(", *self._target, char]))
+        else:
+            self._target.append(char)
 
     def _place(self, char: str) -> None:
         """Keep a character, or open or close a bracket; blanks after a removed citation go."""
