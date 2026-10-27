@@ -10,9 +10,9 @@ in the database the app's own settings point at, and prints what it created:
 It refuses to run (exit code 2) unless the profile is ``dev`` on a developer machine
 and the database is SQLite or a loopback PostgreSQL. A second run changes nothing and
 reports "already present" on stderr. The password comes from ``--password`` or is
-asked for with a hidden prompt on the run that creates the account (an empty answer
-refuses, exit code 2, and creates nothing). It is never printed. An existing account keeps
-its password and is not asked again.
+asked for with a hidden prompt on the run that creates the account (an empty answer, or
+no terminal to ask on, refuses with exit code 2 and creates no account). It is never
+printed. An existing account keeps its password and is not asked again.
 
 What a run creates, through the same services the product uses:
 
@@ -180,15 +180,21 @@ def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool]:
     :param password: Password for a new account; asked for with a hidden prompt when
         None, right before the account is created. Never asked for an existing account.
     :return: The account, and whether this call created it.
-    :raises EmptyPasswordError: If the prompt is answered with nothing.
+    :raises EmptyPasswordError: If the prompt is answered with nothing or there is no terminal.
     """
     service = UserService(session)
     existing = service.get_by_email(OWNER_EMAIL)
     if existing is not None:
         return existing, False
-    chosen = password or getpass.getpass(f"Password for {OWNER_EMAIL}: ")
+    try:
+        chosen = password or getpass.getpass(f"Password for {OWNER_EMAIL}: ")
+    except EOFError as error:
+        raise EmptyPasswordError(
+            "no password was given and there is no terminal to ask on; pass --password; "
+            "no account was created"
+        ) from error
     if not chosen:
-        raise EmptyPasswordError("an empty password was given; nothing was created")
+        raise EmptyPasswordError("an empty password was given; no account was created")
     user = service.create_user(
         email=OWNER_EMAIL,
         password=chosen,

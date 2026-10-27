@@ -361,7 +361,7 @@ class TestMain:
             assert PASSWORD not in stream
         assert "already present" in second.err
 
-    def test_empty_password_refuses_and_creates_nothing(self, run_main, session, monkeypatch):
+    def test_empty_password_refuses_and_creates_no_account(self, run_main, session, monkeypatch):
         """
         GIVEN no password argument and a prompt answered with nothing
         WHEN main runs
@@ -374,4 +374,23 @@ class TestMain:
         assert code == 2
         assert "Refusing to seed" in captured.err
         assert captured.out == ""
+        assert session.exec(select(User)).all() == []
+
+    def test_no_terminal_refuses_and_creates_no_account(self, run_main, session, monkeypatch):
+        """
+        GIVEN no password argument and no terminal to prompt on (stdin closed)
+        WHEN main runs
+        THEN it exits with 2, says so on stderr instead of failing with a traceback, and
+            no owner account exists
+        """
+
+        def no_terminal(prompt: str) -> str:
+            raise EOFError
+
+        monkeypatch.setattr(seed.getpass, "getpass", no_terminal)
+
+        code, captured = run_main()
+
+        assert code == 2
+        assert "Refusing to seed" in captured.err
         assert session.exec(select(User)).all() == []
