@@ -386,6 +386,8 @@ _INTERNAL_NAMES = frozenset(
         "tool result",
         "tool results",
         "search docs",
+        "get project",
+        "list my projects",
         "get project result",
         "get project opinions",
         "system instruction",

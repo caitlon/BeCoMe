@@ -137,6 +137,8 @@ class TestRemoveCitations:
             "tool results",
             "search_docs",
             "Search Docs",
+            "get_project",
+            "list_my_projects",
             "get_project_result",
             "get project opinions",
             "get_project_opinions",
