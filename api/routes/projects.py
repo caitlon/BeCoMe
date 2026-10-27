@@ -308,9 +308,7 @@ def remove_member(
             detail="Admin cannot remove themselves. Delete the project instead.",
         )
 
-    if membership_service.remove_member(project.id, user_id):
-        calculation_service.recalculate(project.id)
-    else:
+    if not membership_service.remove_member(project.id, user_id, calculation_service):
         # A 204 either way, so without this the no-op is indistinguishable from a
         # removal in the log. project_membership_service logs the removal itself.
         logger.debug(

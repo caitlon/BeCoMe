@@ -7,6 +7,7 @@ import pytest
 
 from api.data.example_project import EXAMPLE_EXPERTS
 from api.db.models import MemberRole, Project, ProjectMember
+from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 from tests.integration.api.conftest import (
     app_session,
@@ -676,6 +677,45 @@ class TestRemoveMember:
             f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
         ).json()
         assert after["num_experts"] == 1
+
+    def test_failed_recalculation_keeps_the_member_and_the_opinion(self, client):
+        """A removal whose recalculation fails leaves the membership, opinion and result."""
+        # GIVEN a project where both the admin and an expert submitted an opinion
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        submit_opinion(client, owner, project["id"], 30.0, 50.0, 70.0)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        submit_opinion(client, expert, project["id"], 10.0, 20.0, 30.0)
+        result_before = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert result_before["num_experts"] == 2
+
+        # WHEN the recalculation fails while the admin removes the expert
+        with (
+            patch.object(
+                CalculationService, "stage_recalculation", side_effect=RuntimeError("boom")
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            client.delete(
+                f"/api/v1/projects/{project['id']}/members/{expert_id}",
+                headers=auth_header(owner),
+            )
+
+        # THEN the expert is still a member, their opinion remains and the result is unchanged
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        ).json()
+        assert expert_id in [member["user_id"] for member in members]
+        opinions = client.get(
+            f"/api/v1/projects/{project['id']}/opinions", headers=auth_header(owner)
+        ).json()
+        assert len(opinions) == 2
+        after = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert after == result_before
 
     def test_remove_member_self_fails(self, client):
         """Admin cannot remove themselves."""

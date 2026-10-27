@@ -33,8 +33,36 @@ _ANSWERS = [
     "Crisp [5, 5, 5], [0, 0, 0] and [0, 0] stay; [1, 1], [2] and [7] go.",
     "A fuzzy number [6, 8, 11], a scale [1, 5], [0, 1] and a pair [1, 2] [7].",
     "Mixed [ \u30101\u3011 2] and \u3010 [1] 2\u3011 and [1](\u30102\u3011) here.",
+    "Names [project_data] and [Project Data](https://x/y) and [a_ij] and [TODO] stay or go.",
+    "See [docs](https://docs.example.com/x) and [data] (b) then [Source](u) [1](v) [docs](w",
+    "[docs][docs](u)[1](v)[data] [[docs]data](x) [[docs] data] [data\n](y) [docs]\n[docs](",
+    "[tool result] Starts\n  [System Instruction] indented [source]\nPlain [search_docs]  ",
+    "Nested [[project_data] data] and [a [get_project_result] b] and [project_data",
     "",
 ]
+
+# Recorded answers of the evaluation run e18 (questions dev-P-01 and dev-P-08), which cite
+# the internal tag of the project block as if it were a source.
+_RECORDED_EN = (
+    "The overall result is a best compromise with a centroid of 30.68, which corresponds to a "
+    'Likert reading of 25 ("Rather disagree") [project_data]. The panel shows a "high" '
+    "agreement level, indicated by a maximum error of 5.68 [project_data].\n\nRegarding the "
+    "lean, the result leans towards **no** (disagreement). Although the arithmetic mean is "
+    "higher at 36.36, the median is 25.00, and the final compromise is pulled closer to the "
+    "median. With 14 out of 22 experts answering 0 or 25, the panel clearly leans toward "
+    "disagreement [1]."
+)
+_RECORDED_EN_CLEAN = (
+    "The overall result is a best compromise with a centroid of 30.68, which corresponds to a "
+    'Likert reading of 25 ("Rather disagree"). The panel shows a "high" '
+    "agreement level, indicated by a maximum error of 5.68.\n\nRegarding the "
+    "lean, the result leans towards **no** (disagreement). Although the arithmetic mean is "
+    "higher at 36.36, the median is 25.00, and the final compromise is pulled closer to the "
+    "median. With 14 out of 22 experts answering 0 or 25, the panel clearly leans toward "
+    "disagreement."
+)
+_RECORDED_CS = "Maxim\u00e1ln\u00ed chyba (\u0394max) \u010din\u00ed 5,68 [project_data]."
+_RECORDED_CS_CLEAN = "Maxim\u00e1ln\u00ed chyba (\u0394max) \u010din\u00ed 5,68."
 
 
 class TestRemoveCitations:
@@ -56,6 +84,17 @@ class TestRemoveCitations:
             ("\u30101\u3011 x \u30102, 3\u3011", "x"),
             ("Result [1] (5 experts)", "Result (5 experts)"),
             ("Result [1](a", "Result(a"),
+            ("It is 5.68 [project_data].", "It is 5.68."),
+            ("see [docs] (https://x/y) now", "see (https://x/y) now"),
+            ("a [data]", "a"),
+            ("a [project data]\n", "a\n"),
+            ("see [1](https://x/y) and [docs]", "see and"),
+            ("[tool result] Start", "Start"),
+            ("first\n[project_data] second", "first\nsecond"),
+            ("a\n  [System Instruction] b", "a\n  b"),
+            ("a [project_data] b [search_docs][get_project_result].", "a b."),
+            ("a [b [project_data] c] d", "a [b c] d"),
+            ("[[project_data] data]", ""),
         ],
     )
     def test_removes_the_citation_and_the_blanks_around_it(self, text: str, expected: str):
@@ -82,6 +121,135 @@ class TestRemoveCitations:
         THEN the text is unchanged
         """
         assert remove_citations(text, SOURCES) == text
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "project_data",
+            "project data",
+            "Project Data",
+            "PROJECT-DATA",
+            " project_data ",
+            "project result",
+            "project_result",
+            "tool result",
+            "Tool_Result",
+            "tool results",
+            "search_docs",
+            "Search Docs",
+            "get_project",
+            "list_my_projects",
+            "get_project_result",
+            "get project opinions",
+            "get_project_opinions",
+            "System Instruction",
+            "system_instructions",
+            "source",
+            "Sources",
+            "doc",
+            "DOCS",
+            "Document",
+            "documents",
+            "data",
+            "Zdroj",
+            "zdroje",
+            "project  data",
+            "Project\u00a0Data",
+            "project \t_ data",
+            "tool\u202fresult",
+            "tool\u2003result",
+            "search \n docs",
+        ],
+    )
+    def test_removes_a_bracket_naming_an_internal_tag_or_tool(self, name: str):
+        """
+        GIVEN a bracket whose whole content is a name the model writes as a fake citation
+        WHEN the citations are removed
+        THEN the bracket goes with the blank before it, whatever its case and separators
+        """
+        assert remove_citations(f"The result is high [{name}].", SOURCES) == "The result is high."
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "The entry [a_ij] of the matrix.",
+            "The order [A, C, B] is kept.",
+            "A placeholder [TODO] stays.",
+            "The quartiles [Q1-Q3] stay.",
+            "The range [11.54, 14.19] stays.",
+            "The method [BeCoMe] stays.",
+            "A name [project_data_extra] that only begins like one stays.",
+            "A bracket [project] or [result] or [search] alone stays.",
+            "Words around [the project data] stay.",
+            "Two names in one bracket [project_data, tool_result] stay.",
+            "A numbered name [project_data 1] is not removed as a name.",
+        ],
+    )
+    def test_keeps_a_bracket_that_only_resembles_an_internal_name(self, text: str):
+        """
+        GIVEN a text with a bracketed formula, list, placeholder or word that is not one of
+              the fixed internal names
+        WHEN the citations are removed
+        THEN the text is unchanged
+        """
+        assert remove_citations(text, SOURCES) == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "See [docs](https://docs.example.com/x) for more",
+            "See [data](https://x/y) for more",
+            "See [Source](https://x/y) for more",
+            "See [project_data](https://x/y) for more",
+            "See [Project Data](https://x/y) for more",
+            "See [sources]( https://x/y) and [docs](unclosed",
+            "[docs](u)",
+            "[docs]()",
+            "First\n[docs](u) second",
+            "A name link [docs](u), twice [data](v).",
+        ],
+    )
+    def test_keeps_a_name_that_is_the_text_of_a_markdown_link(self, text: str):
+        """
+        GIVEN a bracket that is an internal name and is immediately followed by a parenthesis
+        WHEN the citations are removed
+        THEN the bracket stays in the text with its link, whatever the link holds
+        """
+        assert remove_citations(text, SOURCES) == text
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("See [docs] (https://x/y) for more", "See (https://x/y) for more"),
+            ("See [docs]\n(https://x/y)", "See\n(https://x/y)"),
+            ("See [docs]", "See"),
+            ("See [docs]   ", "See   "),
+            ("See [docs], then [data].", "See, then."),
+            ("See [docs][data](u)", "See[data](u)"),
+            ("See [docs][1](u) now", "See now"),
+            ("See [1](u)[docs](v)", "See[docs](v)"),
+            ("See [[docs]x] and [[docs]data](u)", "See [x] and [data](u)"),
+            ("[docs]", ""),
+        ],
+    )
+    def test_removes_a_name_that_is_not_directly_followed_by_a_parenthesis(
+        self, text: str, expected: str
+    ):
+        """
+        GIVEN an internal name followed by a blank, a bracket, other text or the end
+        WHEN the citations are removed
+        THEN it goes as before, and a numbered citation still takes its link target with it
+        """
+        assert remove_citations(text, SOURCES) == expected
+
+    def test_removes_the_tags_a_recorded_answer_cites(self):
+        """
+        GIVEN answers recorded from an evaluation run, which cite [project_data] and [1]
+        WHEN the citations are removed
+        THEN each reads as the same text without them
+        """
+        assert remove_citations(_RECORDED_EN, {1}) == _RECORDED_EN_CLEAN
+        assert remove_citations(_RECORDED_CS, {1}) == _RECORDED_CS_CLEAN
 
     @pytest.mark.parametrize(
         "text",
@@ -161,7 +329,10 @@ class TestRemoveCitations:
         THEN the pieces join to what the whole text gives, which removing again leaves alone
         """
         rng = random.Random(7)
-        alphabet = ["[", "]", "\u3010", "\u3011", "1", "2", "7", " ", ",", "-", "(", ")", "x", "\n"]
+        alphabet = [
+            *["[", "]", "\u3010", "\u3011", "1", "2", "7", " ", ",", "-", "(", ")", "x", "\n"],
+            *["docs", "data", "project_data", "\u00a0"],
+        ]
         for _ in range(3000):
             text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 24)))
             whole = remove_citations(text, SOURCES)
@@ -219,6 +390,43 @@ class TestCitationStreamFilter:
         THEN the text let out joins to the cleaned answer
         """
         self._assert_exact(answer, list(answer))
+
+    @pytest.mark.parametrize(
+        ("answer", "clean"),
+        [(_RECORDED_EN, _RECORDED_EN_CLEAN), (_RECORDED_CS, _RECORDED_CS_CLEAN)],
+    )
+    def test_a_recorded_answer_cut_anywhere_joins_to_the_cleaned_answer(
+        self, answer: str, clean: str
+    ):
+        """
+        GIVEN an answer recorded from an evaluation run, which cites [project_data] and [1]
+        WHEN it is cut in two at every index, and again fed one character at a time
+        THEN the text let out is always the start of the cleaned answer and joins to it
+        """
+        for index in range(len(answer) + 1):
+            self._assert_exact(answer, [answer[:index], answer[index:]])
+        self._assert_exact(answer, list(answer))
+        assert remove_citations(answer, SOURCES) == clean
+
+    def test_a_closed_name_is_held_back_until_the_next_character_decides_it(self):
+        """
+        GIVEN a stream that has just read an internal name in brackets
+        WHEN a parenthesis arrives, and in another run any other character, or the end
+        THEN only the text before its blank is let out first; a parenthesis then lets the
+             bracket out with its link, anything else or the end removes it
+        """
+        link = CitationStreamFilter(SOURCES)
+        assert link.feed("See [docs]") == "See"
+        assert link.feed("(") == " [docs]("
+        assert link.feed("u)") + link.finish() == "u)"
+
+        gone = CitationStreamFilter(SOURCES)
+        assert gone.feed("See [docs]") == "See"
+        assert gone.feed(" x") + gone.finish() == " x"
+
+        end = CitationStreamFilter(SOURCES)
+        assert end.feed("See [docs]") == "See"
+        assert end.finish() == ""
 
     @pytest.mark.parametrize("answer", _ANSWERS)
     def test_every_split_in_three_adds_up_to_the_cleaned_answer(self, answer: str):

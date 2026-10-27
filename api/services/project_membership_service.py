@@ -9,6 +9,7 @@ from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
 from api.exceptions import MemberNotFoundError
 from api.schemas.internal import MemberWithUser
 from api.services.base import BaseService
+from api.services.calculation_service import CalculationService
 
 logger = logging.getLogger("api.service.membership")
 
@@ -40,7 +41,12 @@ class ProjectMembershipService(BaseService):
         results = self._session.exec(statement).all()
         return [MemberWithUser(membership=membership, user=user) for membership, user in results]
 
-    def remove_member(self, project_id: UUID, user_id: UUID) -> bool:
+    def remove_member(
+        self,
+        project_id: UUID,
+        user_id: UUID,
+        calculation_service: CalculationService | None = None,
+    ) -> bool:
         """Remove a member from project, discarding the opinion they submitted.
 
         The opinion goes in the same transaction as the membership. It carries the
@@ -48,11 +54,19 @@ class ProjectMembershipService(BaseService):
         remaining member and embedded in every export, while ``RequireProjectAccess`` stops the
         ex-member from withdrawing it themselves once their membership row is gone.
 
+        When a calculation service is given and an opinion was discarded, the project's
+        result is recalculated in the same transaction, so a failure leaves the
+        membership, the opinion and the result untouched. The project row is locked before
+        the membership and the opinion, in the order a project deletion takes them.
+
         :param project_id: Project ID
         :param user_id: User ID to remove
-        :return: True when an opinion was discarded, so the caller can recalculate
+        :param calculation_service: Recalculates the result without the discarded opinion
+        :return: True when an opinion was discarded
         :raises MemberNotFoundError: If user is not a member of the project
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
@@ -67,6 +81,9 @@ class ProjectMembershipService(BaseService):
         self._session.delete(membership)
         if opinion is not None:
             self._session.delete(opinion)
+        self._session.flush()
+        if opinion is not None and calculation_service is not None:
+            calculation_service.stage_recalculation(project_id)
         self._session.commit()
 
         logger.info(

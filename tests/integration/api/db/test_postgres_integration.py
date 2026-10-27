@@ -7,15 +7,18 @@ Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 """
 
 import shutil
+import threading
+import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlmodel import SQLModel, select
+from sqlmodel import Session, SQLModel, select
 
 from api.db.models import (
     CalculationResult,
@@ -26,6 +29,11 @@ from api.db.models import (
     ProjectMember,
     User,
 )
+from api.services.calculation_service import CalculationService
+from api.services.opinion_service import OpinionService
+from api.services.project_membership_service import ProjectMembershipService
+from api.services.project_service import ProjectService
+from api.services.user_service import UserService
 
 # Skip all tests in this module if PostgreSQL is not installed
 pytestmark = pytest.mark.skipif(
@@ -294,6 +302,331 @@ class TestConcurrentAccess:
         # THEN: exactly one should succeed
         assert results["success"] == 1
         assert results["errors"] == 4
+
+
+class TestConcurrentRecalculation:
+    """Tests that concurrent opinion changes in one project leave a complete result."""
+
+    @staticmethod
+    def _seed_project(pg_engine) -> tuple[UUID, UUID, UUID]:
+        """Commit a project with two experts and return (project_id, user_1_id, user_2_id)."""
+        with Session(pg_engine) as setup:
+            admin = User(
+                email="admin@example.com", hashed_password="x", first_name="A", last_name="A"
+            )
+            expert_1 = User(
+                email="one@example.com", hashed_password="x", first_name="One", last_name="One"
+            )
+            expert_2 = User(
+                email="two@example.com", hashed_password="x", first_name="Two", last_name="Two"
+            )
+            setup.add_all([admin, expert_1, expert_2])
+            setup.flush()
+            project = Project(name="Concurrent", admin_id=admin.id)
+            setup.add(project)
+            setup.commit()
+            return project.id, expert_1.id, expert_2.id
+
+    @staticmethod
+    def _open_session(pg_engine) -> Session:
+        """Open a session that fails on a lock wait instead of hanging a broken run."""
+        session = Session(pg_engine)
+        session.exec(text("SET lock_timeout = '5s'"))
+        return session
+
+    @staticmethod
+    def _flush_opinion(session: Session, project_id: UUID, user_id: UUID) -> None:
+        """Add an opinion and flush it, which takes a key-share lock on the project row."""
+        session.add(
+            ExpertOpinion(
+                project_id=project_id,
+                user_id=user_id,
+                position="Expert",
+                lower_bound=10.0,
+                peak=20.0,
+                upper_bound=30.0,
+            )
+        )
+        session.flush()
+
+    @staticmethod
+    def _stored_expert_count(pg_engine, project_id: UUID) -> int:
+        """Read num_experts of the committed result."""
+        with Session(pg_engine) as check:
+            return (
+                check.exec(
+                    select(CalculationResult).where(CalculationResult.project_id == project_id)
+                )
+                .one()
+                .num_experts
+            )
+
+    def test_second_recalculation_waits_and_sees_the_first_opinion(self, pg_engine):
+        """
+        GIVEN two transactions that each add an opinion to the same project
+        WHEN the first has staged its recalculation and the second starts its own
+        THEN the second waits for the first to commit, so the stored result counts both
+        """
+        # GIVEN: a project and two experts, committed
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+
+        def second_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                self._flush_opinion(session, project_id, user_2_id)
+                CalculationService(session).stage_recalculation(project_id)
+                session.commit()
+
+        # WHEN: the first transaction holds the project lock while the second tries to run
+        with self._open_session(pg_engine) as first, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(first, project_id, user_1_id)
+            CalculationService(first).stage_recalculation(project_id)
+            future = executor.submit(second_transaction)
+            time.sleep(1.0)
+            still_waiting = not future.done()
+            first.commit()
+            future.result(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert self._stored_expert_count(pg_engine, project_id) == 2
+
+    def test_both_opinions_flushed_before_either_recalculation_does_not_deadlock(self, pg_engine):
+        """
+        GIVEN two transactions that have both flushed an opinion into the same project
+        WHEN each then stages its recalculation
+        THEN the second waits for the first without a deadlock, and the result counts both
+        """
+        # GIVEN: a project and two experts, committed
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+        second_flushed = threading.Event()
+        go = threading.Event()
+
+        def second_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                self._flush_opinion(session, project_id, user_2_id)
+                second_flushed.set()
+                go.wait(timeout=10)
+                CalculationService(session).stage_recalculation(project_id)
+                session.commit()
+
+        # WHEN: both opinions are flushed, then the first transaction recalculates
+        with self._open_session(pg_engine) as first, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(first, project_id, user_1_id)
+            future = executor.submit(second_transaction)
+            try:
+                assert second_flushed.wait(timeout=10)
+                CalculationService(first).stage_recalculation(project_id)
+            finally:
+                go.set()
+            time.sleep(1.0)
+            still_waiting = not future.done()
+            first.commit()
+            future.result(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert self._stored_expert_count(pg_engine, project_id) == 2
+
+    def test_project_delete_during_opinion_write_does_not_deadlock(self, pg_engine):
+        """
+        GIVEN a project with a stored result and an opinion write that holds the project lock
+        WHEN the project is deleted before that write recalculates
+        THEN the delete waits for the write instead of deadlocking, and the project is gone
+        """
+        # GIVEN: a project with one committed opinion and its stored result
+        project_id, user_1_id, user_2_id = self._seed_project(pg_engine)
+        with self._open_session(pg_engine) as setup:
+            self._flush_opinion(setup, project_id, user_1_id)
+            CalculationService(setup).stage_recalculation(project_id)
+            setup.commit()
+        write_holds_lock = threading.Event()
+
+        def delete_transaction() -> None:
+            with self._open_session(pg_engine) as session:
+                assert write_holds_lock.wait(timeout=10)
+                ProjectService(session).delete_project(project_id)
+
+        # WHEN: the delete starts while the opinion write holds the project lock, and the
+        # write then recalculates, which updates the result row
+        with self._open_session(pg_engine) as write, ThreadPoolExecutor(max_workers=1) as executor:
+            self._flush_opinion(write, project_id, user_2_id)
+            write.exec(
+                select(Project).where(Project.id == project_id).with_for_update(key_share=True)
+            )
+            future = executor.submit(delete_transaction)
+            write_holds_lock.set()
+            time.sleep(0.5)
+            CalculationService(write).stage_recalculation(project_id)
+            write.commit()
+            future.result(timeout=30)
+
+        # THEN
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
+            assert (
+                check.exec(
+                    select(CalculationResult).where(CalculationResult.project_id == project_id)
+                ).first()
+                is None
+            )
+
+
+class TestProjectDeleteAgainstOpinionWriters:
+    """Tests that deleting a project while a writer changes its opinions does not deadlock."""
+
+    @staticmethod
+    def _seed_expert_with_opinion(pg_engine) -> tuple[UUID, UUID]:
+        """Commit a project, one expert member, the opinion and the result; return the ids."""
+        project_id, expert_id, _ = TestConcurrentRecalculation._seed_project(pg_engine)
+        with TestConcurrentRecalculation._open_session(pg_engine) as setup:
+            setup.add(
+                ProjectMember(project_id=project_id, user_id=expert_id, role=MemberRole.EXPERT)
+            )
+            TestConcurrentRecalculation._flush_opinion(setup, project_id, expert_id)
+            CalculationService(setup).stage_recalculation(project_id)
+            setup.commit()
+        return project_id, expert_id
+
+    @staticmethod
+    def _race_with_project_delete(
+        pg_engine, monkeypatch, project_id: UUID, write: Callable[[Session], object]
+    ) -> list[BaseException]:
+        """Run ``write`` and delete the project while the write is about to recalculate.
+
+        The write pauses just before it stages the recalculation, when it has already changed
+        its own rows; the delete starts there and takes every lock it can get.
+
+        :return: Errors raised by either transaction
+        """
+        paused = threading.Event()
+        stage = CalculationService.stage_recalculation
+
+        def pausing_stage(service: CalculationService, pid: UUID) -> CalculationResult | None:
+            paused.set()
+            time.sleep(1.0)
+            return stage(service, pid)
+
+        monkeypatch.setattr(CalculationService, "stage_recalculation", pausing_stage)
+
+        def write_transaction() -> None:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                write(session)
+
+        def delete_transaction() -> None:
+            assert paused.wait(timeout=10)
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                ProjectService(session).delete_project(project_id)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(write_transaction), executor.submit(delete_transaction)]
+            errors = [future.exception(timeout=30) for future in futures]
+        return [error for error in errors if error is not None]
+
+    @staticmethod
+    def _assert_project_gone(pg_engine, project_id: UUID) -> None:
+        """Check that the project and its opinions are deleted."""
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
+            assert (
+                check.exec(
+                    select(ExpertOpinion).where(ExpertOpinion.project_id == project_id)
+                ).first()
+                is None
+            )
+
+    def test_opinion_update(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert's committed opinion
+        WHEN the expert updates it while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).upsert_opinion(
+                project_id, expert_id, "Expert", 11.0, 21.0, 31.0, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_opinion_delete(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert's committed opinion
+        WHEN the expert withdraws it while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).delete_opinion(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_member_removal(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the member is removed while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: ProjectMembershipService(session).remove_member(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
+    def test_account_deletion(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the expert deletes the account while the admin deletes the project
+        THEN neither transaction deadlocks, and both the project and the account are gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: UserService(session).delete_user(
+                session.get(User, expert_id), CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+        with Session(pg_engine) as check:
+            assert check.get(User, expert_id) is None
 
 
 class TestSavepointAndPartialRollback:

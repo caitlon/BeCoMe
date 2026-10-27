@@ -111,10 +111,10 @@ session and answer 401 without one. Their behavior is in the
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user, email an activation link |
+| POST | `/api/v1/auth/register` | Register new user, email an activation link; a refused address is a 400 with code `disposable_email_domain` or `unresolvable_email_domain` |
 | POST | `/api/v1/auth/verify-email` | Confirm an address with an activation token and its password |
 | POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for an address |
-| POST | `/api/v1/auth/login` | Login, get tokens |
+| POST | `/api/v1/auth/login` | Login, get tokens; a wrong password and an unknown address both give a 401 with code `invalid_credentials` |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
@@ -233,8 +233,11 @@ it. Erasure then never silently drops other experts' contributions:
 ] }
 ```
 
-An owned project left without a disposition returns `409`, and a transfer to a non-member
-returns `422`. Erasure also removes the profile photo blob from object storage.
+An owned project left without a disposition returns `409` with code `account_has_owned_projects`,
+and a transfer to a non-member (a demo account counts as one) returns `422` with code
+`invalid_project_disposition`. Erasure also removes the profile photo blob from object storage. The user's
+opinions in other projects go with the account, and each of those projects gets its result
+recalculated in the same transaction, or removed when no opinion is left.
 
 ### Projects
 
@@ -243,7 +246,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects` | List user's projects |
 | POST | `/api/v1/projects` | Create project |
 | GET | `/api/v1/projects/{id}` | Get project details |
-| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422; a scale change that would leave an existing opinion outside the new range is a 409 with code `scale_excludes_opinions`) |
+| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422; a scale minimum not below the maximum is a 422 with code `scale_range_invalid`; a scale change that would leave an existing opinion outside the new range is a 409 with code `scale_excludes_opinions`) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
@@ -258,7 +261,7 @@ The members list (`email`) and the opinions list (`user_email`) return an addres
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/projects/{id}/opinions` | List opinions |
-| POST | `/api/v1/projects/{id}/opinions` | Submit opinion |
+| POST | `/api/v1/projects/{id}/opinions` | Submit opinion; values outside the project's scale are a 422 with code `values_out_of_range` |
 | DELETE | `/api/v1/projects/{id}/opinions` | Delete own opinion |
 
 `GET /api/v1/projects/{id}/opinions?for_assistant=true` is the list the assistant reads: it

@@ -53,8 +53,11 @@ your browser tab and is erased when you close the tab or sign out.
 
 For 14 days each turn, the answer included, is also recorded in a trace store in the EU, with
 member names and positions replaced by labels. The store is run by a US company (LangChain), and
-the EU standard contractual clauses cover that transfer. A typo or a nickname in a question can
-slip past the masking. The [Privacy notice](https://www.becomify.app/privacy) has the details.
+the EU standard contractual clauses cover that transfer. Names are also found in their Czech case
+forms and without diacritics, but a typo, a diminutive or nickname, a position the model
+translates, and the name of a person who is not in the project pass through unchanged. The
+[Privacy notice](https://www.becomify.app/privacy) has the details, and
+[Where the data is processed](../data-location.md) lists where each service runs.
 
 ## Taking your data out
 
@@ -74,6 +77,9 @@ work with them, including opinions that other people gave.
 
 Your address is used to sign you in, to confirm the account when you register, to reset a forgotten
 password, and to let you know when someone tries to register with the address of an account that is
-already confirmed. Each email is in the language the interface was in when the request was made,
-Czech or English. Invitations to a project are not emailed: you see them in the application. The
-address is not used for anything else, and it is visible to the members of projects you join.
+already confirmed. The emails are delivered by Resend, which sends them from Ireland and keeps
+message records in the United States, as
+[Where the data is processed](../data-location.md#what-leaves-the-eu) explains. Each email is in
+the language the interface was in when the request was made, Czech or English. Invitations to a
+project are not emailed: you see them in the application. The address is not used for anything
+else, and it is visible to the members of projects you join.

@@ -13,6 +13,7 @@ from api.auth.logging import log_account_deletion, log_data_export, log_password
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.db.models import Project
 from api.dependencies import (
+    get_calculation_service,
     get_data_export_service,
     get_project_membership_service,
     get_project_service,
@@ -42,6 +43,7 @@ from api.schemas.auth import (
     UserResponse,
 )
 from api.schemas.data_export import DataExportResponse
+from api.services.calculation_service import CalculationService
 from api.services.data_export_service import DataExportService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
@@ -64,6 +66,8 @@ from api.utils.upload import UploadTooLarge, read_within_limit
 logger = logging.getLogger("api.route.users")
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+_PHOTO_NOT_FOUND = "Photo not found"
 
 
 def _photo_upload_rejected(reason: str, user_id: UUID, **fields: object) -> None:
@@ -94,7 +98,7 @@ def _photo_not_found(reason: str, user_id: UUID) -> None:
     :param user_id: User whose photo was requested.
     """
     logger.debug(
-        "Photo not found",
+        _PHOTO_NOT_FOUND,
         extra={"event": "photo_not_found", "reason": reason, "user_id": str(user_id)},
     )
 
@@ -237,6 +241,7 @@ def delete_current_user(
     ],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
     data: DeleteAccountRequest | None = None,
 ) -> None:
     """Delete the authenticated user's account (GDPR Article 17, right to erasure).
@@ -246,7 +251,8 @@ def delete_current_user(
     keeps erasure from silently destroying other experts' contributions while still
     letting the user leave. The profile photo blob is removed from object storage too.
     Every token issued for this account is invalidated (M2), so a still-warm cache
-    entry cannot serve the deleted account past this request.
+    entry cannot serve the deleted account past this request. Results of projects that lose
+    an opinion are recalculated in the same transaction as the account deletion.
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
@@ -255,6 +261,7 @@ def delete_current_user(
     :param membership_service: Membership service (validates transfer targets)
     :param storage_service: Storage service (None when not configured)
     :param store: Revocation store (invalidates tokens issued before the deletion)
+    :param calculation_service: Calculation service (recalculates affected project results)
     :param data: Per-owned-project dispositions (transfer or delete)
     :raises AccountHasOwnedProjectsError: If an owned project has no disposition
     :raises InvalidProjectDispositionError: If a transfer target is not another member
@@ -306,7 +313,7 @@ def delete_current_user(
         with suppress(StorageDeleteError):
             storage_service.delete(current_user.photo_url)
 
-    service.delete_user(current_user)
+    service.delete_user(current_user, calculation_service)
 
     # M2: revoke the deleted user's tokens so the account cannot outlive its data
     # via a still-warm cache entry (decode rejects the token before the cache).
@@ -469,12 +476,12 @@ def get_user_photo(
     """
     if storage_service is None:
         _photo_not_found("no_storage", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     user = user_service.get_by_id(user_id)
     if user is None or not user.photo_url:
         _photo_not_found("no_user_or_key", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     # A storage fault must not surface here: this endpoint is public, and the raw
     # exception text carries the bucket host and object key.
@@ -484,13 +491,11 @@ def get_user_photo(
         # The bucket layer already logged the fault with its own s3_open_failed event;
         # this only records that the caller was answered 404 because of it.
         _photo_not_found("storage_error", user_id)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found"
-        ) from err
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND) from err
 
     if stored is None:
         _photo_not_found("object_missing", user_id)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PHOTO_NOT_FOUND)
 
     # The version has to match the key being served, not merely be present. This route
     # always serves whatever photo the account holds now, so a stale or invented `v`

@@ -79,7 +79,7 @@ function languageHeaders(language: SupportedLanguage): Record<string, string> {
  * stops a page on a sibling subdomain from writing a session cookie of its own.
  */
 function readCsrfCookie(): string | null {
-  const match = document.cookie.match(/(?:^|; )__Host-csrf_token=([^;]*)/);
+  const match = /(?:^|; )__Host-csrf_token=([^;]*)/.exec(document.cookie);
   return match ? decodeURIComponent(match[1]) : null;
 }
 

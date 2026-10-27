@@ -1,14 +1,17 @@
 name: Regenerate Visual Snapshots
 
 # Manually regenerates Playwright visual-regression baselines on the amd64 CI
-# runner (the only environment whose rendering matches the E2E job) and uploads
-# the updated *-linux.png files as an artifact. Use after an intentional layout
-# change shifts the whole-page project-results snapshots; then download the
-# artifact and commit the PNGs onto the feature branch.
+# runner, inside the Playwright image the E2E job uses (the only environment whose
+# rendering matches that job), and uploads the updated *-linux.png files as an
+# artifact. Use after an intentional layout change shifts the whole-page
+# project-results snapshots; then download the artifact and commit the PNGs onto
+# the feature branch.
 #
-# Run it from the Actions tab (or `gh workflow run regen-snapshots.yml
-# -f branch=<feature-branch>`). Uploading an artifact needs only the default
-# read token, so no repository permission change is required.
+# Run it with `gh workflow run regen-snapshots.yml --ref <feature-branch>`
+# (optionally `-f grep=...`), or pick the branch in "Use workflow from" in the
+# Actions tab. The job builds the branch it is dispatched on, so its run and
+# cache scope belong to that branch, not to dev. Uploading an artifact needs only
+# the default read token, so no repository permission change is required.
 #
 # FALLBACK: if this workflow is unavailable, the fresh amd64 renders are
 # already inside the failed E2E run's report, so harvest them instead:
@@ -28,10 +31,6 @@ name: Regenerate Visual Snapshots
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: "Branch to regenerate snapshots on and push the result to"
-        required: true
-        type: string
       grep:
         description: "Playwright -g filter selecting which tests to update"
         required: false
@@ -66,13 +65,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ inputs.branch }}
 
+      # No dependency cache: this job builds the branch it is dispatched on.
       - name: Set up uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          enable-cache: true
+          enable-cache: false
 
       - name: Set up Python
         run: uv python install 3.13.7
@@ -81,19 +79,18 @@ jobs:
         run: uv sync --locked --extra dev --extra api
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps
+      - name: Pull Playwright image
+        timeout-minutes: 5
+        run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
         run: |
@@ -111,13 +108,12 @@ jobs:
           DEBUG: "false"
 
       - name: Update snapshots
-        working-directory: frontend
         env:
           GREP: ${{ inputs.grep }}
-        run: npx playwright test visual-regression --update-snapshots -g "$GREP"
+        run: scripts/ci/playwright-image.sh run test visual-regression --update-snapshots -g "$GREP"
 
       - name: Upload regenerated snapshots
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: regenerated-snapshots
           path: frontend/e2e/visual-regression.spec.ts-snapshots/*-linux.png

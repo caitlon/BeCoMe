@@ -9,6 +9,7 @@ from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.schemas.internal import OpinionWithUser, UpsertResult
 from api.services.base import BaseService
+from api.services.calculation_service import CalculationService
 
 logger = logging.getLogger("api.service.opinion")
 
@@ -72,8 +73,13 @@ class OpinionService(BaseService):
         lower_bound: float,
         peak: float,
         upper_bound: float,
+        calculation_service: CalculationService | None = None,
     ) -> UpsertResult:
         """Create or update user's opinion for a project.
+
+        When a calculation service is given, the project's result is recalculated in the
+        same transaction, so a failure leaves both the opinion and the result untouched.
+        The project row is locked before the opinion, in the order a project deletion takes them.
 
         :param project_id: Project UUID
         :param user_id: User UUID
@@ -81,8 +87,11 @@ class OpinionService(BaseService):
         :param lower_bound: Fuzzy number lower bound
         :param peak: Fuzzy number peak
         :param upper_bound: Fuzzy number upper bound
+        :param calculation_service: Recalculates the project's result with the new opinion
         :return: UpsertResult with opinion and creation flag
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         existing = self.get_user_opinion(project_id, user_id)
 
         if existing:
@@ -90,7 +99,8 @@ class OpinionService(BaseService):
             existing.lower_bound = lower_bound
             existing.peak = peak
             existing.upper_bound = upper_bound
-            result = UpsertResult(opinion=self._save_and_refresh(existing), is_new=False)
+            opinion = existing
+            is_new = False
         else:
             opinion = ExpertOpinion(
                 project_id=project_id,
@@ -100,7 +110,15 @@ class OpinionService(BaseService):
                 peak=peak,
                 upper_bound=upper_bound,
             )
-            result = UpsertResult(opinion=self._save_and_refresh(opinion), is_new=True)
+            is_new = True
+
+        self._session.add(opinion)
+        self._session.flush()
+        if calculation_service is not None:
+            calculation_service.stage_recalculation(project_id)
+        self._session.commit()
+        self._session.refresh(opinion)
+        result = UpsertResult(opinion=opinion, is_new=is_new)
 
         logger.info(
             "Opinion upserted",
@@ -113,18 +131,34 @@ class OpinionService(BaseService):
         )
         return result
 
-    def delete_opinion(self, project_id: UUID, user_id: UUID) -> None:
+    def delete_opinion(
+        self,
+        project_id: UUID,
+        user_id: UUID,
+        calculation_service: CalculationService | None = None,
+    ) -> None:
         """Delete user's opinion for a project.
+
+        When a calculation service is given, the project's result is recalculated in the
+        same transaction, so a failure leaves both the opinion and the result untouched.
+        The project row is locked before the opinion, in the order a project deletion takes them.
 
         :param project_id: Project UUID
         :param user_id: User UUID
+        :param calculation_service: Recalculates the project's result without the opinion
         :raises OpinionNotFoundError: If opinion doesn't exist
         """
+        if calculation_service is not None:
+            calculation_service.lock_project(project_id)
         opinion = self.get_user_opinion(project_id, user_id)
         if not opinion:
             raise OpinionNotFoundError("Opinion not found")
 
-        self._delete_and_commit(opinion)
+        self._session.delete(opinion)
+        self._session.flush()
+        if calculation_service is not None:
+            calculation_service.stage_recalculation(project_id)
+        self._session.commit()
         logger.info(
             "Opinion deleted",
             extra={

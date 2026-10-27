@@ -334,17 +334,19 @@ class PdfResultRenderer(ResultRenderer):
             )
         )
         generated = data.generated_at.strftime("%Y-%m-%d %H:%M UTC")
-        story.append(Paragraph(f"<b>{_escape(labels.generated_at)}:</b> {generated}", body_style))
-        story.append(Spacer(1, 12))
-
-        story.append(self._compromise_card(data, labels))
-        story.append(Spacer(1, 8))
-        story.append(self._confidence_bar(data, labels))
-        story.append(Spacer(1, 14))
-
-        story.append(Paragraph(_escape(labels.supporting_calcs), heading_style))
-        story.append(self._results_table(data, labels))
-        story.append(Spacer(1, 6))
+        story.extend(
+            [
+                Paragraph(f"<b>{_escape(labels.generated_at)}:</b> {generated}", body_style),
+                Spacer(1, 12),
+                self._compromise_card(data, labels),
+                Spacer(1, 8),
+                self._confidence_bar(data, labels),
+                Spacer(1, 14),
+                Paragraph(_escape(labels.supporting_calcs), heading_style),
+                self._results_table(data, labels),
+                Spacer(1, 6),
+            ]
+        )
         decision = _decision(data, labels)
         if decision is not None:
             story.append(
@@ -352,20 +354,22 @@ class PdfResultRenderer(ResultRenderer):
                     f"<b>{_escape(labels.likert_decision)}:</b> {_escape(decision)}", body_style
                 )
             )
-        story.append(Spacer(1, 14))
-
-        story.append(Paragraph(_escape(labels.chart_heading), heading_style))
-        # The page's order, and the page opens on the landscape: a report that led
-        # with the triangle showed a view the reader had probably not looked at.
-        story.append(build_landscape_chart(data, labels, self._palette))
-        story.append(Spacer(1, 6))
-        story.append(build_triangle_chart(data, labels, self._palette))
-        story.append(Spacer(1, 6))
-        story.append(build_centroid_chart(data, labels, self._palette))
-        story.append(Spacer(1, 14))
-
-        story.append(Paragraph(_escape(labels.opinions_heading), heading_style))
-        story.append(self._opinions_table(data, labels))
+        story.extend(
+            [
+                Spacer(1, 14),
+                Paragraph(_escape(labels.chart_heading), heading_style),
+                # The page's order, and the page opens on the landscape: a report that led
+                # with the triangle showed a view the reader had probably not looked at.
+                build_landscape_chart(data, labels, self._palette),
+                Spacer(1, 6),
+                build_triangle_chart(data, labels, self._palette),
+                Spacer(1, 6),
+                build_centroid_chart(data, labels, self._palette),
+                Spacer(1, 14),
+                Paragraph(_escape(labels.opinions_heading), heading_style),
+                self._opinions_table(data, labels),
+            ]
+        )
         return story
 
     def _badge(self, data: ResultExportData, labels: ResultLabels) -> Table:

@@ -15,7 +15,7 @@ Four diagrams visualize the BeCoMe implementation from different angles.
 
 ![Class Diagram](diagrams/png/class-diagram.png)
 
-Static structure of the codebase. `FuzzyTriangleNumber` holds three floats (lower bound, peak, upper bound) and calculates its centroid. `ExpertOpinion` wraps an expert ID with their fuzzy assessment. Comparison operators use the centroid, which is what makes the opinions sortable for the median.
+Static structure of the codebase. `FuzzyTriangleNumber` holds three floats (lower bound, peak, upper bound) and calculates its centroid. `ExpertOpinion` wraps an expert ID with their fuzzy assessment. `ExpertOpinion` has no ordering of its own: the calculator sorts opinions by centroid with an explicit key before taking the median.
 
 `BeCoMeCalculator` does the actual work: arithmetic mean, median, and the combined compromise. Results go into `BeCoMeResult`, a Pydantic model with the final fuzzy number plus intermediate values and error metric.
 

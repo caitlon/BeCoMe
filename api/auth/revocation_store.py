@@ -75,12 +75,20 @@ class InMemoryRevocationStore:
             return self._user_valid_after.get(user_id)
 
     def start_session(self, sid: str, jti: str, ttl_seconds: int) -> None:
-        """Record ``jti`` as the current refresh token for session ``sid``."""
+        """Record ``jti`` as the current refresh token for session ``sid``.
+
+        :param ttl_seconds: Accepted for the RevocationStore protocol and ignored:
+            in-process sessions never expire.
+        """
         with self._lock:
             self._session_current[sid] = jti
 
     def rotate_session(self, sid: str, expected_jti: str, new_jti: str, ttl_seconds: int) -> bool:
-        """Atomically swap the session's current jti, returning False on a mismatch."""
+        """Atomically swap the session's current jti, returning False on a mismatch.
+
+        :param ttl_seconds: Accepted for the RevocationStore protocol and ignored:
+            in-process sessions never expire.
+        """
         with self._lock:
             if self._session_current.get(sid) != expected_jti:
                 return False

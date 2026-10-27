@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlmodel import Session, select
 
-from api.db.models import CalculationResult, ExpertOpinion
+from api.db.models import CalculationResult, ExpertOpinion, Project
 from api.services.base import BaseService
 from api.services.mappers import BeCoMeResultMapper
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -45,10 +45,43 @@ class CalculationService(BaseService):
         :param project_id: Project UUID
         :return: CalculationResult if opinions exist, None otherwise
         """
+        saved = self.stage_recalculation(project_id)
+        self._session.commit()
+        if saved is not None:
+            self._session.refresh(saved)
+        return saved
+
+    def lock_project(self, project_id: UUID) -> None:
+        """Lock the project row for the rest of the caller's transaction.
+
+        A writer that changes a project's opinions or members calls this before touching
+        those rows, so it takes the project lock first, as ``ProjectService.delete_project``
+        does; otherwise the two wait for each other's rows and deadlock.
+
+        :param project_id: Project UUID
+        """
+        # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
+        self._session.exec(
+            select(Project).where(Project.id == project_id).with_for_update(key_share=True)
+        ).first()
+
+    def stage_recalculation(self, project_id: UUID) -> CalculationResult | None:
+        """Recalculate a project's result inside the caller's transaction.
+
+        Does what :meth:`recalculate` does but only flushes, so the caller commits
+        together with its own changes (or rolls everything back).
+
+        Locks the project row first, so concurrent recalculations of one project run one
+        after another and none computes without an opinion another has just changed.
+
+        :param project_id: Project UUID
+        :return: CalculationResult if opinions exist, None otherwise
+        """
+        self.lock_project(project_id)
         opinions = self._get_opinions(project_id)
 
         if not opinions:
-            self._delete_result(project_id)
+            self._stage_result_deletion(project_id)
             logger.info(
                 "Recalculation cleared",
                 extra={"event": "recalculation_cleared", "project_id": str(project_id)},
@@ -68,7 +101,7 @@ class CalculationService(BaseService):
         ]
 
         result = self._calculator.calculate_compromise(domain_opinions)
-        saved = self._save_result(project_id=project_id, result=result)
+        saved = self._stage_result(project_id=project_id, result=result)
         logger.info(
             "Recalculation completed",
             extra={
@@ -84,19 +117,23 @@ class CalculationService(BaseService):
         statement = select(ExpertOpinion).where(ExpertOpinion.project_id == project_id)
         return list(self._session.exec(statement).all())
 
-    def _save_result(self, project_id: UUID, result: BeCoMeResult) -> CalculationResult:
-        """Save or update calculation result using mapper."""
+    def _stage_result(self, project_id: UUID, result: BeCoMeResult) -> CalculationResult:
+        """Add or update calculation result using mapper, without committing."""
         existing = self.get_result(project_id)
 
         if existing:
             BeCoMeResultMapper.update_db_model(existing, result)
-            return self._save_and_refresh(existing)
+            db_result = existing
+        else:
+            db_result = BeCoMeResultMapper.to_db_model(project_id, result)
 
-        db_result = BeCoMeResultMapper.to_db_model(project_id, result)
-        return self._save_and_refresh(db_result)
+        self._session.add(db_result)
+        self._session.flush()
+        return db_result
 
-    def _delete_result(self, project_id: UUID) -> None:
-        """Delete calculation result if exists."""
+    def _stage_result_deletion(self, project_id: UUID) -> None:
+        """Delete calculation result if exists, without committing."""
         existing = self.get_result(project_id)
         if existing:
-            self._delete_and_commit(existing)
+            self._session.delete(existing)
+            self._session.flush()

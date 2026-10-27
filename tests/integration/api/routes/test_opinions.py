@@ -1,7 +1,10 @@
 """Integration tests for opinion management endpoints."""
 
+from unittest.mock import patch
+
 import pytest
 
+from api.services.calculation_service import CalculationService
 from tests.integration.api.conftest import (
     auth_header,
     create_project,
@@ -477,6 +480,7 @@ class TestSubmitOpinion:
         # THEN
         assert response.status_code == 422
         assert "within project scale" in response.json()["detail"]
+        assert response.json()["code"] == "values_out_of_range"
 
     def test_requires_membership(self, client):
         """Returns 404 for non-members (project existence stays hidden)."""
@@ -646,6 +650,84 @@ class TestDeleteOpinion:
             headers=auth_header(token),
         ).json()
         assert result_after is None
+
+
+class TestOpinionWriteIsAtomicWithRecalculation:
+    """A failed recalculation takes the opinion change down with it."""
+
+    @staticmethod
+    def _failing_recalculation():
+        """Make the recalculation step of the request raise."""
+        return patch.object(
+            CalculationService, "stage_recalculation", side_effect=RuntimeError("boom")
+        )
+
+    @staticmethod
+    def _result(client, token, project_id):
+        return client.get(
+            f"/api/v1/projects/{project_id}/result", headers=auth_header(token)
+        ).json()
+
+    @staticmethod
+    def _opinions(client, token, project_id):
+        return client.get(
+            f"/api/v1/projects/{project_id}/opinions", headers=auth_header(token)
+        ).json()
+
+    def test_failed_recalculation_does_not_store_a_new_opinion(self, client):
+        """A first submission that cannot be counted leaves no opinion behind."""
+        # GIVEN a project without opinions
+        token = register_and_login(client)
+        project = create_project(client, token)
+
+        # WHEN the recalculation fails during the submission
+        with self._failing_recalculation(), pytest.raises(RuntimeError):
+            submit_opinion(client, token, project["id"], 30.0, 50.0, 70.0)
+
+        # THEN neither an opinion nor a result was stored
+        assert self._opinions(client, token, project["id"]) == []
+        assert self._result(client, token, project["id"]) is None
+
+    def test_failed_recalculation_keeps_the_old_opinion_on_update(self, client):
+        """An update that cannot be counted leaves the old values and the old result."""
+        # GIVEN a stored opinion and its result
+        token = register_and_login(client)
+        project = create_project(client, token)
+        submit_opinion(client, token, project["id"], 30.0, 50.0, 70.0)
+        result_before = self._result(client, token, project["id"])
+
+        # WHEN the recalculation fails while the opinion is updated
+        with self._failing_recalculation(), pytest.raises(RuntimeError):
+            submit_opinion(client, token, project["id"], 10.0, 20.0, 30.0)
+
+        # THEN the opinion and the result are as they were
+        opinions = self._opinions(client, token, project["id"])
+        assert [(o["lower_bound"], o["peak"], o["upper_bound"]) for o in opinions] == [
+            (30.0, 50.0, 70.0)
+        ]
+        assert self._result(client, token, project["id"]) == result_before
+
+    def test_failed_recalculation_keeps_the_deleted_opinion(self, client):
+        """A deletion that cannot be counted leaves the opinion and the result in place."""
+        # GIVEN an admin and an expert who both gave an opinion
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+        expert_token = _join_project(client, admin_token, project["id"], "expert@example.com")
+        submit_opinion(client, admin_token, project["id"], 20.0, 40.0, 60.0)
+        submit_opinion(client, expert_token, project["id"], 40.0, 60.0, 80.0)
+        result_before = self._result(client, admin_token, project["id"])
+        assert result_before["num_experts"] == 2
+
+        # WHEN the recalculation fails while the expert deletes their opinion
+        with self._failing_recalculation(), pytest.raises(RuntimeError):
+            client.delete(
+                f"/api/v1/projects/{project['id']}/opinions",
+                headers=auth_header(expert_token),
+            )
+
+        # THEN the opinion still exists and the result still counts it
+        assert len(self._opinions(client, admin_token, project["id"])) == 2
+        assert self._result(client, admin_token, project["id"]) == result_before
 
 
 class TestGetResult:

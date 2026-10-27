@@ -372,11 +372,56 @@ def _replace_citations(text: str, filler: str) -> str:
     return "".join(pieces)
 
 
+# The names a model writes in brackets as if they were citations, though they are not sources:
+# the ``<project_data>`` tag that wraps the project facts (``api/assistant/agent/prompt.py``,
+# ``tools.py``), the system prompt, the tool results and the tool names themselves, and the
+# source words with no number. They are the forms found in recorded answers; a fixed list, so
+# that a formula such as ``[a_ij]`` or a placeholder such as ``[TODO]`` stays. Written in
+# lowercase with one space between words: :func:`_is_internal_name` reads ``_``, ``-`` and any
+# run of whitespace as one.
+_INTERNAL_NAMES = frozenset(
+    {
+        "project data",
+        "project result",
+        "tool result",
+        "tool results",
+        "search docs",
+        "get project",
+        "list my projects",
+        "get project result",
+        "get project opinions",
+        "system instruction",
+        "system instructions",
+        "source",
+        "sources",
+        "doc",
+        "docs",
+        "document",
+        "documents",
+        "data",
+        "zdroj",
+        "zdroje",
+    }
+)
+_NAME_SEPARATORS = str.maketrans("_-", "  ")
+
 # Spaces and tabs, not line breaks: what is dropped along with a citation.
 _BLANKS = " \t\u00a0\u202f"
 _OPENERS = {"]": "[", "\u3011": "\u3010"}
 # What a link target is read in: not yet started, waiting for its parenthesis, inside it.
-_NO_LINK, _LINK_AHEAD, _LINK_OPEN = range(3)
+# ``_NAME_AHEAD``: an internal name has just closed, and a ``(`` right after it keeps it as the
+# text of a markdown link.
+_NO_LINK, _LINK_AHEAD, _LINK_OPEN, _NAME_AHEAD = range(4)
+
+
+def _is_internal_name(content: str) -> bool:
+    """Tell whether the text inside a bracket is one of the fixed internal names.
+
+    :param content: The text between the brackets.
+    :return: True when, in lowercase, with ``_`` and ``-`` read as a space and each run of
+        whitespace as one space, it is in ``_INTERNAL_NAMES``.
+    """
+    return " ".join(content.translate(_NAME_SEPARATORS).split()).lower() in _INTERNAL_NAMES
 
 
 def remove_citations(text: str, source_numbers: Collection[int]) -> str:
@@ -390,8 +435,13 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     citation goes together with the spaces and tabs before it and with a markdown link target
     right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
     opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
-    that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike :func:`strip_citations`,
-    which leaves a space, this returns text meant to be shown. The result has no citation
+    whose whole content is one of a fixed set of internal names that models write as if they
+    were sources (``[project_data]``, ``[Tool Result]``, ``[search_docs]``, ``[System
+    Instruction]``, ``[source]``, ``[data]``; case, ``_``, ``-`` and whitespace are alike)
+    goes the same way as a single number, except that a name followed at once by ``(`` is the
+    text of a markdown link and stays with it. A bracket that is neither, such as
+    ``[11.54, 14.19]``, ``[a_ij]`` or ``[TODO]``, stays. Unlike :func:`strip_citations`,
+    which leaves a space, this returns text meant to be shown. The result has none of them
     left, so removing again changes nothing.
 
     :param text: The text to clean.
@@ -403,14 +453,15 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
 
 
 class CitationStreamFilter:
-    """Removes citations from an answer as its pieces arrive, by the rule of
-    :func:`remove_citations`.
+    """Removes citations and bracketed internal names from an answer as its pieces arrive,
+    by the rule of :func:`remove_citations`.
 
     The reading carries over from one piece to the next, so the pieces let out joined are
     exactly ``remove_citations`` of the whole text, however it was cut, in time that grows
     with its length. Text is held back while a later character may still take it away: from
     a bracket nothing has closed yet, the spaces at the end, which a citation after them
-    would take, and a link target that has not closed. A bracket that never closes holds the
+    would take, a link target that has not closed, and a closed internal name until the next
+    character shows whether it is the text of a link. A bracket that never closes holds the
     rest of the answer until :meth:`finish`. Each character is read a bounded number of
     times, so the work grows with the length of the text.
     """
@@ -430,6 +481,9 @@ class CitationStreamFilter:
         self._open: dict[str, list[tuple[int, int]]] = {"[": [], "\u3010": []}
         self._link = _NO_LINK
         self._target: list[str] = []  # What follows the parenthesis of a link target.
+        # The internal name just closed, still in the kept text: where its bracket opens, the text
+        # end before it, and where the last kept closing bracket was before it.
+        self._name: tuple[int, int, int] = (0, 0, -1)
         self._skip_blanks = False
 
     def feed(self, piece: str) -> str:
@@ -442,7 +496,10 @@ class CitationStreamFilter:
         # What may still change starts at the blanks before the outermost open bracket, or
         # at the blanks that end the text.
         opened = [stack[0] for stack in self._open.values() if stack]
-        return self._take((min(opened)[1] if opened else self._text_end) - self._base)
+        held = min(opened)[1] if opened else self._text_end
+        if self._link == _NAME_AHEAD:
+            held = min(held, self._name[1])
+        return self._take(held - self._base)
 
     def finish(self) -> str:
         """Release what is still held back, once the whole answer has been fed.
@@ -451,7 +508,9 @@ class CitationStreamFilter:
         """
         pending: deque[str] = deque()
         while True:
-            if self._link == _LINK_OPEN:
+            if self._link == _NAME_AHEAD:
+                self._remove_name()
+            elif self._link == _LINK_OPEN:
                 pending.extend(["(", *self._target])
             self._link = _NO_LINK
             if not pending:
@@ -472,22 +531,43 @@ class CitationStreamFilter:
         """Read characters until the queue is empty; a failed link target is queued again."""
         while queue:
             char = queue.popleft()
-            if self._link == _LINK_AHEAD:
-                self._link = _NO_LINK
-                if char == "(":
-                    self._link, self._target = _LINK_OPEN, []
-                    continue
-            elif self._link == _LINK_OPEN:
-                if char == ")":
-                    self._link = _NO_LINK
-                elif char in "()[]" or char.isspace():
-                    # Not a link target after all: read it again as ordinary text.
-                    self._link = _NO_LINK
-                    queue.extendleft(reversed(["(", *self._target, char]))
-                else:
-                    self._target.append(char)
-                continue
-            self._place(char)
+            if not self._follow_link(char, queue):
+                self._place(char)
+
+    def _follow_link(self, char: str, queue: deque[str]) -> bool:
+        """Settle what the link state does with a character.
+
+        :param char: The character just taken from the queue.
+        :param queue: The characters still to read; a failed link target is queued again.
+        :return: True when the character belongs to a link target and is consumed, False when
+            it is ordinary text that still has to be placed.
+        """
+        if self._link == _NAME_AHEAD:
+            if char != "(":
+                self._remove_name()
+            self._link = _NO_LINK
+            return False
+        if self._link == _LINK_AHEAD:
+            self._link = _NO_LINK
+            if char == "(":
+                self._link, self._target = _LINK_OPEN, []
+                return True
+            return False
+        if self._link == _LINK_OPEN:
+            self._read_target(char, queue)
+            return True
+        return False
+
+    def _read_target(self, char: str, queue: deque[str]) -> None:
+        """Take a character of a link target, or give the target up as ordinary text."""
+        if char == ")":
+            self._link = _NO_LINK
+        elif char in "()[]" or char.isspace():
+            # Not a link target after all: read it again as ordinary text.
+            self._link = _NO_LINK
+            queue.extendleft(reversed(["(", *self._target, char]))
+        else:
+            self._target.append(char)
 
     def _place(self, char: str) -> None:
         """Keep a character, or open or close a bracket; blanks after a removed citation go."""
@@ -536,14 +616,29 @@ class CitationStreamFilter:
         # A closing bracket that stayed is in the way of every bracket around it, so those are
         # not read again: a citation holds digits, labels and separators, never a bracket.
         content = "".join(self._out[start - self._base + 1 :]) if self._kept_at < start else None
+        if content is not None and _is_internal_name(content):
+            # Kept for now: a ``(`` next makes it the text of a link, anything else removes it.
+            self._name = (start, before, self._kept_at)
+            self._keep(closer)
+            self._link = _NAME_AHEAD
+            return
         if content is None or not self._is_removable(content):
             self._keep(closer)
             return
+        self._remove(start, before)
+        self._link = _LINK_AHEAD
+
+    def _remove(self, start: int, before: int) -> None:
+        """Remove the kept text from a citation's opening bracket on, and the blanks before it."""
         previous = self._out[before - self._base - 1] if before > self._base else self._last
         self._skip_blanks = previous in ("", "\n", "\r")
         del self._out[(start if self._skip_blanks else before) - self._base :]
         self._text_end = before
-        self._link = _LINK_AHEAD
+
+    def _remove_name(self) -> None:
+        """Remove the internal name just closed, which no ``(`` followed."""
+        start, before, self._kept_at = self._name
+        self._remove(start, before)
 
 
 def _drop_ordinals(text: str) -> str:

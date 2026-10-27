@@ -12,10 +12,13 @@ import Markdown, { type Components } from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { sourceAnchorId } from "./message-shape";
 
-// No a, img, table, heading, blockquote or pre: with `unwrapDisallowed` the text
-// of a dropped element still shows, so a link or a heading comes out as plain
-// text and nothing in an answer can point the browser at another address.
-const ALLOWED_ELEMENTS = ["p", "strong", "em", "ul", "ol", "li", "code", "br"];
+// No a, img, table, blockquote or pre: with `unwrapDisallowed` the text of a dropped
+// element still shows, so a link comes out as plain text and nothing in an answer can
+// point the browser at another address. The h1-h6 elements are allowed only to be
+// re-rendered as a bold paragraph (see HEADINGS): left out, a heading would unwrap to a
+// bare text node that skips the citation handling and runs into the block after it.
+const HEADINGS = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+const ALLOWED_ELEMENTS = ["p", "strong", "em", "ul", "ol", "li", "code", "br", ...HEADINGS];
 const CITATION = /\[([1-9]\d*)\]/g;
 // A reference-style definition ("[1]: url") starts a line, behind any quote or list markers, and
 // markdown trims spaces inside its label. Markdown would swallow the definition and turn every
@@ -114,14 +117,24 @@ type CitingTag = "p" | "li" | "strong" | "em";
 // Built once at module level: an override whose identity changes between renders
 // makes React remount every element it renders, which drops the focus of a
 // clicked citation and would rebuild a streamed answer on every token.
-const citing = (Tag: CitingTag) =>
+const citing = (Tag: CitingTag, className?: string) =>
   // react-markdown v10 passes the hast `node` to every override; it is dropped
   // here so it never reaches the DOM element as an unknown attribute.
   function Citing({ node: _node, children, ...props }: HTMLAttributes<HTMLElement> & { node?: unknown }) {
-    return createElement(Tag, props, withCitations(children));
+    return createElement(Tag, className ? { ...props, className } : props, withCitations(children));
   };
 
-const COMPONENTS: Components = { p: citing("p"), li: citing("li"), strong: citing("strong"), em: citing("em") };
+// A heading is a bold paragraph, never a heading element: a document outline inside a
+// chat bubble would add landmarks to the page that the answer has no business making.
+const HeadingParagraph = citing("p", "font-semibold");
+
+const COMPONENTS: Components = {
+  p: citing("p"),
+  li: citing("li"),
+  strong: citing("strong"),
+  em: citing("em"),
+  ...Object.fromEntries(HEADINGS.map((tag) => [tag, HeadingParagraph])),
+};
 
 export interface AssistantMarkdownProps {
   readonly content: string;
@@ -137,7 +150,7 @@ export interface AssistantMarkdownProps {
 /**
  * Renders one assistant answer from an allowlist of elements. Raw HTML is shown as
  * text: react-markdown never parses it into elements without rehype-raw, which is
- * deliberately absent. A `[n]` marker in the text of a paragraph, list item, bold or
+ * deliberately absent. A `[n]` marker in the text of a paragraph, heading, list item, bold or
  * italic run becomes our own element: an in-page anchor when the sources are known and
  * include n, a struck-through marker when they do not, plain text while they are unknown.
  * A "[n]: url" line is shown as text, so it cannot turn the markers into markdown links.

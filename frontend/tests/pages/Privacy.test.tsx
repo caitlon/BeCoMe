@@ -100,7 +100,7 @@ describe('Privacy', () => {
     expect(screen.getByText(/keyed hash rather than in the clear/)).toBeInTheDocument();
   });
 
-  /** Resend's endpoint is in the US, so Chapter V applies and the notice has to say so. */
+  /** Resend keeps its account data in the US, so Chapter V applies and the notice has to say so. */
   it('names every processor and flags the transfer outside the EU', () => {
     render(<Privacy />);
 

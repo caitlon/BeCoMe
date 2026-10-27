@@ -2245,6 +2245,48 @@ class TestShowSourcesSetting:
         assert response.answer == "It is the midpoint [1]."
         assert [ref.n for ref in response.sources] == [1]
 
+    async def test_answer_with_the_setting_off_drops_a_bracketed_internal_tag(self):
+        """
+        GIVEN the setting off and an answer that cites the tag of the project block
+        WHEN the turn is answered
+        THEN the response has no marker for it, and a bracket that is no tag stays
+        """
+        service = AssistantService(
+            _settings(assistant_show_sources=False),
+            _model(_say("The error is 5.68 [project_data] for [a_ij].")),
+        )
+
+        response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
+
+        assert response.answer == "The error is 5.68 for [a_ij]."
+
+    async def test_answer_with_the_setting_on_keeps_a_bracketed_internal_tag(self):
+        """
+        GIVEN the setting on, which is the raw view
+        WHEN an answer cites the tag of the project block
+        THEN the answer keeps it
+        """
+        service = AssistantService(_settings(), _model(_say("The error is 5.68 [project_data].")))
+
+        response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
+
+        assert response.answer == "The error is 5.68 [project_data]."
+
+    async def test_stream_with_the_setting_off_drops_a_bracketed_internal_tag(self):
+        """
+        GIVEN the setting off and a stream that splits the tag of the project block across
+              its pieces
+        WHEN the turn is streamed
+        THEN the pieces hold no tag and join to the answer of the response
+        """
+        model = _model(_say("The error is 5.68 [project_data]."))
+        model.stream_chunks = ["The error is 5.68 [proj", "ect_data", "]."]
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert "".join(pieces) == response.answer == "The error is 5.68."
+
     @pytest.mark.parametrize("show_sources", [True, False])
     async def test_the_turn_record_lists_the_sources_with_what_was_cited(self, show_sources: bool):
         """

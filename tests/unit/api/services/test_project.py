@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import (
@@ -334,6 +335,28 @@ class TestProjectServiceDeleteProject:
         # THEN
         mock_session.delete.assert_called_once_with(project)
         mock_session.commit.assert_called_once()
+
+    def test_locks_the_project_row_before_deleting(self):
+        """The project row is locked with FOR UPDATE before the delete is issued."""
+        # GIVEN
+        project_id = uuid4()
+        project = Project(id=project_id, name="To Delete", admin_id=uuid4())
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        calls = MagicMock()
+        calls.attach_mock(mock_session.exec, "exec")
+        calls.attach_mock(mock_session.delete, "delete")
+        service = ProjectService(mock_session)
+
+        # WHEN
+        service.delete_project(project_id)
+
+        # THEN the lock statement comes before the delete
+        names = [c[0] for c in calls.mock_calls if c[0] in ("exec", "delete")]
+        assert names == ["exec", "delete"]
+        lock_sql = str(calls.mock_calls[0].args[0].compile(dialect=postgresql.dialect()))
+        assert "FROM projects" in lock_sql
+        assert lock_sql.endswith("FOR UPDATE")
 
     def test_raises_error_when_not_found(self):
         """ProjectNotFoundError is raised when project doesn't exist."""

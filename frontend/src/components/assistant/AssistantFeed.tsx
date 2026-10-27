@@ -110,7 +110,7 @@ export function AssistantFeed({
   const [openedWithId] = useState(() => (last?.status === "pending" ? undefined : last?.id));
   const previous = messages[messages.length - 2];
   const failed = !isPending && last?.role === "assistant" && (last.status === "error" || last.status === "cut");
-  const projectGone = failed && last.error?.code === 404;
+  const projectGone = failed && projectScoped && last.error?.code === 404;
   const retryWaited = useRetryAfterElapsed(failed ? last : undefined);
 
   // Only the last answer can be tried again, and only with its own question. These
@@ -124,15 +124,17 @@ export function AssistantFeed({
   const notFound = useMemo<NotFoundActions | undefined>(
     () =>
       projectGone
-        ? { onAskWithout: projectScoped ? () => openAssistant(null) : undefined, onOpenProjects: closeAssistant }
+        ? { onAskWithout: () => openAssistant(null), onOpenProjects: closeAssistant }
         : undefined,
-    [projectGone, projectScoped, openAssistant, closeAssistant],
+    [projectGone, openAssistant, closeAssistant],
   );
 
   // The divider says where the next request's memory begins, so there is nothing to
-  // say when no answered message lies before that point.
+  // say when no answer lies before that point. A question counts for nothing here: a
+  // cancelled or cut turn leaves its question marked done, yet it is no longer sent.
   const separatorAt =
-    historyWindowStart > 0 && messages.slice(0, historyWindowStart).some((m) => m.status === "done")
+    historyWindowStart > 0 &&
+    messages.slice(0, historyWindowStart).some((m) => m.role === "assistant" && m.status === "done")
       ? historyWindowStart
       : -1;
 
@@ -160,6 +162,7 @@ export function AssistantFeed({
                     message={message}
                     onRetry={isLast ? handleRetry : undefined}
                     notFound={isLast ? notFound : undefined}
+                    projectScoped={projectScoped}
                     announce={isLast && message.id !== openedWithId}
                   />
                 )}

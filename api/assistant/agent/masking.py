@@ -505,6 +505,26 @@ class TurnRoster:
             _, holders = self._positions.setdefault(key, (position, set()))
             holders.add(participant.number)
 
+    def _note_name_forms(self, owner: _Participant, name: str) -> None:
+        """Record the forms of a new participant's name that the trace is searched for.
+
+        The caller holds the lock.
+        """
+        if _looks_cut(name, EXPERT_LIMIT):
+            dotless = name.removesuffix("...")
+            owner.cuts.update((name, dotless))
+            # Only the last word can be cut mid-word, so the words before it are whole,
+            # and the last one, whole when the cut fell between words, is searched for
+            # alone when it is long enough not to hit ordinary words.
+            breaks = list(_NAME_SEPARATOR.finditer(dotless))
+            if breaks:
+                owner.names.add(dotless[: breaks[-1].start()])
+                last = dotless[breaks[-1].end() :]
+                if _letters_and_digits(last) >= _MIN_CUT_WORD:
+                    owner.names.add(last)
+        else:
+            owner.names.add(name)
+
     def label_for(self, head: str) -> str:
         """Give the label of a row head, registering it as a new participant if it is unknown.
 
@@ -529,20 +549,7 @@ class TurnRoster:
                 if not name or len(self._by_name) >= _MAX_REGISTERED:
                     return expert_label(self._count)
                 owner = self._by_name[name] = _Participant(self._count)
-                if _looks_cut(name, EXPERT_LIMIT):
-                    dotless = name.removesuffix("...")
-                    owner.cuts.update((name, dotless))
-                    # Only the last word can be cut mid-word, so the words before it are whole,
-                    # and the last one, whole when the cut fell between words, is searched for
-                    # alone when it is long enough not to hit ordinary words.
-                    breaks = list(_NAME_SEPARATOR.finditer(dotless))
-                    if breaks:
-                        owner.names.add(dotless[: breaks[-1].start()])
-                        last = dotless[breaks[-1].end() :]
-                        if _letters_and_digits(last) >= _MIN_CUT_WORD:
-                            owner.names.add(last)
-                else:
-                    owner.names.add(name)
+                self._note_name_forms(owner, name)
             owner.heads.add(text)
             self._note_position(owner, position)
             if _looks_cut(position, POSITION_LIMIT):

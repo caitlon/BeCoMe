@@ -19,6 +19,18 @@ if (typeof globalThis.localStorage === 'undefined') {
   })
 }
 
+// happy-dom 20.12.0 made `Animation.cancel()` reject the animation's `finished` promise with an
+// AbortError, as the Web Animations spec says. framer-motion cancels animations when a component
+// unmounts and never reads `finished`, so each cancel became an unhandled rejection that failed
+// the vitest run while every test passed. Browsers mark that rejection handled; do the same here.
+// Only the promise that `cancel()` is about to reject is touched, so unrelated rejections still
+// surface, and code that awaits `finished` still sees the AbortError.
+const originalCancel = Animation.prototype.cancel
+Animation.prototype.cancel = function cancel(this: Animation) {
+  this.finished.catch(() => {})
+  originalCancel.call(this)
+}
+
 afterEach(() => {
   cleanup()
 })
