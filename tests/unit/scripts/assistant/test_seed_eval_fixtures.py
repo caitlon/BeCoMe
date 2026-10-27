@@ -1,7 +1,6 @@
 """Unit tests for the evaluation fixture seeder (in-memory SQLite, no network)."""
 
 import importlib.util
-import io
 import json
 import sys
 from pathlib import Path
@@ -334,40 +333,45 @@ class TestMain:
         assert code == 0
         assert target.is_file()
 
-    def test_generated_password_is_printed_before_any_later_step_runs(self, run_main, monkeypatch):
+    def test_prompted_password_opens_the_account_and_is_asked_once(
+        self, run_main, session, monkeypatch
+    ):
         """
-        GIVEN no password argument and a failure in the step after the account is created
-        WHEN main runs
-        THEN the generated password has already reached stderr
-        """
-
-        def boom(*args, **kwargs):
-            raise RuntimeError("later step failed")
-
-        monkeypatch.setattr(seed, "_ensure_example_project", boom)
-        err = io.StringIO()
-        monkeypatch.setattr(sys, "stderr", err)
-
-        with pytest.raises(RuntimeError):
-            seed.main([])
-
-        assert "generated password: " in err.getvalue()
-
-    def test_generated_password_is_printed_once_and_never_on_stdout(self, run_main, session):
-        """
-        GIVEN no password argument
+        GIVEN no password argument and no owner account yet
         WHEN main runs twice
-        THEN the first run prints a generated password to stderr that opens the account,
-            and the second prints none and reports the fixtures as already present
+        THEN the first run asks for the password once and it opens the account, the password
+            reaches neither stdout nor stderr, and the second run does not ask again and
+            reports the fixtures as already present
         """
+        prompts: list[str] = []
+
+        def answer(prompt: str) -> str:
+            prompts.append(prompt)
+            return PASSWORD
+
+        monkeypatch.setattr(seed.getpass, "getpass", answer)
+
         _, first = run_main()
         _, second = run_main()
 
-        marker = "generated password: "
-        line = next(ln for ln in first.err.splitlines() if marker in ln)
-        generated = line.split(marker, 1)[1].strip()
         owner = session.exec(select(User).where(User.email == seed.OWNER_EMAIL)).one()
-        assert verify_password(generated, owner.hashed_password)
-        assert generated not in first.out
-        assert marker not in second.err
+        assert prompts == [f"Password for {seed.OWNER_EMAIL}: "]
+        assert verify_password(PASSWORD, owner.hashed_password)
+        for stream in (first.out, first.err, second.out, second.err):
+            assert PASSWORD not in stream
         assert "already present" in second.err
+
+    def test_empty_password_refuses_and_creates_nothing(self, run_main, session, monkeypatch):
+        """
+        GIVEN no password argument and a prompt answered with nothing
+        WHEN main runs
+        THEN it exits with 2, says so on stderr, and no owner account exists
+        """
+        monkeypatch.setattr(seed.getpass, "getpass", lambda prompt: "")
+
+        code, captured = run_main()
+
+        assert code == 2
+        assert "Refusing to seed" in captured.err
+        assert captured.out == ""
+        assert session.exec(select(User)).all() == []

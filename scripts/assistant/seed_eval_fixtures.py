@@ -10,8 +10,9 @@ in the database the app's own settings point at, and prints what it created:
 It refuses to run (exit code 2) unless the profile is ``dev`` on a developer machine
 and the database is SQLite or a loopback PostgreSQL. A second run changes nothing and
 reports "already present" on stderr. The password comes from ``--password`` or is
-generated, printed to stderr once on the run that creates the account, and never
-written to stdout. An existing account keeps its password.
+asked for with a hidden prompt on the run that creates the account (an empty answer
+refuses, exit code 2, and creates nothing). It is never printed. An existing account keeps
+its password and is not asked again.
 
 What a run creates, through the same services the product uses:
 
@@ -55,6 +56,7 @@ agreement scale, null otherwise.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import secrets
 import sys
@@ -96,6 +98,10 @@ _EXIT_REFUSED = 2
 
 class UnsafeTargetError(Exception):
     """The configured profile or database is not a local development one."""
+
+
+class EmptyPasswordError(Exception):
+    """No password was given for the owner account that has to be created."""
 
 
 @dataclass
@@ -171,16 +177,18 @@ def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool]:
     """Find the evaluation owner, or create and activate the account.
 
     :param session: Session to write through.
-    :param password: Password for a new account; generated when None, and then
-        printed to stderr as soon as the account exists, so a later failure cannot
-        leave an account whose password nobody saw.
+    :param password: Password for a new account; asked for with a hidden prompt when
+        None, right before the account is created. Never asked for an existing account.
     :return: The account, and whether this call created it.
+    :raises EmptyPasswordError: If the prompt is answered with nothing.
     """
     service = UserService(session)
     existing = service.get_by_email(OWNER_EMAIL)
     if existing is not None:
         return existing, False
-    chosen = password or secrets.token_urlsafe(16)
+    chosen = password or getpass.getpass(f"Password for {OWNER_EMAIL}: ")
+    if not chosen:
+        raise EmptyPasswordError("an empty password was given; nothing was created")
     user = service.create_user(
         email=OWNER_EMAIL,
         password=chosen,
@@ -192,8 +200,6 @@ def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool]:
     session.add(user)
     session.commit()
     session.refresh(user)
-    if not password:
-        print(f"generated password: {chosen}", file=sys.stderr, flush=True)
     return user, True
 
 
@@ -348,9 +354,10 @@ def seed_fixtures(session: Session, password: str | None) -> SeedOutcome:
     """Create whatever of the evaluation state is missing, and describe all of it.
 
     :param session: Session to write through.
-    :param password: Password for the owner when the account is created; generated
-        when None. Ignored when the account exists.
+    :param password: Password for the owner when the account is created; asked for
+        with a hidden prompt when None. Ignored when the account exists.
     :return: The output document and what this run created.
+    :raises EmptyPasswordError: If the account has to be created and no password is given.
     """
     owner, owner_new = _ensure_owner(session, password)
     created = {"user"} if owner_new else set()
@@ -378,7 +385,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
-        "--password", help="Password for the owner account (generated and printed when omitted)"
+        "--password", help="Password for the owner account (asked for when omitted and needed)"
     )
     parser.add_argument("--output", type=Path, help="Write the JSON here instead of stdout")
     return parser.parse_args(argv)
@@ -388,7 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     """Seed the fixtures and print the JSON document.
 
     :param argv: Arguments without the program name; None reads ``sys.argv``.
-    :return: Exit code: 0 on success, 2 when the target is refused.
+    :return: Exit code: 0 on success, 2 when the target or an empty password is refused.
     """
     args = _parse_args(argv)
     settings = get_settings()
@@ -402,7 +409,11 @@ def main(argv: list[str] | None = None) -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
     create_db_and_tables()
     with Session(get_engine()) as session:
-        outcome = seed_fixtures(session, args.password)
+        try:
+            outcome = seed_fixtures(session, args.password)
+        except EmptyPasswordError as error:
+            print(f"Refusing to seed: {error}", file=sys.stderr)
+            return _EXIT_REFUSED
 
     for name in ("user", "example", "pendlers"):
         state = "created" if name in outcome.created else "already present"

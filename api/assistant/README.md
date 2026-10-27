@@ -79,10 +79,10 @@ How the pipeline is built and why, from the corpus to the streamed answer, is ex
    scripts/assistant/seed_eval_fixtures.py --output supplementary/assistant-eval/fixtures.json`
    creates in the configured local database one activated user, `eval-owner@example.test`,
    who owns the product's example project (Floods case, 13 experts) and a second one built from
-   the pendlers case study (22 experts, calculated). The password is `--password` or generated
-   and printed once on stderr, as soon as the account exists. An existing account keeps its
-   password, so `--password` has no effect on a rerun; a second run changes nothing and says
-   "already present". The JSON (user id, and per project its key, id, name, expert count and
+   the pendlers case study (22 experts, calculated). The password is `--password`, or the script asks for it
+   (hidden) when it has to create the account; an empty answer exits with 2 and creates nothing.
+   An existing account keeps its password and is not asked again, so `--password` has no effect
+   on a rerun; a second run changes nothing and says "already present". The JSON (user id, and per project its key, id, name, expert count and
    result numbers) is what an evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
    touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
 
