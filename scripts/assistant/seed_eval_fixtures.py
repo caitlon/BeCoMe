@@ -401,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     """Seed the fixtures and print the JSON document.
 
     :param argv: Arguments without the program name; None reads ``sys.argv``.
-    :return: Exit code: 0 on success, 2 when the target or an empty password is refused.
+    :return: Exit code: 0 on success, 2 when the target is refused or no password is given.
     """
     args = _parse_args(argv)
     settings = get_settings()

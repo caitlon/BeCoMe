@@ -378,7 +378,7 @@ class TestMain:
 
     def test_no_terminal_refuses_and_creates_no_account(self, run_main, session, monkeypatch):
         """
-        GIVEN no password argument and no terminal to prompt on (stdin closed)
+        GIVEN no password argument and no terminal to prompt on (stdin at EOF)
         WHEN main runs
         THEN it exits with 2, says so on stderr instead of failing with a traceback, and
             no owner account exists
@@ -393,4 +393,6 @@ class TestMain:
 
         assert code == 2
         assert "Refusing to seed" in captured.err
+        assert "--password" in captured.err
+        assert captured.out == ""
         assert session.exec(select(User)).all() == []
