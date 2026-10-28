@@ -43,9 +43,9 @@ describe('sitemap.xml', () => {
 
   it('does not list a page that robots.txt disallows', () => {
     // GIVEN the Disallow rules
-    // THEN no sitemap path falls under one of them
+    // THEN no sitemap path starts with one of them, as robots.txt matches by prefix
     paths.forEach(p => {
-      expect(disallowed.some(rule => p === rule || p.startsWith(`${rule}/`))).toBe(false);
+      expect(disallowed.some(rule => p.startsWith(rule))).toBe(false);
     });
   });
 });
@@ -53,8 +53,8 @@ describe('sitemap.xml', () => {
 describe('robots.txt', () => {
   it('has one group and announces the sitemap', () => {
     // GIVEN the robots.txt content
-    // THEN there is exactly one User-agent line and the Sitemap line
-    expect(robots.match(/^User-agent:/gm)).toHaveLength(1);
+    // THEN the only User-agent line is the wildcard, and the Sitemap line is present
+    expect(robots.match(/^User-agent:.*$/gm)).toEqual(['User-agent: *']);
     expect(robots).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
   });
 });
