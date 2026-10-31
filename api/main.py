@@ -153,9 +153,9 @@ def create_app() -> FastAPI:
     # Security headers middleware (executes after everything but the error guard)
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # Rate limiting: SlowAPIMiddleware enforces the limiter's default_limits on every
-    # route, not just the @limiter.limit-decorated ones, so no endpoint is unthrottled.
-    # It executes after CORS (CORS is added later, so it wraps this), letting preflight
+    # Rate limiting: SlowAPIMiddleware applies the limiter's default_limits to routes
+    # with no @limiter.limit decorator, so no endpoint is unthrottled; decorated routes
+    # count only their own limit. It executes after CORS (CORS is added later, so it wraps this), letting preflight
     # OPTIONS be answered before any limit check.
     app.add_middleware(SlowAPIMiddleware)
 

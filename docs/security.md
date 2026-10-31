@@ -390,9 +390,9 @@ until somebody either wires in the dependency or records what replaces it.
 ## Rate limiting and abuse control
 
 slowapi handles rate limiting, backed by Redis, with an in-memory fallback when Redis is
-unreachable (`api/middleware/rate_limit.py`). Two global ceilings, `300/minute` and a `20/second` burst, apply to every route with no limit of
-its own, so an endpoint stays bounded even if it forgot one. A route with its own limit counts
-only that limit:
+unreachable (`api/middleware/rate_limit.py`). Two global ceilings, `300/minute` and a
+`20/second` burst, apply to every route with no limit of its own, so an endpoint stays bounded
+even if it forgot one. A route with its own limit counts only that limit:
 
 | Limit | Value | Applied to |
 |-------|-------|-----------|

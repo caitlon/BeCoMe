@@ -16,8 +16,8 @@ from api.utils.client_ip import get_client_ip
 logger = logging.getLogger("api.ratelimit")
 
 # Global per-client ceilings applied to every route by SlowAPIMiddleware, so no
-# endpoint is ever left completely unthrottled. Stricter per-route limits still
-# apply on top of these.
+# endpoint is ever left completely unthrottled. A route with its own @limiter.limit
+# is skipped by these defaults and counts only that limit.
 LIMIT_DEFAULT = "300/minute"
 LIMIT_DEFAULT_BURST = "20/second"
 # Limits used when the Redis store is unreachable: the limiter degrades to
