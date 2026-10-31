@@ -99,7 +99,7 @@ assistant = [
     "langchain-postgres==0.0.19",
     "langgraph==1.2.16",
     "langchain==1.4.6",
-    "pypdf==6.21.2",  # security fixes
+    "pypdf==6.21.4",  # security fixes
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
