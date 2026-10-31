@@ -3,6 +3,7 @@
 import logging
 import math
 import time
+from uuid import UUID
 
 from fastapi import Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -63,6 +64,38 @@ LIMIT_WRITE = "30/minute"  # Writes that also trigger a DB write plus recalculat
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
 LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)
 LIMIT_ASSISTANT_CHAT = "20/minute"  # Every message costs model calls; the hourly cap is per user
+
+_RATE_LIMIT_USER_ATTR = "rate_limit_user_id"
+
+
+def bind_user_to_rate_limit(request: Request, user_id: UUID) -> None:
+    """Record the signed-in user on the request for :func:`get_user_or_client_ip`.
+
+    Call it from a route dependency that has resolved the user. slowapi's decorator reads
+    its key only after FastAPI has resolved the route's dependencies, so a user bound by
+    one is visible when the decorated route's limit is counted.
+
+    :param request: The incoming request
+    :param user_id: The authenticated user's id
+    """
+    setattr(request.state, _RATE_LIMIT_USER_ATTR, user_id)
+
+
+def get_user_or_client_ip(request: Request) -> str:
+    """Key a limit by the signed-in user, or by the client address when none is bound.
+
+    Use it as ``key_func`` of a route limit whose route binds the user with
+    :func:`bind_user_to_rate_limit`. A request with no bound user is keyed by its client
+    address, so it never lands in one bucket shared by all such requests. The key holds the
+    user's id and nothing else about them.
+
+    :param request: The incoming request
+    :return: ``user:<id>`` for a bound user, otherwise the client address
+    """
+    user_id = getattr(request.state, _RATE_LIMIT_USER_ATTR, None)
+    if user_id is not None:
+        return f"user:{user_id}"
+    return get_client_ip(request)
 
 
 def _retry_after_seconds(request: Request, exc: RateLimitExceeded) -> int:

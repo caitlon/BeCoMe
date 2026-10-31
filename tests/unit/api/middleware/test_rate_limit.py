@@ -3,6 +3,7 @@
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -11,7 +12,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
-from api.middleware.rate_limit import build_limiter, rate_limit_handler
+from api.middleware.rate_limit import (
+    bind_user_to_rate_limit,
+    build_limiter,
+    get_user_or_client_ip,
+    rate_limit_handler,
+)
 
 
 class TestRateLimitHandler:
@@ -316,3 +322,36 @@ class TestBuildLimiter:
         settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
         limiter = build_limiter(settings)
         assert limiter._in_memory_fallback_enabled is True
+
+
+class TestUserOrClientIpKey:
+    """The key of a limit that counts per signed-in user."""
+
+    USER_ID = UUID("6f1c2f0e-6d7a-4a52-9a41-5f5b0c1d2e3f")
+
+    def test_keys_by_the_user_bound_to_the_request(self):
+        """
+        GIVEN a request a dependency bound a user to
+        WHEN the key is read
+        THEN it names the user and ignores the client address
+        """
+        request = SimpleNamespace(state=SimpleNamespace())
+        bind_user_to_rate_limit(request, self.USER_ID)
+
+        with patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"):
+            key = get_user_or_client_ip(request)
+
+        assert key == f"user:{self.USER_ID}"
+
+    def test_falls_back_to_the_client_address_without_a_user(self):
+        """
+        GIVEN a request no user was bound to
+        WHEN the key is read
+        THEN it is the client address, so such requests never share one bucket
+        """
+        request = SimpleNamespace(state=SimpleNamespace())
+
+        with patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"):
+            key = get_user_or_client_ip(request)
+
+        assert key == "203.0.113.7"
