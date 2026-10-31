@@ -29,8 +29,8 @@ logger = logging.getLogger("api.route.calculate")
 router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
-def count_requests_per_user(request: Request, current_user: CurrentUser) -> None:
-    """Sign the caller in and key the route's rate limit by their account.
+def require_signed_in_user(request: Request, current_user: CurrentUser) -> None:
+    """Require a signed-in caller and key the route's rate limit by their account.
 
     :param request: FastAPI request, which carries the user to the rate limiter
     :param current_user: The authenticated caller
@@ -41,7 +41,7 @@ def count_requests_per_user(request: Request, current_user: CurrentUser) -> None
 
 @router.post(
     "/calculate",
-    dependencies=[Depends(count_requests_per_user)],
+    dependencies=[Depends(require_signed_in_user)],
     responses={400: {"description": "Invalid input or calculation error"}},
 )
 @limiter.limit(LIMIT_STANDARD, key_func=get_user_or_client_ip)
