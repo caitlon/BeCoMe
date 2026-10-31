@@ -128,7 +128,7 @@ export function DeleteAccountDialog({
   const handleSubmit = (event: React.SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (loading || loadError || submitting || password === "") return;
-    handleConfirm();
+    void handleConfirm();
   };
 
   return (
