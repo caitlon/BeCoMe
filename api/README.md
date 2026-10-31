@@ -206,7 +206,7 @@ widened with a `Domain` instead, and for what this does not cover.
 | POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB, 8192 px per side and about 16.8 megapixels in total); a refused file is a 400 with code `photo_type_not_allowed`, `photo_too_large`, `photo_content_mismatch`, `photo_unreadable` or `photo_dimensions_too_large` |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | GET | `/api/v1/users/{id}/photo` | Serve a profile photo from the private bucket (public) |
-| DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
+| DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17); the body carries `current_password`, and a wrong one is a 400 with code `current_password_incorrect`. Limited to `3/minute`, like the password change |
 
 The photo proxy is public, because an `<img>` tag cannot send an auth header. It passes
 the bucket's response straight through to the client instead of downloading the object
@@ -222,16 +222,22 @@ token, a stale one, or an invented one. Those URLs already resolve to different 
 once did, and they will again. Pinning one for a
 year would leave a shared cache handing out a replaced avatar to everyone who asked for it.
 
-Deleting the account (`DELETE /api/v1/users/me`) accepts an optional body that says what
-to do with every project the user still admins: `transfer` it to another member, or `delete`
-it. Erasure then never silently drops other experts' contributions:
+Deleting the account (`DELETE /api/v1/users/me`) requires a body. It carries the account's
+`current_password`, which is checked first, before any project is read, and it says what to do
+with every project the user still admins: `transfer` it to another member, or `delete` it.
+Erasure then never silently drops other experts' contributions:
 
 ```json
-{ "project_dispositions": [
-  { "project_id": "<uuid>", "action": "transfer", "new_admin_id": "<member-uuid>" },
-  { "project_id": "<uuid>", "action": "delete" }
-] }
+{ "current_password": "<password>",
+  "project_dispositions": [
+    { "project_id": "<uuid>", "action": "transfer", "new_admin_id": "<member-uuid>" },
+    { "project_id": "<uuid>", "action": "delete" }
+  ] }
 ```
+
+A missing body or `current_password` returns `422`, and a wrong password returns `400` with code
+`current_password_incorrect`, leaving the account and its projects untouched. The route shares the
+`3/minute` limit of the password change.
 
 An owned project left without a disposition returns `409` with code `account_has_owned_projects`,
 and a transfer to a non-member (a demo account counts as one) returns `422` with code

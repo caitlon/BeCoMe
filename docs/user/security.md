@@ -66,8 +66,9 @@ the projects you own with their results, the projects you joined, every opinion 
 the invitations you received. It does not include invitations you sent, because those are about the
 person you sent them to.
 
-**Deletion.** Deleting your account removes it, along with your profile photo. Projects you
-administer need a decision first: for each one you either hand it to another member or delete it.
+**Deletion.** Deleting your account removes it, along with your profile photo. You confirm it by
+entering your current password. Projects you administer need a decision first: for each one you
+either hand it to another member or delete it.
 The account goes only after every project you own has an answer.
 
 That extra step is deliberate. Without it, one person leaving would silently take a whole panel's
