@@ -1,18 +1,50 @@
 """API tests for /calculate endpoint using reference case studies.
 
 These tests verify that the API returns the same results as the core
-BeCoMeCalculator when given the same expert opinion data.
+BeCoMeCalculator when given the same expert opinion data. The route needs a signed-in
+user, so the ``client`` fixture here carries a user's token; ``anonymous_client`` is the
+same app without one.
 """
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from uuid import uuid4
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
+from api.auth.cookies import CSRF_COOKIE
+from api.auth.jwt import ALGORITHM, create_access_token
+from api.config import get_settings
+from api.middleware.rate_limit import LIMIT_STANDARD, limiter
 from src.exceptions import BeCoMeError
+from tests.integration.api.conftest import (
+    DEFAULT_TEST_PASSWORD,
+    auth_header,
+    register_and_login,
+    register_verified,
+)
 from tests.reference.budget_case import BUDGET_CASE
 from tests.reference.floods_case import FLOODS_CASE
 from tests.reference.pendlers_case import PENDLERS_CASE
+
+CALCULATE_URL = "/api/v1/calculate"
+ONE_EXPERT = {"experts": [{"name": "Solo", "lower": 10.0, "peak": 20.0, "upper": 30.0}]}
+
+
+@pytest.fixture
+def client(client: TestClient) -> TestClient:
+    """The shared header-auth client, signed in as a registered user."""
+    token = register_and_login(client, "calculator@example.com")
+    client.headers.update(auth_header(token))
+    return client
+
+
+@pytest.fixture
+def anonymous_client(client: TestClient) -> TestClient:
+    """A client for the same app that sends no credentials."""
+    return TestClient(client.app)
 
 
 def _opinions_to_api_format(opinions: list) -> list[dict]:
@@ -463,3 +495,180 @@ class TestCalculateEdgeCases:
 
         # THEN
         assert response.status_code == 422
+
+
+def _expired_token_header() -> dict[str, str]:
+    """Bearer header carrying a correctly signed access token that ran out a minute ago."""
+    settings = get_settings()
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(uuid4()),
+        "exp": now - timedelta(minutes=1),
+        "iat": now - timedelta(minutes=16),
+        "jti": uuid4().hex,
+        "sid": uuid4().hex,
+        "type": "access",
+    }
+    return auth_header(jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM))
+
+
+class TestRequiresSignIn:
+    """POST /calculate answers only a signed-in user."""
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            pytest.param({}, id="no-credentials"),
+            pytest.param(auth_header("not-a-token"), id="malformed-token"),
+            pytest.param(_expired_token_header(), id="expired-token"),
+            pytest.param(auth_header(create_access_token(uuid4())), id="unknown-user"),
+        ],
+    )
+    def test_request_without_a_valid_session_is_refused(
+        self, anonymous_client: TestClient, headers: dict[str, str]
+    ):
+        """
+        GIVEN a request with no credentials, or with a token that does not identify a user
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 401 and the calculator is never reached
+        """
+        # WHEN
+        with patch(
+            "api.routes.calculate.BeCoMeCalculator.calculate_compromise"
+        ) as calculate_compromise:
+            response = anonymous_client.post(CALCULATE_URL, json=ONE_EXPERT, headers=headers)
+
+        # THEN
+        assert response.status_code == 401
+        calculate_compromise.assert_not_called()
+
+    def test_bearer_token_is_accepted(self, client: TestClient):
+        """
+        GIVEN a signed-in user sending a Bearer token
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 200
+        """
+        # WHEN
+        response = client.post(CALCULATE_URL, json=ONE_EXPERT)
+
+        # THEN
+        assert response.status_code == 200
+
+
+class TestSessionCookie:
+    """The browser's session cookie signs a user in, and the CSRF guard applies as elsewhere."""
+
+    EMAIL = "calculator-cookie@example.com"
+
+    def _sign_in(self, cookie_client: TestClient) -> dict[str, str]:
+        """Log in through the cookie flow and return the CSRF header the session expects."""
+        register_verified(cookie_client, self.EMAIL)
+        cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": self.EMAIL, "password": DEFAULT_TEST_PASSWORD},
+        )
+        return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
+
+    def test_cookie_with_csrf_header_is_accepted(self, cookie_client: TestClient):
+        """
+        GIVEN a user signed in by cookie
+        WHEN POST /api/v1/calculate carries the CSRF header
+        THEN response status is 200
+        """
+        # GIVEN
+        csrf = self._sign_in(cookie_client)
+
+        # WHEN
+        response = cookie_client.post(CALCULATE_URL, json=ONE_EXPERT, headers=csrf)
+
+        # THEN
+        assert response.status_code == 200
+
+    def test_cookie_without_csrf_header_is_refused(self, cookie_client: TestClient):
+        """
+        GIVEN a user signed in by cookie
+        WHEN POST /api/v1/calculate carries no CSRF header
+        THEN response status is 403
+        """
+        # GIVEN
+        self._sign_in(cookie_client)
+
+        # WHEN
+        response = cookie_client.post(CALCULATE_URL, json=ONE_EXPERT)
+
+        # THEN
+        assert response.status_code == 403
+
+
+class TestLimitIsPerUser:
+    """With the limiter on, POST /calculate counts requests per signed-in user."""
+
+    ADDRESS = "203.0.113.10"
+    OTHER_ADDRESS = "203.0.113.11"
+
+    @pytest.fixture
+    def tokens(self, anonymous_client: TestClient) -> tuple[str, str]:
+        """Two users' tokens, registered while the limiter is still off."""
+        return (
+            register_and_login(anonymous_client, "calc-a@example.com"),
+            register_and_login(anonymous_client, "calc-b@example.com"),
+        )
+
+    @pytest.fixture
+    def limited_user_a(self, anonymous_client: TestClient, tokens: tuple[str, str]):
+        """Switch the limiter on and spend user A's whole allowance from one address."""
+        allowed = int(LIMIT_STANDARD.split("/")[0])
+        token_a, _ = tokens
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                statuses = [
+                    self._post(anonymous_client, token_a, self.ADDRESS).status_code
+                    for _ in range(allowed)
+                ]
+                assert statuses == [200] * allowed
+                yield
+            finally:
+                limiter.reset()
+
+    @staticmethod
+    def _post(app_client: TestClient, token: str, address: str):
+        """POST a one-expert calculation as the token's user, from the given client address."""
+        client = TestClient(app_client.app, client=(address, 50000))
+        return client.post(CALCULATE_URL, json=ONE_EXPERT, headers=auth_header(token))
+
+    def test_user_over_the_limit_is_refused(
+        self, anonymous_client: TestClient, tokens: tuple[str, str], limited_user_a: None
+    ):
+        """
+        GIVEN user A has used the minute's allowance
+        WHEN A calls again
+        THEN response status is 429
+        """
+        response = self._post(anonymous_client, tokens[0], self.ADDRESS)
+
+        assert response.status_code == 429
+
+    def test_user_over_the_limit_is_refused_from_another_address(
+        self, anonymous_client: TestClient, tokens: tuple[str, str], limited_user_a: None
+    ):
+        """
+        GIVEN user A has used the minute's allowance
+        WHEN A calls from a different client address
+        THEN response status is 429, because the count follows the user
+        """
+        response = self._post(anonymous_client, tokens[0], self.OTHER_ADDRESS)
+
+        assert response.status_code == 429
+
+    def test_other_user_on_the_same_address_is_served(
+        self, anonymous_client: TestClient, tokens: tuple[str, str], limited_user_a: None
+    ):
+        """
+        GIVEN user A has used the minute's allowance from an address
+        WHEN user B calls from that address
+        THEN response status is 200
+        """
+        response = self._post(anonymous_client, tokens[1], self.ADDRESS)
+
+        assert response.status_code == 200

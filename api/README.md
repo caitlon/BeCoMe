@@ -289,7 +289,7 @@ An invitation is not emailed. The invitee finds it in their list of pending invi
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/calculate` | Calculate BeCoMe (standalone) |
+| POST | `/api/v1/calculate` | Calculate BeCoMe (standalone). Needs a signed-in user: `401` without a valid session. Limited to 60 requests a minute per user |
 | GET | `/api/v1/projects/{id}/result` | Get project calculation result |
 | GET | `/api/v1/projects/{id}/result/export` | Download the result as PDF or CSV |
 

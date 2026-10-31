@@ -3,6 +3,7 @@
 import logging
 import math
 import time
+from uuid import UUID
 
 from fastapi import Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -14,9 +15,7 @@ from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.ratelimit")
 
-# Global per-client ceilings applied to every route by SlowAPIMiddleware, so no
-# endpoint is ever left completely unthrottled. Stricter per-route limits still
-# apply on top of these.
+# The limiter's default limits. A route with its own @limiter.limit counts only that limit.
 LIMIT_DEFAULT = "300/minute"
 LIMIT_DEFAULT_BURST = "20/second"
 # Limits used when the Redis store is unreachable: the limiter degrades to
@@ -28,13 +27,12 @@ def build_limiter(settings: Settings) -> Limiter:
     """Create the slowapi Limiter, backed by Redis when configured.
 
     Uses ``settings.redis_url`` as the storage backend so counters are shared across
-    replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` plus
-    ``SlowAPIMiddleware`` (wired in ``create_app``) cap every route, so an endpoint
-    without an explicit decorator is still bounded. ``in_memory_fallback`` keeps limiting
-    working during a Redis outage. It is checked before ``swallow_errors``, so a store
-    failure degrades to per-instance in-memory limits rather than disabling limiting
-    entirely. ``swallow_errors`` remains a last-resort guard so a store hiccup cannot turn
-    into a 500. Limiting is disabled only under the TESTING flag.
+    replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` are set on
+    the Limiter and ``SlowAPIMiddleware`` is registered in ``create_app``.
+    ``in_memory_fallback`` keeps limiting working during a Redis outage. It is checked before
+    ``swallow_errors``, so a store failure degrades to per-instance in-memory limits rather
+    than disabling limiting entirely. ``swallow_errors`` remains a last-resort guard so a
+    store hiccup cannot turn into a 500. Limiting is disabled only under the TESTING flag.
 
     :param settings: Application settings.
     :return: A configured slowapi Limiter.
@@ -63,6 +61,38 @@ LIMIT_WRITE = "30/minute"  # Writes that also trigger a DB write plus recalculat
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
 LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)
 LIMIT_ASSISTANT_CHAT = "20/minute"  # Every message costs model calls; the hourly cap is per user
+
+_RATE_LIMIT_USER_ATTR = "rate_limit_user_id"
+
+
+def bind_user_to_rate_limit(request: Request, user_id: UUID) -> None:
+    """Record the signed-in user on the request for :func:`get_user_or_client_ip`.
+
+    Call it from a route dependency that has resolved the user. slowapi's decorator reads
+    its key only after FastAPI has resolved the route's dependencies, so a user bound by
+    one is visible when the decorated route's limit is counted.
+
+    :param request: The incoming request
+    :param user_id: The authenticated user's id
+    """
+    setattr(request.state, _RATE_LIMIT_USER_ATTR, user_id)
+
+
+def get_user_or_client_ip(request: Request) -> str:
+    """Key a limit by the signed-in user, or by the client address when none is bound.
+
+    Use it as ``key_func`` of a route limit whose route binds the user with
+    :func:`bind_user_to_rate_limit`. A request with no bound user is keyed by its client
+    address, so it never lands in one bucket shared by all such requests. The key holds the
+    user's id and nothing else about them.
+
+    :param request: The incoming request
+    :return: ``user:<id>`` for a bound user, otherwise the client address
+    """
+    user_id = getattr(request.state, _RATE_LIMIT_USER_ATTR, None)
+    if user_id is not None:
+        return f"user:{user_id}"
+    return get_client_ip(request)
 
 
 def _retry_after_seconds(request: Request, exc: RateLimitExceeded) -> int:
