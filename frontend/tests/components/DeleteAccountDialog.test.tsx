@@ -21,7 +21,7 @@ vi.mock('@/lib/api', () => ({
 }));
 
 const CURRENT_USER_ID = 'owner-1';
-const PASSWORD = 'my-password';
+const PASSWORD = 'my-password'; // pragma: allowlist secret
 
 function ownedProject(overrides: Partial<ProjectWithRole> = {}): ProjectWithRole {
   return {

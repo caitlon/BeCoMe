@@ -737,12 +737,12 @@ The API serves both data-subject rights. Export (Article 20) returns the persona
 JSON from `GET /users/me/export`: the profile, owned projects and their results,
 memberships, opinions, and received invitations. The export leaves out invitations the user
 sent. `DELETE /users/me` performs erasure (Article 17). The request carries the current
-password, which is checked before anything else, with the same rate limit as a password
+password, which is checked before anything else, with the same rate limit value as a password
 change. It also carries a disposition for every project the user still admins, either
 transferring it to another member or deleting it, and the account is removed only once every
-owned project has one. That keeps one
-person's erasure from silently taking a whole panel's opinions with it. The same operation removes the profile-photo blob from object storage, so erasure covers stored media
-too.
+owned project has one. That keeps one person's erasure from silently taking a whole panel's
+opinions with it. The same operation removes the profile-photo blob from object storage, so
+erasure covers stored media too.
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's

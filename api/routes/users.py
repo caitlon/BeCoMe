@@ -250,8 +250,8 @@ def delete_current_user(
     The current password is checked first, before any project is read or any disposition
     validated, so a wrong password is refused with nothing touched. This is the same check
     as a password change: CurrentPasswordIncorrectError is handled by centralized exception
-    middleware, which answers 400 with the code ``current_password_incorrect``. The route
-    shares the password-change rate limit.
+    middleware, which answers 400 with the code ``current_password_incorrect``. The rate
+    limit has the same value as the password change.
 
     Every project the user still admins must be handled first via ``data``: transfer it
     to another member, or delete it (its opinions and invitations cascade away). This

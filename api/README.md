@@ -236,8 +236,8 @@ Erasure then never silently drops other experts' contributions:
 ```
 
 A missing body or `current_password` returns `422`, and a wrong password returns `400` with code
-`current_password_incorrect`, leaving the account and its projects untouched. The route shares the
-`3/minute` limit of the password change.
+`current_password_incorrect`, leaving the account and its projects untouched. The route is limited
+to `3/minute`, the same value as the password change.
 
 An owned project left without a disposition returns `409` with code `account_has_owned_projects`,
 and a transfer to a non-member (a demo account counts as one) returns `422` with code

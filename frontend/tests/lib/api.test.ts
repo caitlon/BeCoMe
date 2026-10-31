@@ -1013,7 +1013,7 @@ describe('ApiClient', () => {
         expect.objectContaining({
           method: 'DELETE',
           body: JSON.stringify({
-            current_password: 'secret-pass',
+            current_password: 'secret-pass', // pragma: allowlist secret
             project_dispositions: [{ project_id: 'p1', action: 'delete' }],
           }),
         })

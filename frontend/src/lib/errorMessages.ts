@@ -50,7 +50,7 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
   [SCALE_RANGE_INVALID_CODE]: 'errors.scaleRangeInvalid',
   [INVALID_PROJECT_DISPOSITION_CODE]: 'errors.invalidProjectDisposition',
   [ACCOUNT_HAS_OWNED_PROJECTS_CODE]: 'errors.accountHasOwnedProjects',
-  [CURRENT_PASSWORD_INCORRECT_CODE]: 'errors.currentPasswordIncorrect',
+  [CURRENT_PASSWORD_INCORRECT_CODE]: 'errors.currentPasswordIncorrect', // pragma: allowlist secret
 };
 
 /**

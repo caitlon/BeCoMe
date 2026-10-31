@@ -530,7 +530,7 @@ class TestDeleteAccountRequiresPassword:
     def test_route_is_limited_like_a_password_change(self, client):
         """With the limiter on, the fourth attempt in a minute is refused with 429."""
         # GIVEN the limiter switched on and the password-change limit
-        assert LIMIT_PWD_RESET == "3/minute"
+        assert LIMIT_PWD_RESET == "3/minute"  # pragma: allowlist secret
         allowed = int(LIMIT_PWD_RESET.split("/")[0])
         token = register_and_login(client, "pw-limited@example.com")
 
