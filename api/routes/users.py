@@ -231,9 +231,11 @@ def change_password(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete current user account",
 )
+@limiter.limit(LIMIT_PWD_RESET)
 def delete_current_user(
     request: Request,
     current_user: CurrentUserFresh,
+    data: DeleteAccountRequest,
     service: Annotated[UserService, Depends(get_user_service)],
     project_service: Annotated[ProjectService, Depends(get_project_service)],
     membership_service: Annotated[
@@ -242,9 +244,14 @@ def delete_current_user(
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
     calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
-    data: DeleteAccountRequest | None = None,
 ) -> None:
     """Delete the authenticated user's account (GDPR Article 17, right to erasure).
+
+    The current password is checked first, before any project is read or any disposition
+    validated, so a wrong password is refused with nothing touched. This is the same check
+    as a password change: CurrentPasswordIncorrectError is handled by centralized exception
+    middleware, which answers 400 with the code ``current_password_incorrect``. The route
+    shares the password-change rate limit.
 
     Every project the user still admins must be handled first via ``data``: transfer it
     to another member, or delete it (its opinions and invitations cascade away). This
@@ -262,11 +269,14 @@ def delete_current_user(
     :param storage_service: Storage service (None when not configured)
     :param store: Revocation store (invalidates tokens issued before the deletion)
     :param calculation_service: Calculation service (recalculates affected project results)
-    :param data: Per-owned-project dispositions (transfer or delete)
+    :param data: Current password and per-owned-project dispositions (transfer or delete)
+    :raises CurrentPasswordIncorrectError: If the current password does not match
     :raises AccountHasOwnedProjectsError: If an owned project has no disposition
     :raises InvalidProjectDispositionError: If a transfer target is not another member
     """
-    dispositions = data.project_dispositions if data else []
+    service.verify_current_password(current_user, data.current_password)
+
+    dispositions = data.project_dispositions
     owned_by_id = {p.id: p for p in project_service.get_owned_projects(current_user.id)}
 
     # Each owned project must be handled exactly once; no disposition may name a project

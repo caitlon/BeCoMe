@@ -155,6 +155,21 @@ def register_user(client: httpx.Client, email: str) -> str:
     return response.json()["access_token"]
 
 
+def delete_account(client: httpx.Client, token: str) -> httpx.Response:
+    """Delete the token's account, sending the password ``register_user`` registers with.
+
+    :param client: httpx.Client instance
+    :param token: JWT access token of the account to delete
+    :return: The raw response
+    """
+    return client.request(
+        "DELETE",
+        "/users/me",
+        json={"current_password": DEFAULT_PASSWORD, "project_dispositions": []},
+        headers=auth_headers(token),
+    )
+
+
 def auth_headers(token: str) -> dict[str, str]:
     """Create authorization headers from token.
 

@@ -271,6 +271,28 @@ def register_and_login(client: TestClient, email: str = "test@example.com") -> s
     return response.json()["access_token"]
 
 
+def delete_account(
+    client: TestClient,
+    token: str,
+    dispositions: list[dict] | None = None,
+    password: str = DEFAULT_TEST_PASSWORD,
+):
+    """Send DELETE /users/me with the current password and the given dispositions.
+
+    :param client: Test client instance
+    :param token: Access token of the account being deleted
+    :param dispositions: Per-owned-project dispositions (default: none)
+    :param password: Current password (default: the one ``register_and_login`` sets)
+    :return: The raw response
+    """
+    return client.request(
+        "DELETE",
+        "/api/v1/users/me",
+        json={"current_password": password, "project_dispositions": dispositions or []},
+        headers=auth_header(token),
+    )
+
+
 def create_project(client: TestClient, token: str, name: str = "Test Project") -> dict:
     """Create a project and return its data.
 
