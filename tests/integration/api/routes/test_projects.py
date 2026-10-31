@@ -13,6 +13,7 @@ from tests.integration.api.conftest import (
     app_session,
     auth_header,
     create_project,
+    delete_account,
     register_and_login,
     submit_opinion,
 )
@@ -912,7 +913,7 @@ class TestTransferOwnership:
         )
 
         # WHEN
-        response = client.delete("/api/v1/users/me", headers=auth_header(owner))
+        response = delete_account(client, owner)
 
         # THEN
         assert response.status_code == 204

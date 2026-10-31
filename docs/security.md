@@ -397,7 +397,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Limit | Value | Applied to |
 |-------|-------|-----------|
 | Auth | `5/minute` | Login, register, refresh |
-| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password |
+| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password, delete account |
 | Write | `30/minute` | Submitting and withdrawing an opinion, inviting a member |
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
@@ -736,12 +736,13 @@ rotation steps, is in [`secrets.md`](secrets.md).
 The API serves both data-subject rights. Export (Article 20) returns the personal dataset as
 JSON from `GET /users/me/export`: the profile, owned projects and their results,
 memberships, opinions, and received invitations. The export leaves out invitations the user
-sent. `DELETE /users/me` performs erasure (Article 17): the request carries a disposition
-for every project the user still admins, either transferring it to another member or
-deleting it, and the account is removed only once every owned project has one. That keeps
-one person's erasure from silently taking a whole panel's opinions with it. The same
-operation removes the profile-photo blob from object storage, so erasure covers stored media
-too.
+sent. `DELETE /users/me` performs erasure (Article 17). The request carries the current
+password, which is checked before anything else, with the same rate limit value as a password
+change. It also carries a disposition for every project the user still admins, either
+transferring it to another member or deleting it, and the account is removed only once every
+owned project has one. That keeps one person's erasure from silently taking a whole panel's
+opinions with it. The same operation removes the profile-photo blob from object storage, so
+erasure covers stored media too.
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's

@@ -9,12 +9,14 @@ from fastapi import status
 
 from api.auth.revocation_store import RevocationStoreError
 from api.data.example_project import EXAMPLE_EXPERTS
-from api.db.models import MemberRole, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember, User
+from api.middleware.rate_limit import LIMIT_PWD_RESET, limiter
 from tests.integration.api.conftest import (
     DEFAULT_TEST_PASSWORD,
     app_session,
     auth_header,
     create_project,
+    delete_account,
     register_and_login,
 )
 from tests.shared.helpers import insert_demo_experts
@@ -143,10 +145,7 @@ class TestDeleteAccount:
         token = register_and_login(client, "delete@example.com")
 
         # WHEN
-        response = client.delete(
-            "/api/v1/users/me",
-            headers=auth_header(token),
-        )
+        response = delete_account(client, token)
 
         # THEN
         assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -155,7 +154,7 @@ class TestDeleteAccount:
         """Deleted user cannot access protected endpoints."""
         # GIVEN
         token = register_and_login(client, "removed@example.com")
-        client.delete("/api/v1/users/me", headers=auth_header(token))
+        delete_account(client, token)
 
         # WHEN
         response = client.get("/api/v1/auth/me", headers=auth_header(token))
@@ -170,7 +169,7 @@ class TestDeleteAccount:
         token = register_and_login(client, email)
 
         # Delete account
-        client.delete("/api/v1/users/me", headers=auth_header(token))
+        delete_account(client, token)
 
         # WHEN: try to login with same credentials
         response = client.post(
@@ -215,7 +214,7 @@ class TestDeleteAccountWithOwnedProjects:
         client.post("/api/v1/projects", json={"name": "Owned"}, headers=auth_header(token))
 
         # WHEN
-        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+        response = delete_account(client, token)
 
         # THEN
         assert response.status_code == status.HTTP_409_CONFLICT
@@ -225,7 +224,7 @@ class TestDeleteAccountWithOwnedProjects:
         # GIVEN
         token = register_and_login(client, "survivor@example.com")
         client.post("/api/v1/projects", json={"name": "Owned"}, headers=auth_header(token))
-        client.delete("/api/v1/users/me", headers=auth_header(token))
+        delete_account(client, token)
 
         # WHEN
         response = client.get("/api/v1/auth/me", headers=auth_header(token))
@@ -242,7 +241,7 @@ class TestDeleteAccountWithOwnedProjects:
         client.delete(f"/api/v1/projects/{project_id}", headers=auth_header(token))
 
         # WHEN
-        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+        response = delete_account(client, token)
 
         # THEN
         assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -260,15 +259,10 @@ class TestDeleteAccountDispositions:
         expert_token, expert_id = _add_expert(client, owner, project_id, "heir@example.com")
 
         # WHEN the owner deletes their account, transferring the project to the member
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={
-                "project_dispositions": [
-                    {"project_id": project_id, "action": "transfer", "new_admin_id": expert_id}
-                ]
-            },
-            headers=auth_header(owner),
+        response = delete_account(
+            client,
+            owner,
+            [{"project_id": project_id, "action": "transfer", "new_admin_id": expert_id}],
         )
 
         # THEN the account is gone but the project survives under the new admin
@@ -284,11 +278,8 @@ class TestDeleteAccountDispositions:
         project = create_project(client, owner, "Doomed")
 
         # WHEN the owner deletes their account, deleting the project too
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={"project_dispositions": [{"project_id": project["id"], "action": "delete"}]},
-            headers=auth_header(owner),
+        response = delete_account(
+            client, owner, [{"project_id": project["id"], "action": "delete"}]
         )
 
         # THEN the account is erased
@@ -312,12 +303,7 @@ class TestDeleteAccountDispositions:
         )
 
         # WHEN the account is erased, deleting the project
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={"project_dispositions": [{"project_id": project_id, "action": "delete"}]},
-            headers=auth_header(owner),
-        )
+        response = delete_account(client, owner, [{"project_id": project_id, "action": "delete"}])
 
         # THEN no opinions are left orphaned
         assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -331,12 +317,7 @@ class TestDeleteAccountDispositions:
         second = create_project(client, owner, "Second")
 
         # WHEN only one project is given a disposition
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={"project_dispositions": [{"project_id": second["id"], "action": "delete"}]},
-            headers=auth_header(owner),
-        )
+        response = delete_account(client, owner, [{"project_id": second["id"], "action": "delete"}])
 
         # THEN the deletion is rejected
         assert response.status_code == status.HTTP_409_CONFLICT
@@ -350,15 +331,10 @@ class TestDeleteAccountDispositions:
         stranger = "00000000-0000-0000-0000-000000000000"
 
         # WHEN the owner tries to transfer to a non-member
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={
-                "project_dispositions": [
-                    {"project_id": project["id"], "action": "transfer", "new_admin_id": stranger}
-                ]
-            },
-            headers=auth_header(owner),
+        response = delete_account(
+            client,
+            owner,
+            [{"project_id": project["id"], "action": "transfer", "new_admin_id": stranger}],
         )
 
         # THEN the disposition is rejected as invalid
@@ -389,24 +365,190 @@ class TestDeleteAccountDispositions:
             session.commit()
 
         # WHEN the owner tries to transfer their project to the demo account
-        response = client.request(
-            "DELETE",
-            "/api/v1/users/me",
-            json={
-                "project_dispositions": [
-                    {
-                        "project_id": project["id"],
-                        "action": "transfer",
-                        "new_admin_id": str(demo_id),
-                    }
-                ]
-            },
-            headers=auth_header(owner),
+        response = delete_account(
+            client,
+            owner,
+            [
+                {
+                    "project_id": project["id"],
+                    "action": "transfer",
+                    "new_admin_id": str(demo_id),
+                }
+            ],
         )
 
         # THEN the disposition is rejected as invalid
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert response.json()["code"] == "invalid_project_disposition"
+
+
+class TestDeleteAccountRequiresPassword:
+    """Erasure needs the current password, checked like a password change."""
+
+    WRONG_PASSWORD = "NotThePassword1!"  # pragma: allowlist secret
+
+    @staticmethod
+    def _user_id(client, token):
+        """Return the id of the account the token belongs to."""
+        return UUID(client.get("/api/v1/auth/me", headers=auth_header(token)).json()["id"])
+
+    def test_wrong_password_is_refused_and_nothing_changes(self, client):
+        """A wrong password answers 400 and leaves the account and its projects alone."""
+        # GIVEN an owner with a project and a member who could take it over
+        owner = register_and_login(client, "pw-owner@example.com")
+        project_id = create_project(client, owner, "Kept")["id"]
+        _member, member_id = _add_expert(client, owner, project_id, "pw-heir@example.com")
+        owner_id = self._user_id(client, owner)
+
+        # WHEN the deletion names a valid transfer but the wrong password
+        response = delete_account(
+            client,
+            owner,
+            [{"project_id": project_id, "action": "transfer", "new_admin_id": member_id}],
+            password=self.WRONG_PASSWORD,
+        )
+
+        # THEN it is refused with the same code the password change uses
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["code"] == "current_password_incorrect"
+        # AND the user, their project and the transfer target are unchanged
+        with app_session(client) as session:
+            assert session.get(User, owner_id) is not None
+            assert session.get(User, UUID(member_id)) is not None
+            project = session.get(Project, UUID(project_id))
+            assert project is not None
+            assert project.admin_id == owner_id
+        assert client.get("/api/v1/auth/me", headers=auth_header(owner)).status_code == 200
+
+    def test_wrong_password_is_reported_before_a_bad_disposition(self, client):
+        """The password is checked first, so a bad disposition cannot be probed without it."""
+        # GIVEN an owner of a project with no other members
+        owner = register_and_login(client, "pw-first@example.com")
+        project = create_project(client, owner, "Solo")
+        stranger = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN an invalid transfer is sent together with a wrong password
+        response = delete_account(
+            client,
+            owner,
+            [{"project_id": project["id"], "action": "transfer", "new_admin_id": stranger}],
+            password=self.WRONG_PASSWORD,
+        )
+
+        # THEN the password error wins over the disposition error
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["code"] == "current_password_incorrect"
+
+    def test_wrong_password_is_reported_before_missing_dispositions(self, client):
+        """An owned project without a disposition does not show up before the password."""
+        # GIVEN an owner of a project
+        owner = register_and_login(client, "pw-409@example.com")
+        create_project(client, owner, "Owned")
+
+        # WHEN no disposition is sent and the password is wrong
+        response = delete_account(client, owner, password=self.WRONG_PASSWORD)
+
+        # THEN the password error is reported
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["code"] == "current_password_incorrect"
+
+    def test_missing_body_returns_422_and_keeps_the_account(self, client):
+        """A request with no body is a validation error, not a deletion."""
+        # GIVEN
+        token = register_and_login(client, "pw-nobody@example.com")
+
+        # WHEN
+        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 200
+
+    def test_missing_password_field_returns_422_and_keeps_the_account(self, client):
+        """A body without current_password is a validation error, not a deletion."""
+        # GIVEN
+        token = register_and_login(client, "pw-nofield@example.com")
+
+        # WHEN
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={"project_dispositions": []},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 200
+
+    def test_empty_password_returns_422(self, client):
+        """An empty password is rejected by validation, as on the password change."""
+        # GIVEN
+        token = register_and_login(client, "pw-empty@example.com")
+
+        # WHEN
+        response = delete_account(client, token, password="")
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def test_correct_password_deletes_the_account(self, client):
+        """The right password erases the account."""
+        # GIVEN
+        token = register_and_login(client, "pw-right@example.com")
+        user_id = self._user_id(client, token)
+
+        # WHEN
+        response = delete_account(client, token)
+
+        # THEN
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        with app_session(client) as session:
+            assert session.get(User, user_id) is None
+
+    def test_correct_password_with_dispositions_deletes_the_account(self, client):
+        """The right password with a transfer erases the account and moves the project."""
+        # GIVEN
+        owner = register_and_login(client, "pw-right-owner@example.com")
+        project_id = create_project(client, owner, "Handed")["id"]
+        _member, member_id = _add_expert(client, owner, project_id, "pw-right-heir@example.com")
+
+        # WHEN
+        response = delete_account(
+            client,
+            owner,
+            [{"project_id": project_id, "action": "transfer", "new_admin_id": member_id}],
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        with app_session(client) as session:
+            project = session.get(Project, UUID(project_id))
+            assert project is not None
+            assert str(project.admin_id) == member_id
+
+    def test_route_is_limited_like_a_password_change(self, client):
+        """With the limiter on, the fourth attempt in a minute is refused with 429."""
+        # GIVEN the limiter switched on and the password-change limit
+        assert LIMIT_PWD_RESET == "3/minute"  # pragma: allowlist secret
+        allowed = int(LIMIT_PWD_RESET.split("/")[0])
+        token = register_and_login(client, "pw-limited@example.com")
+
+        # WHEN one address guesses wrong as often as the limit allows, and once more
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                statuses = [
+                    delete_account(client, token, password=self.WRONG_PASSWORD).status_code
+                    for _ in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+
+        # THEN the first attempts were answered and the last was limited
+        assert statuses == [status.HTTP_400_BAD_REQUEST] * allowed + [
+            status.HTTP_429_TOO_MANY_REQUESTS
+        ]
 
 
 class TestDeleteAccountRecalculatesResults:
@@ -434,7 +576,7 @@ class TestDeleteAccountRecalculatesResults:
         assert before.json()["num_experts"] == 2
 
         # WHEN the member deletes their account
-        response = client.delete("/api/v1/users/me", headers=auth_header(member))
+        response = delete_account(client, member)
 
         # THEN the result counts only the owner's opinion
         assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -455,7 +597,7 @@ class TestDeleteAccountRecalculatesResults:
         self._submit(client, member, project_id, 70.0, 80.0, 90.0)
 
         # WHEN the member deletes their account and the owner exports the result
-        client.delete("/api/v1/users/me", headers=auth_header(member))
+        delete_account(client, member)
         response = client.get(
             f"/api/v1/projects/{project_id}/result/export?format=csv",
             headers=auth_header(owner),
@@ -477,7 +619,7 @@ class TestDeleteAccountRecalculatesResults:
         self._submit(client, member, project_id, 40.0, 50.0, 60.0)
 
         # WHEN the member deletes their account
-        response = client.delete("/api/v1/users/me", headers=auth_header(member))
+        response = delete_account(client, member)
 
         # THEN the project has no result left
         assert response.status_code == status.HTTP_204_NO_CONTENT

@@ -22,6 +22,7 @@ import {
   SCALE_RANGE_INVALID_CODE,
   INVALID_PROJECT_DISPOSITION_CODE,
   ACCOUNT_HAS_OWNED_PROJECTS_CODE,
+  CURRENT_PASSWORD_INCORRECT_CODE,
 } from '@/lib/errors';
 
 /**
@@ -49,6 +50,7 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
   [SCALE_RANGE_INVALID_CODE]: 'errors.scaleRangeInvalid',
   [INVALID_PROJECT_DISPOSITION_CODE]: 'errors.invalidProjectDisposition',
   [ACCOUNT_HAS_OWNED_PROJECTS_CODE]: 'errors.accountHasOwnedProjects',
+  [CURRENT_PASSWORD_INCORRECT_CODE]: 'errors.currentPasswordIncorrect', // pragma: allowlist secret
 };
 
 /**

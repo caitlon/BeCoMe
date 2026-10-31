@@ -174,6 +174,7 @@
     "scaleExcludesOpinions": "Stávající názory leží mimo novou škálu. Rozšiřte rozsah, nebo nejdřív požádejte experty, ať své názory upraví.",
     "scaleRangeInvalid": "Škála není platná. Minimum musí být menší než maximum.",
     "invalidProjectDisposition": "Jeden ze zvolených nových správců nemůže projekt převzít. Vyberte jiného člena, nebo projekt smažte.",
+    "currentPasswordIncorrect": "Současné heslo není správné.",
     "accountHasOwnedProjects": "Vaše projekty se mezitím změnily. Zavřete toto okno a zkuste to znovu.",
     "retry": "Zkusit znovu",
     "logoutFailedTitle": "Odhlášení selhalo",

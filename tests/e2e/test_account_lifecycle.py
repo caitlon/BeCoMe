@@ -5,6 +5,7 @@ import pytest
 from tests.e2e.conftest import (
     auth_headers,
     create_project,
+    delete_account,
     register_user,
     submit_opinion,
     unique_email,
@@ -41,10 +42,7 @@ class TestAccountLifecycle:
         assert del_project.status_code == 204
 
         # WHEN: user deletes their account
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(token),
-        )
+        delete_resp = delete_account(http_client, token)
 
         # THEN: deletion succeeds
         assert delete_resp.status_code == 204
@@ -55,7 +53,7 @@ class TestAccountLifecycle:
         email = unique_email("deleted")
         token = register_user(http_client, email)
 
-        delete_resp = http_client.delete("/users/me", headers=auth_headers(token))
+        delete_resp = delete_account(http_client, token)
         assert delete_resp.status_code == 204
 
         # WHEN: try to use the old token

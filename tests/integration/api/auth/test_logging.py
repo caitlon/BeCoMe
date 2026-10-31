@@ -419,6 +419,22 @@ class TestLogPasswordChangeFailure:
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "password_change_failure"
 
+    def test_records_the_path_of_the_refusing_route(self):
+        """The record names the route that refused, so deletion and change are told apart."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.7"
+        mock_request.url.path = "/api/v1/users/me"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_password_change_failure(mock_request)
+
+        # THEN
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["path"] == "/api/v1/users/me"
+
     def test_extracts_ip_from_request(self):
         """Failed password change extracts IP from request."""
         # GIVEN
@@ -444,6 +460,7 @@ class TestLogPasswordChangeFailure:
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "password_change_failure"
         assert extra["ip"] == "unknown"
+        assert extra["path"] is None
 
 
 class TestLogAccountDeletion:
