@@ -400,7 +400,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password, delete account |
 | Write | `30/minute` | Submitting and withdrawing an opinion, inviting a member |
 | Upload | `10/minute` | Photo upload |
-| Standard | `60/minute` | GDPR export, standalone calculate, result export |
+| Standard | `60/minute` | GDPR export, standalone calculate, result export. Standalone calculate needs a signed-in user and counts per user, not per address |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev, test and prod services |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |

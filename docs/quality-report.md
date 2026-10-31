@@ -137,7 +137,9 @@ Tool: Locust 2.43.3, the version `uv.lock` resolved on the run date; `pyproject.
 # Start API server
 SECRET_KEY=test-key TESTING=1 uv run uvicorn api.main:app --port 8000
 
-# Run benchmark (separate terminal)
+# Run benchmark (separate terminal); the route needs a signed-in user, so give the
+# run a verified account
+export BECOME_LOAD_EMAIL=<email> BECOME_LOAD_PASSWORD=<password>
 uv run locust -f tests/performance/locustfile.py \
     --host http://localhost:8000 --headless \
     --users 10 --spawn-rate 2 --run-time 60s --csv results
