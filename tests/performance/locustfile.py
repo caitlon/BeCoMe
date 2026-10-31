@@ -6,7 +6,9 @@ to measure response time under load.
 The route needs a signed-in user. Each simulated user logs in with the account in
 ``BECOME_LOAD_EMAIL`` and ``BECOME_LOAD_PASSWORD`` (a verified account that already
 exists) and sends its token as a Bearer header. The limit of 60 requests a minute is
-counted per account, so start the server with ``TESTING=1`` for a load run.
+counted per account, so start the server with ``TESTING=1`` for a load run. The token is
+not renewed: for a run longer than its 15 minutes, raise ``ACCESS_TOKEN_EXPIRE_MINUTES``
+on the server.
 
 Usage::
 
