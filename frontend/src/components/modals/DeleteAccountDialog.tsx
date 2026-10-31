@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import {
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { SubmitButton } from "@/components/forms";
+import { PasswordInput, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { logger } from "@/lib/logger";
@@ -34,7 +34,10 @@ interface DeleteAccountDialogProps {
 
 /**
  * Account-deletion dialog. Each project the user still owns must be handled first:
- * deleted, or transferred to another member (GDPR Art. 17 right to erasure).
+ * deleted, or transferred to another member (GDPR Art. 17 right to erasure), and the
+ * current password confirms the request, as it does for a password change. Every opening
+ * starts from the default choices and an empty password. Enter in the password field
+ * submits the form.
  */
 export function DeleteAccountDialog({
   open,
@@ -49,6 +52,8 @@ export function DeleteAccountDialog({
   const [ownedProjects, setOwnedProjects] = useState<ProjectWithRole[]>([]);
   const [membersByProject, setMembersByProject] = useState<Record<string, Member[]>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [password, setPassword] = useState("");
+  const passwordHintId = useId();
   const [submitting, setSubmitting] = useState(false);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
 
@@ -56,6 +61,10 @@ export function DeleteAccountDialog({
     setLoading(true);
     setLoadError(false);
     setFailedMessage(null);
+    // Choices and the password belong to one opening: a choice made earlier can name a member
+    // who has since left, and a password typed earlier should not wait in a closed dialog.
+    setChoices({});
+    setPassword("");
     try {
       const projects = await api.getProjects();
       const owned = projects.filter((p) => p.role === "admin");
@@ -105,13 +114,19 @@ export function DeleteAccountDialog({
     setSubmitting(true);
     setFailedMessage(null);
     try {
-      await api.deleteAccount(buildDispositions());
+      await api.deleteAccount(password, buildDispositions());
       await onConfirmed();
     } catch (err) {
       logger.error("Account deletion failed", { error: String(err) });
       setFailedMessage(describeError(err, tCommon, t("deleteAccount.failed")));
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = (event: React.SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (loading || loadError || submitting || password === "") return;
+    handleConfirm();
   };
 
   return (
@@ -127,75 +142,96 @@ export function DeleteAccountDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-2">
-          {loading ? (
-            <output
-              className="flex justify-center py-6"
-              aria-label={tCommon("a11y.loading")}
-            >
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </output>
-          ) : (
-            <>
-              {ownedProjects.length > 0 && (
-                <div className="space-y-3 mb-4">
-                  {ownedProjects.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                    >
-                      <span className="text-sm font-medium truncate">{p.name}</span>
-                      <Select
-                        value={choiceFor(p.id)}
-                        onValueChange={(v) => setChoices((c) => ({ ...c, [p.id]: v }))}
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="py-2">
+            {loading ? (
+              <output
+                className="flex justify-center py-6"
+                aria-label={tCommon("a11y.loading")}
+              >
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </output>
+            ) : (
+              <>
+                {ownedProjects.length > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {ownedProjects.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
-                        <SelectTrigger className="w-full sm:w-56 sm:shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={DELETE_VALUE}>
-                            {t("deleteAccount.deleteProject")}
-                          </SelectItem>
-                          {(membersByProject[p.id] ?? []).map((m) => (
-                            <SelectItem key={m.user_id} value={`${TRANSFER_PREFIX}${m.user_id}`}>
-                              {t("deleteAccount.transferTo", {
-                                name: `${m.first_name} ${m.last_name ?? ""}`.trim(),
-                              })}
+                        <span className="text-sm font-medium truncate">{p.name}</span>
+                        <Select
+                          value={choiceFor(p.id)}
+                          onValueChange={(v) => setChoices((c) => ({ ...c, [p.id]: v }))}
+                        >
+                          <SelectTrigger className="w-full sm:w-56 sm:shrink-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={DELETE_VALUE}>
+                              {t("deleteAccount.deleteProject")}
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-sm font-medium text-destructive">
-                {t("deleteModal.details.noUndo")}
-              </p>
-              {(loadError || failedMessage) && (
-                <p className="text-sm text-destructive mt-2" role="alert">
-                  {loadError ? t("deleteAccount.loadFailed") : failedMessage}
+                            {(membersByProject[p.id] ?? []).map((m) => (
+                              <SelectItem key={m.user_id} value={`${TRANSFER_PREFIX}${m.user_id}`}>
+                                {t("deleteAccount.transferTo", {
+                                  name: `${m.first_name} ${m.last_name ?? ""}`.trim(),
+                                })}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!loadError && (
+                  <div className="mb-4 space-y-2">
+                    <p id={passwordHintId} className="text-sm text-muted-foreground">
+                      {t("deleteAccount.passwordHint")}
+                    </p>
+                    <PasswordInput
+                      label={t("deleteAccount.password")}
+                      autoComplete="current-password"
+                      aria-describedby={passwordHintId}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      readOnly={submitting}
+                    />
+                  </div>
+                )}
+                <p className="text-sm font-medium text-destructive">
+                  {t("deleteModal.details.noUndo")}
                 </p>
-              )}
-            </>
-          )}
-        </div>
+                {(loadError || failedMessage) && (
+                  <p className="text-sm text-destructive mt-2" role="alert">
+                    {loadError ? t("deleteAccount.loadFailed") : failedMessage}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            {tCommon("cancel")}
-          </Button>
-          <SubmitButton
-            type="button"
-            variant="destructive"
-            onClick={handleConfirm}
-            isLoading={submitting}
-            disabled={loading || loadError}
-            loadingText={t("deleteModal.deleting")}
-          >
-            {t("deleteModal.confirm")}
-          </SubmitButton>
-        </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              {tCommon("cancel")}
+            </Button>
+            <SubmitButton
+              type="submit"
+              variant="destructive"
+              isLoading={submitting}
+              disabled={loading || loadError || password === ""}
+              loadingText={t("deleteModal.deleting")}
+            >
+              {t("deleteModal.confirm")}
+            </SubmitButton>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

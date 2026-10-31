@@ -1000,17 +1000,39 @@ describe('ApiClient', () => {
       );
     });
 
-    it('deleteAccount sends DELETE to /users/me', async () => {
+    it('deleteAccount sends DELETE to /users/me with the password and dispositions', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 204,
       });
 
-      await api.deleteAccount();
+      await api.deleteAccount('secret-pass', [{ project_id: 'p1', action: 'delete' }]);
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/users/me'),
-        expect.objectContaining({ method: 'DELETE' })
+        expect.objectContaining({
+          method: 'DELETE',
+          body: JSON.stringify({
+            current_password: 'secret-pass',
+            project_dispositions: [{ project_id: 'p1', action: 'delete' }],
+          }),
+        })
+      );
+    });
+
+    it('deleteAccount sends no dispositions by default', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await api.deleteAccount('secret-pass');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/users/me'),
+        expect.objectContaining({
+          body: JSON.stringify({ current_password: 'secret-pass', project_dispositions: [] }),
+        })
       );
     });
 

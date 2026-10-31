@@ -17,6 +17,7 @@ import {
   SCALE_RANGE_INVALID_CODE,
   INVALID_PROJECT_DISPOSITION_CODE,
   ACCOUNT_HAS_OWNED_PROJECTS_CODE,
+  CURRENT_PASSWORD_INCORRECT_CODE,
   INVITEE_NOT_FOUND_CODE,
   ALREADY_INVITED_CODE,
   ALREADY_MEMBER_CODE,
@@ -106,6 +107,7 @@ describe('describeError', () => {
     [SCALE_RANGE_INVALID_CODE, 422, 'errors.scaleRangeInvalid'],
     [INVALID_PROJECT_DISPOSITION_CODE, 422, 'errors.invalidProjectDisposition'],
     [ACCOUNT_HAS_OWNED_PROJECTS_CODE, 409, 'errors.accountHasOwnedProjects'],
+    [CURRENT_PASSWORD_INCORRECT_CODE, 400, 'errors.currentPasswordIncorrect'],
   ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
     expect(
       describeError(new HttpError('English server detail', status, code), t, 'fallback')
@@ -133,6 +135,7 @@ describe('describeError', () => {
       SCALE_RANGE_INVALID_CODE,
       INVALID_PROJECT_DISPOSITION_CODE,
       ACCOUNT_HAS_OWNED_PROJECTS_CODE,
+      CURRENT_PASSWORD_INCORRECT_CODE,
     ]).toEqual([
       'invitee_not_found',
       'already_invited',
@@ -153,6 +156,7 @@ describe('describeError', () => {
       'scale_range_invalid',
       'invalid_project_disposition',
       'account_has_owned_projects',
+      'current_password_incorrect',
     ]);
   });
 

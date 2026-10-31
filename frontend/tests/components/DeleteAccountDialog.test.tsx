@@ -15,11 +15,13 @@ vi.mock('@/lib/api', () => ({
   api: {
     getProjects: () => mockApi.getProjects(),
     getMembers: (id: string) => mockApi.getMembers(id),
-    deleteAccount: (dispositions: unknown) => mockApi.deleteAccount(dispositions),
+    deleteAccount: (password: string, dispositions: unknown) =>
+      mockApi.deleteAccount(password, dispositions),
   },
 }));
 
 const CURRENT_USER_ID = 'owner-1';
+const PASSWORD = 'my-password';
 
 function ownedProject(overrides: Partial<ProjectWithRole> = {}): ProjectWithRole {
   return {
@@ -63,6 +65,12 @@ function renderDialog(onConfirmed = vi.fn().mockResolvedValue(undefined)) {
   return { onConfirmed };
 }
 
+/** Types the password once the dialog has loaded, then returns the confirm button. */
+async function fillPassword(user: ReturnType<typeof userEvent.setup>, password = PASSWORD) {
+  await user.type(await screen.findByLabelText('Current Password'), password);
+  return screen.getByRole('button', { name: 'Delete My Account' });
+}
+
 describe('DeleteAccountDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,12 +83,12 @@ describe('DeleteAccountDialog', () => {
     const user = userEvent.setup();
     const { onConfirmed } = renderDialog();
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalledWith([]);
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith(PASSWORD, []);
       expect(onConfirmed).toHaveBeenCalled();
     });
   });
@@ -93,12 +101,12 @@ describe('DeleteAccountDialog', () => {
 
     expect(await screen.findByText('Owned Project')).toBeInTheDocument();
 
-    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalledWith([
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith(PASSWORD, [
         { project_id: 'proj-1', action: 'delete' },
       ]);
     });
@@ -109,7 +117,7 @@ describe('DeleteAccountDialog', () => {
     const user = userEvent.setup();
     const { onConfirmed } = renderDialog();
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
@@ -157,12 +165,12 @@ describe('DeleteAccountDialog', () => {
     expect(mockApi.getMembers).toHaveBeenCalledTimes(1);
     expect(mockApi.getMembers).toHaveBeenCalledWith('proj-2');
 
-    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalledWith([
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith(PASSWORD, [
         { project_id: 'example-1', action: 'delete' },
         { project_id: 'proj-2', action: 'delete' },
       ]);
@@ -187,7 +195,7 @@ describe('DeleteAccountDialog', () => {
     const user = userEvent.setup();
     const { onConfirmed } = renderDialog();
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
@@ -207,7 +215,7 @@ describe('DeleteAccountDialog', () => {
     };
     const { rerender } = render(<DeleteAccountDialog open {...props} />);
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const confirm = await fillPassword(user);
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -218,11 +226,116 @@ describe('DeleteAccountDialog', () => {
     rerender(<DeleteAccountDialog open {...props} />);
 
     await waitFor(() => expect(mockApi.getProjects).toHaveBeenCalledTimes(2));
-    await screen.findByRole('button', { name: 'Delete My Account' });
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeEnabled()
-    );
+    expect(await screen.findByLabelText('Current Password')).toHaveValue('');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the confirm button disabled until a password is typed', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    const field = await screen.findByLabelText('Current Password');
+    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
+    expect(confirm).toBeDisabled();
+
+    await user.type(field, 'x');
+    expect(confirm).toBeEnabled();
+
+    await user.clear(field);
+    expect(confirm).toBeDisabled();
+  });
+
+  it('sends the typed password with the dispositions', async () => {
+    mockApi.getProjects.mockResolvedValue([ownedProject()]);
+    mockApi.getMembers.mockResolvedValue([member()]);
+    const user = userEvent.setup();
+    renderDialog();
+
+    const confirm = await fillPassword(user, 'Secret Pass 1!');
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith('Secret Pass 1!', [
+        { project_id: 'proj-1', action: 'delete' },
+      ]);
+    });
+  });
+
+  it('submits when Enter is pressed in the password field', async () => {
+    const user = userEvent.setup();
+    const { onConfirmed } = renderDialog();
+
+    await user.type(await screen.findByLabelText('Current Password'), `${PASSWORD}{Enter}`);
+
+    await waitFor(() => {
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith(PASSWORD, []);
+      expect(onConfirmed).toHaveBeenCalled();
+    });
+  });
+
+  it('does not submit on Enter while the password is empty', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.type(await screen.findByLabelText('Current Password'), '{Enter}');
+
+    expect(mockApi.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('shows the wrong-password message and keeps the dialog and its input after a refusal', async () => {
+    mockApi.deleteAccount.mockRejectedValueOnce(
+      new HttpError('Current password is incorrect', 400, 'current_password_incorrect')
+    );
+    const user = userEvent.setup();
+    const { onConfirmed } = renderDialog();
+
+    const confirm = await fillPassword(user, 'wrong-one');
+    await user.click(confirm);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Current password is incorrect.');
+    expect(onConfirmed).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Current Password')).toHaveValue('wrong-one');
+    expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeEnabled();
+  });
+
+  it('starts every opening from the default choices, not from a stale transfer', async () => {
+    mockApi.getProjects.mockResolvedValue([ownedProject()]);
+    mockApi.getMembers.mockResolvedValue([member()]);
+    mockApi.deleteAccount.mockRejectedValueOnce(
+      new HttpError('English server detail', 422, 'invalid_project_disposition')
+    );
+    const user = userEvent.setup();
+    const props = {
+      onOpenChange: vi.fn(),
+      currentUserId: CURRENT_USER_ID,
+      onConfirmed: vi.fn().mockResolvedValue(undefined),
+    };
+    const { rerender } = render(<DeleteAccountDialog open {...props} />);
+
+    // GIVEN a transfer to Jane that the API refuses
+    await user.click(await screen.findByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'Transfer to Jane Roe' }));
+    await user.click(await fillPassword(user));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(mockApi.deleteAccount).toHaveBeenLastCalledWith(PASSWORD, [
+      { project_id: 'proj-1', action: 'transfer', new_admin_id: 'member-1' },
+    ]);
+
+    // WHEN the dialog is closed and reopened after Jane has left the project
+    mockApi.getMembers.mockResolvedValue([]);
+    rerender(<DeleteAccountDialog open={false} {...props} />);
+    rerender(<DeleteAccountDialog open {...props} />);
+
+    // THEN the choice is back to the default and the next submit deletes the project
+    await waitFor(() => expect(mockApi.getProjects).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('combobox')).toHaveTextContent('Delete this project');
+    await user.click(await fillPassword(user));
+
+    await waitFor(() => {
+      expect(mockApi.deleteAccount).toHaveBeenLastCalledWith(PASSWORD, [
+        { project_id: 'proj-1', action: 'delete' },
+      ]);
+    });
   });
 
   it('reports a load error and blocks deletion when projects fail to load', async () => {
@@ -231,6 +344,7 @@ describe('DeleteAccountDialog', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeDisabled();
+    expect(screen.queryByLabelText('Current Password')).not.toBeInTheDocument();
     expect(mockApi.deleteAccount).not.toHaveBeenCalled();
   });
 
