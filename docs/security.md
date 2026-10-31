@@ -390,9 +390,8 @@ until somebody either wires in the dependency or records what replaces it.
 ## Rate limiting and abuse control
 
 slowapi handles rate limiting, backed by Redis, with an in-memory fallback when Redis is
-unreachable (`api/middleware/rate_limit.py`). Two global ceilings, `300/minute` and a
-`20/second` burst, apply to every route with no limit of its own, so an endpoint stays bounded
-even if it forgot one. A route with its own limit counts only that limit:
+unreachable (`api/middleware/rate_limit.py`). The limiter is configured with two default limits,
+`300/minute` and a `20/second` burst. A route with its own limit counts only that limit:
 
 | Limit | Value | Applied to |
 |-------|-------|-----------|
@@ -407,16 +406,15 @@ even if it forgot one. A route with its own limit counts only that limit:
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
 
-Only those routes carry a limit of their own. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The three assistant caps (the hourly messages per account,
-the global hourly ceiling counted for everyone, and the concurrent turns per process) are applied
-through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs first, so a
-request it refuses takes no slot, spends no message and builds no API client; the `hold_turn_slot`
-dependency follows, so a request refused for a full process spends no message of the hourly budget,
-and the message limit comes last. It is no longer a route dependency: `open_chat_turn` calls
-`enforce_message_limit` after the request body check and the documentation retriever, so a message
-that is too long or an invalid body (`422`) and a retriever that cannot be built (`503`) are
-refused before a message is spent.
+Only those routes carry a limit of their own. The three assistant caps (the hourly messages per
+account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
+applied through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs
+first, so a request it refuses takes no slot, spends no message and builds no API client; the
+`hold_turn_slot` dependency follows, so a request refused for a full process spends no message of
+the hourly budget, and the message limit comes last. It is no longer a route dependency:
+`open_chat_turn` calls `enforce_message_limit` after the request body check and the documentation
+retriever, so a message that is too long or an invalid body (`422`) and a retriever that cannot be
+built (`503`) are refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
 memory otherwise. A deployed service refuses to start with the per-user or the global hourly
 limit at `0`, so neither cap can be switched off there.
