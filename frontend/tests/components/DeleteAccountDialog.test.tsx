@@ -298,6 +298,30 @@ describe('DeleteAccountDialog', () => {
     expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeEnabled();
   });
 
+  it('accepts a retyped password after a refusal', async () => {
+    mockApi.deleteAccount
+      .mockRejectedValueOnce(
+        new HttpError('Current password is incorrect', 400, 'current_password_incorrect')
+      )
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    const { onConfirmed } = renderDialog();
+
+    // GIVEN a refused attempt with a wrong password
+    await user.click(await fillPassword(user, 'wrong-one'));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    // WHEN the user retypes the correct password and submits again
+    await user.clear(screen.getByLabelText('Current Password'));
+    await user.type(screen.getByLabelText('Current Password'), PASSWORD);
+    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
+
+    // THEN the refusal is gone and the corrected password went through
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(mockApi.deleteAccount).toHaveBeenLastCalledWith(PASSWORD, []);
+  });
+
   it('starts every opening from the default choices, not from a stale transfer', async () => {
     mockApi.getProjects.mockResolvedValue([ownedProject()]);
     mockApi.getMembers.mockResolvedValue([member()]);

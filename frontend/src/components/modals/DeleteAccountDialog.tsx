@@ -61,10 +61,8 @@ export function DeleteAccountDialog({
     setLoading(true);
     setLoadError(false);
     setFailedMessage(null);
-    // Choices and the password belong to one opening: a choice made earlier can name a member
-    // who has since left, and a password typed earlier should not wait in a closed dialog.
+    // A choice made earlier can name a member who has since left, so each opening starts clean.
     setChoices({});
-    setPassword("");
     try {
       const projects = await api.getProjects();
       const owned = projects.filter((p) => p.role === "admin");
@@ -90,8 +88,12 @@ export function DeleteAccountDialog({
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load owned projects on open
+    if (!open) {
+      // The password does not outlive the opening: the page keeps this dialog mounted.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the password on close, load projects on open
+      setPassword("");
+      return;
+    }
     loadOwnedProjects();
   }, [open, loadOwnedProjects]);
 
