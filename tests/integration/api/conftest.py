@@ -83,7 +83,7 @@ def create_test_app() -> FastAPI:
 
     Includes all API routers and exception handlers for integration testing. The app has no
     ``SlowAPIMiddleware``, so integration limit tests cover a route's own decorator and not the
-    global ceilings.
+    limiter's default limits.
     """
     settings = get_settings()
     app = FastAPI(

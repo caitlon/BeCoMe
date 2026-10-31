@@ -15,8 +15,7 @@ from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.ratelimit")
 
-# The limiter's default limits, for a route with no @limiter.limit decorator. A route with its
-# own @limiter.limit counts only that limit.
+# The limiter's default limits. A route with its own @limiter.limit counts only that limit.
 LIMIT_DEFAULT = "300/minute"
 LIMIT_DEFAULT_BURST = "20/second"
 # Limits used when the Redis store is unreachable: the limiter degrades to
@@ -28,13 +27,12 @@ def build_limiter(settings: Settings) -> Limiter:
     """Create the slowapi Limiter, backed by Redis when configured.
 
     Uses ``settings.redis_url`` as the storage backend so counters are shared across
-    replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` plus
-    ``SlowAPIMiddleware`` (wired in ``create_app``) serve routes with no decorator of their
-    own. ``in_memory_fallback`` keeps limiting
-    working during a Redis outage. It is checked before ``swallow_errors``, so a store
-    failure degrades to per-instance in-memory limits rather than disabling limiting
-    entirely. ``swallow_errors`` remains a last-resort guard so a store hiccup cannot turn
-    into a 500. Limiting is disabled only under the TESTING flag.
+    replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` are set on
+    the Limiter and ``SlowAPIMiddleware`` is registered in ``create_app``.
+    ``in_memory_fallback`` keeps limiting working during a Redis outage. It is checked before
+    ``swallow_errors``, so a store failure degrades to per-instance in-memory limits rather
+    than disabling limiting entirely. ``swallow_errors`` remains a last-resort guard so a
+    store hiccup cannot turn into a 500. Limiting is disabled only under the TESTING flag.
 
     :param settings: Application settings.
     :return: A configured slowapi Limiter.
