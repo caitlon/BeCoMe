@@ -233,6 +233,26 @@ def log_password_change_failure(request: "Request | None" = None) -> None:
     )
 
 
+def log_current_password_locked(request: "Request | None" = None) -> None:
+    """Log a current-password check refused because the account is locked.
+
+    Covers every route that confirms the current password; ``path`` tells them apart. The
+    acting ``user_id`` is bound by the logging ContextFilter from the authenticated
+    request, so the record carries no email and no digest of one.
+
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Current password check refused, account locked",
+        extra={
+            "event": "current_password_locked",
+            "ip": ip,
+            "path": request.url.path if request else None,
+        },
+    )
+
+
 def log_password_reset_requested(email: str, request: "Request | None" = None) -> None:
     """Log a password reset request (forgot-password).
 

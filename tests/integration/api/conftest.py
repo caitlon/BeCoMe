@@ -415,9 +415,10 @@ def pending_account(session):
 
 @pytest.fixture(autouse=True)
 def _reset_auth_throttles():
-    """Give each test fresh login, activation, reset-email, and verification-email throttles.
+    """Give each test fresh login, activation, current-password, reset-email, and
+    verification-email throttles.
 
-    All four factories are lru_cache singletons, so their in-memory state would
+    All five factories are lru_cache singletons, so their in-memory state would
     otherwise leak between tests that reuse an email address, and every test that
     registers a user now goes through the verification-email throttle.
     """
@@ -425,11 +426,16 @@ def _reset_auth_throttles():
         get_reset_email_throttle,
         get_verification_email_throttle,
     )
-    from api.auth.login_throttle import get_activation_throttle, get_login_throttle
+    from api.auth.login_throttle import (
+        get_activation_throttle,
+        get_current_password_throttle,
+        get_login_throttle,
+    )
 
     def clear_all():
         get_login_throttle.cache_clear()
         get_activation_throttle.cache_clear()
+        get_current_password_throttle.cache_clear()
         get_reset_email_throttle.cache_clear()
         get_verification_email_throttle.cache_clear()
 

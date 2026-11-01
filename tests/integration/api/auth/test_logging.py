@@ -3,8 +3,11 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 from api.auth.logging import (
     log_account_deletion,
+    log_current_password_locked,
     log_email_verified,
     log_login_blocked_unverified,
     log_login_failure,
@@ -500,3 +503,28 @@ class TestLogAccountDeletion:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "8.8.8.8"
+
+
+class TestLogCurrentPasswordLocked:
+    """Tests for log_current_password_locked function."""
+
+    @pytest.mark.parametrize(
+        ("host", "path"), [("10.0.0.7", "/api/v1/users/me/password"), (None, None)]
+    )
+    def test_logs_warning_with_ip_and_path_only(self, host, path):
+        """A refused check names the event, the address and the route, and nothing else."""
+        request = None
+        if host:
+            request = MagicMock()
+            request.headers.get.return_value = None
+            request.client.host = host
+            request.url.path = path
+
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_current_password_locked(request)
+
+        assert mock_logger.warning.call_args[1]["extra"] == {
+            "event": "current_password_locked",
+            "ip": host or "unknown",
+            "path": path,
+        }
