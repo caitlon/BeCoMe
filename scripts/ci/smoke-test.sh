@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Lightweight smoke test for post-deployment verification.
-# Checks API health, calculation endpoint, and frontend availability.
+# Checks API health, that the calculation endpoint demands a session, and frontend availability.
 #
 # Usage:
 #   ./scripts/ci/smoke-test.sh                                        # localhost defaults
@@ -32,15 +32,17 @@ HEALTH=$(curl -sf --max-time 5 "$API_URL/health" 2>/dev/null) && \
   pass "API health endpoint" || \
   fail "API health endpoint ($API_URL/health)"
 
-# --- Check 2: Calculate endpoint ---
+# --- Check 2: Calculate endpoint refuses a request with no session ---
+# The route needs a signed-in user and the smoke test holds no account, so it checks that
+# the route is mounted and answers 401, not that it calculates.
 CHECKS=$((CHECKS + 1))
 CALC_BODY='{"experts":[{"name":"A","lower":5.0,"peak":10.0,"upper":15.0},{"name":"B","lower":8.0,"peak":12.0,"upper":18.0}]}'
-CALC=$(curl -sf --max-time 5 -X POST "$API_URL/calculate" \
+CALC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$API_URL/calculate" \
   -H "Content-Type: application/json" \
-  -d "$CALC_BODY" 2>/dev/null) && \
-  echo "$CALC" | grep -q 'best_compromise' && \
-  pass "Calculate endpoint" || \
-  fail "Calculate endpoint ($API_URL/calculate)"
+  -d "$CALC_BODY" 2>/dev/null)
+[ "$CALC_STATUS" = "401" ] && \
+  pass "Calculate endpoint requires a session" || \
+  fail "Calculate endpoint ($API_URL/calculate answered ${CALC_STATUS:-no response}, expected 401)"
 
 # --- Check 3: Frontend loads ---
 CHECKS=$((CHECKS + 1))

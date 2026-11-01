@@ -170,6 +170,7 @@
     "scaleExcludesOpinions": "Existing opinions fall outside the new scale. Widen the range, or ask the experts to change their opinions first.",
     "scaleRangeInvalid": "The scale is not valid. The minimum must be lower than the maximum.",
     "invalidProjectDisposition": "One of the chosen new admins cannot take over the project. Choose another member or delete the project.",
+    "currentPasswordIncorrect": "Current password is incorrect.",
     "accountHasOwnedProjects": "Your projects changed while this dialog was open. Close it and try again.",
     "retry": "Try again",
     "logoutFailedTitle": "Sign-out failed",

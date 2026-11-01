@@ -1,17 +1,24 @@
 """Tests for rate limiting middleware."""
 
+import inspect
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
-from api.middleware.rate_limit import build_limiter, rate_limit_handler
+from api.middleware.rate_limit import (
+    bind_user_to_rate_limit,
+    build_limiter,
+    enforce_default_limits,
+    get_user_or_client_ip,
+    rate_limit_handler,
+)
 
 
 class TestRateLimitHandler:
@@ -190,7 +197,7 @@ class TestRetryAfterHeader:
     def test_a_real_limiter_answers_the_third_request_with_a_wait(self):
         """
         GIVEN a real in-memory limiter allowing 2 requests per 10 seconds
-        WHEN a client sends three requests through SlowAPIMiddleware
+        WHEN a client sends three requests to an app that runs enforce_default_limits
         THEN the third is 429 with an integer Retry-After between 1 and 10
         """
 
@@ -198,10 +205,9 @@ class TestRetryAfterHeader:
         def key(request: Request) -> str:
             return "test-client"
 
-        app = FastAPI()
+        app = FastAPI(dependencies=[Depends(enforce_default_limits)])
         app.state.limiter = Limiter(key_func=key, default_limits=["2/10 seconds"], enabled=True)
         app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
-        app.add_middleware(SlowAPIMiddleware)
 
         @app.get("/ping")
         def ping() -> dict[str, str]:
@@ -253,11 +259,12 @@ class TestRateLimitWiring:
         # THEN
         assert app.exception_handlers[RateLimitExceeded] is rate_limit_handler
 
-    def test_app_registers_slowapi_middleware(self):
+    def test_app_enforces_the_default_limits_through_a_dependency(self):
         """
         GIVEN the full application
         WHEN it is created
-        THEN SlowAPIMiddleware is installed so default_limits apply to every route
+        THEN enforce_default_limits is an app-level dependency, a plain function that FastAPI
+        runs in the threadpool, and SlowAPIMiddleware is not installed
         """
         # GIVEN
         from slowapi.middleware import SlowAPIMiddleware
@@ -268,7 +275,27 @@ class TestRateLimitWiring:
         app = create_app()
 
         # THEN
-        assert any(middleware.cls is SlowAPIMiddleware for middleware in app.user_middleware)
+        dependencies = [dependency.dependency for dependency in app.router.dependencies]
+        assert enforce_default_limits in dependencies
+        assert not inspect.iscoroutinefunction(enforce_default_limits)
+        assert all(middleware.cls is not SlowAPIMiddleware for middleware in app.user_middleware)
+
+    def test_the_dependency_adds_no_openapi_parameter(self):
+        """
+        GIVEN the full application
+        WHEN its OpenAPI schema is built
+        THEN a route without parameters of its own lists only its session cookie, with no
+        ``request`` parameter from the default-limit dependency
+        """
+        # GIVEN
+        from api.main import create_app
+
+        # WHEN
+        operation = create_app().openapi()["paths"]["/api/v1/auth/me"]["get"]
+
+        # THEN
+        names = [parameter["name"] for parameter in operation["parameters"]]
+        assert names == ["__Host-access_token"]
 
 
 class TestBuildLimiter:
@@ -296,15 +323,38 @@ class TestBuildLimiter:
         assert limiter._storage_uri is None
         assert limiter._swallow_errors is True
 
-    def test_applies_a_global_default_limit(self):
+    def test_configures_the_default_limits(self):
         """
         GIVEN any settings
         WHEN build_limiter runs
-        THEN a non-empty default limit is configured so no route is left unthrottled
+        THEN the limiter carries the default limits that enforce_default_limits applies
         """
         settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
         limiter = build_limiter(settings)
-        assert limiter._default_limits
+        assert len(limiter._default_limits) == 2
+
+    def test_redis_storage_has_connect_and_read_timeouts(self):
+        """
+        GIVEN settings with a redis_url
+        WHEN build_limiter runs
+        THEN the Redis client times out after 2 seconds on connect and on read, like the
+        other Redis clients, so an unreachable store cannot hold a request
+        """
+        settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
+        limiter = build_limiter(settings)
+        kwargs = limiter._storage.storage.connection_pool.connection_kwargs
+        assert kwargs["socket_connect_timeout"] == 2
+        assert kwargs["socket_timeout"] == 2
+
+    def test_builds_without_redis(self):
+        """
+        GIVEN settings without a redis_url
+        WHEN build_limiter runs
+        THEN the limiter still builds, on in-memory storage
+        """
+        settings = SimpleNamespace(testing=False, redis_url="")
+        limiter = build_limiter(settings)
+        assert type(limiter._storage).__name__ == "MemoryStorage"
 
     def test_enables_in_memory_fallback(self):
         """
@@ -316,3 +366,36 @@ class TestBuildLimiter:
         settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
         limiter = build_limiter(settings)
         assert limiter._in_memory_fallback_enabled is True
+
+
+class TestUserOrClientIpKey:
+    """The key of a limit that counts per signed-in user."""
+
+    USER_ID = UUID("6f1c2f0e-6d7a-4a52-9a41-5f5b0c1d2e3f")
+
+    def test_keys_by_the_user_bound_to_the_request(self):
+        """
+        GIVEN a request a dependency bound a user to
+        WHEN the key is read
+        THEN it names the user and ignores the client address
+        """
+        request = SimpleNamespace(state=SimpleNamespace())
+        bind_user_to_rate_limit(request, self.USER_ID)
+
+        with patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"):
+            key = get_user_or_client_ip(request)
+
+        assert key == f"user:{self.USER_ID}"
+
+    def test_falls_back_to_the_client_address_without_a_user(self):
+        """
+        GIVEN a request no user was bound to
+        WHEN the key is read
+        THEN it is the client address, so such requests never share one bucket
+        """
+        request = SimpleNamespace(state=SimpleNamespace())
+
+        with patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"):
+            key = get_user_or_client_ip(request)
+
+        assert key == "203.0.113.7"

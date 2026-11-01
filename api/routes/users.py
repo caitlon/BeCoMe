@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 
 from api.auth.dependencies import CurrentUser, CurrentUserFresh
 from api.auth.logging import log_account_deletion, log_data_export, log_password_change
+from api.auth.login_throttle import LoginThrottle, get_current_password_throttle
 from api.auth.revocation_store import RevocationStore, get_revocation_store
-from api.db.models import Project
+from api.db.models import Project, User
 from api.dependencies import (
     get_calculation_service,
     get_data_export_service,
@@ -22,6 +23,8 @@ from api.dependencies import (
 )
 from api.exceptions import (
     AccountHasOwnedProjectsError,
+    CurrentPasswordIncorrectError,
+    CurrentPasswordThrottledError,
     InvalidProjectDispositionError,
     PhotoContentMismatchError,
     PhotoDimensionsTooLargeError,
@@ -68,6 +71,33 @@ logger = logging.getLogger("api.route.users")
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 _PHOTO_NOT_FOUND = "Photo not found"
+
+
+def _verify_current_password(
+    service: UserService, user: User, current_password: str, throttle: LoginThrottle
+) -> None:
+    """Check the current password, counting a miss against the account.
+
+    Both routes that confirm the current password go through here, so their misses add up
+    on one counter. The lock is read before the password, as ``POST /login`` reads its own:
+    a locked account is refused even with the right password and nothing else runs.
+
+    :param service: User service (owns the comparison)
+    :param user: The signed-in user
+    :param current_password: Password to compare against the stored hash
+    :param throttle: Per-account current-password throttle
+    :raises CurrentPasswordThrottledError: If the account is locked
+    :raises CurrentPasswordIncorrectError: If the password does not match
+    """
+    key = str(user.id)
+    if throttle.is_locked(key):
+        raise CurrentPasswordThrottledError
+    try:
+        service.verify_current_password(user, current_password)
+    except CurrentPasswordIncorrectError:
+        throttle.record_failure(key)
+        raise
+    throttle.reset(key)
 
 
 def _photo_upload_rejected(reason: str, user_id: UUID, **fields: object) -> None:
@@ -202,24 +232,30 @@ def change_password(
     data: ChangePasswordRequest,
     service: Annotated[UserService, Depends(get_user_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    throttle: Annotated[LoginThrottle, Depends(get_current_password_throttle)],
 ) -> None:
     """Change the authenticated user's password.
 
     CurrentPasswordIncorrectError is handled by centralized exception middleware, which
     answers 400 with the code ``current_password_incorrect``. Rate limited to prevent
-    password guessing attacks. Every token issued before the change is invalidated (M1).
+    password guessing attacks, and wrong current passwords are also counted per account,
+    together with those of the account deletion, with a lock once the threshold is passed
+    (``CurrentPasswordThrottledError``, 429). Every token issued before the change is
+    invalidated (M1).
 
     :param request: FastAPI request (for rate limiting)
     :param current_user: User from JWT token
     :param data: Current and new password
     :param service: User service
     :param store: Revocation store (invalidates sessions issued before the change)
+    :param throttle: Per-account current-password throttle
+    :raises CurrentPasswordThrottledError: If the account is locked after repeated misses
     """
     # Order matters: verify, then close the session window, then write. Revoking before
     # the write means a store fault surfaces as a 503 with the password unchanged, rather
     # than committing the new password while old sessions stay valid. Verifying first
     # keeps a mistyped current password from logging the user out everywhere.
-    service.verify_current_password(current_user, data.current_password)
+    _verify_current_password(service, current_user, data.current_password, throttle)
     store.set_user_valid_after(current_user.id, datetime.now(UTC))
     service.set_password(current_user, data.new_password)
 
@@ -231,9 +267,11 @@ def change_password(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete current user account",
 )
+@limiter.limit(LIMIT_PWD_RESET)
 def delete_current_user(
     request: Request,
     current_user: CurrentUserFresh,
+    data: DeleteAccountRequest,
     service: Annotated[UserService, Depends(get_user_service)],
     project_service: Annotated[ProjectService, Depends(get_project_service)],
     membership_service: Annotated[
@@ -242,9 +280,17 @@ def delete_current_user(
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
     calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
-    data: DeleteAccountRequest | None = None,
+    throttle: Annotated[LoginThrottle, Depends(get_current_password_throttle)],
 ) -> None:
     """Delete the authenticated user's account (GDPR Article 17, right to erasure).
+
+    The current password is checked first, before any project is read or any disposition
+    validated, so a wrong password is refused with nothing touched. This is the same check
+    as a password change: CurrentPasswordIncorrectError is handled by centralized exception
+    middleware, which answers 400 with the code ``current_password_incorrect``. The rate
+    limit has the same value as the password change, and the misses of the two routes are
+    counted together per account: a locked account is refused with 429 before anything else
+    runs.
 
     Every project the user still admins must be handled first via ``data``: transfer it
     to another member, or delete it (its opinions and invitations cascade away). This
@@ -262,11 +308,16 @@ def delete_current_user(
     :param storage_service: Storage service (None when not configured)
     :param store: Revocation store (invalidates tokens issued before the deletion)
     :param calculation_service: Calculation service (recalculates affected project results)
-    :param data: Per-owned-project dispositions (transfer or delete)
+    :param throttle: Per-account current-password throttle
+    :param data: Current password and per-owned-project dispositions (transfer or delete)
+    :raises CurrentPasswordIncorrectError: If the current password does not match
+    :raises CurrentPasswordThrottledError: If the account is locked after repeated misses
     :raises AccountHasOwnedProjectsError: If an owned project has no disposition
     :raises InvalidProjectDispositionError: If a transfer target is not another member
     """
-    dispositions = data.project_dispositions if data else []
+    _verify_current_password(service, current_user, data.current_password, throttle)
+
+    dispositions = data.project_dispositions
     owned_by_id = {p.id: p for p in project_service.get_owned_projects(current_user.id)}
 
     # Each owned project must be handled exactly once; no disposition may name a project

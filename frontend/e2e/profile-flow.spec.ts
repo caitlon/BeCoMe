@@ -82,7 +82,11 @@ test.describe.serial('Profile Page Flow', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Delete Account?')).toBeVisible();
 
-    // Confirm deletion (wait for the dialog to finish loading owned projects)
+    // The password field appears once the dialog has loaded the owned projects, and the
+    // confirm button stays disabled until it is filled. The password is the new one set above.
+    await dialog.getByLabel('Current Password').fill(NEW_PASSWORD);
+
+    // Confirm deletion
     const confirmButton = dialog.getByRole('button', { name: 'Delete My Account' });
     await expect(confirmButton).toBeEnabled();
     await confirmButton.click();

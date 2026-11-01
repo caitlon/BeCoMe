@@ -54,7 +54,8 @@ class TestStandaloneCalculation:
 
     def test_standalone_calculate_three_experts_returns_correct_stats(self, http_client):
         """Three experts produce correct arithmetic mean, median, and best compromise."""
-        # GIVEN: three expert opinions
+        # GIVEN: a signed-in user and three expert opinions
+        token = register_user(http_client, unique_email("calculator"))
         payload = {
             "experts": [
                 {"name": "Expert A", "lower": 10.0, "peak": 20.0, "upper": 30.0},
@@ -64,7 +65,7 @@ class TestStandaloneCalculation:
         }
 
         # WHEN: call standalone calculate
-        response = http_client.post("/calculate", json=payload)
+        response = http_client.post("/calculate", json=payload, headers=auth_headers(token))
 
         # THEN: correct results
         assert response.status_code == 200
@@ -85,6 +86,17 @@ class TestStandaloneCalculation:
         assert result["best_compromise"]["lower"] == pytest.approx(20.0)
         assert result["best_compromise"]["peak"] == pytest.approx(30.0)
         assert result["best_compromise"]["upper"] == pytest.approx(40.0)
+
+    def test_standalone_calculate_without_a_session_returns_401(self, http_client):
+        """A request with no session is refused before any calculation."""
+        # GIVEN: one expert opinion and no credentials
+        payload = {"experts": [{"name": "Expert A", "lower": 10.0, "peak": 20.0, "upper": 30.0}]}
+
+        # WHEN: call standalone calculate
+        response = http_client.post("/calculate", json=payload)
+
+        # THEN: refused
+        assert response.status_code == 401
 
 
 @pytest.mark.e2e

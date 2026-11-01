@@ -268,8 +268,9 @@ class ProjectDisposition(BaseModel):
 
 
 class DeleteAccountRequest(BaseModel):
-    """Account-deletion payload: a disposition for each project the user still owns."""
+    """Account-deletion payload: the current password and a disposition for each owned project."""
 
     model_config = ConfigDict(extra="forbid")
 
+    current_password: str = Field(..., min_length=1, description="Current password", repr=False)
     project_dispositions: list[ProjectDisposition] = Field(default_factory=list)

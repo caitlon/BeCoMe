@@ -41,6 +41,8 @@
     "ownedIntro": "You still own the projects below. Choose what happens to each one before your account is deleted.",
     "deleteProject": "Delete this project",
     "transferTo": "Transfer to {{name}}",
+    "password": "Current Password",
+    "passwordHint": "Enter your password to confirm.",
     "loadFailed": "Could not load your projects. Please try again.",
     "failed": "Account deletion failed. Please try again."
   },

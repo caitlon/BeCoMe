@@ -11,6 +11,7 @@ from tests.e2e.conftest import (
     DEFAULT_PASSWORD,
     auth_headers,
     create_project,
+    delete_account,
     invite_and_accept,
     register_user,
     register_user_with_name,
@@ -46,7 +47,7 @@ class TestRightOfAccess:
         assert "id" in data
 
         # Cleanup
-        http_client.delete("/users/me", headers=auth_headers(token))
+        delete_account(http_client, token)
 
     def test_user_can_export_their_data(self, http_client):
         """GET /users/me/export returns the user's data (GDPR Article 20)."""
@@ -78,7 +79,7 @@ class TestRightOfAccess:
 
         # Cleanup
         http_client.delete(f"/projects/{project_id}", headers=auth_headers(token))
-        http_client.delete("/users/me", headers=auth_headers(token))
+        delete_account(http_client, token)
 
     def test_data_export_requires_authentication(self, http_client):
         """The export endpoint rejects unauthenticated requests."""
@@ -121,10 +122,7 @@ class TestDataErasure:
         assert len(opinions_before.json()) == 2
 
         # WHEN: expert deletes their account
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(expert_token),
-        )
+        delete_resp = delete_account(http_client, expert_token)
         assert delete_resp.status_code == 204
 
         # THEN: only owner's opinion remains
@@ -139,7 +137,7 @@ class TestDataErasure:
             f"/projects/{project_id}",
             headers=auth_headers(owner_token),
         )
-        http_client.delete("/users/me", headers=auth_headers(owner_token))
+        delete_account(http_client, owner_token)
 
     def test_deleted_expert_removed_from_members(self, http_client):
         """When expert deletes account, they disappear from project members."""
@@ -166,10 +164,7 @@ class TestDataErasure:
         assert len(members_before.json()) == 2
 
         # WHEN: expert deletes their account
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(expert_token),
-        )
+        delete_resp = delete_account(http_client, expert_token)
         assert delete_resp.status_code == 204
 
         # THEN: only owner remains in members
@@ -184,7 +179,7 @@ class TestDataErasure:
             f"/projects/{project_id}",
             headers=auth_headers(owner_token),
         )
-        http_client.delete("/users/me", headers=auth_headers(owner_token))
+        delete_account(http_client, owner_token)
 
     def test_deleted_invitee_pending_invitation_removed(self, http_client):
         """When invitee deletes account, their pending invitation disappears."""
@@ -211,10 +206,7 @@ class TestDataErasure:
         assert len(invitations_before.json()) == 1
 
         # WHEN: invitee deletes their account
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(invitee_token),
-        )
+        delete_resp = delete_account(http_client, invitee_token)
         assert delete_resp.status_code == 204
 
         # THEN: no pending invitations remain
@@ -229,7 +221,7 @@ class TestDataErasure:
             f"/projects/{project_id}",
             headers=auth_headers(owner_token),
         )
-        http_client.delete("/users/me", headers=auth_headers(owner_token))
+        delete_account(http_client, owner_token)
 
     def test_deleted_user_cannot_login(self, http_client):
         """Deleted user's credentials no longer work for login."""
@@ -238,10 +230,7 @@ class TestDataErasure:
         token = register_user(http_client, email)
 
         # WHEN: user deletes account and attempts to login again
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(token),
-        )
+        delete_resp = delete_account(http_client, token)
         assert delete_resp.status_code == 204
 
         login_resp = http_client.post(
@@ -261,14 +250,14 @@ class TestDataErasure:
         project_id = project["id"]
 
         # WHEN: the owner tries to delete their account
-        response = http_client.delete("/users/me", headers=auth_headers(token))
+        response = delete_account(http_client, token)
 
         # THEN: deletion is blocked
         assert response.status_code == 409
 
         # Cleanup
         http_client.delete(f"/projects/{project_id}", headers=auth_headers(token))
-        http_client.delete("/users/me", headers=auth_headers(token))
+        delete_account(http_client, token)
 
     def test_owner_can_delete_after_transferring_ownership(self, http_client):
         """After transferring ownership, the former owner can delete their account."""
@@ -291,14 +280,14 @@ class TestDataErasure:
         assert transfer.status_code == 200
         assert transfer.json()["admin_id"] == expert_id
 
-        delete_resp = http_client.delete("/users/me", headers=auth_headers(owner_token))
+        delete_resp = delete_account(http_client, owner_token)
 
         # THEN: deletion now succeeds
         assert delete_resp.status_code == 204
 
         # Cleanup: the new owner removes the project and their own account
         http_client.delete(f"/projects/{project_id}", headers=auth_headers(expert_token))
-        http_client.delete("/users/me", headers=auth_headers(expert_token))
+        delete_account(http_client, expert_token)
 
 
 @pytest.mark.e2e
@@ -316,10 +305,7 @@ class TestDeletionAudit:
         token = register_user(http_client, email)
 
         # WHEN: user deletes their account
-        delete_resp = http_client.delete(
-            "/users/me",
-            headers=auth_headers(token),
-        )
+        delete_resp = delete_account(http_client, token)
 
         # THEN: deletion succeeds
         assert delete_resp.status_code == 204

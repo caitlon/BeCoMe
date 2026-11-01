@@ -3,8 +3,11 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 from api.auth.logging import (
     log_account_deletion,
+    log_current_password_locked,
     log_email_verified,
     log_login_blocked_unverified,
     log_login_failure,
@@ -419,6 +422,22 @@ class TestLogPasswordChangeFailure:
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "password_change_failure"
 
+    def test_records_the_path_of_the_refusing_route(self):
+        """The record names the route that refused, so deletion and change are told apart."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.7"
+        mock_request.url.path = "/api/v1/users/me"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_password_change_failure(mock_request)
+
+        # THEN
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["path"] == "/api/v1/users/me"
+
     def test_extracts_ip_from_request(self):
         """Failed password change extracts IP from request."""
         # GIVEN
@@ -444,6 +463,7 @@ class TestLogPasswordChangeFailure:
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "password_change_failure"
         assert extra["ip"] == "unknown"
+        assert extra["path"] is None
 
 
 class TestLogAccountDeletion:
@@ -483,3 +503,28 @@ class TestLogAccountDeletion:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "8.8.8.8"
+
+
+class TestLogCurrentPasswordLocked:
+    """Tests for log_current_password_locked function."""
+
+    @pytest.mark.parametrize(
+        ("host", "path"), [("10.0.0.7", "/api/v1/users/me/password"), (None, None)]
+    )
+    def test_logs_warning_with_ip_and_path_only(self, host, path):
+        """A refused check names the event, the address and the route, and nothing else."""
+        request = None
+        if host:
+            request = MagicMock()
+            request.headers.get.return_value = None
+            request.client.host = host
+            request.url.path = path
+
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_current_password_locked(request)
+
+        assert mock_logger.warning.call_args[1]["extra"] == {
+            "event": "current_password_locked",
+            "ip": host or "unknown",
+            "path": path,
+        }
