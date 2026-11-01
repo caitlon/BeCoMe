@@ -10,7 +10,7 @@ from api.auth import login_throttle
 from api.auth.login_throttle import (
     ACTIVATION_KEY_PREFIX,
     LOGIN_KEY_PREFIX,
-    REAUTH_KEY_PREFIX,
+    RECONFIRM_KEY_PREFIX,
     InMemoryLoginThrottle,
     RedisLoginThrottle,
 )
@@ -164,7 +164,7 @@ class TestThrottleFactories:
 
         throttle.record_failure("2f1c8e0a-0000-4000-8000-000000000001")
 
-        assert fake.keys(f"{REAUTH_KEY_PREFIX}:fail:*")
+        assert fake.keys(f"{RECONFIRM_KEY_PREFIX}:fail:*")
         assert fake.keys("login:fail:*") == fake.keys("activation:fail:*") == []
 
     def test_falls_back_to_the_in_memory_backend_without_redis(self):

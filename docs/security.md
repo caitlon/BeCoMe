@@ -841,7 +841,7 @@ answers "not locked" on a `RedisError`, as it does for login, so while the store
 limit. Failing closed would refuse every password change and every
 account deletion for the length of the outage, to the account's owner as much as to anyone
 else. Each such failure logs `throttle_store_unavailable` at ERROR with the key prefix
-`reauth`, so the outage pages like the others.
+`reconfirm`, so the outage pages like the others.
 
 **A Redis outage lifts the per-address email caps.** `RedisEmailSendThrottle` answers `True`
 on a `RedisError` (`api/auth/email_throttle.py`), so while the store is unreachable neither

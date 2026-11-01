@@ -63,7 +63,7 @@ WINDOW_SECONDS = 15 * 60
 # other's counter.
 LOGIN_KEY_PREFIX = "login"
 ACTIVATION_KEY_PREFIX = "activation"
-REAUTH_KEY_PREFIX = "reauth"
+RECONFIRM_KEY_PREFIX = "reconfirm"
 
 
 def _digest(identifier: str) -> str:
@@ -291,4 +291,4 @@ def get_current_password_throttle() -> LoginThrottle:
 
     :return: The current-password throttle.
     """
-    return _build_throttle(REAUTH_KEY_PREFIX)
+    return _build_throttle(RECONFIRM_KEY_PREFIX)
