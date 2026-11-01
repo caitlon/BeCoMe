@@ -460,9 +460,11 @@ shared limits. A route with its own limit also keeps counting the two default li
 same process. The limiter's Redis client times out after 2 seconds on connect and on read,
 and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
 store never holds the event loop. See "Accepted risks" for the reasoning. A
-request body over the configured ceiling gets a `413` before anything buffers it, and the
-API streams profile-photo uploads under a size cap rather than reading them whole into
-memory.
+JSON body is capped at 2 MiB and a multipart body at the photo limit plus 64 KiB of framing.
+A body over its cap, declared in `Content-Length` or streamed in chunks, gets a `413` before
+sign-in or the route runs, and the request log records that status. The route still checks the
+file against its own 5 MB limit, and reads the upload in bounded chunks rather than whole
+into memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match
