@@ -288,6 +288,8 @@ def login(
     rotated atomically and a reused refresh token can be contained.
     Failed attempts are counted per account and the account is locked for a cooldown
     once the threshold is passed, so guesses cannot simply be spread across many IPs.
+    Each attempt reserves a slot before the password is checked, so requests running in
+    parallel cannot pass more checks than the budget allows.
     An account whose address is not verified yet is refused with 403.
     InvalidCredentialsError is handled by centralized exception middleware.
     Rate limited to prevent brute-force password attacks.
@@ -300,19 +302,24 @@ def login(
     :return: JWT access and refresh tokens
     :raises EmailNotVerifiedError: If the account has not confirmed its address
     """
-    if throttle.is_locked(form_data.username):
+    if not throttle.reserve(form_data.username):
         raise LoginThrottledError
     try:
         user = service.authenticate(form_data.username, form_data.password)
     except InvalidCredentialsError:
-        throttle.record_failure(form_data.username)
+        throttle.confirm_failure(form_data.username)
+        raise
+    except Exception:
+        # An error is not a failed guess, so it must not spend the budget.
+        throttle.release(form_data.username)
         raise
     # After the password check, never before: refusing an unverified account up front
     # would answer differently for an address that has an account and one that does
     # not, turning the endpoint into an enumeration oracle. A correct password on an
-    # unverified account is not a failed attempt, so nothing is recorded, and nothing
+    # unverified account is not a failed attempt, so its slot is given back, and nothing
     # is reset either, since the login did not succeed.
     if user.email_verified_at is None:
+        throttle.release(form_data.username)
         log_login_blocked_unverified(user.id, request)
         raise EmailNotVerifiedError
     throttle.reset(form_data.username)
@@ -396,7 +403,8 @@ def verify_email(
     :param data: The raw token from the activation link and its password
     :param service: Email verification service
     :param throttle: Per-token activation-guess throttle (lockout after repeated
-        mismatches against this token)
+        mismatches against this token). An attempt reserves a slot on it before the
+        password is checked, so parallel requests cannot pass more checks than the budget
     :param login_throttle: Per-account login throttle. A mismatch spends from it too, so
         activation guessing costs the guesser their login budget, and a redemption clears
         it, but it is never consulted here
@@ -416,14 +424,18 @@ def verify_email(
     # account that is already verified, which is what keeps this endpoint from being
     # able to lock a live account out of its own login.
     pending = service.resolve_pending_activation(data.token)
-    if throttle.is_locked(pending.record.token_hash):
+    if not throttle.reserve(pending.record.token_hash):
         raise LoginThrottledError
     try:
         user = service.activate(pending, data.password)
     except VerificationPasswordMismatchError:
-        throttle.record_failure(pending.record.token_hash)
+        throttle.confirm_failure(pending.record.token_hash)
         login_throttle.record_failure(pending.email)
         log_verification_password_mismatch(pending.user_id, request)
+        raise
+    except Exception:
+        # An error is not a failed guess, so it must not spend the budget.
+        throttle.release(pending.record.token_hash)
         raise
     # Captured immediately, before anything else touches the session: seed_for's own
     # commit expires every attribute on `user`, and a later commit inside the seeding

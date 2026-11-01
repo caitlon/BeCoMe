@@ -1,9 +1,11 @@
 """Tests for per-account login and activation-guess throttling."""
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import fakeredis
+import pytest
 import redis
 
 from api.auth import login_throttle
@@ -14,6 +16,38 @@ from api.auth.login_throttle import (
     InMemoryLoginThrottle,
     RedisLoginThrottle,
 )
+
+
+class _Down:
+    """A client whose every call fails, as a store that is unreachable."""
+
+    def __getattr__(self, name):
+        def fail(*_args, **_kwargs):
+            raise redis.RedisError("down")
+
+        return fail
+
+
+class _DecrFails:
+    """A working client whose DECR alone fails."""
+
+    def __init__(self, real) -> None:
+        self._real = real
+
+    def decr(self, *_args, **_kwargs):
+        raise redis.RedisError("down")
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def _outages(caplog) -> list[str]:
+    """Return the ``op`` of every throttle_store_unavailable record."""
+    return [
+        record.op
+        for record in caplog.records
+        if getattr(record, "event", None) == "throttle_store_unavailable"
+    ]
 
 
 class TestInMemoryLoginThrottle:
@@ -108,6 +142,56 @@ class TestRedisLoginThrottle:
                 raise redis.RedisError("down")
 
         RedisLoginThrottle(Boom(), key_prefix=LOGIN_KEY_PREFIX).reset("user@example.com")
+
+    def test_reserve_fails_open_and_says_so_when_the_pipeline_fails(self, caplog):
+        """A store fault while reserving lets the attempt through and is logged."""
+
+        class Boom:
+            def pipeline(self, *_args, **_kwargs):
+                raise redis.RedisError("down")
+
+        throttle = RedisLoginThrottle(Boom(), key_prefix=LOGIN_KEY_PREFIX)
+
+        with caplog.at_level(logging.ERROR, logger="api.security"):
+            granted = throttle.reserve("user@example.com")
+
+        assert granted is True
+        assert _outages(caplog) == ["reserve"]
+
+    def test_reserve_fails_open_when_giving_the_slot_back_fails(self, caplog):
+        """A fault while returning a refused slot is swallowed like any other."""
+        fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+        throttle = RedisLoginThrottle(
+            _DecrFails(fake), key_prefix=LOGIN_KEY_PREFIX, max_failures=1, window_seconds=3600
+        )
+        throttle.reserve("user@example.com")
+
+        with caplog.at_level(logging.ERROR, logger="api.security"):
+            granted = throttle.reserve("user@example.com")
+
+        assert granted is True
+        assert _outages(caplog) == ["reserve"]
+
+    @pytest.mark.parametrize("op", ["confirm_failure", "release"])
+    def test_confirm_and_release_swallow_a_store_outage(self, op, caplog):
+        """A store fault after the password check must not turn into an error."""
+        throttle = RedisLoginThrottle(_Down(), key_prefix=LOGIN_KEY_PREFIX)
+
+        with caplog.at_level(logging.ERROR, logger="api.security"):
+            getattr(throttle, op)("user@example.com")
+
+        assert _outages(caplog) == [op]
+
+    def test_release_swallows_a_failed_decrement(self, caplog):
+        """The decrement is the only call release makes on a live key, so test it alone."""
+        fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+        throttle = RedisLoginThrottle(_DecrFails(fake), key_prefix=LOGIN_KEY_PREFIX)
+        throttle.record_failure("user@example.com")
+
+        with caplog.at_level(logging.ERROR, logger="api.security"):
+            throttle.release("user@example.com")
+
+        assert _outages(caplog) == ["release"]
 
 
 class TestThrottleFactories:

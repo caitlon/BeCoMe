@@ -7,6 +7,15 @@ once the threshold is passed, so the number of guesses against it is capped no m
 how the requests are distributed. It fails open: if the shared store is unreachable the
 identifier is treated as unlocked, so a store outage never denies every attempt.
 
+A route takes a slot with ``reserve`` before it checks the password, and settles it
+afterwards: ``confirm_failure`` when the guess was wrong, ``release`` when the attempt was
+neither a wrong guess nor a success (a correct password on an unverified account, an
+unexpected error), ``reset`` when it succeeded. Because the slot is counted before the slow
+password check starts, requests running in parallel cannot between them pass more than
+``MAX_FAILURES`` checks per window. Only a confirmed failure restarts the window, as a
+recorded failure always did; taking a slot, being refused one or giving one back leaves the
+expiry where it was.
+
 Three flows share this mechanism but never a counter, and each keys it on something
 different. ``POST /login`` hashes the account's normalized email, so the lockout follows
 the address no matter which token, if any, a caller presents. ``POST /verify-email``
@@ -93,7 +102,8 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
     At WARNING the brute-force lockout could stay off for as long as Redis is down with no
     alert anywhere. The level *is* the alert.
 
-    :param op: Throttle operation that failed: ``record_failure``, ``is_locked``, or ``reset``.
+    :param op: Throttle operation that failed: ``reserve``, ``confirm_failure``, ``release``,
+        ``record_failure``, ``is_locked``, or ``reset``.
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose lockout stopped being enforced.
     """
@@ -108,6 +118,9 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
 class LoginThrottle(Protocol):
     """Backend tracking failed password attempts against a caller-chosen identifier."""
 
+    def reserve(self, identifier: str) -> bool: ...
+    def confirm_failure(self, identifier: str) -> None: ...
+    def release(self, identifier: str) -> None: ...
     def record_failure(self, identifier: str) -> None: ...
     def is_locked(self, identifier: str) -> bool: ...
     def reset(self, identifier: str) -> None: ...
@@ -140,6 +153,46 @@ class InMemoryLoginThrottle:
             return None
         return entry
 
+    def reserve(self, identifier: str) -> bool:
+        """Count one attempt if the account is inside its budget, and say whether it is.
+
+        A refusal changes nothing. A granted slot on a live entry leaves its window where
+        it was; on a new entry it starts the window.
+        """
+        now = datetime.now(UTC)
+        key = _digest(identifier)
+        with self._lock:
+            entry = self._live(key, now)
+            if entry is not None and entry[0] >= self._max_failures:
+                return False
+            self._failures[key] = ((entry[0] if entry else 0) + 1, entry[1] if entry else now)
+            return True
+
+    def confirm_failure(self, identifier: str) -> None:
+        """Settle a reserved attempt as a failed guess, restarting the account's window.
+
+        If the entry is gone (the window passed, or a reset landed while the password was
+        being checked) it is recreated at one, so the failure is not lost.
+        """
+        now = datetime.now(UTC)
+        key = _digest(identifier)
+        with self._lock:
+            entry = self._live(key, now)
+            self._failures[key] = (entry[0] if entry else 1, now)
+
+    def release(self, identifier: str) -> None:
+        """Give a reserved attempt back, leaving the window where it was."""
+        now = datetime.now(UTC)
+        key = _digest(identifier)
+        with self._lock:
+            entry = self._live(key, now)
+            if entry is None:
+                return
+            if entry[0] <= 1:
+                del self._failures[key]
+            else:
+                self._failures[key] = (entry[0] - 1, entry[1])
+
     def record_failure(self, identifier: str) -> None:
         """Record a failed attempt for the account, refreshing its window."""
         now = datetime.now(UTC)
@@ -149,7 +202,10 @@ class InMemoryLoginThrottle:
             self._failures[key] = ((entry[0] if entry else 0) + 1, now)
 
     def is_locked(self, identifier: str) -> bool:
-        """Return whether the account is currently locked out."""
+        """Return whether the account is currently locked out.
+
+        Read-only: an attempt is gated with :meth:`reserve`, not with this.
+        """
         now = datetime.now(UTC)
         with self._lock:
             entry = self._live(_digest(identifier), now)
@@ -189,6 +245,61 @@ class RedisLoginThrottle:
         """Return this flow's store key for an account."""
         return f"{self._key_prefix}:fail:{_digest(identifier)}"
 
+    def _give_back(self, key: str) -> None:
+        """Take one attempt off the counter, removing the key once nothing is left.
+
+        A key that vanished in the meantime goes negative on the decrement and is deleted
+        by the same check, so no negative count is ever left behind.
+        """
+        if int(self._client.decr(key)) <= 0:
+            self._client.delete(key)
+
+    def reserve(self, identifier: str) -> bool:
+        """Count one attempt if the account is inside its budget, and say whether it is.
+
+        The increment hands every caller a distinct value, so exactly ``max_failures``
+        concurrent callers see a count inside the budget whatever the interleaving. A
+        caller past it gives its increment back and is refused, which changes nothing. A
+        granted slot on a live key leaves its expiry alone; a key with none (new, or left
+        bare by a crash) gets the window before the refusal check, so it can never stay
+        immortal. Fails open when the store is unreachable.
+        """
+        key = self._key(identifier)
+        try:
+            pipe = self._client.pipeline()
+            pipe.incr(key)
+            pipe.ttl(key)
+            count, ttl = pipe.execute()
+            if int(ttl) < 0:
+                self._client.expire(key, self._window)
+            if int(count) > self._max_failures:
+                self._give_back(key)
+                return False
+        except redis.RedisError as e:
+            _log_store_unavailable("reserve", e, self._key_prefix)
+            return True
+        return True
+
+    def confirm_failure(self, identifier: str) -> None:
+        """Settle a reserved attempt as a failed guess, restarting the account's window.
+
+        If the key is gone (it expired, or a reset landed while the password was being
+        checked) it is recreated at one with the window, so the failure is not lost.
+        """
+        key = self._key(identifier)
+        try:
+            if not self._client.expire(key, self._window):
+                self._client.set(key, 1, ex=self._window, nx=True)
+        except redis.RedisError as e:
+            _log_store_unavailable("confirm_failure", e, self._key_prefix)
+
+    def release(self, identifier: str) -> None:
+        """Give a reserved attempt back, leaving the expiry where it was."""
+        try:
+            self._give_back(self._key(identifier))
+        except redis.RedisError as e:
+            _log_store_unavailable("release", e, self._key_prefix)
+
     def record_failure(self, identifier: str) -> None:
         """Increment the account's failure counter, refreshing its expiry."""
         key = self._key(identifier)
@@ -203,7 +314,10 @@ class RedisLoginThrottle:
             return
 
     def is_locked(self, identifier: str) -> bool:
-        """Return whether the account has reached the failure threshold."""
+        """Return whether the account has reached the failure threshold.
+
+        Read-only: an attempt is gated with :meth:`reserve`, not with this.
+        """
         try:
             raw = self._client.get(self._key(identifier))
         except redis.RedisError as e:

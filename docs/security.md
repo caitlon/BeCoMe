@@ -72,15 +72,18 @@ both enforce a strength policy.
 
 The login endpoint closes two abuse paths. Repeated failures lock the account for a cooldown
 window (`api/auth/login_throttle.py`), which stops online brute force and credential
-stuffing against a single account. An unknown email still runs a dummy hash, so a
+stuffing against a single account. Each attempt reserves a slot on the counter before the
+password is checked, so requests running in parallel cannot pass more checks than the budget
+allows. An unknown email still runs a dummy hash, so a
 wrong-email response takes the same time as a wrong-password one. Login timing therefore
 reveals nothing about which addresses have accounts.
 
 The two routes that confirm the current password, `PUT /users/me/password` and
 `DELETE /users/me`, share one failure counter per account. A wrong current password on either
 one spends from it, and once it reaches the threshold both answer `429` ("Too many failed
-password attempts") even to the correct password, before anything else runs. It keys on the
-signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
+password attempts") even to the correct password, before anything else runs. Each check
+reserves a slot on it first, as login does, so parallel requests cannot exceed the budget. It
+keys on the signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
 apart from login's: whoever holds a stolen session can produce wrong current passwords at
 will, and on the login counter they would lock the owner out of signing in. In turn a locked
 login does not gate these two routes. Like login's it allows 10 failures per 15 minutes,
@@ -198,9 +201,10 @@ already know.
 
 **The two budgets are independent, and they add up.** Each endpoint allows 10 failures per
 15 minutes and consults only its own counter, login's keyed per account and activation's per
-token. The lock fires on the tenth recorded failure, and each endpoint consults it before it
-evaluates the password, so each endpoint still evaluates ten guesses: twenty wrong passwords
-reachable against that token's password inside a window. A shared counter is the only thing
+token. Each attempt reserves a slot on its endpoint's counter before the password is
+evaluated, so parallel requests cannot pass more than ten checks per endpoint in a window,
+and each endpoint still evaluates ten guesses: twenty wrong passwords reachable against that
+token's password inside a window. A shared counter is the only thing
 that would bound the total, and a shared counter is exactly what the split exists to
 prevent. Moving the login counter takes no credential and every failure refreshes its
 expiry, so a stranger who knows nothing but the address can hold any endpoint that reads it
