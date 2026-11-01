@@ -4,10 +4,11 @@ The app is built by ``api.main.create_app()`` with the limiter switched on. Ever
 ``20/second`` and ``300/minute`` per client address and request path, before the route's other
 dependencies, and a route's own ``@limiter.limit`` applies on top.
 
-A fixed window can split a burst, so these tests assert that a 429 shows up, that the requests
-before the first one had the expected status, and never an exact count of 429s.
+These tests assert that a 429 shows up and that the requests before the first one had the
+expected status, never an exact count of 429s.
 """
 
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
@@ -73,12 +74,18 @@ def app(test_engine, monkeypatch) -> FastAPI:
 
 @pytest.fixture
 def limiter_on():
-    """Switch the shared limiter on with empty counters; restore it afterwards."""
+    """Switch the shared limiter on with empty counters; restore it afterwards.
+
+    The in-memory store's clock stands still, so a burst stays in one window however slowly
+    the machine sends it.
+    """
     previous = limiter.enabled
     limiter.enabled = True
     limiter.reset()
+    now = time.time()
     try:
-        yield
+        with patch("limits.storage.memory.time", SimpleNamespace(time=lambda: now)):
+            yield
     finally:
         limiter.reset()
         limiter.enabled = previous
