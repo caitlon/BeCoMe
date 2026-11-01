@@ -16,8 +16,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from api.auth.login_throttle import (
-    CURRENT_PASSWORD_KEY_PREFIX,
     LOGIN_KEY_PREFIX,
+    REAUTH_KEY_PREFIX,
     RedisLoginThrottle,
     get_current_password_throttle,
     get_login_throttle,
@@ -42,7 +42,7 @@ CHANGE_URL = "/api/v1/users/me/password"
 LOCKED_DETAIL = "Too many failed password attempts. Please try again later."
 THRESHOLD = 10
 LOCKED_EMAIL = "locked@example.com"
-COUNTER_KEYS = f"{CURRENT_PASSWORD_KEY_PREFIX}:fail:*"
+COUNTER_KEYS = f"{REAUTH_KEY_PREFIX}:fail:*"
 LOGIN_KEYS = f"{LOGIN_KEY_PREFIX}:fail:*"
 
 
@@ -61,7 +61,7 @@ class _KeepSessionsStore(InMemoryRevocationStore):
 def store(client: TestClient) -> fakeredis.FakeStrictRedis:
     """A fake Redis behind the current-password throttle."""
     fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
-    throttle = RedisLoginThrottle(fake, key_prefix=CURRENT_PASSWORD_KEY_PREFIX)
+    throttle = RedisLoginThrottle(fake, key_prefix=REAUTH_KEY_PREFIX)
     client.app.dependency_overrides[get_current_password_throttle] = lambda: throttle
     return fake
 
@@ -245,7 +245,7 @@ class TestPasswordReset:
         """
         user_id = _user_id(client, locked_token)
         assert _counter(store) == THRESHOLD
-        throttle = RedisLoginThrottle(store, key_prefix=CURRENT_PASSWORD_KEY_PREFIX)
+        throttle = RedisLoginThrottle(store, key_prefix=REAUTH_KEY_PREFIX)
         assert throttle.is_locked(str(user_id)) is True
 
         assert self._reset(client) == 204
@@ -277,7 +277,7 @@ class TestStoreUnavailable:
         down = fakeredis.FakeServer()
         down.connected = False
         broken = RedisLoginThrottle(
-            fakeredis.FakeStrictRedis(server=down), key_prefix=CURRENT_PASSWORD_KEY_PREFIX
+            fakeredis.FakeStrictRedis(server=down), key_prefix=REAUTH_KEY_PREFIX
         )
         client.app.dependency_overrides[get_current_password_throttle] = lambda: broken
         token = register_and_login(client, "store-down@example.com")
@@ -294,7 +294,7 @@ class TestStoreUnavailable:
         assert _stored_hash(client, user_id) != hash_before
         outages = [r for r in records if getattr(r, "event", None) == "throttle_store_unavailable"]
         assert {r.op for r in outages} == {"is_locked", "record_failure", "reset"}
-        assert {r.key_prefix for r in outages} == {CURRENT_PASSWORD_KEY_PREFIX}
+        assert {r.key_prefix for r in outages} == {REAUTH_KEY_PREFIX}
         assert {r.levelno for r in outages} == {logging.ERROR}
         assert all(isinstance(r.exc_info[1], redis.RedisError) for r in outages)
 

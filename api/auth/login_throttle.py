@@ -63,8 +63,7 @@ WINDOW_SECONDS = 15 * 60
 # other's counter.
 LOGIN_KEY_PREFIX = "login"
 ACTIVATION_KEY_PREFIX = "activation"
-# A Redis namespace, not a credential.
-CURRENT_PASSWORD_KEY_PREFIX = "current_password"  # noqa: S105  # pragma: allowlist secret
+REAUTH_KEY_PREFIX = "reauth"
 
 
 def _digest(identifier: str) -> str:
@@ -292,4 +291,4 @@ def get_current_password_throttle() -> LoginThrottle:
 
     :return: The current-password throttle.
     """
-    return _build_throttle(CURRENT_PASSWORD_KEY_PREFIX)
+    return _build_throttle(REAUTH_KEY_PREFIX)
