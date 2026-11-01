@@ -442,8 +442,9 @@ it sends `X-Origin-Verify`, and the transport's peer address is the caller's key
 never leaves the process. Rate limiting fails
 **open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
 traffic, at the cost of the shared counters. During an outage every route counts
-`LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of the
-shared limits. The limiter's Redis client times out after 2 seconds on connect and on read,
+`LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of its
+shared limits. A route with its own limit also keeps counting the two default limits, in the
+same process. The limiter's Redis client times out after 2 seconds on connect and on read,
 and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
 store never holds the event loop. See "Accepted risks" for the reasoning. A
 request body over the configured ceiling gets a `413` before anything buffers it, and the

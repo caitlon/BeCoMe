@@ -335,3 +335,19 @@ class TestStorageOutage:
         assert max(_statuses(responses)) < 500
         assert health.status_code == 200
         assert broken._storage_dead is True
+
+    def test_the_fallback_limit_holds_during_an_outage(self, app: FastAPI, client: TestClient):
+        """
+        GIVEN a limiter whose Redis store refuses connections
+        WHEN one client sends 130 requests to one path
+        THEN it gets a 429 and every answer before the first 429 is a 401
+        """
+        settings = SimpleNamespace(testing=False, redis_url="redis://127.0.0.1:1")
+        broken = build_limiter(settings)
+        app.state.limiter = broken
+        limiter.enabled = False  # the routes' own limits use the module-level limiter
+
+        responses = _get_many(client, "/api/v1/auth/me", 130)
+
+        first = _first_429(responses)
+        assert set(_statuses(responses[:first])) == {401}
