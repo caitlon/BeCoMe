@@ -31,6 +31,7 @@ CALCULATE_URL = "/api/v1/calculate"
 HEALTH_URL = "/api/v1/health"
 SIGNED_IN_ONLY_URLS = ["/api/v1/auth/me", "/api/v1/projects", "/api/v1/users/me"]
 BURST = 70
+WRONG_PASSWORD = "wrong-password"  # pragma: allowlist secret
 
 
 class _AcceptingVerifier:
@@ -164,7 +165,7 @@ class TestRoutesWithOwnLimits:
         responses = [
             client.post(
                 "/api/v1/auth/login",
-                data={"username": f"nobody{i}@example.com", "password": "wrong-password"},
+                data={"username": f"nobody{i}@example.com", "password": WRONG_PASSWORD},
             )
             for i in range(10)
         ]
@@ -199,7 +200,7 @@ class TestRoutesWithOwnLimits:
         responses = [
             client.post(
                 "/api/v1/auth/login",
-                data={"username": "nobody@example.com", "password": "wrong-password"},
+                data={"username": "nobody@example.com", "password": WRONG_PASSWORD},
             )
             for _ in range(BURST)
         ]
