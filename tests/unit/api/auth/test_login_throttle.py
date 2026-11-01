@@ -10,6 +10,7 @@ from api.auth import login_throttle
 from api.auth.login_throttle import (
     ACTIVATION_KEY_PREFIX,
     LOGIN_KEY_PREFIX,
+    RECONFIRM_KEY_PREFIX,
     InMemoryLoginThrottle,
     RedisLoginThrottle,
 )
@@ -147,6 +148,24 @@ class TestThrottleFactories:
 
         assert fake.keys("activation:fail:*")
         assert fake.keys("login:fail:*") == []
+
+    def test_current_password_factory_uses_its_own_key_prefix(self):
+        """Wrong current passwords stay out of the login and activation keyspaces."""
+        fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+        login_throttle.get_current_password_throttle.cache_clear()
+        with (
+            patch.object(
+                login_throttle, "get_settings", return_value=SimpleNamespace(redis_url="redis://x")
+            ),
+            patch.object(login_throttle.redis, "from_url", return_value=fake),
+        ):
+            throttle = login_throttle.get_current_password_throttle()
+        login_throttle.get_current_password_throttle.cache_clear()
+
+        throttle.record_failure("2f1c8e0a-0000-4000-8000-000000000001")
+
+        assert fake.keys(f"{RECONFIRM_KEY_PREFIX}:fail:*")
+        assert fake.keys("login:fail:*") == fake.keys("activation:fail:*") == []
 
     def test_falls_back_to_the_in_memory_backend_without_redis(self):
         login_throttle.get_activation_throttle.cache_clear()

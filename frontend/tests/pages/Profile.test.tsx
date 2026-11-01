@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import i18n from '@/i18n';
@@ -35,7 +35,8 @@ vi.mock('@/lib/api', async (importActual) => {
     api: {
       updateCurrentUser: (data: unknown) => mockApi.updateCurrentUser(data),
       changePassword: (data: unknown) => mockApi.changePassword(data),
-      deleteAccount: (dispositions: unknown) => mockApi.deleteAccount(dispositions),
+      deleteAccount: (password: string, dispositions: unknown) =>
+        mockApi.deleteAccount(password, dispositions),
       getProjects: () => mockApi.getProjects(),
       getMembers: (projectId: string) => mockApi.getMembers(projectId),
       uploadPhoto: (file: File) => mockApi.uploadPhoto(file),
@@ -334,12 +335,14 @@ describe('Profile - Delete Account', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete Account' }));
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const dialog = await screen.findByRole('dialog');
+    await user.type(await within(dialog).findByLabelText('Current Password'), 'my-password');
+    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalledWith([]);
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith('my-password', []);
       expect(mockLogout).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
@@ -357,12 +360,14 @@ describe('Profile - Delete Account', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete Account' }));
 
-    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    const dialog = await screen.findByRole('dialog');
+    await user.type(await within(dialog).findByLabelText('Current Password'), 'my-password');
+    const confirm = screen.getByRole('button', { name: 'Delete My Account' });
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalledWith([]);
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith('my-password', []);
       expect(mockLogout).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith('/');
       expect(mockToast).toHaveBeenCalledWith({ title: 'Account deleted' });

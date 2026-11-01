@@ -76,6 +76,18 @@ stuffing against a single account. An unknown email still runs a dummy hash, so 
 wrong-email response takes the same time as a wrong-password one. Login timing therefore
 reveals nothing about which addresses have accounts.
 
+The two routes that confirm the current password, `PUT /users/me/password` and
+`DELETE /users/me`, share one failure counter per account. A wrong current password on either
+one spends from it, and once it reaches the threshold both answer `429` ("Too many failed
+password attempts") even to the correct password, before anything else runs. It keys on the
+signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
+apart from login's: whoever holds a stolen session can produce wrong current passwords at
+will, and on the login counter they would lock the owner out of signing in. In turn a locked
+login does not gate these two routes. Like login's it allows 10 failures per 15 minutes,
+refreshed by each failure and cleared by a correct password, and like login's it fails open.
+It adds to the login and activation budgets rather than sharing one with them
+(`api/auth/login_throttle.py`).
+
 ## Registration and email verification
 
 Registration creates the account unverified, and nobody can log in to it until the address
@@ -199,9 +211,10 @@ therefore already read the mail, and reading the mail takes the account outright
 capability than the one they used to get them. A mismatch does still spend from the login
 counter, which costs the guesser rather than bounding them: ten activation mismatches lock
 `/login` too, so the total only grows when the login guesses come first. `POST
-/auth/reset-password` clears the login lockout on success, so an attacker's failed guesses
-cannot keep an account locked out of login after its owner has proven control of the address
-and set a new password.
+/auth/reset-password` clears the login lockout and the current-password lockout on success,
+so an attacker's failed guesses cannot keep an account locked out of login, or out of
+changing its password, after its owner has proven control of the address and set a new
+password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token: an
 unauthenticated registration attempt must never mail anyone a working reset link.
@@ -390,33 +403,39 @@ until somebody either wires in the dependency or records what replaces it.
 ## Rate limiting and abuse control
 
 slowapi handles rate limiting, backed by Redis, with an in-memory fallback when Redis is
-unreachable (`api/middleware/rate_limit.py`). Two global ceilings apply to every route,
-`300/minute` and a `20/second` burst, so every endpoint stays bounded even if it forgot its
-own limit. On top of that, routes carry tighter limits by risk:
+unreachable (`api/middleware/rate_limit.py`). Every route counts two default limits,
+`300/minute` and a `20/second` burst, for each client address and request path. The dependency
+`enforce_default_limits` applies them to the whole app. It runs before the route's other
+dependencies, so a request that sign-in or the bot check refuses is counted too. A route's own
+limit applies on top of the defaults:
 
 | Limit | Value | Applied to |
 |-------|-------|-----------|
 | Auth | `5/minute` | Login, register, refresh |
-| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password |
+| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password, delete account. The last two also share the per-account current-password lockout described under Authentication |
 | Write | `30/minute` | Submitting and withdrawing an opinion, inviting a member |
 | Upload | `10/minute` | Photo upload |
-| Standard | `60/minute` | GDPR export, standalone calculate, result export |
+| Standard | `60/minute` | GDPR export, standalone calculate, result export. Standalone calculate needs a signed-in user and counts per user, not per address |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev, test and prod services |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
 
-Only those routes carry a limit of their own. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The three assistant caps (the hourly messages per account,
-the global hourly ceiling counted for everyone, and the concurrent turns per process) are applied
-through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs first, so a
-request it refuses takes no slot, spends no message and builds no API client; the `hold_turn_slot`
-dependency follows, so a request refused for a full process spends no message of the hourly budget,
-and the message limit comes last. It is no longer a route dependency: `open_chat_turn` calls
-`enforce_message_limit` after the request body check and the documentation retriever, so a message
-that is too long or an invalid body (`422`) and a retriever that cannot be built (`503`) are
-refused before a message is spent.
+Only those routes carry a limit of their own. The defaults do not count the health route
+(`/api/v1/health`, marked `@limiter.exempt`), a path no route serves (`404`), the interactive
+docs and the OpenAPI schema (`/docs`, `/redoc`, `/openapi.json`, which prod hides), or a body
+FastAPI refuses as malformed before it runs any dependency (`422`). The count is per path, so a
+client that fetches many different photo URLs has a count for each, while one URL asked for in a
+loop reaches the burst limit. The three assistant caps (the hourly messages per
+account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
+applied through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs
+first, so a request it refuses takes no slot, spends no message and builds no API client; the
+`hold_turn_slot` dependency follows, so a request refused for a full process spends no message of
+the hourly budget, and the message limit comes last. It is no longer a route dependency:
+`open_chat_turn` calls `enforce_message_limit` after the request body check and the documentation
+retriever, so a message that is too long or an invalid body (`422`) and a retriever that cannot be
+built (`503`) are refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
 memory otherwise. A deployed service refuses to start with the per-user or the global hourly
 limit at `0`, so neither cap can be switched off there.
@@ -435,7 +454,12 @@ in-process API client (`UserApiClient`) runs through the same limiter, so when t
 it sends `X-Origin-Verify`, and the transport's peer address is the caller's key; the header
 never leaves the process. Rate limiting fails
 **open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
-traffic, at the cost of the shared counters. See "Accepted risks" for the reasoning. A
+traffic, at the cost of the shared counters. During an outage every route counts
+`LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of its
+shared limits. A route with its own limit also keeps counting the two default limits, in the
+same process. The limiter's Redis client times out after 2 seconds on connect and on read,
+and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
+store never holds the event loop. See "Accepted risks" for the reasoning. A
 request body over the configured ceiling gets a `413` before anything buffers it, and the
 API streams profile-photo uploads under a size cap rather than reading them whole into
 memory.
@@ -648,9 +672,10 @@ service: its DEBUG level prints bound query parameters, which on this schema mea
 hashes, addresses, names, and reset-token hashes shipped to the log drain in the clear. That
 pin matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
 
-The login lockout and the email cap both fail open, and that is now alerted rather than silent.
-A Redis outage lifts the per-account login lockout and the per-address email cap while the
-request still succeeds, so each failure path logs `throttle_store_unavailable` naming the
+The login lockout, the current-password lockout and the email cap all fail open, and that is
+now alerted rather than silent. A Redis outage lifts the per-account login lockout, the
+per-account current-password lockout and the per-address email cap while the request still
+succeeds, so each failure path logs `throttle_store_unavailable` naming the
 operation and the flow. Those records go out at **ERROR**, and that level is the alert. The app
 initializes Sentry without a `LoggingIntegration`, so the SDK's default `event_level` of
 ERROR is what turns a record into an issue, and an issue is the only thing that pages. At
@@ -736,12 +761,13 @@ rotation steps, is in [`secrets.md`](secrets.md).
 The API serves both data-subject rights. Export (Article 20) returns the personal dataset as
 JSON from `GET /users/me/export`: the profile, owned projects and their results,
 memberships, opinions, and received invitations. The export leaves out invitations the user
-sent. `DELETE /users/me` performs erasure (Article 17): the request carries a disposition
-for every project the user still admins, either transferring it to another member or
-deleting it, and the account is removed only once every owned project has one. That keeps
-one person's erasure from silently taking a whole panel's opinions with it. The same
-operation removes the profile-photo blob from object storage, so erasure covers stored media
-too.
+sent. `DELETE /users/me` performs erasure (Article 17). The request carries the current
+password, which is checked before anything else, with the same rate limit value as a password
+change and the same per-account counter of wrong passwords. It also carries a disposition for
+every project the user still admins, either transferring it to another member or deleting it,
+and the account is removed only once every owned project has one. That keeps one person's
+erasure from silently taking a whole panel's opinions with it. The same operation removes the
+profile-photo blob from object storage, so erasure covers stored media too.
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
@@ -809,6 +835,14 @@ separate budget and now confirms the address on success, so a password reset get
 in regardless. Support's answer to "I asked for the email again and nothing came" is to use
 forgot password.
 
+**A Redis outage lifts the per-account current-password lockout.** `RedisLoginThrottle`
+answers "not locked" on a `RedisError`, as it does for login, so while the store is unreachable
+`PUT /users/me/password` and `DELETE /users/me` are bounded only by their per-address rate
+limit. Failing closed would refuse every password change and every
+account deletion for the length of the outage, to the account's owner as much as to anyone
+else. Each such failure logs `throttle_store_unavailable` at ERROR with the key prefix
+`reconfirm`, so the outage pages like the others.
+
 **A Redis outage lifts the per-address email caps.** `RedisEmailSendThrottle` answers `True`
 on a `RedisError` (`api/auth/email_throttle.py`), so while the store is unreachable neither
 the 60-second cooldown nor the five-a-day total applies to `forgot-password`, `register`, or
@@ -822,7 +856,7 @@ stop every signup and every reset silently for the duration. The acknowledgement
 normal, nothing would arrive, and nothing would raise an error to alert on. The flood it
 would prevent stays bounded meanwhile: the per-IP limiter survives a store outage by falling
 back to slowapi's in-memory storage, which caps each source at `LIMIT_FALLBACK`, 60 requests
-a minute per instance (looser than the 3 and 5 a minute those routes normally carry, so the
+a minute per path and instance (looser than the 3 and 5 a minute those routes normally carry, so the
 outage does widen this too). Redis is a hard requirement in every deployed profile, so an
 outage here is short and is already paging someone. Handing the fallback to
 `InMemoryEmailSendThrottle` instead came up and lost: it keeps a dict entry per address it
@@ -894,10 +928,10 @@ project's substitute for an IP allowlist, which Railway's platform does not offe
 Redis follows the same rule in all three environments. The backends reach it through
 `REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
 carry was removed on 2026-09-12, after a check that no service referenced it. The exposure
-mattered more than a cache would suggest. Redis holds the login and email-send throttles, the
-rate limiter's counters and the token revocation list, so while the proxy was open its
-password alone stood between the internet and lifting those throttles or reviving a revoked
-session.
+mattered more than a cache would suggest. Redis holds the login, current-password and
+email-send throttles, the rate limiter's counters and the token revocation list, so while
+the proxy was open its password alone stood between the internet and lifting those throttles
+or reviving a revoked session.
 
 ### Audit logging
 

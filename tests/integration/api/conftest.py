@@ -81,7 +81,10 @@ _OFFLINE_EMAIL_POLICY = EmailAddressPolicy(
 def create_test_app() -> FastAPI:
     """Create FastAPI app without lifespan for testing.
 
-    Includes all API routers and exception handlers for integration testing.
+    Includes all API routers and exception handlers for integration testing. The app does not
+    run ``enforce_default_limits``, so integration limit tests here cover a route's own decorator
+    and not the limiter's default limits; those are tested on the real app in
+    ``test_default_rate_limits.py``.
     """
     settings = get_settings()
     app = FastAPI(
@@ -271,6 +274,28 @@ def register_and_login(client: TestClient, email: str = "test@example.com") -> s
     return response.json()["access_token"]
 
 
+def delete_account(
+    client: TestClient,
+    token: str,
+    dispositions: list[dict] | None = None,
+    password: str = DEFAULT_TEST_PASSWORD,
+):
+    """Send DELETE /users/me with the current password and the given dispositions.
+
+    :param client: Test client instance
+    :param token: Access token of the account being deleted
+    :param dispositions: Per-owned-project dispositions (default: none)
+    :param password: Current password (default: the one ``register_and_login`` sets)
+    :return: The raw response
+    """
+    return client.request(
+        "DELETE",
+        "/api/v1/users/me",
+        json={"current_password": password, "project_dispositions": dispositions or []},
+        headers=auth_header(token),
+    )
+
+
 def create_project(client: TestClient, token: str, name: str = "Test Project") -> dict:
     """Create a project and return its data.
 
@@ -390,9 +415,10 @@ def pending_account(session):
 
 @pytest.fixture(autouse=True)
 def _reset_auth_throttles():
-    """Give each test fresh login, activation, reset-email, and verification-email throttles.
+    """Give each test fresh login, activation, current-password, reset-email, and
+    verification-email throttles.
 
-    All four factories are lru_cache singletons, so their in-memory state would
+    All five factories are lru_cache singletons, so their in-memory state would
     otherwise leak between tests that reuse an email address, and every test that
     registers a user now goes through the verification-email throttle.
     """
@@ -400,11 +426,16 @@ def _reset_auth_throttles():
         get_reset_email_throttle,
         get_verification_email_throttle,
     )
-    from api.auth.login_throttle import get_activation_throttle, get_login_throttle
+    from api.auth.login_throttle import (
+        get_activation_throttle,
+        get_current_password_throttle,
+        get_login_throttle,
+    )
 
     def clear_all():
         get_login_throttle.cache_clear()
         get_activation_throttle.cache_clear()
+        get_current_password_throttle.cache_clear()
         get_reset_email_throttle.cache_clear()
         get_verification_email_throttle.cache_clear()
 

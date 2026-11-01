@@ -1,7 +1,8 @@
 """BeCoMe calculation endpoint.
 
-This module provides direct calculation endpoint without project context.
-Uses dependency injection for calculator following DIP.
+This module provides direct calculation endpoint without project context. It needs a
+signed-in user (session cookie or Bearer token) and counts requests per user. Uses
+dependency injection for calculator following DIP.
 """
 
 import logging
@@ -9,8 +10,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from api.auth.dependencies import CurrentUser
 from api.dependencies import get_calculator
-from api.middleware.rate_limit import LIMIT_STANDARD, limiter
+from api.middleware.rate_limit import (
+    LIMIT_STANDARD,
+    bind_user_to_rate_limit,
+    get_user_or_client_ip,
+    limiter,
+)
 from api.schemas.calculation import CalculateRequest, CalculateResponse, FuzzyNumberOutput
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.exceptions import BeCoMeError
@@ -22,17 +29,28 @@ logger = logging.getLogger("api.route.calculate")
 router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
+def require_signed_in_user(request: Request, current_user: CurrentUser) -> None:
+    """Require a signed-in caller and key the route's rate limit by their account.
+
+    :param request: FastAPI request, which carries the user to the rate limiter
+    :param current_user: The authenticated caller
+    :raises HTTPException: 401 when the request has no valid session
+    """
+    bind_user_to_rate_limit(request, current_user.id)
+
+
 @router.post(
     "/calculate",
+    dependencies=[Depends(require_signed_in_user)],
     responses={400: {"description": "Invalid input or calculation error"}},
 )
-@limiter.limit(LIMIT_STANDARD)
+@limiter.limit(LIMIT_STANDARD, key_func=get_user_or_client_ip)
 def calculate(
     request: Request,
     payload: CalculateRequest,
     calculator: Annotated[BeCoMeCalculator, Depends(get_calculator)],
 ) -> CalculateResponse:
-    """Calculate BeCoMe result from expert opinions.
+    """Calculate BeCoMe result from expert opinions for a signed-in user.
 
     :param request: FastAPI request (for rate limiting)
     :param payload: Expert opinions to aggregate

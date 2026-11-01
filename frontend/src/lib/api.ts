@@ -545,10 +545,13 @@ class ApiClient {
     });
   }
 
-  async deleteAccount(dispositions: ProjectDisposition[] = []): Promise<void> {
+  async deleteAccount(
+    currentPassword: string,
+    dispositions: ProjectDisposition[] = []
+  ): Promise<void> {
     return this.request<void>('/users/me', {
       method: 'DELETE',
-      body: JSON.stringify({ project_dispositions: dispositions }),
+      body: JSON.stringify({ current_password: currentPassword, project_dispositions: dispositions }),
     });
   }
 

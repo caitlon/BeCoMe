@@ -13,13 +13,18 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from api.auth.logging import log_login_failure, log_password_change_failure
+from api.auth.logging import (
+    log_current_password_locked,
+    log_login_failure,
+    log_password_change_failure,
+)
 from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
     AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
+    CurrentPasswordThrottledError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
     ExampleProjectInvitationError,
@@ -240,6 +245,10 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_429_TOO_MANY_REQUESTS,
         "Too many failed login attempts. Please try again later.",
     ),
+    CurrentPasswordThrottledError: (
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        "Too many failed password attempts. Please try again later.",
+    ),
     # 409 Conflict
     AccountHasOwnedProjectsError: (
         status.HTTP_409_CONFLICT,
@@ -372,6 +381,8 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
         # A wrong current password is a distinct security event from a failed
         # login, so it does not pollute brute-force alerting on login_failure.
         log_password_change_failure(request)
+    elif isinstance(exc, CurrentPasswordThrottledError):
+        log_current_password_locked(request)
 
     content: dict[str, str] = {"detail": detail}
     code = ERROR_CODES.get(type(exc))

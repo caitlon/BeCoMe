@@ -14,6 +14,7 @@ from api.exceptions import (
     AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
+    CurrentPasswordThrottledError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
     ExampleProjectInvitationError,
@@ -319,6 +320,29 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_pcf.assert_called_once_with(request)
             mock_lf.assert_not_called()
+
+    def test_throttled_current_password_logs_the_lock_only(self):
+        """
+        GIVEN a current-password check refused by the per-account lock
+        WHEN become_api_error_handler is called
+        THEN it answers 429 and logs the lock, not a password-change or login failure
+        """
+        request = MagicMock()
+
+        with (
+            patch("api.middleware.exception_handlers.log_current_password_locked") as mock_lock,
+            patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
+            patch("api.middleware.exception_handlers.log_login_failure") as mock_lf,
+        ):
+            response = become_api_error_handler(request, CurrentPasswordThrottledError())
+
+        assert response.status_code == 429
+        assert json.loads(response.body) == {
+            "detail": "Too many failed password attempts. Please try again later."
+        }
+        mock_lock.assert_called_once_with(request)
+        mock_pcf.assert_not_called()
+        mock_lf.assert_not_called()
 
     def test_invalid_credentials_does_not_log_password_change_failure(self):
         """

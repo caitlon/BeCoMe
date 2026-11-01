@@ -18,7 +18,12 @@ from api.services.storage.exceptions import (
     StorageUploadError,
 )
 from api.services.storage.stored_object import DEFAULT_CHUNK_SIZE, StoredObject
-from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
+from tests.integration.api.conftest import (
+    auth_header,
+    create_test_app,
+    delete_account,
+    register_and_login,
+)
 
 
 def _image_bytes(width: int = 8, height: int = 8, image_format: str = "JPEG") -> bytes:
@@ -684,7 +689,7 @@ class TestAccountDeletionRemovesPhoto:
         )
 
         # WHEN the account is deleted
-        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+        response = delete_account(client, token)
 
         # THEN the photo object is removed from storage
         assert response.status_code == 204
@@ -697,7 +702,7 @@ class TestAccountDeletionRemovesPhoto:
         token = register_and_login(client, "nophoto-erase@example.com")
 
         # WHEN the account is deleted
-        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+        response = delete_account(client, token)
 
         # THEN storage is never asked to delete anything
         assert response.status_code == 204
@@ -716,7 +721,7 @@ class TestAccountDeletionRemovesPhoto:
         mock_storage.delete.side_effect = StorageDeleteError("bucket error")
 
         # WHEN the account is deleted
-        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+        response = delete_account(client, token)
 
         # THEN the account is still removed (the storage failure is suppressed)
         assert response.status_code == 204

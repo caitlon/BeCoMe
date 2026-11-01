@@ -1,6 +1,6 @@
 """Deleting an account revokes its tokens (M2) and profile edits show immediately."""
 
-from tests.integration.api.conftest import auth_header, register_and_login
+from tests.integration.api.conftest import auth_header, delete_account, register_and_login
 
 
 def test_profile_update_is_visible_immediately(client):
@@ -23,7 +23,7 @@ def test_delete_account_revokes_the_access_token(client):
     # must cope with a live cache entry instead of the common cold-cache path.
     client.get("/api/v1/users/me", headers=auth_header(token))
 
-    resp = client.delete("/api/v1/users/me", headers=auth_header(token))
+    resp = delete_account(client, token)
     assert resp.status_code == 204
 
     # The same token must now be rejected (valid_after cutoff), not served from cache.
