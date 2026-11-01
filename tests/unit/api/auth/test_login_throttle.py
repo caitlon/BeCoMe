@@ -214,18 +214,42 @@ class TestRedisGiveBack:
         assert fake.ttl(key) > 0
         assert throttle.is_locked("user@example.com") is False
 
-    def test_release_on_a_missing_key_leaves_no_key(self):
+    def test_release_on_a_missing_key_restores_a_zero_key_with_an_expiry(self):
         """
         GIVEN an identifier with no key
         WHEN a slot is released
-        THEN the decrement goes negative and the key is deleted
+        THEN the key holds 0 with a positive expiry and no negative count
         """
         fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
         throttle = RedisLoginThrottle(fake, key_prefix=LOGIN_KEY_PREFIX)
 
         throttle.release("user@example.com")
 
-        assert fake.exists(throttle._key("user@example.com")) == 0
+        key = throttle._key("user@example.com")
+        assert int(fake.get(key)) == 0
+        assert fake.ttl(key) > 0
+
+    def test_release_keeps_a_reservation_that_lands_after_the_decrement(self):
+        """
+        GIVEN a missing key and another caller reserving right after the decrement
+        WHEN a slot is released
+        THEN the other caller's slot survives: the count is 1 with a positive expiry
+        """
+
+        class RacingRedis(fakeredis.FakeStrictRedis):
+            def decr(self, name, amount=1):
+                result = super().decr(name, amount)
+                self.incr(name)
+                return result
+
+        fake = RacingRedis(server=fakeredis.FakeServer())
+        throttle = RedisLoginThrottle(fake, key_prefix=LOGIN_KEY_PREFIX)
+
+        throttle.release("user@example.com")
+
+        key = throttle._key("user@example.com")
+        assert int(fake.get(key)) == 1
+        assert fake.ttl(key) > 0
 
 
 class TestThrottleFactories:

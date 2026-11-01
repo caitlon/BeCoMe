@@ -158,6 +158,9 @@ class InMemoryLoginThrottle:
 
         A refusal changes nothing. A granted slot on a live entry leaves its window where
         it was; on a new entry it starts the window.
+
+        :param identifier: Account identifier the attempt is made for.
+        :return: True when the attempt may proceed, False when the budget is spent.
         """
         now = datetime.now(UTC)
         key = _digest(identifier)
@@ -173,6 +176,8 @@ class InMemoryLoginThrottle:
 
         If the entry is gone (the window passed, or a reset landed while the password was
         being checked) it is recreated at one, so the failure is not lost.
+
+        :param identifier: Account identifier the reserved attempt was made for.
         """
         now = datetime.now(UTC)
         key = _digest(identifier)
@@ -181,7 +186,10 @@ class InMemoryLoginThrottle:
             self._failures[key] = (entry[0] if entry else 1, now)
 
     def release(self, identifier: str) -> None:
-        """Give a reserved attempt back, leaving the window where it was."""
+        """Give a reserved attempt back, leaving the window where it was.
+
+        :param identifier: Account identifier the reserved attempt was made for.
+        """
         now = datetime.now(UTC)
         key = _digest(identifier)
         with self._lock:
@@ -246,16 +254,17 @@ class RedisLoginThrottle:
         return f"{self._key_prefix}:fail:{_digest(identifier)}"
 
     def _give_back(self, key: str) -> None:
-        """Take one attempt off the counter, deleting the key only if it went negative.
+        """Take one attempt off the counter without ever deleting the key.
 
-        A count of 0 keeps its key and its expiry: the decrement and a delete are two round
-        trips, and deleting at 0 could drop the slot of a caller whose increment landed in
-        between. A key at 0 reads as unlocked and expires by itself, and the next confirmed
-        failure restarts the window. A key that vanished goes negative on the decrement and
-        is deleted, so no negative count is left behind.
+        A count of 0 keeps its key and expires by itself. A key that vanished (it expired,
+        or a reset landed) goes negative on the decrement and is restored to 0 with the
+        window. Nothing is deleted, so a concurrent reservation is never lost.
         """
         if int(self._client.decr(key)) < 0:
-            self._client.delete(key)
+            pipe = self._client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, self._window)
+            pipe.execute()
 
     def reserve(self, identifier: str) -> bool:
         """Count one attempt if the account is inside its budget, and say whether it is.
@@ -266,6 +275,10 @@ class RedisLoginThrottle:
         granted slot on a live key leaves its expiry alone; a key with none (new, or left
         bare by a crash) gets the window before the refusal check, so it can never stay
         immortal. Fails open when the store is unreachable.
+
+        :param identifier: Account identifier the attempt is made for.
+        :return: True when the attempt may proceed, including when the store is
+            unreachable; False when the budget is spent.
         """
         key = self._key(identifier)
         try:
@@ -288,6 +301,8 @@ class RedisLoginThrottle:
 
         If the key is gone (it expired, or a reset landed while the password was being
         checked) it is recreated at one with the window, so the failure is not lost.
+
+        :param identifier: Account identifier the reserved attempt was made for.
         """
         key = self._key(identifier)
         try:
@@ -297,7 +312,10 @@ class RedisLoginThrottle:
             _log_store_unavailable("confirm_failure", e, self._key_prefix)
 
     def release(self, identifier: str) -> None:
-        """Give a reserved attempt back, leaving the expiry where it was."""
+        """Give a reserved attempt back, leaving the expiry where it was.
+
+        :param identifier: Account identifier the reserved attempt was made for.
+        """
         try:
             self._give_back(self._key(identifier))
         except redis.RedisError as e:
