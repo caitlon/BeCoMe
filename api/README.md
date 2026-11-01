@@ -156,7 +156,7 @@ freshly resent token for the same account. The two budgets are independent, so
 they add up: 10 failures each per 15 minutes, and only a caller already holding a live
 emailed token can spend the activation half. A mismatch also spends from the login lockout,
 which costs the guesser rather than capping the pair. A completed password reset clears the
-login lockout, and answers the same opaque `400` an unusable token gets when an activation
+login and current-password lockouts, and answers the same opaque `400` an unusable token gets when an activation
 confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address. The link it mails carries the submitted
 password like any other. Three endpoints read the `Accept-Language` request header and write
