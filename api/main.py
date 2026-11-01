@@ -6,10 +6,9 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from api.config import Environment, Settings, get_settings
 from api.db.engine import create_db_and_tables, warm_up_connection_pool
@@ -17,7 +16,7 @@ from api.logging_config import setup_logging
 from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
-from api.middleware.rate_limit import limiter, rate_limit_handler
+from api.middleware.rate_limit import enforce_default_limits, limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.middleware.unhandled_errors import UnhandledErrorMiddleware
@@ -140,9 +139,11 @@ def create_app() -> FastAPI:
         docs_url=None if docs_hidden else "/docs",
         redoc_url=None if docs_hidden else "/redoc",
         openapi_url=None if docs_hidden else "/openapi.json",
+        dependencies=[Depends(enforce_default_limits)],
     )
 
-    # Rate limiting setup
+    # Rate limiting: enforce_default_limits (an app-level dependency, see the FastAPI call above)
+    # counts the default limits of this limiter; a route's own @limiter.limit applies on top.
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
 
@@ -152,13 +153,6 @@ def create_app() -> FastAPI:
 
     # Security headers middleware (executes after everything but the error guard)
     app.add_middleware(SecurityHeadersMiddleware)
-
-    # Rate limiting: the limiter (api/middleware/rate_limit.py) is configured with
-    # default_limits and SlowAPIMiddleware is registered here. A route with its own
-    # @limiter.limit counts only that limit.
-    # It executes after CORS (CORS is added later, so it wraps this), letting preflight
-    # OPTIONS be answered before any limit check.
-    app.add_middleware(SlowAPIMiddleware)
 
     # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
     app.add_middleware(CSRFMiddleware)

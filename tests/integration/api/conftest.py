@@ -81,9 +81,10 @@ _OFFLINE_EMAIL_POLICY = EmailAddressPolicy(
 def create_test_app() -> FastAPI:
     """Create FastAPI app without lifespan for testing.
 
-    Includes all API routers and exception handlers for integration testing. The app has no
-    ``SlowAPIMiddleware``, so integration limit tests cover a route's own decorator and not the
-    limiter's default limits.
+    Includes all API routers and exception handlers for integration testing. The app does not
+    run ``enforce_default_limits``, so integration limit tests here cover a route's own decorator
+    and not the limiter's default limits; those are tested on the real app in
+    ``test_default_rate_limits.py``.
     """
     settings = get_settings()
     app = FastAPI(

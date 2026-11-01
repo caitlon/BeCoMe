@@ -15,7 +15,7 @@ from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.ratelimit")
 
-# The limiter's default limits. A route with its own @limiter.limit counts only that limit.
+# The limiter's default limits, counted by enforce_default_limits for every route.
 LIMIT_DEFAULT = "300/minute"
 LIMIT_DEFAULT_BURST = "20/second"
 # Limits used when the Redis store is unreachable: the limiter degrades to
@@ -27,8 +27,10 @@ def build_limiter(settings: Settings) -> Limiter:
     """Create the slowapi Limiter, backed by Redis when configured.
 
     Uses ``settings.redis_url`` as the storage backend so counters are shared across
-    replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` are set on
-    the Limiter and ``SlowAPIMiddleware`` is registered in ``create_app``.
+    replicas (M6); without it slowapi falls back to in-memory. The Redis client times out
+    after 2 seconds on connect and on read, like the other Redis clients, so an unreachable
+    store cannot hold a request. ``default_limits`` are set on the Limiter and applied by
+    :func:`enforce_default_limits`, which ``create_app`` registers as an app-level dependency.
     ``in_memory_fallback`` keeps limiting working during a Redis outage. It is checked before
     ``swallow_errors``, so a store failure degrades to per-instance in-memory limits rather
     than disabling limiting entirely. ``swallow_errors`` remains a last-resort guard so a
@@ -41,10 +43,30 @@ def build_limiter(settings: Settings) -> Limiter:
         key_func=get_client_ip,
         enabled=not settings.testing,
         storage_uri=settings.redis_url or None,
+        # Seconds, passed to the Redis client. slowapi annotates the values as str.
+        storage_options={"socket_connect_timeout": 2, "socket_timeout": 2},  # type: ignore[dict-item]
         default_limits=[LIMIT_DEFAULT, LIMIT_DEFAULT_BURST],
         in_memory_fallback_enabled=True,
         in_memory_fallback=[LIMIT_FALLBACK],
         swallow_errors=True,
+    )
+
+
+def enforce_default_limits(request: Request) -> None:
+    """Count the request against the limiter's default limits for its client and path.
+
+    Registered as a dependency of the whole app. It is a plain function, so FastAPI runs it in
+    the threadpool and a slow Redis never holds the event loop. As a dependency it sees the
+    route FastAPI resolved, so ``@limiter.exempt`` routes count nothing, and it runs before the
+    route's other dependencies. Paths no route serves, and a body FastAPI refuses as malformed
+    before any dependency runs, are not counted. It stays undecorated: slowapi's decorators mark
+    the request as already limited, which would skip the route's own limit.
+
+    :param request: The incoming request
+    :raises RateLimitExceeded: When the client has used its allowance for this path
+    """
+    request.app.state.limiter._check_request_limit(
+        request, request.scope["endpoint"], in_middleware=True
     )
 
 

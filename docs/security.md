@@ -390,8 +390,11 @@ until somebody either wires in the dependency or records what replaces it.
 ## Rate limiting and abuse control
 
 slowapi handles rate limiting, backed by Redis, with an in-memory fallback when Redis is
-unreachable (`api/middleware/rate_limit.py`). The limiter is configured with two default limits,
-`300/minute` and a `20/second` burst. A route with its own limit counts only that limit:
+unreachable (`api/middleware/rate_limit.py`). Every route counts two default limits,
+`300/minute` and a `20/second` burst, for each client address and request path. The dependency
+`enforce_default_limits` applies them to the whole app. It runs before the route's other
+dependencies, so a request that sign-in or the bot check refuses is counted too. A route's own
+limit applies on top of the defaults:
 
 | Limit | Value | Applied to |
 |-------|-------|-----------|
@@ -406,7 +409,12 @@ unreachable (`api/middleware/rate_limit.py`). The limiter is configured with two
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
 
-Only those routes carry a limit of their own. The three assistant caps (the hourly messages per
+Only those routes carry a limit of their own. The defaults do not count the health route
+(`/api/v1/health`, marked `@limiter.exempt`), a path no route serves (`404`), the interactive
+docs and the OpenAPI schema (`/docs`, `/redoc`, `/openapi.json`, which prod hides), or a body
+FastAPI refuses as malformed before it runs any dependency (`422`). The count is per path, so a
+client that fetches many different photo URLs has a count for each, while one URL asked for in a
+loop reaches the burst limit. The three assistant caps (the hourly messages per
 account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
 applied through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs
 first, so a request it refuses takes no slot, spends no message and builds no API client; the
@@ -433,7 +441,12 @@ in-process API client (`UserApiClient`) runs through the same limiter, so when t
 it sends `X-Origin-Verify`, and the transport's peer address is the caller's key; the header
 never leaves the process. Rate limiting fails
 **open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
-traffic, at the cost of the shared counters. See "Accepted risks" for the reasoning. A
+traffic, at the cost of the shared counters. During an outage every route counts
+`LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of its
+shared limits. A route with its own limit also keeps counting the two default limits, in the
+same process. The limiter's Redis client times out after 2 seconds on connect and on read,
+and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
+store never holds the event loop. See "Accepted risks" for the reasoning. A
 request body over the configured ceiling gets a `413` before anything buffers it, and the
 API streams profile-photo uploads under a size cap rather than reading them whole into
 memory.
@@ -821,7 +834,7 @@ stop every signup and every reset silently for the duration. The acknowledgement
 normal, nothing would arrive, and nothing would raise an error to alert on. The flood it
 would prevent stays bounded meanwhile: the per-IP limiter survives a store outage by falling
 back to slowapi's in-memory storage, which caps each source at `LIMIT_FALLBACK`, 60 requests
-a minute per instance (looser than the 3 and 5 a minute those routes normally carry, so the
+a minute per path and instance (looser than the 3 and 5 a minute those routes normally carry, so the
 outage does widen this too). Redis is a hard requirement in every deployed profile, so an
 outage here is short and is already paging someone. Handing the fallback to
 `InMemoryEmailSendThrottle` instead came up and lost: it keeps a dict entry per address it
