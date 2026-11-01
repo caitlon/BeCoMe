@@ -40,7 +40,7 @@ api/
 │   ├── cookies.py          # HttpOnly session cookies + CSRF token helpers
 │   ├── dependencies.py     # CurrentUser dependency (cookie or Bearer)
 │   ├── revocation_store.py # Token revocation store (in-memory / Redis)
-│   ├── login_throttle.py   # Per-account lockout after failed logins
+│   ├── login_throttle.py   # Lockouts: failed logins, activation guesses, current-password checks
 │   ├── email_throttle.py   # Per-address cooldown for reset and activation emails
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
@@ -202,11 +202,11 @@ widened with a `Domain` instead, and for what this does not cover.
 | GET | `/api/v1/users/me` | Get profile |
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile: names and `assistant_objection` (GDPR Art. 21, see Opinions) |
-| PUT | `/api/v1/users/me/password` | Change password; a wrong `current_password` is a 400 with code `current_password_incorrect`, never a 401, which clients read as a lost session. A successful change signs out every session, this one included |
+| PUT | `/api/v1/users/me/password` | Change password; a wrong `current_password` is a 400 with code `current_password_incorrect`, never a 401, which clients read as a lost session; ten wrong ones in 15 minutes, counted per account together with the deletion route's, lock both with a 429. A successful change signs out every session, this one included |
 | POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB, 8192 px per side and about 16.8 megapixels in total); a refused file is a 400 with code `photo_type_not_allowed`, `photo_too_large`, `photo_content_mismatch`, `photo_unreadable` or `photo_dimensions_too_large` |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | GET | `/api/v1/users/{id}/photo` | Serve a profile photo from the private bucket (public) |
-| DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17); the body carries `current_password`, and a wrong one is a 400 with code `current_password_incorrect`. Limited to `3/minute`, like the password change |
+| DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17); the body carries `current_password`, and a wrong one is a 400 with code `current_password_incorrect`. Limited to `3/minute`, like the password change, and wrong passwords count with the change's toward the same per-account lock |
 
 The photo proxy is public, because an `<img>` tag cannot send an auth header. It passes
 the bucket's response straight through to the client instead of downloading the object

@@ -1,4 +1,4 @@
-"""Failure throttling guarding both login and activation password guesses.
+"""Failure throttling guarding the login, activation and current-password guesses.
 
 The per-IP rate limiter only bounds one source; an attacker spreading guesses across
 many IPs can still hammer a single target. This throttle counts failed password
@@ -7,7 +7,7 @@ once the threshold is passed, so the number of guesses against it is capped no m
 how the requests are distributed. It fails open: if the shared store is unreachable the
 identifier is treated as unlocked, so a store outage never denies every attempt.
 
-Two flows share this mechanism but never a counter, and each keys it on something
+Three flows share this mechanism but never a counter, and each keys it on something
 different. ``POST /login`` hashes the account's normalized email, so the lockout follows
 the address no matter which token, if any, a caller presents. ``POST /verify-email``
 hashes the token's own stored hash instead, so only a caller who already holds a live
@@ -17,11 +17,20 @@ holding an activation link. Keying activation on the token rather than the accou
 confines a burned token's damage to itself: an address can carry several live tokens at
 once, and a shared per-account bucket would let one obtained token, forwarded or
 intercepted rather than read from the mailbox, exhaust the whole account's budget and
-deny a different, freshly resent link along with it. The two flows are further distinguished by
-a Redis key prefix.
+deny a different, freshly resent link along with it.
 
-The two budgets are therefore independent, and they add up: ``MAX_FAILURES`` each per
-window, not ``MAX_FAILURES`` between them. Sharing one counter is the only thing that
+``PUT /users/me/password`` and ``DELETE /users/me`` share the third counter, keyed on the
+signed-in account's id: both confirm the current password, and a wrong one on either spends
+from the same budget, so alternating between the two routes buys no extra guesses. It sits
+apart from login for the same reason activation does, seen from the other side. Whoever holds
+a stolen session can produce failures here at will, and on the login counter they would lock
+the owner out of signing in. Keyed on the account rather than the address, rotating source
+addresses does not widen the budget either. A locked login does not gate these routes in
+turn, for the same reason in reverse.
+
+The flows are further distinguished by a Redis key prefix. The three budgets are therefore
+independent, and they add up: ``MAX_FAILURES`` each per window, not ``MAX_FAILURES`` between
+them. Sharing one counter is the only thing that
 would bound the total, and sharing is what brings the denial back, because the login half
 takes no credential to move and every failure refreshes its expiry. The activation half
 needs a live single-use token, which exists only in the mailbox it was sent to, and
@@ -54,6 +63,8 @@ WINDOW_SECONDS = 15 * 60
 # other's counter.
 LOGIN_KEY_PREFIX = "login"
 ACTIVATION_KEY_PREFIX = "activation"
+# A Redis namespace, not a credential.
+CURRENT_PASSWORD_KEY_PREFIX = "current_password"  # noqa: S105  # pragma: allowlist secret
 
 
 def _digest(identifier: str) -> str:
@@ -108,6 +119,10 @@ class InMemoryLoginThrottle:
 
     Takes no key prefix: each flow holds its own instance, so its failure log lives in
     that instance instead of in a shared keyspace.
+
+    Keeps what Redis keeps: a count and the time of the last failure. Every failure
+    refreshes the window, a failure while locked included, and the count starts over once a
+    whole window passes with none.
     """
 
     def __init__(
@@ -115,28 +130,31 @@ class InMemoryLoginThrottle:
     ) -> None:
         self._max_failures = max_failures
         self._window = timedelta(seconds=window_seconds)
-        self._failures: dict[str, list[datetime]] = {}
+        self._failures: dict[str, tuple[int, datetime]] = {}
         self._lock = threading.Lock()
 
-    def _recent(self, identifier: str, now: datetime) -> list[datetime]:
-        """Return (and prune to) failures still inside the window."""
-        key = _digest(identifier)
-        recent = [t for t in self._failures.get(key, []) if now - t < self._window]
-        self._failures[key] = recent
-        return recent
+    def _live(self, key: str, now: datetime) -> tuple[int, datetime] | None:
+        """Return the account's count and last failure, or None once the window has passed."""
+        entry = self._failures.get(key)
+        if entry is not None and now - entry[1] >= self._window:
+            del self._failures[key]
+            return None
+        return entry
 
     def record_failure(self, identifier: str) -> None:
-        """Record a failed attempt for the account."""
+        """Record a failed attempt for the account, refreshing its window."""
         now = datetime.now(UTC)
+        key = _digest(identifier)
         with self._lock:
-            recent = self._recent(identifier, now)
-            recent.append(now)
+            entry = self._live(key, now)
+            self._failures[key] = ((entry[0] if entry else 0) + 1, now)
 
     def is_locked(self, identifier: str) -> bool:
         """Return whether the account is currently locked out."""
         now = datetime.now(UTC)
         with self._lock:
-            return len(self._recent(identifier, now)) >= self._max_failures
+            entry = self._live(_digest(identifier), now)
+            return entry is not None and entry[0] >= self._max_failures
 
     def reset(self, identifier: str) -> None:
         """Clear the account's failure count (called on a successful attempt)."""
@@ -260,3 +278,18 @@ def get_activation_throttle() -> LoginThrottle:
     :return: The activation-guess throttle.
     """
     return _build_throttle(ACTIVATION_KEY_PREFIX)
+
+
+@lru_cache
+def get_current_password_throttle() -> LoginThrottle:
+    """Return the process-wide current-password throttle, Redis-backed when configured.
+
+    Gates ``PUT /users/me/password`` and ``DELETE /users/me`` together, keyed on the
+    signed-in account's id, under its own Redis key prefix. A wrong current password on
+    either route spends from it, never from :func:`get_login_throttle`, so a stolen
+    session cannot lock the owner out of signing in; a locked login does not gate these
+    routes either. The module docstring records why the budgets add up.
+
+    :return: The current-password throttle.
+    """
+    return _build_throttle(CURRENT_PASSWORD_KEY_PREFIX)

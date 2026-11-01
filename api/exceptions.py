@@ -52,6 +52,14 @@ class LoginThrottledError(BeCoMeAPIError):
     """Raised when an account is temporarily locked after too many failed logins."""
 
 
+class CurrentPasswordThrottledError(BeCoMeAPIError):
+    """Raised when an account is locked out of current-password checks after repeated misses.
+
+    Separate from :class:`LoginThrottledError`, whose wording is about signing in: the
+    caller here is signed in already, and the lock does not touch their ability to log in.
+    """
+
+
 class AccountHasOwnedProjectsError(BeCoMeAPIError):
     """Raised when account deletion is blocked because the user still owns projects."""
 

@@ -102,11 +102,29 @@ class EmailSendThrottle(Protocol):
     def record(self, identifier: str) -> None: ...
 
 
+class _Sends:
+    """What the in-memory throttle remembers about one address."""
+
+    __slots__ = ("cooldown_until", "daily_count", "daily_started")
+
+    def __init__(self) -> None:
+        self.cooldown_until: datetime | None = None
+        self.daily_count = 0
+        self.daily_started: datetime | None = None
+
+
 class InMemoryEmailSendThrottle:
     """Process-local throttle for dev and tests (not shared across replicas).
 
-    Takes no key prefix: each flow holds its own instance, so the send log lives in
+    Takes no key prefix: each flow holds its own instance, so the send state lives in
     that instance instead of in a shared keyspace.
+
+    Mirrors :class:`RedisEmailSendThrottle` step for step. The daily total is a fixed
+    window that opens with the first send and closes ``daily_window_seconds`` later, however
+    many sends fall inside it. ``allow`` starts the cooldown before it reads the daily count,
+    so a refusal by the cap restarts the cooldown too, while a refusal by the cooldown
+    spends and restarts nothing. ``record`` restarts the cooldown and counts a send even
+    past the cap.
     """
 
     def __init__(
@@ -118,35 +136,45 @@ class InMemoryEmailSendThrottle:
         self._cooldown = timedelta(seconds=cooldown_seconds)
         self._daily_cap = daily_cap
         self._daily_window = timedelta(seconds=daily_window_seconds)
-        self._sends: dict[str, list[datetime]] = {}
+        self._sends: dict[str, _Sends] = {}
         self._lock = threading.Lock()
+
+    def _state(self, identifier: str, now: datetime) -> _Sends:
+        """Return the address's state, with a daily window that has closed forgotten."""
+        state = self._sends.setdefault(_digest(identifier), _Sends())
+        if state.daily_started is not None and now - state.daily_started >= self._daily_window:
+            state.daily_count = 0
+            state.daily_started = None
+        return state
+
+    def _spend(self, state: _Sends, now: datetime) -> None:
+        """Count one send, opening the daily window if this is its first."""
+        if state.daily_started is None:
+            state.daily_started = now
+        state.daily_count += 1
 
     def allow(self, identifier: str) -> bool:
         """Return whether an email may be sent now, recording it when allowed."""
         now = datetime.now(UTC)
-        key = _digest(identifier)
         with self._lock:
-            recent = [t for t in self._sends.get(key, []) if now - t < self._daily_window]
-            if recent and now - recent[-1] < self._cooldown:
-                self._sends[key] = recent
+            state = self._state(identifier, now)
+            if state.cooldown_until is not None and now < state.cooldown_until:
                 _log_denied("cooldown", backend="memory")
                 return False
-            if len(recent) >= self._daily_cap:
-                self._sends[key] = recent
+            state.cooldown_until = now + self._cooldown
+            if state.daily_count >= self._daily_cap:
                 _log_denied("daily_cap", backend="memory")
                 return False
-            recent.append(now)
-            self._sends[key] = recent
+            self._spend(state, now)
             return True
 
     def record(self, identifier: str) -> None:
         """Spend a slot for an email that is sent whatever the budget says."""
         now = datetime.now(UTC)
-        key = _digest(identifier)
         with self._lock:
-            recent = [t for t in self._sends.get(key, []) if now - t < self._daily_window]
-            recent.append(now)
-            self._sends[key] = recent
+            state = self._state(identifier, now)
+            state.cooldown_until = now + self._cooldown
+            self._spend(state, now)
 
 
 class RedisEmailSendThrottle:
@@ -156,8 +184,9 @@ class RedisEmailSendThrottle:
     :param key_prefix: Key namespace for this flow; required rather than defaulted so
         two flows sharing one Redis cannot silently consume each other's budget.
     :param cooldown_seconds: Minimum gap between two emails to the same address.
-    :param daily_cap: Maximum emails to one address per rolling window.
-    :param daily_window_seconds: Length of the rolling window, in seconds.
+    :param daily_cap: Maximum emails to one address per window.
+    :param daily_window_seconds: Length of the window, in seconds. It opens with the first
+        email and closes that long after it, whatever is sent in between.
     """
 
     def __init__(

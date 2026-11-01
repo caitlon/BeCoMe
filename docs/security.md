@@ -76,6 +76,18 @@ stuffing against a single account. An unknown email still runs a dummy hash, so 
 wrong-email response takes the same time as a wrong-password one. Login timing therefore
 reveals nothing about which addresses have accounts.
 
+The two routes that confirm the current password, `PUT /users/me/password` and
+`DELETE /users/me`, share one failure counter per account. A wrong current password on either
+one spends from it, and once it reaches the threshold both answer `429` ("Too many failed
+password attempts") even to the correct password, before anything else runs. It keys on the
+signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
+apart from login's: whoever holds a stolen session can produce wrong current passwords at
+will, and on the login counter they would lock the owner out of signing in. In turn a locked
+login does not gate these two routes. Like login's it allows 10 failures per 15 minutes,
+refreshed by each failure and cleared by a correct password, and like login's it fails open.
+It adds to the login and activation budgets rather than sharing one with them
+(`api/auth/login_throttle.py`).
+
 ## Registration and email verification
 
 Registration creates the account unverified, and nobody can log in to it until the address
@@ -399,7 +411,7 @@ limit applies on top of the defaults:
 | Limit | Value | Applied to |
 |-------|-------|-----------|
 | Auth | `5/minute` | Login, register, refresh |
-| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password, delete account |
+| Password reset | `3/minute` | Forgot and reset password, verify and resend verification, change password, delete account. The last two also share the per-account current-password lockout described under Authentication |
 | Write | `30/minute` | Submitting and withdrawing an opinion, inviting a member |
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export. Standalone calculate needs a signed-in user and counts per user, not per address |
@@ -659,9 +671,10 @@ service: its DEBUG level prints bound query parameters, which on this schema mea
 hashes, addresses, names, and reset-token hashes shipped to the log drain in the clear. That
 pin matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
 
-The login lockout and the email cap both fail open, and that is now alerted rather than silent.
-A Redis outage lifts the per-account login lockout and the per-address email cap while the
-request still succeeds, so each failure path logs `throttle_store_unavailable` naming the
+The login lockout, the current-password lockout and the email cap all fail open, and that is
+now alerted rather than silent. A Redis outage lifts the per-account login lockout, the
+per-account current-password lockout and the per-address email cap while the request still
+succeeds, so each failure path logs `throttle_store_unavailable` naming the
 operation and the flow. Those records go out at **ERROR**, and that level is the alert. The app
 initializes Sentry without a `LoggingIntegration`, so the SDK's default `event_level` of
 ERROR is what turns a record into an issue, and an issue is the only thing that pages. At
@@ -749,7 +762,7 @@ JSON from `GET /users/me/export`: the profile, owned projects and their results,
 memberships, opinions, and received invitations. The export leaves out invitations the user
 sent. `DELETE /users/me` performs erasure (Article 17). The request carries the current
 password, which is checked before anything else, with the same rate limit value as a password
-change. It also carries a disposition for every project the user still admins, either
+change and the same per-account counter of wrong passwords. It also carries a disposition for every project the user still admins, either
 transferring it to another member or deleting it, and the account is removed only once every
 owned project has one. That keeps one person's erasure from silently taking a whole panel's
 opinions with it. The same operation removes the profile-photo blob from object storage, so
@@ -820,6 +833,14 @@ further: any link mailed before the drain still works, and `forgot-password` dra
 separate budget and now confirms the address on success, so a password reset gets the holder
 in regardless. Support's answer to "I asked for the email again and nothing came" is to use
 forgot password.
+
+**A Redis outage lifts the per-account current-password lockout.** `RedisLoginThrottle`
+answers "not locked" on a `RedisError`, as it does for login, so while the store is unreachable
+`PUT /users/me/password` and `DELETE /users/me` are bounded only by their per-address rate
+limit. Failing closed would refuse every password change and every
+account deletion for the length of the outage, to the account's owner as much as to anyone
+else. Each such failure logs `throttle_store_unavailable` at ERROR with the key prefix
+`current_password`, so the outage pages like the others.
 
 **A Redis outage lifts the per-address email caps.** `RedisEmailSendThrottle` answers `True`
 on a `RedisError` (`api/auth/email_throttle.py`), so while the store is unreachable neither
@@ -906,7 +927,7 @@ project's substitute for an IP allowlist, which Railway's platform does not offe
 Redis follows the same rule in all three environments. The backends reach it through
 `REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
 carry was removed on 2026-09-12, after a check that no service referenced it. The exposure
-mattered more than a cache would suggest. Redis holds the login and email-send throttles, the
+mattered more than a cache would suggest. Redis holds the login, current-password and email-send throttles, the
 rate limiter's counters and the token revocation list, so while the proxy was open its
 password alone stood between the internet and lifting those throttles or reviving a revoked
 session.
