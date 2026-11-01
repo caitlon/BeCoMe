@@ -351,3 +351,4 @@ class TestStorageOutage:
 
         first = _first_429(responses)
         assert set(_statuses(responses[:first])) == {401}
+        assert "60 per 1 minute" in responses[first].text
