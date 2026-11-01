@@ -25,6 +25,7 @@ rebuilding by timing the account-existence oracle the uniform response removes.
 import hashlib
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Protocol, runtime_checkable
@@ -102,15 +103,13 @@ class EmailSendThrottle(Protocol):
     def record(self, identifier: str) -> None: ...
 
 
+@dataclass(slots=True)
 class _Sends:
     """What the in-memory throttle remembers about one address."""
 
-    __slots__ = ("cooldown_until", "daily_count", "daily_started")
-
-    def __init__(self) -> None:
-        self.cooldown_until: datetime | None = None
-        self.daily_count = 0
-        self.daily_started: datetime | None = None
+    cooldown_until: datetime | None = None
+    daily_count: int = 0
+    daily_started: datetime | None = None
 
 
 class InMemoryEmailSendThrottle:

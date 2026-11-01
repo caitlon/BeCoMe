@@ -211,9 +211,10 @@ therefore already read the mail, and reading the mail takes the account outright
 capability than the one they used to get them. A mismatch does still spend from the login
 counter, which costs the guesser rather than bounding them: ten activation mismatches lock
 `/login` too, so the total only grows when the login guesses come first. `POST
-/auth/reset-password` clears the login lockout on success, so an attacker's failed guesses
-cannot keep an account locked out of login after its owner has proven control of the address
-and set a new password.
+/auth/reset-password` clears the login lockout and the current-password lockout on success,
+so an attacker's failed guesses cannot keep an account locked out of login, or out of
+changing its password, after its owner has proven control of the address and set a new
+password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token: an
 unauthenticated registration attempt must never mail anyone a working reset link.
@@ -762,11 +763,11 @@ JSON from `GET /users/me/export`: the profile, owned projects and their results,
 memberships, opinions, and received invitations. The export leaves out invitations the user
 sent. `DELETE /users/me` performs erasure (Article 17). The request carries the current
 password, which is checked before anything else, with the same rate limit value as a password
-change and the same per-account counter of wrong passwords. It also carries a disposition for every project the user still admins, either
-transferring it to another member or deleting it, and the account is removed only once every
-owned project has one. That keeps one person's erasure from silently taking a whole panel's
-opinions with it. The same operation removes the profile-photo blob from object storage, so
-erasure covers stored media too.
+change and the same per-account counter of wrong passwords. It also carries a disposition for
+every project the user still admins, either transferring it to another member or deleting it,
+and the account is removed only once every owned project has one. That keeps one person's
+erasure from silently taking a whole panel's opinions with it. The same operation removes the
+profile-photo blob from object storage, so erasure covers stored media too.
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
@@ -927,10 +928,10 @@ project's substitute for an IP allowlist, which Railway's platform does not offe
 Redis follows the same rule in all three environments. The backends reach it through
 `REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
 carry was removed on 2026-09-12, after a check that no service referenced it. The exposure
-mattered more than a cache would suggest. Redis holds the login, current-password and email-send throttles, the
-rate limiter's counters and the token revocation list, so while the proxy was open its
-password alone stood between the internet and lifting those throttles or reviving a revoked
-session.
+mattered more than a cache would suggest. Redis holds the login, current-password and
+email-send throttles, the rate limiter's counters and the token revocation list, so while
+the proxy was open its password alone stood between the internet and lifting those throttles
+or reviving a revoked session.
 
 ### Audit logging
 

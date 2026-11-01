@@ -24,6 +24,8 @@ from api.auth.login_throttle import (
 )
 from api.auth.revocation_store import InMemoryRevocationStore, get_revocation_store
 from api.db.models import User
+from api.dependencies import get_email_service
+from tests.integration.api.auth.conftest import FakeEmailSender
 from tests.integration.api.conftest import (
     DEFAULT_TEST_PASSWORD,
     app_session,
@@ -218,6 +220,48 @@ class TestLoginCounterIsSeparate:
         assert delete_account(client, token, password=NEW_PASSWORD).status_code == 204
         assert _stored_hash(client, user_id) is None
         assert _counter(store) is None
+
+
+class TestPasswordReset:
+    """A reset clears the lock, because it signs every session out."""
+
+    def _reset(self, client: TestClient, token: str | None = None) -> int:
+        """Reset the locked account's password with ``token``, or the mailed one by default."""
+        sender = FakeEmailSender()
+        client.app.dependency_overrides[get_email_service] = lambda: sender
+        client.post("/api/v1/auth/forgot-password", json={"email": LOCKED_EMAIL})
+        mailed = sender.calls[-1]["reset_url"].split("token=")[1]
+        response = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token or mailed, "new_password": THIRD_PASSWORD},
+        )
+        return response.status_code
+
+    def test_a_completed_reset_clears_the_lock(self, client, store, locked_token):
+        """
+        GIVEN an account locked by ten wrong current passwords
+        WHEN its owner completes a password reset
+        THEN the counter is gone, and it was still locked just before the reset
+        """
+        user_id = _user_id(client, locked_token)
+        assert _counter(store) == THRESHOLD
+        throttle = RedisLoginThrottle(store, key_prefix=CURRENT_PASSWORD_KEY_PREFIX)
+        assert throttle.is_locked(str(user_id)) is True
+
+        assert self._reset(client) == 204
+
+        assert store.keys(COUNTER_KEYS) == []
+        assert throttle.is_locked(str(user_id)) is False
+
+    def test_an_invalid_token_leaves_the_lock_in_place(self, client, store, locked_token):
+        """
+        GIVEN an account locked by ten wrong current passwords
+        WHEN a reset arrives with a token that does not exist
+        THEN it is refused with 400 and the counter is untouched
+        """
+        assert self._reset(client, token="not-a-real-token") == 400
+
+        assert _counter(store) == THRESHOLD
 
 
 class TestStoreUnavailable:

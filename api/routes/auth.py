@@ -49,6 +49,7 @@ from api.auth.logging import (
 from api.auth.login_throttle import (
     LoginThrottle,
     get_activation_throttle,
+    get_current_password_throttle,
     get_login_throttle,
 )
 from api.auth.password import hash_password
@@ -679,6 +680,7 @@ def reset_password(
     service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
     throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
+    current_password_throttle: Annotated[LoginThrottle, Depends(get_current_password_throttle)],
 ) -> None:
     """Set a new password using a valid reset token.
 
@@ -696,6 +698,8 @@ def reset_password(
     :param service: Password reset service
     :param store: Revocation store (invalidates sessions issued before the reset)
     :param throttle: Per-account login throttle, cleared once the reset completes
+    :param current_password_throttle: Per-account current-password throttle, cleared once
+        the reset completes
     """
     # Order matters: resolve the token, close the session window, then write. Recording
     # the cutoff first means a store fault surfaces as a 503 with the password unchanged
@@ -709,8 +713,11 @@ def reset_password(
     # A login lockout is writable by anyone who merely knows the address, and it would
     # otherwise survive its owner proving control of the mailbox and choosing a new
     # password: an attacker who tripped it can just resume the same failed guesses once
-    # the window reopens and keep the account locked out indefinitely.
+    # the window reopens and keep the account locked out indefinitely. The
+    # current-password lock is cleared for the same reason: a reset has just signed every
+    # session out, and the owner must not wait out a lock left by whoever held one.
     throttle.reset(user.email)
+    current_password_throttle.reset(str(user.id))
 
     log_password_reset_completed(user.id, request)
 
