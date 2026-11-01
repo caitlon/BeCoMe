@@ -9,6 +9,7 @@ way to tell a reservation from a read taken before the check.
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
+from unittest.mock import patch
 
 import fakeredis
 import pytest
@@ -25,6 +26,7 @@ from api.auth.login_throttle import (
     get_login_throttle,
 )
 from api.exceptions import InvalidCredentialsError
+from api.services.email_verification_service import EmailVerificationService
 from api.services.user_service import UserService
 from tests.integration.api.conftest import (
     DEFAULT_TEST_PASSWORD,
@@ -62,11 +64,11 @@ def _provide(throttle: RedisLoginThrottle):
     return lambda: throttle
 
 
-def _counter(store: fakeredis.FakeStrictRedis, prefix: str) -> int | None:
-    """Return the single counter under ``prefix``, or None when the store holds none."""
+def _counter(store: fakeredis.FakeStrictRedis, prefix: str) -> int:
+    """Return the single counter under ``prefix``; no key and a key at 0 both read 0."""
     keys = store.keys(f"{prefix}:fail:*")
     assert len(keys) <= 1
-    return int(store.get(keys[0])) if keys else None
+    return int(store.get(keys[0])) if keys else 0
 
 
 def _login(client: TestClient, email: str, password: str):
@@ -166,7 +168,7 @@ class TestSlotsGivenBack:
         ]
 
         assert answers == [403] * (MAX_FAILURES + 2)
-        assert _counter(store, LOGIN_KEY_PREFIX) is None
+        assert _counter(store, LOGIN_KEY_PREFIX) == 0
 
     def test_a_crash_during_login_leaves_the_counter_alone(self, client, store):
         """
@@ -181,7 +183,7 @@ class TestSlotsGivenBack:
             response = _login(failing, "crash@example.com", DEFAULT_TEST_PASSWORD)
 
         assert response.status_code == 500
-        assert _counter(store, LOGIN_KEY_PREFIX) is None
+        assert _counter(store, LOGIN_KEY_PREFIX) == 0
 
     def test_a_crash_during_a_password_change_leaves_the_counter_alone(self, client, store):
         """
@@ -196,7 +198,26 @@ class TestSlotsGivenBack:
             response = _change(failing, token, DEFAULT_TEST_PASSWORD)
 
         assert response.status_code == 500
-        assert _counter(store, RECONFIRM_KEY_PREFIX) is None
+        assert _counter(store, RECONFIRM_KEY_PREFIX) == 0
+
+    def test_a_crash_during_activation_leaves_the_counters_alone(
+        self, client, store, pending_account
+    ):
+        """
+        GIVEN an activation whose redemption crashes
+        WHEN the request is sent
+        THEN the answer is a 500, the activation counter reads 0 and the login one is unchanged
+        """
+        token, password = pending_account
+        before = _counter(store, LOGIN_KEY_PREFIX)
+        failing = TestClient(client.app, raise_server_exceptions=False)
+
+        with patch.object(EmailVerificationService, "activate", side_effect=RuntimeError("boom")):
+            response = _activate(failing, token, password)
+
+        assert response.status_code == 500
+        assert _counter(store, ACTIVATION_KEY_PREFIX) == 0
+        assert _counter(store, LOGIN_KEY_PREFIX) == before
 
     def test_a_wrong_current_password_counts_once(self, client, store):
         """
@@ -241,8 +262,8 @@ class TestActivationReservation:
 
         assert _activate(client, token, password).status_code == 200
 
-        assert _counter(store, LOGIN_KEY_PREFIX) is None
-        assert _counter(store, ACTIVATION_KEY_PREFIX) is None
+        assert _counter(store, LOGIN_KEY_PREFIX) == 0
+        assert _counter(store, ACTIVATION_KEY_PREFIX) == 0
 
     def test_the_eleventh_mismatch_is_refused_and_adds_nothing(
         self, client, store, pending_account

@@ -246,12 +246,15 @@ class RedisLoginThrottle:
         return f"{self._key_prefix}:fail:{_digest(identifier)}"
 
     def _give_back(self, key: str) -> None:
-        """Take one attempt off the counter, removing the key once nothing is left.
+        """Take one attempt off the counter, deleting the key only if it went negative.
 
-        A key that vanished in the meantime goes negative on the decrement and is deleted
-        by the same check, so no negative count is ever left behind.
+        A count of 0 keeps its key and its expiry: the decrement and a delete are two round
+        trips, and deleting at 0 could drop the slot of a caller whose increment landed in
+        between. A key at 0 reads as unlocked and expires by itself, and the next confirmed
+        failure restarts the window. A key that vanished goes negative on the decrement and
+        is deleted, so no negative count is left behind.
         """
-        if int(self._client.decr(key)) <= 0:
+        if int(self._client.decr(key)) < 0:
             self._client.delete(key)
 
     def reserve(self, identifier: str) -> bool:

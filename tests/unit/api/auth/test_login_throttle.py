@@ -194,6 +194,40 @@ class TestRedisLoginThrottle:
         assert _outages(caplog) == ["release"]
 
 
+class TestRedisGiveBack:
+    """What the Redis backend leaves in the store after a slot is given back."""
+
+    def test_release_after_reserve_keeps_a_zero_key_with_an_expiry(self):
+        """
+        GIVEN an identifier with no history
+        WHEN a slot is reserved and released
+        THEN the raw key holds 0 and still has a positive expiry
+        """
+        fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+        throttle = RedisLoginThrottle(fake, key_prefix=LOGIN_KEY_PREFIX)
+        throttle.reserve("user@example.com")
+
+        throttle.release("user@example.com")
+
+        key = throttle._key("user@example.com")
+        assert int(fake.get(key)) == 0
+        assert fake.ttl(key) > 0
+        assert throttle.is_locked("user@example.com") is False
+
+    def test_release_on_a_missing_key_leaves_no_key(self):
+        """
+        GIVEN an identifier with no key
+        WHEN a slot is released
+        THEN the decrement goes negative and the key is deleted
+        """
+        fake = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+        throttle = RedisLoginThrottle(fake, key_prefix=LOGIN_KEY_PREFIX)
+
+        throttle.release("user@example.com")
+
+        assert fake.exists(throttle._key("user@example.com")) == 0
+
+
 class TestThrottleFactories:
     """The factories select the Redis backend when configured, one prefix per flow."""
 

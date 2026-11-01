@@ -79,14 +79,14 @@ class _Stored:
         self._throttle = throttle
         self._clock = clock
 
-    def count(self) -> int | None:
-        """Return the stored attempt count, or None when nothing is stored."""
+    def count(self) -> int:
+        """Return the stored attempt count; nothing stored and a stored 0 both read 0."""
         if isinstance(self._throttle, InMemoryLoginThrottle):
             entry = self._throttle._failures.get(login_throttle._digest(ADDRESS))
-            return entry[0] if entry else None
+            return entry[0] if entry else 0
         client = self._throttle._client
         raw = client.get(self._throttle._key(ADDRESS))
-        return None if raw is None else int(raw)
+        return 0 if raw is None else int(raw)
 
     def seconds_left(self) -> float | None:
         """Return the time before the stored count expires, or None when nothing is stored."""
@@ -354,26 +354,28 @@ class TestLoginRelease:
         login.record_failure(ADDRESS)
         assert stored.count() == 1
 
-    def test_reserve_and_release_on_a_fresh_identifier_leave_nothing(self, login, stored):
+    def test_reserve_and_release_on_a_fresh_identifier_leave_it_unlocked(self, login, stored):
         """
         GIVEN an identifier with no history
         WHEN a slot is taken and released
-        THEN no key is left behind
+        THEN the count reads 0 and the identifier is not locked
         """
         login.reserve(ADDRESS)
         login.release(ADDRESS)
 
-        assert stored.count() is None
+        assert stored.count() == 0
+        assert login.is_locked(ADDRESS) is False
 
-    def test_release_on_a_missing_key_leaves_nothing(self, login, stored):
+    def test_release_on_a_missing_key_stores_no_negative_count(self, login, stored):
         """
         GIVEN an identifier with no history
         WHEN a slot is released without having been taken
-        THEN no key appears and no negative count is stored
+        THEN the count reads 0 and no negative count is stored
         """
         login.release(ADDRESS)
 
-        assert stored.count() is None
+        assert stored.count() == 0
+        assert login.is_locked(ADDRESS) is False
 
 
 class TestLoginConfirmFailure:

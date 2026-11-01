@@ -71,25 +71,23 @@ which is the approach bcrypt's own maintainers recommend. Registration and passw
 both enforce a strength policy.
 
 The login endpoint closes two abuse paths. Repeated failures lock the account for a cooldown
-window (`api/auth/login_throttle.py`), which stops online brute force and credential
-stuffing against a single account. Each attempt reserves a slot on the counter before the
-password is checked, so requests running in parallel cannot pass more checks than the budget
-allows. An unknown email still runs a dummy hash, so a
-wrong-email response takes the same time as a wrong-password one. Login timing therefore
-reveals nothing about which addresses have accounts.
+window (`api/auth/login_throttle.py`), which stops online brute force and credential stuffing
+against a single account. Each attempt reserves a slot on the counter before the password is
+checked, so requests running in parallel cannot pass more checks than the budget allows. An
+unknown email still runs a dummy hash, so a wrong-email response takes the same time as a
+wrong-password one. Login timing therefore reveals nothing about which addresses have accounts.
 
-The two routes that confirm the current password, `PUT /users/me/password` and
-`DELETE /users/me`, share one failure counter per account. A wrong current password on either
-one spends from it, and once it reaches the threshold both answer `429` ("Too many failed
-password attempts") even to the correct password, before anything else runs. Each check
-reserves a slot on it first, as login does, so parallel requests cannot exceed the budget. It
-keys on the signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
-apart from login's: whoever holds a stolen session can produce wrong current passwords at
-will, and on the login counter they would lock the owner out of signing in. In turn a locked
-login does not gate these two routes. Like login's it allows 10 failures per 15 minutes,
-refreshed by each failure and cleared by a correct password, and like login's it fails open.
-It adds to the login and activation budgets rather than sharing one with them
-(`api/auth/login_throttle.py`).
+The two routes that confirm the current password, `PUT /users/me/password` and `DELETE
+/users/me`, share one failure counter per account. A wrong current password on either one
+spends from it, and once it reaches the threshold both answer `429` ("Too many failed password
+attempts") even to the correct password, before anything else runs. Each check reserves a slot
+on it first, as login does, so parallel requests cannot exceed the budget. It keys on the
+signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
+apart from login's: whoever holds a stolen session can produce wrong current passwords at will,
+and on the login counter they would lock the owner out of signing in. In turn a locked login
+does not gate these two routes. Like login's it allows 10 failures per 15 minutes, refreshed by
+each failure and cleared by a correct password, and like login's it fails open. It adds to the
+login and activation budgets rather than sharing one with them (`api/auth/login_throttle.py`).
 
 ## Registration and email verification
 
