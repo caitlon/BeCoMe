@@ -35,7 +35,7 @@ A check with `curl` reads the key from a file, as the rotation rules below descr
 | Variable | What it protects | Source | Verify |
 |----------|------------------|--------|--------|
 | `SECRET_KEY` | Signs session JWTs (`api/auth/jwt.py`) and keys the CSRF token (`api/auth/cookies.py`). While `LOG_HASH_KEY` is unset it also keys the email hashes in logs. A deployed service refuses to start with fewer than 32 characters | Created by us | Hash in the container, see [SECRET_KEY](#secret_key) |
-| `CLOUDFLARE_ORIGIN_SECRET` | Proves a request came through Cloudflare, so `CF-Connecting-IP` can be trusted for rate limiting (`api/utils/client_ip.py`) | Created by us | Hash in the container against the hash of the rule value, see [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret) |
+| `CLOUDFLARE_ORIGIN_SECRET` | Proves a request came through Cloudflare. The backend refuses a request without it (`api/middleware/origin_lock.py`) and trusts `CF-Connecting-IP` only for a request that carries it (`api/utils/client_ip.py`). `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` holds the value being replaced and exists only during a rotation | Created by us | Hash in the container against the hash of the rule value, see [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret) |
 | `DATABASE_URL` | Password of the `become_app` role | Railway Postgres of the environment | In-container connection with the backend's own `DATABASE_URL` |
 | `MIGRATION_DATABASE_URL` | Password of the owner role, used by Alembic only | Railway Postgres of the environment | In-container connection with the backend's own `MIGRATION_DATABASE_URL` |
 | `REDIS_URL` | Access to the revocation and rate-limit store | Reference to the Railway Redis of the environment | In-container `PING` with the backend's own `REDIS_URL` |
@@ -203,12 +203,15 @@ The variable and the Transform Rule on the environment's API host must hold the 
 The rule runs in the `http_request_late_transform` phase and sets `X-Origin-Verify`. The API
 hosts under `becomify.app` are `api` (prod), `api-atelier` (dev) and `api-harbor` (test).
 
-The value goes to two places, so it needs a holder that is not the terminal. Write the
-generated value into `"$S/origin.secret"`. Feed the file to Railway on standard input. Build
-the rule `PATCH` body from the same file, for example with `jq --rawfile`, so the value never
-appears on the command line. Never echo it. The Cloudflare API calls of steps 1, 4 and 5 read
-the token from a header file. First put a token allowed to edit the zone's Transform Rules into
-`CF_TOKEN`, from the environment or a file that sets it, never typed on a command line. It is
+The backend refuses with `403` a request whose `X-Origin-Verify` matches neither
+`CLOUDFLARE_ORIGIN_SECRET` nor `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, so a rotation keeps the old
+value in the second variable until the rule holds the new one. The new value goes to two places,
+so it needs a holder that is not the terminal. Write the generated value into
+`"$S/origin.secret"` and the old one into `"$S/origin.previous"`. Feed the files to Railway on
+standard input. Build the rule `PATCH` body from the first file, for example with
+`jq --rawfile`, so the value never appears on the command line. Never echo either. The
+Cloudflare API calls of steps 1, 4 and 5 read the token from a header file. First put a token
+allowed to edit the zone's Transform Rules into `CF_TOKEN`, from the environment or a file that sets it, never typed on a command line. It is
 not the Pages token of the CI secrets. Then write the header once with
 `printf 'Authorization: Bearer %s' "${CF_TOKEN:?}" > "$S/cf.header"`. The `:?` stops
 the command, and creates no file, when `CF_TOKEN` is empty or unset, so no Cloudflare call
@@ -232,6 +235,17 @@ to a file in `"$S"` with `-o`, never to the terminal.
    jq -r '.result.rules[] | select(.expression | contains("\"<host>\"")) | .id' "$S/rule.json"
    ```
 
+   Write the value the rule holds now into the previous-value file. `-j` keeps `jq` from
+   appending a newline, and nothing is printed:
+
+   ```sh
+   jq -j '.result.rules[] | select(.expression | contains("\"<host>\"")) | .action_parameters.headers["X-Origin-Verify"].value' "$S/rule.json" > "$S/origin.previous"
+   test -s "$S/origin.previous"
+   ```
+
+   The `test` must succeed. An empty file means the rule holds no value, and there is nothing
+   to keep accepting.
+
    Put the two ids into the rule's address, build the body from the host's current rule with
    the new value in place of the old one and the read-only fields removed, and validate it
    with a dry run, which changes nothing:
@@ -252,15 +266,20 @@ to a file in `"$S"` with `-o`, never to the terminal.
    The last line must print `true`, `[]` and `true`. The third value proves the dry run
    stored nothing, since a real update returns the whole ruleset in `.result`, so never print
    `.result` itself. On a rejected body `.errors` says why.
-2. Set the variable from the file:
-   `railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"`.
+2. Set both variables from the files:
+
+   ```sh
+   railway variable set CLOUDFLARE_ORIGIN_SECRET_PREVIOUS --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.previous"
+   railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"
+   ```
 3. Redeploy the backend once, and wait until the newest row of
    `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. If it shows `FAILED`,
-   the old container still runs with the old value and the rule is unchanged, but the
-   variable already holds the new value, so the next deploy of any kind would bring the
-   mismatch. Fix the cause, redeploy, and continue with step 4.
-4. Right away, send the validated body for real, in the same shell, so `U` still holds the
-   address the dry run checked:
+   the old container still runs and accepts the old value, and so does the next deploy, because
+   the variable still holds it as the previous one. Fix the cause, redeploy, and continue with
+   step 4.
+4. Send the validated body for real, in the same shell, so `U` still holds the address the dry
+   run checked. Until this succeeds the rule sends the old value, which the backend still
+   accepts:
 
    ```sh
    rm -f "$S/patch.response.json"
@@ -269,8 +288,8 @@ to a file in `"$S"` with `-o`, never to the terminal.
    jq -c '.success, .errors' "$S/patch.response.json"
    ```
 
-   It must print `true` and `[]`. If it does not, the backend already expects the new value
-   while the rule still sends the old one, so fix the cause and run the block again at once.
+   It must print `true` and `[]`. If it does not, the rule still sends the old value, which the
+   backend still accepts, so fix the cause and run the block again.
 5. Compare three hashes, and all three must match. The zone holds one rule per API host in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
@@ -296,10 +315,28 @@ to a file in `"$S"` with `-o`, never to the terminal.
    no value was found for that host: a short label or another name that matches no rule, a
    missing rule, a failed listing, or an empty rule value. The `rm -f` makes sure a failed
    listing leaves no file, so an older listing cannot pass for the current one.
+6. Only after the three hashes match, remove the old value and redeploy once more. The order
+   matters: removing it before the rule holds the new value refuses every request.
 
-On a mismatch requests are not rejected. Every request is keyed under one shared constant
-for rate limiting instead, so all callers share one rate-limit bucket, which shows up as `429`
-responses on a busy site. Keep the gap between steps 3 and 4 short.
+   ```sh
+   railway variable delete CLOUDFLARE_ORIGIN_SECRET_PREVIOUS -s <env>-backend -e <env>
+   ```
+
+   The delete command has no `--skip-deploys` option, so Railway may start a deploy on its
+   own. Read `railway deployment list -s <env>-backend -e <env>` after it. If no new row
+   appeared, run `railway redeploy -y -s <env>-backend -e <env>`. Wait for `SUCCESS` as in
+   step 3. Then check that the variable is gone by listing names
+   only, never values. The listing goes into `jq`, not onto the terminal, and
+   `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` must be absent from the output:
+
+   ```sh
+   railway variable list --json -s <env>-backend -e <env> | jq -r 'keys[]'
+   ```
+
+A request that carries neither value gets `403`, recorded as `origin_refused` with the reason
+`secret_mismatch`, so a mismatch stops the whole site. Only the platform health probe, a
+`GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
+secret.
 
 ### Database and Redis credentials
 
