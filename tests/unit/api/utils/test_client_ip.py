@@ -2,9 +2,12 @@
 
 from unittest.mock import MagicMock, patch
 
-from api.utils.client_ip import get_client_ip
+import pytest
+
+from api.utils.client_ip import get_client_ip, origin_secret_matches
 
 _SECRET = "s3cret-origin-token"  # pragma: allowlist secret
+_PREVIOUS = "previous-origin-token"  # pragma: allowlist secret
 
 
 def _request(
@@ -26,16 +29,18 @@ def _request(
     return request
 
 
-def _with_secret(secret: str, *, is_deploy: bool = False) -> object:
+def _with_secret(secret: str, *, previous: str = "", is_deploy: bool = False) -> object:
     """Patch get_settings with a given origin secret and deployment state.
 
     :param secret: Value for ``cloudflare_origin_secret``.
+    :param previous: Value for ``cloudflare_origin_secret_previous``, set during a rotation.
     :param is_deploy: Whether the process counts as a deployed service; the default
         models a laptop, where the transport peer really is the client.
     :return: The active patch context manager.
     """
     settings = MagicMock()
     settings.cloudflare_origin_secret = secret
+    settings.cloudflare_origin_secret_previous = previous
     settings.is_deploy = is_deploy
     return patch("api.utils.client_ip.get_settings", return_value=settings)
 
@@ -149,6 +154,59 @@ class TestOriginSecretConfigured:
         with _with_secret(_SECRET):
             request = _request({"X-Origin-Verify": "secrét", "CF-Connecting-IP": "1.2.3.4"})
             assert get_client_ip(request) == "unverified-origin"
+
+
+class TestOriginSecretRotation:
+    """During a rotation the previous secret is trusted next to the current one."""
+
+    def test_previous_secret_is_trusted_for_cf_connecting_ip(self):
+        """GIVEN a previous secret WHEN a request carries it THEN CF-Connecting-IP wins."""
+        with _with_secret(_SECRET, previous=_PREVIOUS):
+            request = _request({"X-Origin-Verify": _PREVIOUS, "CF-Connecting-IP": "203.0.113.50"})
+            assert get_client_ip(request) == "203.0.113.50"
+
+    def test_previous_secret_is_not_trusted_when_unset(self):
+        """GIVEN no previous secret WHEN a request carries one THEN it is unverified."""
+        with _with_secret(_SECRET):
+            request = _request({"X-Origin-Verify": _PREVIOUS, "CF-Connecting-IP": "203.0.113.50"})
+            assert get_client_ip(request) == "unverified-origin"
+
+
+class TestOriginSecretMatches:
+    """origin_secret_matches accepts a configured, non-empty secret and nothing else."""
+
+    @pytest.mark.parametrize(
+        ("verify", "previous", "expected"),
+        [
+            (None, "", False),
+            ("", "", False),
+            ("", _PREVIOUS, False),
+            (_SECRET, "", True),
+            (_PREVIOUS, _PREVIOUS, True),
+            (_PREVIOUS, "", False),
+            ("nope", _PREVIOUS, False),
+            ("secr\u00e9t", _PREVIOUS, False),
+        ],
+        ids=[
+            "absent",
+            "empty",
+            "empty-with-previous-set",
+            "current",
+            "previous",
+            "previous-not-configured",
+            "wrong",
+            "non-ascii",
+        ],
+    )
+    def test_match(self, verify: str | None, previous: str, expected: bool):
+        """GIVEN the configured secrets WHEN a value is checked THEN only a real match passes."""
+        with _with_secret(_SECRET, previous=previous):
+            assert origin_secret_matches(verify) is expected
+
+    def test_empty_current_secret_never_matches_an_empty_value(self):
+        """GIVEN an unset current secret WHEN an empty value is checked THEN it is no match."""
+        with _with_secret("", previous=""):
+            assert origin_secret_matches("") is False
 
 
 def test_returns_unknown_for_none_request():

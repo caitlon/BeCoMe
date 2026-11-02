@@ -272,11 +272,15 @@ class Settings(BaseSettings):
     api_public_url: str = "http://localhost:8000"
 
     # Cloudflare origin lock: shared secret that Cloudflare injects (via a Transform
-    # Rule) as the X-Origin-Verify request header. When set, only requests carrying it
-    # are trusted to have transited Cloudflare, so CF-Connecting-IP is honoured only for
-    # them; direct hits on the bare origin are keyed under a single constant instead.
-    # Leave unset where Cloudflare is not in front (local/dev/staging).
+    # Rule) as the X-Origin-Verify request header. A deployed service refuses a request
+    # that does not carry it (api/middleware/origin_lock.py), and honours
+    # CF-Connecting-IP only for a request that does. Required on every deployed profile;
+    # leave unset only on a laptop or in CI, where no Cloudflare is in front.
     cloudflare_origin_secret: str = ""
+
+    # The value being replaced during a rotation of the secret above, accepted alongside
+    # the current one. Empty outside a rotation.
+    cloudflare_origin_secret_previous: str = ""
 
     # Shared revocation / rate-limit store. Empty -> in-memory (dev/test); required in prod.
     redis_url: str = ""
@@ -859,12 +863,12 @@ class Settings(BaseSettings):
         """
         if not self.cloudflare_origin_secret:
             raise ValueError(
-                f"cloudflare_origin_secret is required in the {profile} profile so the "
-                "client IP is read from a header only Cloudflare can set (it injects "
-                "X-Origin-Verify). Without it every request through Cloudflare is keyed "
+                f"cloudflare_origin_secret is required in the {profile} profile: the "
+                "service refuses a request that does not carry it in X-Origin-Verify, "
+                "which Cloudflare injects, and reads the client IP from a header only "
+                "Cloudflare can set. Without it every request through Cloudflare is keyed "
                 "under the edge's own address, which collapses all callers into one "
-                "rate-limit bucket, and a request that reaches the bare origin is keyed "
-                "off a forwarding header the origin cannot vouch for"
+                "rate-limit bucket"
             )
         if not _has_remote_cors_origin(self.cors_origins):
             raise ValueError(

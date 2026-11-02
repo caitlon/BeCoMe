@@ -7,12 +7,34 @@ from starlette.requests import Request
 from api.config import get_settings
 
 # Rate-limit / log key for any request whose client address the origin cannot vouch
-# for: one that should have transited Cloudflare but carried no matching origin-verify
-# secret, and one arriving at a deployed service that has no secret configured at all.
-# Bucketing all such traffic under one constant stops a direct *.up.railway.app caller
-# from spoofing an arbitrary client IP: it can neither mint fresh rate-limit buckets
-# nor poison logs with a chosen address.
-_UNVERIFIED_ORIGIN = "unverified-origin"
+# for. A deployed service refuses a request without the origin-verify secret in
+# ``OriginLockMiddleware``, so the constant is the key for what still reaches this
+# function unverified: the platform health probe, and a deploy that has no secret
+# configured. Bucketing all of it under one constant means a caller can neither mint
+# fresh rate-limit buckets nor poison logs with a chosen address.
+UNVERIFIED_ORIGIN = "unverified-origin"
+
+
+def origin_secret_matches(verify: str | None) -> bool:
+    """Check an ``X-Origin-Verify`` value against the configured origin secrets.
+
+    The current secret and, during a rotation, the previous one both count. An unset
+    secret never matches, so an empty header cannot pass for one.
+
+    :param verify: Value of the ``X-Origin-Verify`` header, or ``None`` when absent.
+    :return: True when the value equals a configured, non-empty secret.
+    """
+    if not verify:
+        return False
+    settings = get_settings()
+    # Compare as bytes: compare_digest raises TypeError on a non-ASCII str, which
+    # would turn a junk header into a 500 instead of a refusal.
+    candidate = verify.encode()
+    matched = False
+    for secret in (settings.cloudflare_origin_secret, settings.cloudflare_origin_secret_previous):
+        if secret and hmac.compare_digest(candidate, secret.encode()):
+            matched = True
+    return matched
 
 
 def get_client_ip(request: Request | None) -> str:
@@ -21,12 +43,14 @@ def get_client_ip(request: Request | None) -> str:
     The trust model depends on whether a Cloudflare origin secret is configured
     (``CLOUDFLARE_ORIGIN_SECRET``, set on every deployed service):
 
-    - **Secret configured**: a request is trusted only when it carries the matching
-      ``X-Origin-Verify`` header that Cloudflare injects via a Transform Rule.
+    - **Secret configured**: a request is trusted only when it carries a matching
+      ``X-Origin-Verify`` header, which Cloudflare injects via a Transform Rule.
       Trusted requests use ``CF-Connecting-IP`` (the real client, which Cloudflare sets
-      and a client cannot forge). A request without the secret reached the bare origin
-      directly, bypassing Cloudflare, so its client-supplied headers are untrusted and
-      it is keyed under a single constant instead of a spoofable address.
+      and a client cannot forge). A deployed service refuses any other request in
+      :class:`api.middleware.origin_lock.OriginLockMiddleware`, apart from the platform
+      health probe. What still reaches this function without the secret has
+      client-supplied headers that are untrusted, so it is keyed under a single
+      constant instead of a spoofable address.
     - **No secret on a deployed service**: the same constant. The invariants in
       :meth:`api.config.Settings._validate_deploy_invariants` refuse to boot a deploy
       without the secret, so this branch should be unreachable. Even so, the app runs
@@ -43,19 +67,15 @@ def get_client_ip(request: Request | None) -> str:
     if request is None:
         return "unknown"
     settings = get_settings()
-    secret = settings.cloudflare_origin_secret
-    if secret:
-        verify = request.headers.get("X-Origin-Verify")
-        # Compare as bytes: compare_digest raises TypeError on a non-ASCII str, which
-        # would turn a junk header into a 500 instead of the unverified-origin path.
-        if verify and hmac.compare_digest(verify.encode(), secret.encode()):
+    if settings.cloudflare_origin_secret:
+        if origin_secret_matches(request.headers.get("X-Origin-Verify")):
             cloudflare_ip = request.headers.get("CF-Connecting-IP")
             if cloudflare_ip:
                 return cloudflare_ip.strip()
             return request.client.host if request.client else "unknown"
-        return _UNVERIFIED_ORIGIN
+        return UNVERIFIED_ORIGIN
     if settings.is_deploy:
-        return _UNVERIFIED_ORIGIN
+        return UNVERIFIED_ORIGIN
     # Local development: no proxy in front, so the transport peer is the real client.
     # X-Forwarded-For is attacker-controlled, so it must never seed the rate-limit
     # key or the log IP.

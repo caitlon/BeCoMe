@@ -16,6 +16,7 @@ from api.logging_config import setup_logging
 from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
+from api.middleware.origin_lock import OriginLockMiddleware
 from api.middleware.rate_limit import enforce_default_limits, limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
@@ -162,15 +163,22 @@ def create_app() -> FastAPI:
     # reads the body, so the guard still drops an over-large body before anything buffers it.
     app.add_middleware(BodySizeLimitMiddleware)
 
+    # Origin lock: a deployed service refuses a request without the Cloudflare origin
+    # secret. It sits inside the request logging, so the access line records the 403 and
+    # its unverified address, outside the body-size guard, so nothing is read before the
+    # refusal, and inside CORS, so a refusal stays readable to the SPA.
+    if settings.is_deploy:
+        app.add_middleware(OriginLockMiddleware)
+
     # Request/response logging with correlation IDs. Outside the body-size guard, because the
     # access line has to report what the client actually got, the guard's 413 included.
     app.add_middleware(RequestLoggingMiddleware)
 
     # CORS middleware for frontend integration (restricted for security). Added last, so
-    # it is outermost: a refusal produced by any middleware inside it (the CSRF 403, the
-    # body-size 413, the rate-limit 429) still carries the CORS headers, without which
-    # the browser hides the response from the SPA. It also answers preflight OPTIONS on
-    # its own, before the rate limit or the request log ever see them.
+    # it is outermost: a refusal produced by any middleware inside it (the origin-lock
+    # 403, the CSRF 403, the body-size 413, the rate-limit 429) still carries the CORS
+    # headers, without which the browser hides the response from the SPA. It also answers
+    # preflight OPTIONS on its own, before the rate limit or the request log ever see them.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

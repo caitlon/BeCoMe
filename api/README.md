@@ -51,6 +51,7 @@ api/
 ├── middleware/         # Request processing
 │   ├── rate_limit.py       # SlowAPI rate limiting (logs violations)
 │   ├── csrf.py             # Session-bound CSRF check on cookie mutations
+│   ├── origin_lock.py      # Refuses a request without the Cloudflare origin secret (403)
 │   ├── body_size.py        # Request body size limit (413)
 │   ├── security_headers.py # Security response headers
 │   ├── request_logging.py  # Request/response logging + X-Request-ID
@@ -321,7 +322,8 @@ Environment variables (a `.env` file works too):
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. The assistant's hourly counter uses it too when it is enabled and the variable is set |
-| `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
+| `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, and the service refuses a request without it with a 403 (only the platform health probe passes), so each needs its own value paired with a Transform Rule for that environment's API host |
+| `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` | *empty* | The value being replaced, accepted next to `CLOUDFLARE_ORIGIN_SECRET` during a rotation only (see `docs/secrets.md`) |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
 | `TURNSTILE_HOSTNAMES` | `[]`, *required when the check is on* | JSON array of hostnames the widget may be served from; a token minted anywhere else is refused. Never list `localhost` on production |

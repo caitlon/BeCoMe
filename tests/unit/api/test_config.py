@@ -548,6 +548,22 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
             Settings()
 
+    def test_previous_cloudflare_secret_is_empty_outside_a_rotation(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with no CLOUDFLARE_ORIGIN_SECRET_PREVIOUS
+        WHEN Settings is constructed
+        THEN the previous secret is empty, so only the current one is accepted
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET_PREVIOUS", raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.cloudflare_origin_secret_previous == ""
+
     def test_rejects_short_secret_in_production(self, monkeypatch, tmp_path):
         """
         GIVEN the production profile with a short secret not in the blocklist
