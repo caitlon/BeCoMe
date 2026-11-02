@@ -7,8 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.assistant.client import UserApiClient
-from api.assistant.errors import AssistantUpstreamError
-from api.auth.revocation_store import get_revocation_store
+from api.assistant.errors import AssistantNotFoundError
 from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
 from api.middleware.origin_lock import OriginLockMiddleware
 from tests.shared.helpers import captured_log_records
@@ -76,9 +75,6 @@ def build_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[AppBuilder]
         yield build
     finally:
         get_settings.cache_clear()
-        # A route with sign-in builds this process-wide store from the settings above, and
-        # a store pointing at this Redis URL would break every later test in the process.
-        get_revocation_store.cache_clear()
 
 
 @pytest.fixture(params=["prod", "test", "dev"])
@@ -127,7 +123,7 @@ class TestRefusal:
         WHEN X-Origin-Verify carries bytes outside ASCII
         THEN the request is refused with a 403, not a 500
         """
-        headers = {"X-Origin-Verify": "secrét".encode("latin-1")}
+        headers = {"X-Origin-Verify": "secr\u00e9t".encode("latin-1")}
 
         response = deployed_client.get(_PROTECTED, headers=headers)
 
@@ -366,19 +362,19 @@ async def test_in_process_client_passes_the_lock(build_app: AppBuilder) -> None:
     """
     GIVEN a deployed app
     WHEN UserApiClient calls a path the probe exemption does not cover
-    THEN the secret it sends gets the call through to the route, which answers 401, not 403
+    THEN the secret it sends gets the call past the lock to the router, which answers 404
 
-    The health path is exempt from the lock, so it would pass without the header. The
-    protected path is refused 403 by the lock without it, and answered 401 by the route
-    for the fake token with it.
+    The health path is exempt from the lock, so it would pass without the header. A path
+    no route serves is refused 403 by the lock without it, and runs no route dependency
+    with it, so the call opens no session and builds no process-wide store.
     """
     app = build_app().app
     api_client = UserApiClient(app=app, access_token="a-token", client_ip="203.0.113.7")
 
     try:
-        with pytest.raises(AssistantUpstreamError) as excinfo:
-            await api_client._get_json(_PROTECTED)
+        with pytest.raises(AssistantNotFoundError) as excinfo:
+            await api_client._get_json(_UNROUTED)
     finally:
         await api_client.aclose()
 
-    assert "returned 401" in str(excinfo.value)
+    assert "returned 404" in str(excinfo.value)
