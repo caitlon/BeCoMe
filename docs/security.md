@@ -670,8 +670,9 @@ value, the email API key or bucket credentials, the `Authorization` header, any 
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
 and free-text user content such as a project description.
 
-The client `ip` is logged on purpose. Every API request writes it to its access record
-(`api/middleware/request_logging.py`), and the auth, CSRF and rate-limit events carry it too.
+The client `ip` is logged on purpose. Every API request except the health check writes it to
+its access record (`api/middleware/request_logging.py`), and the auth, CSRF and rate-limit
+events carry it too.
 The value comes from `get_client_ip`, so a request without the origin secret logs the
 `unverified-origin` constant instead of an address. The privacy notice discloses this. The
 backend's Sentry events leave the address out (`send_default_pii=False`, below).
@@ -799,9 +800,9 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
 `ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
-`dev` the required check `Check` demands that every job pass, and on `test` and `prod` `Code
-Quality Checks` and `Dependency Audit` are required by name. The SonarCloud job has to finish,
-but its quality gate is not a required check.
+`dev` the required check `Check` demands that every job pass or skip, the SonarCloud job
+included. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks
+required by name. No branch requires the SonarCloud quality gate.
 
 The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
