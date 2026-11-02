@@ -679,8 +679,8 @@ backend's Sentry events leave the address out (`send_default_pii=False`, below).
 
 Retention depends on the provider, not on this code. Better Stack keeps log records for 3
 days, a setting on each of the three backend sources. The backend also writes those records to
-stdout, and Railway makes that copy available for 7 days on the Hobby plan. Its documentation
-does not say when the copy is deleted. Sentry keeps crash reports, session records and
+stdout, and Railway makes that copy available for 7 days on the Hobby plan. It publishes no
+fixed date for deleting that copy. Sentry keeps crash reports, session records and
 performance traces for 30 days, which comes with the free Developer plan. A plan change moves
 Railway's period or Sentry's. All three were checked on 2 November 2026, Railway's against its
 documentation and the age of the records `railway logs` returned. The privacy notice states the

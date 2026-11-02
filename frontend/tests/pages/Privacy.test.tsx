@@ -155,10 +155,10 @@ describe('Privacy', () => {
  * rotated-file count on a handler no deployment enables.
  *
  * "seven days" is Railway's own copy of the same records, which the backend also writes to
- * stdout. It follows the plan: Railway documents 7 days on Hobby, and on 2026-11-02 `railway logs`
- * returned records up to that age and none older. The same page says an upgrade restores older
- * logs and nowhere says when they are deleted, so the notice says "available", not "discarded".
- * An upgrade to Pro would make it 30.
+ * stdout. It follows the plan: docs.railway.com/observability/logs lists 7 days on Hobby, and on
+ * 2026-11-02 `railway logs` returned records up to that age and none older. That page also says an
+ * upgrade restores older logs, and Railway publishes no fixed deletion date, so the notice says
+ * "available", not "discarded". An upgrade to Pro would make it 30.
  *
  * "30 days" is Sentry's, and it follows the billing plan rather than any setting we chose:
  * on the free Developer plan every kind of data this service sends — errors, release-health
