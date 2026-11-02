@@ -147,12 +147,18 @@ describe('Privacy', () => {
  * all 23 tests stayed green. Czech is the version a reader at the Czech supervisory authority
  * would open, so the facts are pinned in both files directly rather than through the page.
  *
- * Two of the numbers are here for a different reason: they cannot be re-derived from this
+ * Three of the numbers are here for a different reason: they cannot be re-derived from this
  * repository at all, because they are settings held by the provider.
  *
  * "three days" is the Better Stack source retention, read from the provider on 2026-09-08.
  * Three separate reviewers guessed it came from `_LOG_FILE_BACKUP_COUNT = 3`, which is a
  * rotated-file count on a handler no deployment enables.
+ *
+ * "seven days" is Railway's own copy of the same records, which the backend also writes to
+ * stdout. It follows the plan: docs.railway.com/observability/logs lists 7 days on Hobby, and on
+ * 2026-11-02 `railway logs` returned records up to that age and none older. That page also says an
+ * upgrade restores older logs, and Railway publishes no fixed deletion date, so the notice says
+ * "available", not "discarded". An upgrade to Pro would make it 30.
  *
  * "30 days" is Sentry's, and it follows the billing plan rather than any setting we chose:
  * on the free Developer plan every kind of data this service sends — errors, release-health
@@ -164,7 +170,8 @@ describe('Privacy', () => {
 describe.each([
   ['en', enPrivacy, enAssistant, {
     accessToken: '15 minutes', refresh: '7 days', reset: '60 minutes',
-    verify: '24 hours', logs: 'three days', sentry: 'by Sentry for 30 days',
+    verify: '24 hours', logs: 'three days',
+    railwayLogs: 'available for seven days', sentry: 'by Sentry for 30 days',
     noEmailChange: 'email address cannot be changed in the app',
     transfer: 'Chapter V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
@@ -174,7 +181,8 @@ describe.each([
   }],
   ['cs', csPrivacy, csAssistant, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
-    verify: '24 hodin', logs: 'tři dny', sentry: 'uchovává Sentry 30 dní',
+    verify: '24 hodin', logs: 'tři dny',
+    railwayLogs: 'zpřístupňuje ji sedm dní', sentry: 'uchovává Sentry 30 dní',
     noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
     transfer: 'kapitoly V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
