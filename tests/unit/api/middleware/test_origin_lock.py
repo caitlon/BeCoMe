@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.assistant.client import UserApiClient
+from api.assistant.errors import AssistantUpstreamError
 from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
 from api.middleware.origin_lock import OriginLockMiddleware
 from tests.shared.helpers import captured_log_records
@@ -42,17 +43,17 @@ def build_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[AppBuilder]
         monkeypatch.chdir(tmp_path)
         values: dict[str, str | None] = {
             "APP_ENV": profile,
-            "SECRET_KEY": "a-sufficiently-strong-secret-value",
-            "DATABASE_URL": "postgresql://user:pass@host:5432/db",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
+            "DATABASE_URL": "postgresql://user:pass@host:5432/db",  # pragma: allowlist secret
             "REDIS_URL": "redis://localhost:6379/0",
             "CLOUDFLARE_ORIGIN_SECRET": _SECRET,
             "CORS_ORIGINS": f'["{_ORIGIN}"]',
             "FRONTEND_BASE_URL": _ORIGIN,
             "EMAIL_PROVIDER": "http",
-            "EMAIL_API_KEY": "a-resend-api-key",
-            "MIGRATION_DATABASE_URL": "postgresql://migrator:pass@host:5432/db",
+            "EMAIL_API_KEY": "a-resend-api-key",  # pragma: allowlist secret
+            "MIGRATION_DATABASE_URL": "postgresql://migrator:pass@host:5432/db",  # pragma: allowlist secret
             "TURNSTILE_ENABLED": "true",
-            "TURNSTILE_SECRET_KEY": "a-turnstile-secret",
+            "TURNSTILE_SECRET_KEY": "a-turnstile-secret",  # pragma: allowlist secret
             "TURNSTILE_HOSTNAMES": '["app.example.com"]',
             # The test runner sets TESTING=1; only the prod profile counts as a deploy
             # while it is set. The other two profiles are the real deploys, as on Railway.
@@ -360,15 +361,20 @@ class TestOffADeploy:
 async def test_in_process_client_passes_the_lock(build_app: AppBuilder) -> None:
     """
     GIVEN a deployed app
-    WHEN UserApiClient calls it in process
-    THEN the secret it sends gets the call through
+    WHEN UserApiClient calls a path the probe exemption does not cover
+    THEN the secret it sends gets the call through to the route, which answers 401, not 403
+
+    The health path is exempt from the lock, so it would pass without the header. The
+    protected path is refused 403 by the lock without it, and answered 401 by the route
+    for the fake token with it.
     """
     app = build_app().app
     api_client = UserApiClient(app=app, access_token="a-token", client_ip="203.0.113.7")
 
     try:
-        body = await api_client._get_json(_HEALTH)
+        with pytest.raises(AssistantUpstreamError) as excinfo:
+            await api_client._get_json(_PROTECTED)
     finally:
         await api_client.aclose()
 
-    assert body["status"] == "ok"
+    assert "returned 401" in str(excinfo.value)
