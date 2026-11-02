@@ -670,9 +670,9 @@ value, the email API key or bucket credentials, the `Authorization` header, any 
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
 and free-text user content such as a project description.
 
-The client `ip` is logged on purpose. Every API request except the health check writes it to
-its access record (`api/middleware/request_logging.py`), and the auth, CSRF and rate-limit
-events carry it too.
+The client `ip` is logged on purpose. Every API request except the health check and CORS
+preflights writes it to its access record (`api/middleware/request_logging.py`), and the auth,
+CSRF and rate-limit events carry it too.
 The value comes from `get_client_ip`, so a request without the origin secret logs the
 `unverified-origin` constant instead of an address. The privacy notice discloses this. The
 backend's Sentry events leave the address out (`send_default_pii=False`, below).
@@ -793,7 +793,7 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
-| SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | No |
+| SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
 | Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | No |
 | Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
