@@ -41,7 +41,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Bot check on the unauthenticated auth endpoints | Implemented | `api/auth/turnstile.py`, `api/services/turnstile_service.py` |
 | Input validation | Implemented | `api/schemas/` |
 | Configuration invariants per profile | Implemented | `api/config.py` |
-| Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, Cloudflare |
+| Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
 | Dependencies and code scanning | Partial, no container image scanning | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
@@ -451,24 +451,24 @@ timer.
 
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
-`X-Origin-Verify` header matching `CLOUDFLARE_ORIGIN_SECRET`. Anything else, including a
+`X-Origin-Verify` header matching `CLOUDFLARE_ORIGIN_SECRET`, or `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`
+during a rotation. A deployed service refuses a request without it first (see [Network and
+edge](#network-and-edge)). Anything that still reaches the limiter without the secret, including a
 deployed service with no secret configured, keys under one constant. It never reads
 `X-Forwarded-For`, so a client cannot spoof its way around the per-IP limits. The assistant's
-in-process API client (`UserApiClient`) runs through the same limiter, so when the secret is set
-it sends `X-Origin-Verify`, and the transport's peer address is the caller's key; the header
-never leaves the process. Rate limiting fails
-**open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
-traffic, at the cost of the shared counters. During an outage every route counts
-`LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of its
-shared limits. A route with its own limit also keeps counting the two default limits, in the
-same process. The limiter's Redis client times out after 2 seconds on connect and on read,
-and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
-store never holds the event loop. See "Accepted risks" for the reasoning. A
-JSON body is capped at 2 MiB and a multipart body at the photo limit plus 64 KiB of framing.
-A body over its cap, declared in `Content-Length` or streamed in chunks, gets a `413` before
-sign-in or the route runs, and the request log records that status. The route still checks the
-file against its own 5 MB limit, and reads the upload in bounded chunks rather than whole
-into memory.
+in-process API client (`UserApiClient`) runs through the same limiter, so when the secret is set it
+sends `X-Origin-Verify`, and the transport's peer address is the caller's key; the header never
+leaves the process. Rate limiting fails **open**: `swallow_errors` and an in-memory fallback keep a
+Redis outage from refusing traffic, at the cost of the shared counters. During an outage every route
+counts `LIMIT_FALLBACK`, `60/minute` per client address and path in each process, in place of its
+shared limits. A route with its own limit also keeps counting the two default limits, in the same
+process. The limiter's Redis client times out after 2 seconds on connect and on read, and
+`enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow store
+never holds the event loop. See "Accepted risks" for the reasoning. A JSON body is capped at 2 MiB
+and a multipart body at the photo limit plus 64 KiB of framing. A body over its cap, declared in
+`Content-Length` or streamed in chunks, gets a `413` before sign-in or the route runs, and the
+request log records that status. The route still checks the file against its own 5 MB limit, and
+reads the upload in bounded chunks rather than whole into memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match
@@ -603,20 +603,23 @@ Transform Rule per host injects a shared secret header the origin then checks
 (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
 
-The lock decides what the origin *believes*, not what it *accepts*. The origin does not
-refuse a request that arrives without the secret. What the secret buys is that such a
-request keys under a single constant rather than off a forwarding header the origin cannot
-vouch for (`api/utils/client_ip.py`). That matters because uvicorn runs with
-`--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
-trustworthy as whatever wrote `X-Forwarded-For`. It also makes the rate-limit key correct
-rather than just safe: without the lock, a deployed service keys every request under one
-constant, collapsing all callers into a single bucket, because it can trust neither
-`CF-Connecting-IP` nor the transport peer.
+A deployed backend refuses with a 403 any request that does not carry the secret
+(`api/middleware/origin_lock.py`). The rule applies to every path on every API host, and the
+refusal is logged as `origin_refused` without the value that was sent. During a rotation the
+service also accepts the previous value (`CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, see
+[secrets](secrets.md)). A CORS preflight is answered by `CORSMiddleware` before the lock, so
+the browser can still read a refusal.
 
-Railway's generated `*.up.railway.app` addresses are gone. On 2 November 2026 the Railway
-API listed no generated domain on any of the 15 service instances in dev, test and prod,
-only the custom domains under `becomify.app`. That check covers those addresses and nothing
-else. It does not show that Cloudflare is the only route to the origin.
+One request needs no secret. It is `GET /api/v1/health` addressed to a platform probe's
+host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
+image's own `HEALTHCHECK`). That route returns only a status and the version.
+
+For a verified request the client IP comes from `CF-Connecting-IP`
+(`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
+`--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
+trustworthy as whatever wrote `X-Forwarded-For`. Without the secret a deployed service could
+trust neither `CF-Connecting-IP` nor the peer and would key every request under one constant,
+collapsing all callers into a single bucket.
 
 CORS carries explicit allowed origins and `allow_credentials=True` (required for the cookie
 session). It permits the `X-CSRF-Token` header on the way in and exposes it on the way out,
