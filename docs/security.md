@@ -679,13 +679,14 @@ backend's Sentry events leave the address out (`send_default_pii=False`, below).
 
 Retention depends on the provider, not on this code. Better Stack keeps log records for 3
 days, a setting on each of the three backend sources. The backend also writes those records to
-stdout, and Railway keeps that copy for 7 days, which comes with the Hobby plan. Sentry keeps
-crash reports, session records and performance traces for 30 days, which comes with the free
-Developer plan. A plan change moves either of those two. All three were checked on 2 November
-2026, Railway's against its documentation and the age of the records `railway logs` returned.
-The privacy notice states the same periods, and `frontend/tests/pages/Privacy.test.tsx` pins
-its wording to them. Nothing pins this page or [`data-location.md`](data-location.md), so a
-change of period means editing all three.
+stdout, and Railway makes that copy available for 7 days on the Hobby plan. Its documentation
+does not say when the copy is deleted. Sentry keeps crash reports, session records and
+performance traces for 30 days, which comes with the free Developer plan. A plan change moves
+Railway's period or Sentry's. All three were checked on 2 November 2026, Railway's against its
+documentation and the age of the records `railway logs` returned. The privacy notice states the
+same periods, and `frontend/tests/pages/Privacy.test.tsx` pins its wording to them. Nothing pins
+this page or [`data-location.md`](data-location.md), so a change of period means editing all
+three.
 
 Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py`,
 `api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of

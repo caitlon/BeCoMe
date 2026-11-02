@@ -40,7 +40,7 @@
     "heading": "Kdo další s údaji nakládá",
     "intro": "Jménem správce zpracovává údaje několik poskytovatelů:",
     "items": [
-      "Railway hostuje aplikaci, její databáze a mezipaměť a profilové fotografie v Amsterdamu, tedy v Evropské unii.",
+      "Railway hostuje aplikaci, její databáze a mezipaměť a profilové fotografie v Amsterdamu, tedy v Evropské unii. Uchovává také serverové záznamy popsané výše.",
       "Cloudflare zajišťuje doručování webu a provozuje kontrolu robotů, která chrání formuláře pro přihlášení, registraci, obnovu hesla a opětovné zaslání ověřovacího e-mailu. Každý požadavek zpracovává v datovém centru nejbližším návštěvníkovi, což použitý tarif neomezuje na Evropskou unii, a kontrola robotů přijímá vaši IP adresu.",
       "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Zprávy odesílá z Irska, ale údaje o účtu včetně záznamů o zprávách uchovává ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
       "Sentry přijímá hlášení o chybách z prohlížeče i ze serveru, ve svém frankfurtském regionu. Prohlížeč mu navíc při každém zobrazení stránky posílá krátký záznam o relaci, který služba označuje jako release health. Server zhruba u každého desátého požadavku odesílá výkonnostní trasu s cestou, URL a časy databázových dotazů. Přístupové tokeny a tokeny pro obnovu hesla se odstraňují dříve, než cokoli z toho odejde.",
@@ -58,7 +58,7 @@
       "Odkaz pro ověření e-mailu platí 24 hodin.",
       "Přihlášená relace trvá 15 minut a používáním se sama obnovuje. Sedm dní nečinnosti ji ukončí; pro průběžně používanou relaci není pevný horní limit."
     ],
-    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů uchovává Better Stack tři dny a Railway sedm dní a poté se zahazují. Hlášení o chybách, záznamy relací a výkonnostní trasy uchovává Sentry 30 dní. Trasy asistenta uchovává LangSmith 14 dní."
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů uchovává Better Stack tři dny a poté se zahazují. Railway, který službu hostuje, drží také jejich kopii a zpřístupňuje ji sedm dní. Jeho dokumentace neuvádí, kdy se tato kopie maže. Hlášení o chybách, záznamy relací a výkonnostní trasy uchovává Sentry 30 dní. Trasy asistenta uchovává LangSmith 14 dní."
   },
   "assistant": {
     "heading": "Asistent",

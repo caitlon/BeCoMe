@@ -156,7 +156,9 @@ describe('Privacy', () => {
  *
  * "seven days" is Railway's own copy of the same records, which the backend also writes to
  * stdout. It follows the plan: Railway documents 7 days on Hobby, and on 2026-11-02 `railway logs`
- * returned records up to that age and none older. An upgrade to Pro would make it 30.
+ * returned records up to that age and none older. The same page says an upgrade restores older
+ * logs and nowhere says when they are deleted, so the notice says "available", not "discarded".
+ * An upgrade to Pro would make it 30.
  *
  * "30 days" is Sentry's, and it follows the billing plan rather than any setting we chose:
  * on the free Developer plan every kind of data this service sends — errors, release-health
@@ -169,7 +171,7 @@ describe.each([
   ['en', enPrivacy, enAssistant, {
     accessToken: '15 minutes', refresh: '7 days', reset: '60 minutes',
     verify: '24 hours', logs: 'three days',
-    railwayLogs: 'seven days by Railway', sentry: 'by Sentry for 30 days',
+    railwayLogs: 'available for seven days', sentry: 'by Sentry for 30 days',
     noEmailChange: 'email address cannot be changed in the app',
     transfer: 'Chapter V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
@@ -180,7 +182,7 @@ describe.each([
   ['cs', csPrivacy, csAssistant, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
     verify: '24 hodin', logs: 'tři dny',
-    railwayLogs: 'Railway sedm dní', sentry: 'uchovává Sentry 30 dní',
+    railwayLogs: 'zpřístupňuje ji sedm dní', sentry: 'uchovává Sentry 30 dní',
     noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
     transfer: 'kapitoly V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',

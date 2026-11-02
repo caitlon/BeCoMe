@@ -40,7 +40,7 @@
     "heading": "Who else handles it",
     "intro": "Several providers process data on the controller's behalf:",
     "items": [
-      "Railway hosts the application, its databases and cache, and profile photos in Amsterdam, in the European Union.",
+      "Railway hosts the application, its databases and cache, and profile photos in Amsterdam, in the European Union. It also holds the server logs described above.",
       "Cloudflare serves the site and runs the bot check that protects the sign-in, registration, password-reset and verification-resend forms. It handles each request at its data centre nearest to the visitor, which the plan in use does not limit to the European Union, and the bot check receives your IP address.",
       "Resend delivers the verification and password-reset messages, which means it receives your email address. It sends the messages from Ireland but keeps its account data, including message records, in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
       "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. The server samples about one request in ten as a performance trace, carrying the route, the URL and database timings. Access tokens and reset tokens are removed before any of it leaves.",
@@ -58,7 +58,7 @@
       "An email verification link is valid for 24 hours.",
       "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
     ],
-    "outro": "The account itself is kept until you delete it. Log records are kept for three days by Better Stack and for seven days by Railway, and then discarded. Crash reports, session records and performance traces are kept by Sentry for 30 days. Assistant traces are kept by LangSmith for 14 days."
+    "outro": "The account itself is kept until you delete it. Log records are kept by Better Stack for three days and then discarded. Railway, which hosts the service, also holds a copy and makes it available for seven days. Its documentation does not say when that copy is deleted. Crash reports, session records and performance traces are kept by Sentry for 30 days. Assistant traces are kept by LangSmith for 14 days."
   },
   "assistant": {
     "heading": "The assistant",
