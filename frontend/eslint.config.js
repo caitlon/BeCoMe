@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
-import jsxA11y from "eslint-plugin-jsx-a11y";
+import jsxA11y from "eslint-plugin-jsx-a11y-x";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -17,11 +17,11 @@ export default tseslint.config(
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
-      "jsx-a11y": jsxA11y,
+      "jsx-a11y-x": jsxA11y,
     },
     rules: {
       ...reactHooks.configs["recommended-latest"].rules,
-      ...jsxA11y.flatConfigs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     },
@@ -32,8 +32,8 @@ export default tseslint.config(
     files: ["src/components/ui/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
-      "jsx-a11y/heading-has-content": "off",
-      "jsx-a11y/anchor-has-content": "off",
+      "jsx-a11y-x/heading-has-content": "off",
+      "jsx-a11y-x/anchor-has-content": "off",
       // shadcn/ui boilerplate trips React Compiler rules that do not apply here
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/purity": "off",
