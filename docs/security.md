@@ -614,6 +614,11 @@ One request needs no secret. It is `GET /api/v1/health` addressed to a platform 
 host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
+The lock was checked from outside on 2 November 2026, on dev, test and prod. One
+`GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
+naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
+covers the three API hosts.
+
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
 `--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
