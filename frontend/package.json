@@ -72,7 +72,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/coverage-v8": "5.0.5",
     "eslint": "10.13.0",
-    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-jsx-a11y-x": "0.2.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.7",
     "globals": "17.13.0",
@@ -85,11 +85,20 @@
     "vitest": "5.0.5"
   },
   "overrides": {
-    "eslint-plugin-jsx-a11y": {
-      "eslint": "$eslint"
+    "@eslint/config-array": {
+      "minimatch": "11.0.4"
     },
     "@tailwindcss/typography": {
       "postcss-selector-parser": "6.1.5"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.4"
+    },
+    "eslint": {
+      "minimatch": "11.0.4"
+    },
+    "eslint-plugin-jsx-a11y-x": {
+      "minimatch": "11.0.4"
     }
   }
 }
