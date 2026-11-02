@@ -157,12 +157,14 @@ def create_app() -> FastAPI:
     # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
     app.add_middleware(CSRFMiddleware)
 
-    # Request/response logging with correlation IDs.
-    app.add_middleware(RequestLoggingMiddleware)
-
-    # Body-size guard, the outermost middleware after CORS: it drops an over-large request
-    # body before any other middleware buffers or logs it.
+    # Body-size guard. It sits inside the request logging below, so the access line reports
+    # the 413 the client got and the guard's own records carry the request id. Logging never
+    # reads the body, so the guard still drops an over-large body before anything buffers it.
     app.add_middleware(BodySizeLimitMiddleware)
+
+    # Request/response logging with correlation IDs. Outside the body-size guard, because the
+    # access line has to report what the client actually got, the guard's 413 included.
+    app.add_middleware(RequestLoggingMiddleware)
 
     # CORS middleware for frontend integration (restricted for security). Added last, so
     # it is outermost: a refusal produced by any middleware inside it (the CSRF 403, the
