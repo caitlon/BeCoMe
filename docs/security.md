@@ -20,6 +20,7 @@ checked, is in [`data-location.md`](data-location.md).
 - [Network and edge](#network-and-edge)
 - [Logging, observability, and privacy](#logging-observability-and-privacy)
 - [Secrets](#secrets)
+- [Dependencies and code scanning](#dependencies-and-code-scanning)
 - [GDPR: export and erasure](#gdpr-export-and-erasure)
 - [Accepted risks](#accepted-risks)
 - [Database](#database)
@@ -43,6 +44,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
+| Dependencies and code scanning | Partial, no container image scanning | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
 | GDPR export and erasure | Implemented | `api/routes/users.py` |
 | Database least-privilege, network, auditing | Implemented | `scripts/db/`, `api/db/engine.py` |
 | Automated database backups | Partial, manual dumps | `scripts/db/backup.sh` |
@@ -597,24 +599,28 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
 environment has its own host under it: `api.becomify.app` (production),
 `api-harbor.becomify.app` (staging), `api-atelier.becomify.app` (dev). A Cloudflare
-Transform Rule per host injects a shared secret header the origin then requires
+Transform Rule per host injects a shared secret header the origin then checks
 (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
 
-The lock decides what the origin *believes*, not what it *accepts*. Railway also gives each
-service a `*.up.railway.app` address, and those answer, so a caller can still bypass the
-edge. What the secret buys is that a request arriving without it keys under a single
-constant rather than off a forwarding header the origin cannot vouch for
-(`api/utils/client_ip.py`). That matters because uvicorn runs with `--proxy-headers
---forwarded-allow-ips='*'`, which makes `request.client.host` only as trustworthy as
-whatever wrote `X-Forwarded-For`. It also makes the rate-limit key correct rather than just
-safe: without the lock, a deployed service keys every request under one constant, collapsing
-all callers into a single bucket, because it can trust neither `CF-Connecting-IP` nor the
-transport peer. Closing the bypass itself, so nobody can skip the WAF and bot rules, means
-retiring the `*.up.railway.app` domains, which is still open. CORS carries explicit allowed
-origins and `allow_credentials=True` (required for the cookie session). It permits the
-`X-CSRF-Token` header on the way in and exposes it on the way out, since the SPA reads the
-CSRF token off the response.
+The lock decides what the origin *believes*, not what it *accepts*. The origin does not
+refuse a request that arrives without the secret. What the secret buys is that such a
+request keys under a single constant rather than off a forwarding header the origin cannot
+vouch for (`api/utils/client_ip.py`). That matters because uvicorn runs with
+`--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
+trustworthy as whatever wrote `X-Forwarded-For`. It also makes the rate-limit key correct
+rather than just safe: without the lock, a deployed service keys every request under one
+constant, collapsing all callers into a single bucket, because it can trust neither
+`CF-Connecting-IP` nor the transport peer.
+
+Railway's generated `*.up.railway.app` addresses are gone. On 2 November 2026 the Railway
+API listed no generated domain on any of the 15 service instances in dev, test and prod,
+only the custom domains under `becomify.app`. That check covers those addresses and nothing
+else. It does not show that Cloudflare is the only route to the origin.
+
+CORS carries explicit allowed origins and `allow_credentials=True` (required for the cookie
+session). It permits the `X-CSRF-Token` header on the way in and exposes it on the way out,
+since the SPA reads the CSRF token off the response.
 
 Both tiers send security response headers: the API from middleware
 (`api/middleware/security_headers.py`), the SPA from nginx (`frontend/nginx.conf`). Their
@@ -663,6 +669,20 @@ logged, at any level: passwords and password hashes, raw JWTs, the CSRF cookie o
 value, the email API key or bucket credentials, the `Authorization` header, any request or
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
 and free-text user content such as a project description.
+
+The client `ip` is logged on purpose. Every API request writes it to its access record
+(`api/middleware/request_logging.py`), and the auth, CSRF and rate-limit events carry it too.
+The value comes from `get_client_ip`, so a request without the origin secret logs the
+`unverified-origin` constant instead of an address. The privacy notice discloses this. The
+backend's Sentry events leave the address out (`send_default_pii=False`, below).
+
+Retention depends on the provider, not on this code. Better Stack keeps log records for 3
+days, a setting on each of the three backend sources. Sentry keeps crash reports, session
+records and performance traces for 30 days. That number comes with the free Developer plan
+rather than a setting of ours, so a plan change moves it. Both were read from the providers
+on 2 November 2026. The privacy notice states the same periods, and
+`frontend/tests/pages/Privacy.test.tsx` pins its wording to them. Nothing pins this page or
+[`data-location.md`](data-location.md), so a change of period means editing all three.
 
 Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py`,
 `api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of
@@ -760,6 +780,41 @@ setting the new value and redeploying. Every existing session ends at that momen
 the point when a leak is suspected. The inventory of every secret, with its source and
 rotation steps, is in [`secrets.md`](secrets.md).
 
+## Dependencies and code scanning
+
+What watches the dependencies and the code, as read from `.github/` and the GitHub API on 2
+November 2026. Some of it blocks a merge and some only reports, so the last column says which.
+
+| Check | What it covers | Where it runs | Blocks a merge |
+|-------|----------------|---------------|----------------|
+| Bandit | `src` and `api`, medium severity and above | `Lint (Python)` in `ci.yml` | Yes |
+| detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
+| pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
+| npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
+| CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
+| SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | No |
+| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | No |
+| Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly with a 7-day cooldown | `.github/dependabot.yml` | No |
+| Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
+| Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
+
+`ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
+`dev` the required check `Check` demands that every job pass, and on `test` and `prod` `Code
+Quality Checks` and `Dependency Audit` are required by name. The SonarCloud job has to finish,
+but its quality gate is not a required check.
+
+The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
+CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
+carry no such rule, and code reaches them only through `dev`.
+
+Some things are not covered. No workflow scans a container image, and `dependabot.yml` has no
+`docker` entry, so nothing opens update pull requests for base images. Dependabot ignores
+`sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in the comments beside
+those entries. Dependabot and fork pull requests get no repository secrets, so Semgrep skips
+them and SonarCloud has no token for them.
+
+GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
+
 ## GDPR: export and erasure
 
 The API serves both data-subject rights. Export (Article 20) returns the personal dataset as
@@ -772,6 +827,10 @@ every project the user still admins, either transferring it to another member or
 and the account is removed only once every owned project has one. That keeps one person's
 erasure from silently taking a whole panel's opinions with it. The same operation removes the
 profile-photo blob from object storage, so erasure covers stored media too.
+
+The user's opinions in projects they do not own go with the account through the foreign-key
+cascade, and each of those projects gets its result recalculated in the same transaction, or
+removed when no opinion is left (`api/services/user_service.py`).
 
 When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
@@ -959,11 +1018,9 @@ remains the workable substitute.
 
 ### Backups
 
-Railway's managed backups require the Pro plan, so on the current (free) plan the Postgres
-volumes are
-**not** backed up automatically. Until that changes, take manual dumps with
-`scripts/db/backup.sh`, which opens a temporary proxy, runs `pg_dump`, and removes the proxy
-again:
+The Postgres volumes have no backup schedule on Railway, so nothing backs them up
+automatically. Take manual dumps with `scripts/db/backup.sh`, which opens a temporary proxy,
+runs `pg_dump`, and removes the proxy again:
 
 ```bash
 ./scripts/db/backup.sh prod      # writes backups/prod-<timestamp>.dump
@@ -986,9 +1043,6 @@ Restore into any database with:
 ```bash
 pg_restore --no-owner --no-privileges -d <target-url> backups/<dump>
 ```
-
-Upgrading the prod service to the Railway Pro plan would replace this with scheduled backups
-plus point-in-time recovery.
 
 ## Data integrity and migrations
 
