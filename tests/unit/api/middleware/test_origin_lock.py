@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantUpstreamError
+from api.auth.revocation_store import get_revocation_store
 from api.middleware.body_size import DEFAULT_MAX_BODY_BYTES
 from api.middleware.origin_lock import OriginLockMiddleware
 from tests.shared.helpers import captured_log_records
@@ -75,6 +76,9 @@ def build_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[AppBuilder]
         yield build
     finally:
         get_settings.cache_clear()
+        # A route with sign-in builds this process-wide store from the settings above, and
+        # a store pointing at this Redis URL would break every later test in the process.
+        get_revocation_store.cache_clear()
 
 
 @pytest.fixture(params=["prod", "test", "dev"])
