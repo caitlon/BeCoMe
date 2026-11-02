@@ -71,22 +71,23 @@ which is the approach bcrypt's own maintainers recommend. Registration and passw
 both enforce a strength policy.
 
 The login endpoint closes two abuse paths. Repeated failures lock the account for a cooldown
-window (`api/auth/login_throttle.py`), which stops online brute force and credential
-stuffing against a single account. An unknown email still runs a dummy hash, so a
-wrong-email response takes the same time as a wrong-password one. Login timing therefore
-reveals nothing about which addresses have accounts.
+window (`api/auth/login_throttle.py`), which stops online brute force and credential stuffing
+against a single account. Each attempt reserves a slot on the counter before the password is
+checked, so requests running in parallel cannot pass more checks than the budget allows. An
+unknown email still runs a dummy hash, so a wrong-email response takes the same time as a
+wrong-password one. Login timing therefore reveals nothing about which addresses have accounts.
 
-The two routes that confirm the current password, `PUT /users/me/password` and
-`DELETE /users/me`, share one failure counter per account. A wrong current password on either
-one spends from it, and once it reaches the threshold both answer `429` ("Too many failed
-password attempts") even to the correct password, before anything else runs. It keys on the
+The two routes that confirm the current password, `PUT /users/me/password` and `DELETE
+/users/me`, share one failure counter per account. A wrong current password on either one
+spends from it, and once it reaches the threshold both answer `429` ("Too many failed password
+attempts") even to the correct password, before anything else runs. Each check reserves a slot
+on it first, as login does, so parallel requests cannot exceed the budget. It keys on the
 signed-in account's id, so a caller rotating addresses gains nothing, and it is namespaced
-apart from login's: whoever holds a stolen session can produce wrong current passwords at
-will, and on the login counter they would lock the owner out of signing in. In turn a locked
-login does not gate these two routes. Like login's it allows 10 failures per 15 minutes,
-refreshed by each failure and cleared by a correct password, and like login's it fails open.
-It adds to the login and activation budgets rather than sharing one with them
-(`api/auth/login_throttle.py`).
+apart from login's: whoever holds a stolen session can produce wrong current passwords at will,
+and on the login counter they would lock the owner out of signing in. In turn a locked login
+does not gate these two routes. Like login's it allows 10 failures per 15 minutes, refreshed by
+each failure and cleared by a correct password, and like login's it fails open. It adds to the
+login and activation budgets rather than sharing one with them (`api/auth/login_throttle.py`).
 
 ## Registration and email verification
 
@@ -198,9 +199,10 @@ already know.
 
 **The two budgets are independent, and they add up.** Each endpoint allows 10 failures per
 15 minutes and consults only its own counter, login's keyed per account and activation's per
-token. The lock fires on the tenth recorded failure, and each endpoint consults it before it
-evaluates the password, so each endpoint still evaluates ten guesses: twenty wrong passwords
-reachable against that token's password inside a window. A shared counter is the only thing
+token. Each attempt reserves a slot on its endpoint's counter before the password is
+evaluated, so parallel requests cannot pass more than ten checks per endpoint in a window,
+and each endpoint still evaluates ten guesses: twenty wrong passwords reachable against that
+token's password inside a window. A shared counter is the only thing
 that would bound the total, and a shared counter is exactly what the split exists to
 prevent. Moving the login counter takes no credential and every failure refreshes its
 expiry, so a stranger who knows nothing but the address can hold any endpoint that reads it
@@ -460,9 +462,11 @@ shared limits. A route with its own limit also keeps counting the two default li
 same process. The limiter's Redis client times out after 2 seconds on connect and on read,
 and `enforce_default_limits` is a plain function that FastAPI runs in a worker thread, so a slow
 store never holds the event loop. See "Accepted risks" for the reasoning. A
-request body over the configured ceiling gets a `413` before anything buffers it, and the
-API streams profile-photo uploads under a size cap rather than reading them whole into
-memory.
+JSON body is capped at 2 MiB and a multipart body at the photo limit plus 64 KiB of framing.
+A body over its cap, declared in `Content-Length` or streamed in chunks, gets a `413` before
+sign-in or the route runs, and the request log records that status. The route still checks the
+file against its own 5 MB limit, and reads the upload in bounded chunks rather than whole
+into memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match

@@ -293,7 +293,7 @@ class TestStoreUnavailable:
         assert right.status_code == 204
         assert _stored_hash(client, user_id) != hash_before
         outages = [r for r in records if getattr(r, "event", None) == "throttle_store_unavailable"]
-        assert {r.op for r in outages} == {"is_locked", "record_failure", "reset"}
+        assert {r.op for r in outages} == {"reserve", "confirm_failure", "reset"}
         assert {r.key_prefix for r in outages} == {RECONFIRM_KEY_PREFIX}
         assert {r.levelno for r in outages} == {logging.ERROR}
         assert all(isinstance(r.exc_info[1], redis.RedisError) for r in outages)

@@ -79,8 +79,10 @@ def _verify_current_password(
     """Check the current password, counting a miss against the account.
 
     Both routes that confirm the current password go through here, so their misses add up
-    on one counter. The lock is read before the password, as ``POST /login`` reads its own:
-    a locked account is refused even with the right password and nothing else runs.
+    on one counter. A slot on it is reserved before the password is checked, as
+    ``POST /login`` reserves its own: a locked account is refused even with the right
+    password and nothing else runs, and parallel requests cannot pass more checks than the
+    budget allows.
 
     :param service: User service (owns the comparison)
     :param user: The signed-in user
@@ -90,12 +92,16 @@ def _verify_current_password(
     :raises CurrentPasswordIncorrectError: If the password does not match
     """
     key = str(user.id)
-    if throttle.is_locked(key):
+    if not throttle.reserve(key):
         raise CurrentPasswordThrottledError
     try:
         service.verify_current_password(user, current_password)
     except CurrentPasswordIncorrectError:
-        throttle.record_failure(key)
+        throttle.confirm_failure(key)
+        raise
+    except Exception:
+        # An error is not a failed guess, so it must not spend the budget.
+        throttle.release(key)
         raise
     throttle.reset(key)
 
