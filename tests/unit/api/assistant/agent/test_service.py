@@ -253,21 +253,26 @@ class _TracedModel(ScriptedToolCallingModel):
 
 
 class _Clock:
-    """A clock offset that moves only when a test moves it."""
+    """A clock that stands still at the loop's time when it was made, until a test moves it.
+
+    Built inside a running test, so that the time it starts from is the loop's own and
+    the deadlines the service sets against it fall where the loop expects them.
+    """
 
     def __init__(self) -> None:
+        self.start = asyncio.get_running_loop().time()
         self.offset = 0.0
 
 
 class _ClockedLoop:
-    """The running event loop, but with a clock that runs ahead by the test's offset."""
+    """The running event loop, but its time is the test's clock, so a slow runner adds nothing."""
 
     def __init__(self, loop: asyncio.AbstractEventLoop, clock: _Clock) -> None:
         self._loop = loop
         self._clock = clock
 
     def time(self) -> float:
-        return self._loop.time() + self._clock.offset
+        return self._clock.start + self._clock.offset
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._loop, name)
@@ -1341,26 +1346,28 @@ class TestStream:
         ]
         assert model.seen == []
 
-    async def test_ttft_counts_from_the_model_call_not_from_the_turn(self):
+    async def test_ttft_counts_from_the_model_call_not_from_the_turn(self, monkeypatch):
         """
-        GIVEN a retriever that takes 150 ms and a model that waits 30 ms before each piece
+        GIVEN a clock the test moves, a retriever that moves it on by 3 s, and a model that
+              moves it on by 1 s before its one piece
         WHEN the turn is streamed
-        THEN the time to first token is under 100 ms while the turn took at least 150 ms
+        THEN the time to first token is the model's 1 s and the turn took all 4 s
         """
+        clock = _Clock()
         ctx = _ctx()
 
         async def slow_search(query: str) -> list[RetrievedChunk]:
-            await asyncio.sleep(0.15)
+            clock.offset += 3.0
             return []
 
         ctx.retriever.search.side_effect = slow_search
-        model = ScriptedToolCallingModel(responses=[_say("Yes.")], stream_delay_s=0.03)
+        model = _SteppedModel(responses=[_say("Yes.")], clock=clock)
+        monkeypatch.setattr(service_module, "asyncio", _ClockedAsyncio(clock))
 
         _, response = await _drain(AssistantService(_settings(), model), _request(), ctx)
 
-        assert response.timing.ttft_ms is not None
-        assert response.timing.ttft_ms < 100
-        assert response.timing.total_ms >= 150
+        assert response.timing.ttft_ms == 1000
+        assert response.timing.total_ms == 4000
 
     @pytest.mark.parametrize(
         ("show_sources", "chunks"),
@@ -1394,8 +1401,7 @@ class TestStream:
                 response = item
 
         assert response is not None
-        assert response.timing.ttft_ms is not None
-        assert 1000 <= response.timing.ttft_ms < 1500
+        assert response.timing.ttft_ms == 1000
 
 
 @pytest.mark.asyncio
