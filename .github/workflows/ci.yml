@@ -432,6 +432,7 @@ jobs:
   # Shares of one run, summed over its tests: webkit 442s, firefox 304s, chromium 225s,
   # the accessibility audit 47s and the screenshots 31s. Those are the numbers the split
   # below is cut from, and they are worth re-reading before changing it.
+  # regen-snapshots.yml copies this job's environment: change both together.
   e2e-shard:
     name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
