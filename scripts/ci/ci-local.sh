@@ -66,6 +66,12 @@ run_e2e_playwright() {
 
 cd "$PROJECT_ROOT"
 
+# Bring the environment to uv.lock first, as CI does. A plain `uv run` syncs the base
+# dependencies only, and the test and lint tools live in the `dev` extra, so without this a
+# long-lived checkout keeps whatever versions it had at its last full sync. --inexact keeps
+# packages installed by hand.
+uv sync --locked --all-extras --inexact --quiet
+
 case "${1:-all}" in
   lint)        run_lint ;;
   test)        run_test ;;
