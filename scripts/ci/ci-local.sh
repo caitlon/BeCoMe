@@ -66,6 +66,17 @@ run_e2e_playwright() {
 
 cd "$PROJECT_ROOT"
 
+# Bring the environment to uv.lock first. A plain `uv run` syncs the base dependencies only,
+# and the test and lint tools live in the `dev` extra, so without this a long-lived checkout
+# keeps whatever versions it had at its last full sync. --locked fails on a lock that is
+# behind pyproject.toml, as in CI; --inexact keeps packages installed by hand. `smoke` uses
+# curl only, and an unknown mode only prints the usage, so neither syncs.
+case "${1:-all}" in
+  lint | test | e2e | e2e-backend | e2e-pw | fast | sonar | mutmut | all)
+    uv sync --locked --all-extras --inexact --quiet
+    ;;
+esac
+
 case "${1:-all}" in
   lint)        run_lint ;;
   test)        run_test ;;
