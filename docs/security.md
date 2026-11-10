@@ -725,7 +725,7 @@ same budget, so a store outage leaves a cap per process, not none, and the recor
 in production, the alert rule below fires for it as for the other throttles; on the dev and test
 services the record is for whoever reads their log.
 
-The level alone is not the whole alert, because the project's only other rule fires on
+The level alone is not the whole alert, because the Sentry project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
 dedicated rule, **"Fail-open throttle: store unavailable"** on the `python-fastapi` project,
 matches any event whose message contains `throttle store unavailable` and notifies on a new
@@ -741,6 +741,47 @@ request already failed and the caller already knows.
 
 Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` carries a value,
 Sentry.
+
+Better Stack watches the deployed services from outside and from the logs. Besides the
+monitor on `https://www.becomify.app/`, three uptime monitors call `/api/v1/health` through
+Cloudflare on each API host: `api.becomify.app` (prod), `api-harbor.becomify.app` (test) and
+`api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
+redirects, and opens an incident and emails the team on any status other than 200. The API
+monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
+Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
+monitor alone would stay green. A crashed backend is caught the same way. The health route is in
+`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
+
+The three backend log sources (`become-backend`, `become-backend-test`, `become-backend-prod`)
+extract four values from every record: the `event` field; `req_kind`, which sorts a request-log
+completion line into `heavy` (`POST /api/v1/calculate`, opinion writes, which recalculate, and the
+result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status_class` (`2xx` to
+`5xx`); and `duration_ms` as a histogram. The extraction applies only to records ingested after it
+was created. The dashboard "BeCoMe backend alerts" charts these values, and the alert rules read
+them. The rules exist on prod only and notify the team by email.
+
+Two rules watch for abuse and errors. The first opens an incident for 10 or more `login_failure`
+events within five minutes, and a separate one for 10 or more `access_denied` events in the same
+window.
+The logs of all three sources for 7 to 10 November 2026 held no `login_failure` or
+`access_denied` at all and four 401 responses on prod. The login lockout itself trips at 10
+failures per account in 15 minutes, so ten in five minutes means several accounts at once or a
+script. The second fires on any 5xx response within five minutes, counted from the
+`status_code` of the request log.
+
+Two rules watch latency. CRUD p95 above 500 ms over an hour fires when at least 20 such requests
+fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
+`calculation_completed` or `recalculation_completed` events do; it reads their own
+`duration_ms`, the time of the work itself and not of the request.
+
+The minimum counts are there because at current traffic a p95 over two or three requests is
+noise. Test and dev have the same extraction and dashboard but no rules, since dev runs at DEBUG
+and takes probe and test traffic. The event-specific duration reaches the test and prod sources
+only once the change that added it is promoted from `dev`.
+
+Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
+receive, so that trigger stays unwatched until the move to the university's infrastructure
+decides where metrics live.
 
 Two separate switches keep credentials out of the tracker, and the product needs both.
 `send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
