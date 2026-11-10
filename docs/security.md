@@ -863,8 +863,9 @@ carry no such rule, and code reaches them only through `dev`.
 Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
 pull requests for base images; the weekly image scan is what shows a base image falling behind.
 Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
-the comments beside those entries. Dependabot and fork pull requests get no repository secrets, so Semgrep skips
-them and SonarCloud has no token for them.
+the comments beside those entries. Dependabot and fork pull requests get no repository secrets
+and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
+scan runs on them without uploading to code scanning.
 
 GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
 

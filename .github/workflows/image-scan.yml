@@ -15,7 +15,9 @@ name: Image scan
 # A pull request runs the scan only when it changes what goes into an image: the Dockerfiles,
 # the lock files or this workflow. Source changes add no packages. As in semgrep.yml there is no
 # push trigger: Railway deploys a `dev` commit only after the checks on it pass, and a base image
-# CVE found after the merge should not hold a deploy. This is not a required check, and the
+# CVE found after the merge should not hold a deploy. The cost is that the analysis a pull request
+# is compared with is the last weekly or manual run on `dev`, so after a merge that changes an
+# image, run this workflow on `dev` by hand. This is not a required check, and the
 # ruleset `dev code scanning` blocks merges on CodeQL alerts only, not on these.
 on:
   pull_request:
@@ -84,39 +86,42 @@ jobs:
 
       # Trivy runs from its release image pinned by digest, not through aquasecurity/trivy-action:
       # the action's tags were hijacked in March 2026, and a digest cannot be moved. To update,
-      # pull aquasec/trivy:<version> and take the digest from `docker inspect`.
+      # take the multi-platform index digest from `docker buildx imagetools inspect
+      # aquasec/trivy:<version>`, not a single-platform one.
+      # The working directory is the checkout, so a `.trivyignore` at the repository root, if one
+      # is ever added, accepts a finding: one CVE id per line, with a comment saying why.
       - name: Scan the image (Trivy 0.76.1)
         env:
           IMAGE: become-${{ matrix.image }}:scan
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$PWD:/out" \
+            -v "$PWD:/out" -w /out \
             aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c \
             image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --format sarif --output /out/trivy.sarif "$IMAGE"
 
-      # A fork pull request gets a read-only token, so the upload could only fail there.
+      # Dependabot and fork pull requests get a read-only token, so the upload could only fail
+      # there; the scan still runs and lists its findings in the log.
       - name: Upload to code scanning
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: >-
+          github.actor != 'dependabot[bot]' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy.sarif
           category: image-${{ matrix.image }}
 
-      - name: List the findings
-        id: findings
-        run: |
-          count=$(jq '[.runs[].results[]] | length' trivy.sarif)
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "$count fixable high or critical findings"
-          jq -r '.runs[].results[] | .message.text | split("\n") | "\(.[0]) \(.[1]) \(.[2]) \(.[4])"' trivy.sarif
-
-      - name: Fail the scheduled scan on open findings
-        if: github.event_name != 'pull_request' && steps.findings.outputs.count != '0'
+      - name: List the findings, and fail the weekly or manual run on any
         env:
-          COUNT: ${{ steps.findings.outputs.count }}
+          EVENT: ${{ github.event_name }}
           IMAGE: ${{ matrix.image }}
         run: |
-          echo "::error::$COUNT fixable high or critical findings in the $IMAGE image, see code scanning"
-          exit 1
+          count=$(jq '[.runs[].results[]?] | length' trivy.sarif)
+          echo "$count fixable high or critical findings"
+          jq -r '.runs[].results[]? | .message.text | split("\n") | "\(.[0]) \(.[1]) \(.[2]) \(.[4])"' trivy.sarif
+          if [ "$EVENT" != pull_request ] && [ "$count" -gt 0 ]; then
+            echo "::error::$count fixable high or critical findings in the $IMAGE image, see code scanning"
+            exit 1
+          fi
