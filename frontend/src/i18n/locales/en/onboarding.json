@@ -61,7 +61,7 @@
         "lower": "Lower Bound",
         "lowerHint": "Pessimistic estimate",
         "peak": "Peak",
-        "peakHint": "Most likely value",
+        "peakHint": "Most preferred value",
         "upper": "Upper Bound",
         "upperHint": "Optimistic estimate"
       },

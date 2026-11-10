@@ -15,7 +15,7 @@ def validate_fuzzy_constraints(lower: float, peak: float, upper: float) -> None:
     magnitude, and satisfy the constraint: lower <= peak <= upper.
 
     :param lower: Lower bound value
-    :param peak: Peak (most likely) value
+    :param peak: Peak (most preferred) value
     :param upper: Upper bound value
     :raises ValueError: If values are not finite, too large, or violate ordering
     """

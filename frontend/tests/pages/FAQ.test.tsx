@@ -99,12 +99,12 @@ describe('FAQ', () => {
     [
       'en',
       'What input formats are supported?',
-      'One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you consider most likely, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet.',
+      'One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you prefer most, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet.',
     ],
     [
       'cs',
       'Jaké vstupní formáty jsou podporovány?',
-      'Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejpravděpodobnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici.',
+      'Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejvhodnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici.',
     ],
   ])('input formats answer describes the one triangular format (%s)', async (language, question, answer) => {
     const user = userEvent.setup();
