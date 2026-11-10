@@ -9,9 +9,12 @@ import { registerUser, uniqueId } from './helpers';
  */
 function createThemeTest(theme: 'light' | 'dark') {
   return base.extend({
-    page: async ({ browser }, use) => {
+    page: async ({ browser, viewport }, use) => {
+      // Pass the configured viewport on: a bare newContext() would drop it, and a
+      // describe's test.use({ viewport }) would have no effect.
       const context = await browser.newContext({
         reducedMotion: 'reduce',
+        viewport,
       });
       const page = await context.newPage();
       await page.addInitScript((t: string) => {
@@ -30,7 +33,9 @@ function createThemeTest(theme: 'light' | 'dark') {
 const lightTest = createThemeTest('light');
 const darkTest = createThemeTest('dark');
 
-async function createProjectWithOpinion(page: Page) {
+// `resultsInView: false` is for a narrow screen, where the Results tab is not the one
+// showing after the save, so the results heading is not visible until that tab is opened.
+async function createProjectWithOpinion(page: Page, { resultsInView = true } = {}) {
   const projectName = `VR Project ${Date.now()}`;
   await page.getByRole('button', { name: 'Create Your First Project' }).click();
   const dialog = page.getByRole('dialog');
@@ -59,9 +64,11 @@ async function createProjectWithOpinion(page: Page) {
   await page.locator('[toast-close]').click();
   await expect(page.getByText('Opinion saved', { exact: true })).toBeHidden();
 
-  await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({
-    timeout: 10000,
-  });
+  if (resultsInView) {
+    await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({
+      timeout: 10000,
+    });
+  }
 }
 
 // --- Light Theme ---
@@ -113,6 +120,33 @@ lightTest.describe('Visual Regression: Light Theme', () => {
     await expect(page.locator('.recharts-scatter')).toBeVisible({ timeout: 5000 });
 
     await expect(page).toHaveScreenshot('project-results-centroid-light.png');
+  });
+});
+
+// --- Mobile ---
+
+lightTest.describe('Visual Regression: Mobile', () => {
+  lightTest.use({ viewport: { width: 430, height: 932 } });
+
+  lightTest('project results: triangle legend on a narrow screen', async ({ page }) => {
+    const email = `vr-tri-mobile-${uniqueId()}@test.com`;
+    await registerUser(page, email, 'VR', 'Mobile');
+    await createProjectWithOpinion(page, { resultsInView: false });
+
+    await page.getByRole('tab', { name: 'Results' }).click();
+    await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({
+      timeout: 10000,
+    });
+    const triangleTab = page.getByRole('tab', { name: /triangle/i });
+    await triangleTab.click();
+    await expect(triangleTab).toHaveAttribute('aria-selected', 'true');
+
+    // Shoot the Visualization card rather than the viewport, so the shot does not
+    // depend on the scroll position. It holds the legend row and the checkbox.
+    const panel = page.getByRole('tabpanel', { name: /triangle/i });
+    await expect(panel.getByRole('checkbox')).toBeVisible();
+    const card = panel.locator('xpath=ancestor::div[contains(@class, "rounded-lg")][1]');
+    await expect(card).toHaveScreenshot('project-results-triangle-mobile-light.png');
   });
 });
 

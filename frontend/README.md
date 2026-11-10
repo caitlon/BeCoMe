@@ -200,7 +200,8 @@ The projects in `playwright.config.ts`:
 - `chromium`, `firefox`, `webkit`: the functional specs.
 - `wcag-audit`: the axe audit above.
 - `visual-regression`: page screenshots of the landing hero, a case study and the
-  project results charts, each in the light and dark theme.
+  project results charts, each in the light and dark theme, plus one 430 px light-theme
+  shot of the results card (the triangle legend on a narrow screen).
 - `docs-screenshots`: illustrations for the documentation site, not a check. It overwrites
   the tracked images in `docs/user/img/`, so name the project with `--project=` and do not
   rely on a bare `npm run test:e2e`.

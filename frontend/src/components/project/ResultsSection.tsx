@@ -244,7 +244,7 @@ export const ResultsSection = ({
                 showIndividual={showIndividual}
                 opinions={opinions}
               />
-              <div className="flex items-center justify-between mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mt-4">
                 <div className="flex gap-4 text-xs">
                   <div className="flex items-center gap-1">
                     <div className="w-3 h-0.5 bg-chart-mean" />

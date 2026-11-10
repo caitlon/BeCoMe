@@ -555,7 +555,7 @@ jobs:
         run: scripts/ci/playwright-image.sh run test ${{ matrix.projects }}
 
       # Alone, at one worker, which is the concurrency its baselines were recorded at.
-      # Eight tests and 31 seconds, so giving them their own pass costs almost nothing.
+      # Nine tests and well under a minute, so giving them their own pass costs almost nothing.
       - name: Run visual regression tests
         if: matrix.name == 'chrome-audits'
         run: scripts/ci/playwright-image.sh run test --project=visual-regression --workers=1

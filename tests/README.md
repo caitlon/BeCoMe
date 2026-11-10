@@ -181,9 +181,9 @@ The frontend has its own suites, run with npm from `frontend/`. They are not par
   hold them (`components`, `contexts`, `data`, `hooks`, `i18n`, `lib` and `pages`), and
   `App.test.tsx` sits at the top level. `factories` and `mocks` hold support code rather than
   tests, as do `setup.ts` and `utils.tsx`.
-- **Playwright end-to-end specs** live in `frontend/e2e`: 239 tests in six projects from
-  `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 71
-  functional specs, `wcag-audit` runs 15 accessibility checks, `visual-regression` 8
+- **Playwright end-to-end specs** live in `frontend/e2e`: 292 tests in six projects from
+  `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 88
+  functional specs, `wcag-audit` runs 16 accessibility checks, `visual-regression` 9
   screenshot comparisons, and `docs-screenshots` 3 that photograph the app for the
   documentation site.
 
