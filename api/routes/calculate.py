@@ -6,6 +6,7 @@ dependency injection for calculator following DIP.
 """
 
 import logging
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -69,6 +70,7 @@ def calculate(
         for expert in payload.experts
     ]
 
+    start = perf_counter()
     try:
         result = calculator.calculate_compromise(opinions)
     except BeCoMeError as e:
@@ -85,12 +87,13 @@ def calculate(
         )
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    logger.debug(
+    logger.info(
         "Calculation completed",
         extra={
             "event": "calculation_completed",
             "expert_count": result.num_experts,
             "max_error": result.max_error,
+            "duration_ms": round((perf_counter() - start) * 1000.0, 1),
         },
     )
     return CalculateResponse(

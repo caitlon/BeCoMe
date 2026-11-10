@@ -274,3 +274,5 @@ class TestCalculationServiceLogging:
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["event"] == "recalculation_completed"
         assert extra["num_experts"] == 1
+        assert isinstance(extra["duration_ms"], float)
+        assert extra["duration_ms"] >= 0

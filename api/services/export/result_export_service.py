@@ -3,6 +3,7 @@
 import logging
 import re
 import unicodedata
+from time import perf_counter
 from uuid import UUID
 
 from sqlmodel import select
@@ -58,6 +59,7 @@ class ResultExportService(BaseService):
         result = self._get_result(project.id)
         if result is None:
             return None
+        start = perf_counter()
         data = self._assemble(project, result)
         renderer = get_renderer(export_format, theme)
         content = renderer.render(data, get_labels(lang))
@@ -69,6 +71,7 @@ class ResultExportService(BaseService):
                 "project_id": str(project.id),
                 "format": export_format.value,
                 "num_experts": data.num_experts,
+                "duration_ms": round((perf_counter() - start) * 1000.0, 1),
             },
         )
         return ExportedFile(content=content, media_type=renderer.media_type, filename=filename)
