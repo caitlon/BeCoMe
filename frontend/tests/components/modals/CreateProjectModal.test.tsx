@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
 import { HttpError } from '@/lib/errors';
-import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
+import { CreateProjectModal, DESCRIPTION_MAX_LENGTH } from '@/components/modals/CreateProjectModal';
 
 // Mock api
 const mockCreateProject = vi.fn();
@@ -122,8 +122,8 @@ describe('CreateProjectModal', () => {
   it.each([
     ['en', 'name', 256, 'Name must be at most 255 characters'],
     ['cs', 'name', 256, 'Název může mít maximálně 255 znaků'],
-    ['en', 'description', 1001, 'Description must be at most 1000 characters'],
-    ['cs', 'description', 1001, 'Popis může mít maximálně 1000 znaků'],
+    ['en', 'description', DESCRIPTION_MAX_LENGTH + 1, 'Description must be at most 2000 characters'],
+    ['cs', 'description', DESCRIPTION_MAX_LENGTH + 1, 'Popis může mít maximálně 2000 znaků'],
     ['en', 'unit', 51, 'Unit must be at most 50 characters'],
     ['cs', 'unit', 51, 'Jednotka může mít maximálně 50 znaků'],
   ])(
