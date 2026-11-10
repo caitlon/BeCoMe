@@ -35,7 +35,9 @@ def _frontend_description_max_length() -> int:
     :raises AssertionError: If the constant is missing or renamed, so the pin cannot go
         quiet.
     """
-    match = DESCRIPTION_MAX_LENGTH_PATTERN.search(CREATE_PROJECT_MODAL_TS.read_text())
+    match = DESCRIPTION_MAX_LENGTH_PATTERN.search(
+        CREATE_PROJECT_MODAL_TS.read_text(encoding="utf-8")
+    )
     assert match is not None, (
         f"DESCRIPTION_MAX_LENGTH = <n> not found in {CREATE_PROJECT_MODAL_TS}; "
         "update this test if the constant was renamed or moved"
@@ -57,7 +59,7 @@ def _schema_max_length(model: type[ProjectCreate] | type[ProjectUpdate]) -> int:
 
 
 @pytest.mark.parametrize("model", [ProjectCreate, ProjectUpdate])
-def test_create_project_form_description_limit_matches_api_schema(
+def test_description_limit_of_create_form_matches_api_schema(
     model: type[ProjectCreate] | type[ProjectUpdate],
 ) -> None:
     """The form's description limit equals the API schema's max_length."""

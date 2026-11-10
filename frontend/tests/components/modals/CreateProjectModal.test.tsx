@@ -177,6 +177,26 @@ describe('CreateProjectModal', () => {
     });
   });
 
+  it('accepts a description of exactly the maximum length', async () => {
+    const user = userEvent.setup();
+    mockCreateProject.mockResolvedValueOnce({ id: '1', name: 'Test' });
+
+    render(<CreateProjectModal {...defaultProps} />);
+
+    await user.type(getNameInput(), 'New Project');
+    await user.type(getUnitInput(), '%');
+    await user.click(screen.getByPlaceholderText('Describe your project...'));
+    await user.paste('a'.repeat(DESCRIPTION_MAX_LENGTH));
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'a'.repeat(DESCRIPTION_MAX_LENGTH) })
+      );
+    });
+    expect(screen.queryByText(/at most/i)).not.toBeInTheDocument();
+  });
+
   it('shows loading state during submission', async () => {
     const user = userEvent.setup();
     mockCreateProject.mockImplementation(() => new Promise(() => {}));
