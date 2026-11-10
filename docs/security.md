@@ -853,9 +853,11 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 
 `ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
 `dev` the required check `Check` demands that every job pass or skip, the SonarCloud job
-included, and `semgrep/ci` is required by name. Semgrep skips Dependabot and fork pull requests,
-and a skipped job counts as passed, so they still merge. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks
-required by name. No branch requires the SonarCloud quality gate.
+included, and `semgrep/ci` is required by name. A skipped job counts as passed, so the
+Dependabot and fork pull requests Semgrep skips still merge. The check fails only on findings
+the Semgrep policy marks as blocking, and passes when the scan cannot reach the platform. On
+`test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks required by
+name. No branch requires the SonarCloud quality gate.
 
 The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
