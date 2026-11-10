@@ -749,7 +749,10 @@ Cloudflare on each API host: `api.becomify.app` (prod), `api-harbor.becomify.app
 redirects, and opens an incident and emails the team on any status other than 200. The API
 monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
 Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
-monitor alone would stay green. A crashed backend is caught the same way. The health route is in
+monitor alone would stay green. The origin lock lets the health route through without the secret
+only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
+addressed to an API host passes the origin check like any other request. A crashed backend is
+caught the same way. The health route is in
 `_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
 
 The three backend log sources (`become-backend`, `become-backend-test`, `become-backend-prod`)
@@ -760,14 +763,12 @@ result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status
 was created. The dashboard "BeCoMe backend alerts" charts these values, and the alert rules read
 them. The rules exist on prod only and notify the team by email.
 
-Two rules watch for abuse and errors. The first opens an incident for 10 or more `login_failure`
-events within five minutes, and a separate one for 10 or more `access_denied` events in the same
-window.
+Two rules watch for abuse and errors. The first counts `login_failure` and `access_denied` events
+apart and opens an incident of its own for either one that reaches 10 within five minutes.
 The logs of all three sources for 7 to 10 November 2026 held no `login_failure` or
 `access_denied` at all and four 401 responses on prod. The login lockout itself trips at 10
 failures per account in 15 minutes, so ten in five minutes means several accounts at once or a
-script. The second fires on any 5xx response within five minutes, counted from the
-`status_code` of the request log.
+script. The second fires on any 5xx response within five minutes, counted by `status_class`.
 
 Two rules watch latency. CRUD p95 above 500 ms over an hour fires when at least 20 such requests
 fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
@@ -775,8 +776,8 @@ fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
 `duration_ms`, the time of the work itself and not of the request.
 
 The minimum counts are there because at current traffic a p95 over two or three requests is
-noise. Test and dev have the same extraction and dashboard but no rules, since dev runs at DEBUG
-and takes probe and test traffic. The event-specific duration reaches the test and prod sources
+noise. Test and dev have the same extraction and dashboard but no rules: their traffic is probes
+and testing, not users. The event-specific duration reaches the test and prod sources
 only once the change that added it is promoted from `dev`.
 
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
