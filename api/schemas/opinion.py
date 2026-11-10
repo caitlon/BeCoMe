@@ -20,7 +20,7 @@ class OpinionCreate(BaseModel):
 
     position: str = Field(..., min_length=1, max_length=255, description="Expert's position/role")
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")
-    peak: float = Field(..., description="Peak value (most likely)")
+    peak: float = Field(..., description="Peak value (most preferred)")
     upper_bound: float = Field(..., description="Upper bound (optimistic estimate)")
 
     @field_validator("position", mode="after")

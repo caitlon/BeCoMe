@@ -14,7 +14,7 @@ An expert who says 60 with a range of 40 to 80 and an expert who says 60 with a 
 have said different things, and a method that averages single numbers cannot hear the difference.
 
 An opinion here has three components. The **lower** bound is the pessimistic end of what is
-realistic, the **peak** is the single most likely value, and the **upper** bound is the optimistic
+realistic, the **peak** is the single most preferred value, and the **upper** bound is the optimistic
 end. They must satisfy `lower ≤ peak ≤ upper`, and the form will refuse anything else.
 
 ![The opinion form: position, and the three estimate fields](img/project-opinions.png)

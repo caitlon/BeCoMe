@@ -17,7 +17,7 @@ class ExpertInput(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=200, description="Expert name or identifier")
     lower: float = Field(..., description="Lower bound (pessimistic estimate)")
-    peak: float = Field(..., description="Peak value (most likely)")
+    peak: float = Field(..., description="Peak value (most preferred)")
     upper: float = Field(..., description="Upper bound (optimistic estimate)")
 
     @model_validator(mode="after")
@@ -63,7 +63,7 @@ class FuzzyNumberOutput(BaseModel):
         """Create from raw triangular bounds, computing the centroid.
 
         :param lower: Lower bound (pessimistic estimate).
-        :param peak: Peak value (most likely).
+        :param peak: Peak value (most preferred).
         :param upper: Upper bound (optimistic estimate).
         :return: FuzzyNumberOutput with the centroid computed from the bounds.
         """

@@ -35,7 +35,7 @@
       "lowerLabel": "Lower:",
       "lower": "Lower bound (pessimistic estimate) - the minimum realistic value",
       "peakLabel": "Peak:",
-      "peak": "Peak (most likely value) - your best estimate",
+      "peak": "Peak (preferred value) - the value you prefer most",
       "upperLabel": "Upper:",
       "upper": "Upper bound (optimistic estimate) - the maximum realistic value",
       "example": "Example: If you think the budget should be around 60 billion, but could realistically be between 40 and 80, enter (40, 60, 80).",

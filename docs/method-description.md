@@ -39,7 +39,7 @@ The final result is the **best compromise (ΓΩMean)**, the average of these two
 A **fuzzy triangular number** is a special type of fuzzy set that represents uncertain or imprecise information. It is defined by three characteristic values:
 
 - **A** (`lower_bound`) - minimum possible value
-- **C** (`peak`) - most likely value (mode)
+- **C** (`peak`) - most preferred value
 - **B** (`upper_bound`) - maximum possible value
 
 **Constraint:** `A ≤ C ≤ B`
@@ -70,7 +70,7 @@ A fuzzy triangular number is denoted as: **FTN(A, C, B)** or **(A, C, B)**
 
 An expert estimates project duration:
 - Optimistic: 5 days (minimum)
-- Most likely: 8 days (peak)
+- Most preferred: 8 days (peak)
 - Pessimistic: 12 days (maximum)
 
 This is represented as: **FTN(5, 8, 12)**
@@ -397,7 +397,7 @@ The error metric Δmax quantifies this divergence. Near-zero Δmax means the mea
 
 ## Limitations
 
-BeCoMe assumes opinions fit the triangular fuzzy format. Not all expert judgments naturally decompose into (min, likely, max). Converting verbal assessments like "probably around 50, maybe up to 80" requires interpretation. The centroid-based sorting can also produce different orderings than peak-based sorting would, though in practice this rarely changes the median significantly.
+BeCoMe assumes opinions fit the triangular fuzzy format. Not all expert judgments naturally decompose into (min, preferred, max). Converting verbal assessments like "probably around 50, maybe up to 80" requires interpretation. The centroid-based sorting can also produce different orderings than peak-based sorting would, though in practice this rarely changes the median significantly.
 
 ## Reference
 
