@@ -1,0 +1,127 @@
+name: Image scan
+
+# Builds the two images Railway deploys and scans them with Trivy for known vulnerabilities in
+# the operating system packages and the installed language packages. pip-audit and npm audit
+# in ci.yml cover the locked dependencies; this covers what the base images bring with them
+# (Debian, Alpine, nginx).
+#
+# Only fixable findings of high or critical severity are reported: an unfixed CVE in a Debian
+# package is an alert nobody can act on, and the slim image carries over a hundred of them.
+# Results go to code scanning as SARIF, one category per image. On a pull request GitHub's own
+# "Code scanning results" check then marks only the alerts the pull request adds, so a finding
+# already in the base image does not turn every Dockerfile or lock file change red. The weekly
+# run on `dev` fails while any finding is open, which is what makes a new base image CVE visible.
+#
+# A pull request runs the scan only when it changes what goes into an image: the Dockerfiles,
+# the lock files or this workflow. Source changes add no packages. As in semgrep.yml there is no
+# push trigger: Railway deploys a `dev` commit only after the checks on it pass, and a base image
+# CVE found after the merge should not hold a deploy. The cost is that the analysis a pull request
+# is compared with is the last weekly or manual run on `dev`, so after a merge that changes an
+# image, run this workflow on `dev` by hand. This is not a required check, and the
+# ruleset `dev code scanning` blocks merges on CodeQL alerts only, not on these.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - docker/Dockerfile
+      - frontend/Dockerfile
+      - .dockerignore
+      - frontend/.dockerignore
+      - pyproject.toml
+      - uv.lock
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/image-scan.yml
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-scan-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Image scan (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The API image is built with the assistant extra, the superset of what any
+          # environment installs, so the scan sees every package that can be deployed.
+          - image: api
+            context: .
+            dockerfile: docker/Dockerfile
+            build-args: ASSISTANT_ENABLED=true
+          - image: web
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            build-args: ""
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # --pull fetches the current base image, the one Railway's next build would get, rather
+      # than whatever the runner happens to cache.
+      - name: Build the image
+        env:
+          CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          BUILD_ARGS: ${{ matrix.build-args }}
+          IMAGE: become-${{ matrix.image }}:scan
+        run: |
+          args=()
+          if [ -n "$BUILD_ARGS" ]; then args+=(--build-arg "$BUILD_ARGS"); fi
+          docker build --pull "${args[@]}" -f "$DOCKERFILE" -t "$IMAGE" "$CONTEXT"
+
+      # Trivy runs from its release image pinned by digest, not through aquasecurity/trivy-action:
+      # the action's tags were hijacked in March 2026, and a digest cannot be moved. To update,
+      # take the multi-platform index digest from `docker buildx imagetools inspect
+      # aquasec/trivy:<version>`, not a single-platform one.
+      # The working directory is the checkout, so a `.trivyignore` at the repository root, if one
+      # is ever added, accepts a finding: one CVE id per line, with a comment saying why.
+      - name: Scan the image (Trivy 0.76.1)
+        env:
+          IMAGE: become-${{ matrix.image }}:scan
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/out" -w /out \
+            aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c \
+            image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --format sarif --output /out/trivy.sarif "$IMAGE"
+
+      # Dependabot and fork pull requests get a read-only token, so the upload could only fail
+      # there; the scan still runs and lists its findings in the log.
+      - name: Upload to code scanning
+        if: >-
+          github.actor != 'dependabot[bot]' &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy.sarif
+          category: image-${{ matrix.image }}
+
+      - name: List the findings, and fail the weekly or manual run on any
+        env:
+          EVENT: ${{ github.event_name }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          count=$(jq '[.runs[].results[]?] | length' trivy.sarif)
+          echo "$count fixable high or critical findings"
+          jq -r '.runs[].results[]? | .message.text | split("\n") | "\(.[0]) \(.[1]) \(.[2]) \(.[4])"' trivy.sarif
+          if [ "$EVENT" != pull_request ] && [ "$count" -gt 0 ]; then
+            echo "::error::$count fixable high or critical findings in the $IMAGE image, see code scanning"
+            exit 1
+          fi

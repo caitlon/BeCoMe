@@ -44,7 +44,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
-| Dependencies and code scanning | Partial, no container image scanning | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
+| Dependencies and code scanning | Implemented | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
 | GDPR export and erasure | Implemented | `api/routes/users.py` |
 | Database least-privilege, network, auditing | Implemented | `scripts/db/`, `api/db/engine.py` |
 | Automated database backups | Partial, manual dumps | `scripts/db/backup.sh` |
@@ -834,7 +834,7 @@ rotation steps, is in [`secrets.md`](secrets.md).
 
 ## Dependencies and code scanning
 
-What watches the dependencies and the code, as read from `.github/` and the GitHub API on 2
+What watches the dependencies and the code, as read from `.github/` and the GitHub API on 10
 November 2026. Some of it blocks a merge and some only reports, so the last column says which.
 
 | Check | What it covers | Where it runs | Blocks a merge |
@@ -843,6 +843,7 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
 | pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
+| Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
 | Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | No |
@@ -859,11 +860,12 @@ The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuse
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
 carry no such rule, and code reaches them only through `dev`.
 
-Some things are not covered. No workflow scans a container image, and `dependabot.yml` has no
-`docker` entry, so nothing opens update pull requests for base images. Dependabot ignores
-`sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in the comments beside
-those entries. Dependabot and fork pull requests get no repository secrets, so Semgrep skips
-them and SonarCloud has no token for them.
+Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
+pull requests for base images; the weekly image scan is what shows a base image falling behind.
+Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
+the comments beside those entries. Dependabot and fork pull requests get no repository secrets
+and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
+scan runs on them without uploading to code scanning.
 
 GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
 
