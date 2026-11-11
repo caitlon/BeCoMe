@@ -9,12 +9,13 @@ name: Semgrep
 # a `dev` commit only after the checks on it pass, so a red full scan there would hold the
 # deploy over findings that were already in the tree.
 #
-# `semgrep/ci` is a required check on `dev`, in the branch protection next to `Check` and
-# `Merge guard`; `test` and `prod` do not require it. A job skipped by its `if:` reports success,
-# so the Dependabot and fork pull requests it skips can still merge. `semgrep ci` fails only on
-# findings the platform policy marks as blocking, and that is what the check blocks. When it
-# cannot reach the platform, or the token is rejected, it exits 0, so the check passes without a
-# scan rather than holding every merge into `dev` over an outage.
+# `semgrep/ci` is a required check in the branch protection of `dev`, `test` and `prod`. On a
+# promotion pull request it scans everything since the last promotion, which includes the
+# Dependabot changes skipped on `dev`. A job skipped by its `if:` reports success, so the
+# Dependabot and fork pull requests it skips can still merge. `semgrep ci` fails only on findings
+# the platform policy marks as blocking, and that is what the check blocks. When it cannot reach
+# the platform, or the token is rejected, it exits 0, so the check passes without a scan rather
+# than holding every merge over an outage.
 on:
   pull_request:
     branches: [dev, test, prod]
