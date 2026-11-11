@@ -834,7 +834,7 @@ rotation steps, is in [`secrets.md`](secrets.md).
 
 ## Dependencies and code scanning
 
-What watches the dependencies and the code, as read from `.github/` and the GitHub API on 10
+What watches the dependencies and the code, as read from `.github/` and the GitHub API on 11
 November 2026. Some of it blocks a merge and some only reports, so the last column says which.
 
 | Check | What it covers | Where it runs | Blocks a merge |
