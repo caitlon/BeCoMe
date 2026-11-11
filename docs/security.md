@@ -866,10 +866,12 @@ carry no such rule, and code reaches them only through `dev`.
 
 Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
 pull requests for base images. Both images upgrade their distribution packages when they are
-built, so a rebuild takes Debian's and Alpine's security fixes before the base image is
-refreshed, and the API runtime stage removes the base image's `pip`, which nothing there runs.
-The weekly image scan shows what is still open: a fix that has not reached a deployed image, or
-a vulnerable package the distribution has not fixed yet.
+built, so a build that does not reuse a cached upgrade layer takes Debian's and Alpine's
+security fixes before the base image is refreshed, and the API runtime stage removes the base
+image's `pip`, which nothing there runs. The image scan builds both images afresh and reports
+only fixable findings, so what it still shows is a fix the upgrade cannot take, such as a
+vulnerable language package. It does not inspect the image Railway deployed, which may have
+been built from cached layers.
 Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
 the comments beside those entries. Dependabot and fork pull requests get no repository secrets
 and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
