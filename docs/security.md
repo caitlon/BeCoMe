@@ -846,15 +846,18 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
-| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | No |
+| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | On `dev` only |
 | Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
 `ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
 `dev` the required check `Check` demands that every job pass or skip, the SonarCloud job
-included. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks
-required by name. No branch requires the SonarCloud quality gate.
+included, and `semgrep/ci` is required by name. A skipped job counts as passed, so the
+Dependabot and fork pull requests Semgrep skips still merge. The check fails only on findings
+the Semgrep policy marks as blocking, and passes when the scan cannot reach the platform. On
+`test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks required by
+name. No branch requires the SonarCloud quality gate.
 
 The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
