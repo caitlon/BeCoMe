@@ -70,10 +70,19 @@ FROM python:3.13-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies for psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install runtime dependencies for psycopg2, and take the Debian security fixes
+# published since the base image was built: python:3.13-slim is refreshed on its own
+# schedule, and until then the image scan (.github/workflows/image-scan.yml) reports
+# CVEs the distribution has already fixed.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
+
+# Remove the base image's own pip. The app runs from /app/.venv, which uv builds
+# without pip, so nothing at runtime calls it, while the packages pip vendors
+# (urllib3, msgpack, setuptools) lag behind their fixed releases.
+RUN python -m pip uninstall -y pip
 
 # Create non-root user for security
 # Using high UID/GID (10001) to avoid conflicts with host system users

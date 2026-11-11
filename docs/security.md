@@ -865,7 +865,11 @@ CodeQL reports a security alert of High or above, or an alert at error level. `t
 carry no such rule, and code reaches them only through `dev`.
 
 Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
-pull requests for base images; the weekly image scan is what shows a base image falling behind.
+pull requests for base images. Both images upgrade their distribution packages when they are
+built, so a rebuild takes Debian's and Alpine's security fixes before the base image is
+refreshed, and the API runtime stage removes the base image's `pip`, which nothing there runs.
+The weekly image scan shows what is still open: a fix that has not reached a deployed image, or
+a vulnerable package the distribution has not fixed yet.
 Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
 the comments beside those entries. Dependabot and fork pull requests get no repository secrets
 and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
