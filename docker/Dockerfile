@@ -4,15 +4,17 @@
 # ============================================
 # Stage 1: Builder
 # ============================================
-FROM python:3.13 AS builder
+FROM python:3.13-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for psycopg2 (PostgreSQL adapter)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Install build dependencies for psycopg2 (PostgreSQL adapter), which has no musllinux
+# wheel and compiles from source: a C toolchain (build-base) and the libpq headers and
+# pg_config (postgresql-dev). The builder is Alpine as well because a venv built against
+# glibc does not run on musl.
+RUN apk add --no-cache \
+    build-base \
+    postgresql-dev
 
 # Install uv for fast dependency management
 # Pinned to specific digest for supply-chain security.
@@ -62,22 +64,21 @@ RUN uv sync --locked --no-dev $(cat /tmp/uv-extras)
 # ============================================
 # Stage 2: Runtime
 # ============================================
-# Slim base: the runtime only needs the prebuilt venv plus libpq5, so the full
-# Debian image is unnecessary. Slim maps fewer shared libraries and produces a
-# much smaller image (lower disk + slightly lower resident memory on Railway).
-# The builder above stays full so psycopg2 still compiles.
-FROM python:3.13-slim AS runtime
+# Alpine base: the runtime only needs the prebuilt venv plus libpq, so the build
+# toolchain stays in the builder above. Alpine rather than Debian slim: slim carried
+# about 300 known vulnerabilities with no Debian fix, Alpine none. The cost is musl:
+# measured on 2026-11-12, real endpoints ran 5 to 20 percent slower than on glibc,
+# a few milliseconds per request, with the same memory.
+FROM python:3.13-alpine AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies for psycopg2, and take the Debian security fixes
-# published since the base image was built: python:3.13-slim is refreshed on its own
+# Install runtime dependencies for psycopg2, and take the Alpine security fixes
+# published since the base image was built: python:3.13-alpine is refreshed on its own
 # schedule, and until then the image scan (.github/workflows/image-scan.yml) reports
 # CVEs the distribution has already fixed.
-RUN apt-get update && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libpq
 
 # Remove the base image's own pip. The app runs from /app/.venv, which uv builds
 # without pip, so nothing at runtime calls it, while the packages pip vendors
@@ -86,8 +87,8 @@ RUN python -m pip uninstall -y pip
 
 # Create non-root user for security
 # Using high UID/GID (10001) to avoid conflicts with host system users
-RUN groupadd --system --gid 10001 appgroup && \
-    useradd --system --gid 10001 --uid 10001 --create-home appuser
+RUN addgroup -S -g 10001 appgroup && \
+    adduser -S -D -u 10001 -G appgroup appuser
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
