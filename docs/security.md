@@ -866,8 +866,8 @@ carry no such rule, and code reaches them only through `dev`.
 
 Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
 pull requests for base images. Both images upgrade their distribution packages when they are
-built, so a build that does not reuse a cached upgrade layer takes Debian's and Alpine's
-security fixes before the base image is refreshed, and the API runtime stage removes the base
+built, so a build that does not reuse a cached upgrade layer takes Alpine's security fixes
+before the base image is refreshed, and the API runtime stage removes the base
 image's `pip`, which nothing there runs. The image scan builds both images afresh and reports
 only fixable findings, so what it still shows is a fix the upgrade cannot take, such as a
 vulnerable language package. It does not inspect the image Railway deployed, which may have

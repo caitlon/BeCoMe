@@ -3,10 +3,10 @@ name: Image scan
 # Builds the two images Railway deploys and scans them with Trivy for known vulnerabilities in
 # the operating system packages and the installed language packages. pip-audit and npm audit
 # in ci.yml cover the locked dependencies; this covers what the base images bring with them
-# (Debian, Alpine, nginx).
+# (Alpine, nginx).
 #
-# Only fixable findings of high or critical severity are reported: an unfixed CVE in a Debian
-# package is an alert nobody can act on, and the slim image carries over a hundred of them.
+# Only fixable findings of high or critical severity are reported: an unfixed CVE in a
+# distribution package is an alert nobody can act on.
 # Results go to code scanning as SARIF, one category per image. On a pull request GitHub's own
 # "Code scanning results" check then marks only the alerts the pull request adds, so a finding
 # already in the base image does not turn every Dockerfile or lock file change red. The weekly
