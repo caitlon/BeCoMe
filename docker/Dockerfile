@@ -68,7 +68,10 @@ RUN uv sync --locked --no-dev $(cat /tmp/uv-extras)
 # toolchain stays in the builder above. Alpine rather than Debian slim: slim carried
 # about 300 known vulnerabilities with no Debian fix, Alpine none. The cost is musl:
 # measured on 2026-11-12, real endpoints ran 5 to 20 percent slower than on glibc,
-# a few milliseconds per request, with the same memory.
+# a few milliseconds per request, with the same memory. Threads also get a smaller
+# stack than on glibc, so very deep C recursion in a worker thread (a sync route, a
+# thread pool job) crashes the process instead of raising RecursionError; keep parsing
+# of user-controlled nesting on the event loop or bounded by a schema.
 FROM python:3.13-alpine AS runtime
 
 WORKDIR /app
