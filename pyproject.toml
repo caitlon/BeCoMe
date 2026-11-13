@@ -80,7 +80,7 @@ api = [
     "logtail-python==0.5.2",
     "reportlab==5.1.0",
     "redis==8.1.0",
-    "dnspython==2.9.0",
+    "dnspython==2.9.2",
 ]
 assistant = [
     # Newest mutually compatible releases, audited with pip-audit: the agent stack
