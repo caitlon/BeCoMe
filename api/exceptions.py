@@ -81,6 +81,10 @@ class ProjectOwnershipChangedError(BeCoMeAPIError):
     """Raised when a transfer finds the project owner changed since the caller read it."""
 
 
+class AdminCannotLeaveProjectError(BeCoMeAPIError):
+    """Raised when the project admin tries to leave; ownership must be transferred first."""
+
+
 # Invitation-related exceptions
 class InvitationNotFoundError(NotFoundError):
     """Raised when invitation is not found."""

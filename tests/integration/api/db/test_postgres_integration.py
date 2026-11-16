@@ -29,7 +29,11 @@ from api.db.models import (
     ProjectMember,
     User,
 )
-from api.exceptions import ProjectNotFoundError, ProjectOwnershipChangedError
+from api.exceptions import (
+    AdminCannotLeaveProjectError,
+    ProjectNotFoundError,
+    ProjectOwnershipChangedError,
+)
 from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
@@ -601,6 +605,29 @@ class TestProjectDeleteAgainstOpinionWriters:
         assert errors == []
         self._assert_project_gone(pg_engine, project_id)
 
+    def test_member_leaving(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the expert leaves while the admin deletes the project
+        THEN neither transaction deadlocks, and the project is gone
+        """
+        # GIVEN
+        project_id, expert_id = self._seed_expert_with_opinion(pg_engine)
+
+        # WHEN
+        errors = self._race_with_project_delete(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: ProjectMembershipService(session).leave_project(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        self._assert_project_gone(pg_engine, project_id)
+
     def test_account_deletion(self, pg_engine, monkeypatch):
         """
         GIVEN an expert member with a committed opinion
@@ -753,6 +780,31 @@ class TestProjectDeleteBeforeWriterLock:
             monkeypatch,
             project_id,
             lambda session: ProjectMembershipService(session).remove_member(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert [type(error) for error in errors] == [ProjectNotFoundError]
+        TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
+
+    def test_member_leaving(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the project is deleted after the expert's leave request passed its checks
+        THEN the leave is refused as project-not-found
+        """
+        # GIVEN
+        project_id, expert_id = TestProjectDeleteAgainstOpinionWriters._seed_expert_with_opinion(
+            pg_engine
+        )
+
+        # WHEN
+        errors = self._race_delete_before_lock(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: ProjectMembershipService(session).leave_project(
                 project_id, expert_id, CalculationService(session)
             ),
         )
@@ -971,6 +1023,50 @@ class TestTransferOwnershipStatementOrder:
                 ProjectService(session_b).transfer_ownership(project_b, z_id)
 
         self._assert_ownership_settled(pg_engine, project_id, y_id)
+
+
+class TestLeaveAfterTransfer:
+    """An expert's leave request that raced a transfer making them the admin."""
+
+    def test_a_stale_leave_by_the_new_admin_is_refused_and_the_membership_stays(self, pg_engine):
+        """
+        GIVEN a request that read the expert as an ordinary member
+        AND a transfer that made the expert the admin and committed meanwhile
+        WHEN the stale request leaves the project
+        THEN it is refused, and the expert is still the project's admin and a member
+
+        Without the reload after the lock the stale request deletes the admin's row and the
+        database rejects it at commit with an IntegrityError.
+        """
+        # GIVEN
+        project_id, expert_id = TestTransferOwnershipStatementOrder._seed(
+            pg_engine, UUID(int=1), UUID(int=2)
+        )
+
+        with Session(pg_engine) as session_b, Session(pg_engine) as session_a:
+            project_b = session_b.get(Project, project_id)
+            stale = session_b.exec(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == project_id, ProjectMember.user_id == expert_id
+                )
+            ).one()
+            assert stale.role == MemberRole.EXPERT
+
+            # WHEN the project moves to the expert and commits before the leave locks it
+            ProjectService(session_a).transfer_ownership(
+                session_a.get(Project, project_id), expert_id
+            )
+
+            # THEN the stale leave is refused
+            assert project_b.admin_id != expert_id
+            with pytest.raises(AdminCannotLeaveProjectError):
+                ProjectMembershipService(session_b).leave_project(
+                    project_id, expert_id, CalculationService(session_b)
+                )
+
+        TestTransferOwnershipStatementOrder._assert_ownership_settled(
+            pg_engine, project_id, expert_id
+        )
 
 
 class TestAccountErasureAfterTransfer:
