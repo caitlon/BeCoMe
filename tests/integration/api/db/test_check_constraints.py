@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import CalculationResult, ExpertOpinion, Project, User
+from tests.shared.helpers import add_project
 
 
 def _make_user(session) -> User:
@@ -27,8 +28,7 @@ def _make_user(session) -> User:
 
 def _make_project(session, user: User) -> Project:
     """Persist and return a valid project owned by the given user."""
-    project = Project(name="Project", admin_id=user.id, scale_min=0.0, scale_max=100.0)
-    session.add(project)
+    project = add_project(session, user, name="Project", scale_min=0.0, scale_max=100.0)
     session.commit()
     return project
 

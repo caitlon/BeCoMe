@@ -452,7 +452,8 @@ class TestProjectServiceTransferOwnership:
             project_id=project_id, user_id=admin_id, role=MemberRole.ADMIN
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.side_effect = [new_membership, old_membership]
+        # the first lookup is the project lock, then the two memberships
+        mock_session.exec.return_value.first.side_effect = [project, new_membership, old_membership]
         mock_session.get.return_value = User(
             id=new_admin_id,
             email="new-admin@example.com",

@@ -5,13 +5,14 @@ import secrets
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
 from sqlmodel import Session
 
 from api.auth.password import hash_password
 from api.data.example_project import EXAMPLE_EXPERTS
-from api.db.models import User
+from api.db.models import MemberRole, Project, ProjectMember, User
 from api.db.utils import utc_now
 
 # Shared test password constant to avoid coupling between helpers and tests
@@ -44,6 +45,25 @@ def mock_datetime_offset(module_path: str, offset: timedelta):
     with patch(module_path, wraps=datetime) as mock_dt:
         mock_dt.now.return_value = datetime.now(UTC) - offset
         yield mock_dt
+
+
+def add_project(session: Session, admin: User, **fields: Any) -> Project:
+    """Add a project together with its admin's ADMIN membership.
+
+    The database holds that ``projects.admin_id`` is the project's one ADMIN member, so
+    a project row without that membership cannot be committed. The project is flushed
+    first, which gives it an id for the membership.
+
+    :param session: Session to add to; this function does not commit.
+    :param admin: Persisted user who administers the project.
+    :param fields: Further ``Project`` fields, such as ``name`` and the scale bounds.
+    :return: The added project.
+    """
+    project = Project(admin_id=admin.id, **fields)
+    session.add(project)
+    session.flush()
+    session.add(ProjectMember(project_id=project.id, user_id=admin.id, role=MemberRole.ADMIN))
+    return project
 
 
 def insert_demo_experts(session: Session) -> None:

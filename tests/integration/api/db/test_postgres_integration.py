@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import Session, SQLModel, select
@@ -35,6 +35,7 @@ from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
 from api.services.user_service import UserService
+from tests.shared.helpers import add_project
 
 # Skip all tests in this module if PostgreSQL is not installed
 pytestmark = pytest.mark.skipif(
@@ -106,8 +107,7 @@ class TestForeignKeyEnforcement:
         pg_session.add(admin)
         pg_session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        pg_session.add(project)
+        project = add_project(pg_session, admin, name="Test Project")
         pg_session.commit()
 
         # Non-existent user UUID
@@ -146,8 +146,7 @@ class TestForeignKeyEnforcement:
         pg_session.add_all([admin, expert])
         pg_session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        pg_session.add(project)
+        project = add_project(pg_session, admin, name="Test Project")
         pg_session.commit()
 
         membership = ProjectMember(
@@ -247,8 +246,7 @@ class TestForeignKeyEnforcement:
         pg_session.add(admin)
         pg_session.commit()
 
-        project = Project(name="Owned Project", admin_id=admin.id)
-        pg_session.add(project)
+        add_project(pg_session, admin, name="Owned Project")
         pg_session.commit()
 
         # WHEN/THEN: RESTRICT blocks deleting an owner who still has a project
@@ -323,8 +321,7 @@ class TestConcurrentRecalculation:
             )
             setup.add_all([admin, expert_1, expert_2])
             setup.flush()
-            project = Project(name="Concurrent", admin_id=admin.id)
-            setup.add(project)
+            project = add_project(setup, admin, name="Concurrent")
             setup.commit()
             return project.id, expert_1.id, expert_2.id
 
@@ -790,6 +787,122 @@ class TestProjectDeleteBeforeWriterLock:
         TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
         with Session(pg_engine) as check:
             assert check.get(User, expert_id) is None
+
+
+class TestTransferOwnershipStatementOrder:
+    """Tests the statements a project ownership transfer sends, and their order."""
+
+    # Membership ids that sort either side of each other, since the ORM flushes the rows
+    # of one table in primary-key order.
+    LOW_ID = UUID(int=1)
+    HIGH_ID = UUID(int=2**128 - 2)
+
+    @staticmethod
+    def _seed(pg_engine, old_admin_membership_id: UUID, new_admin_membership_id: UUID):
+        """Commit a project with an admin and an expert member; return (project_id, expert_id)."""
+        with Session(pg_engine) as setup:
+            admin = User(
+                email="admin@example.com", hashed_password="x", first_name="A", last_name="A"
+            )
+            expert = User(
+                email="expert@example.com", hashed_password="x", first_name="E", last_name="E"
+            )
+            setup.add_all([admin, expert])
+            setup.flush()
+            project = Project(name="Transfer", admin_id=admin.id)
+            setup.add(project)
+            setup.flush()
+            setup.add_all(
+                [
+                    ProjectMember(
+                        id=old_admin_membership_id,
+                        project_id=project.id,
+                        user_id=admin.id,
+                        role=MemberRole.ADMIN,
+                    ),
+                    ProjectMember(
+                        id=new_admin_membership_id,
+                        project_id=project.id,
+                        user_id=expert.id,
+                        role=MemberRole.EXPERT,
+                    ),
+                ]
+            )
+            setup.commit()
+            return project.id, expert.id
+
+    @staticmethod
+    def _transfer_statements(pg_engine, project_id: UUID, new_admin_id: UUID) -> list[tuple]:
+        """Run the transfer and return the (statement, parameters) pairs it sent."""
+        with Session(pg_engine) as loader:
+            project = loader.get(Project, project_id)
+            loader.expunge(project)
+        sent: list[tuple] = []
+
+        def record(_conn, _cursor, statement, parameters, _context, _executemany):
+            sent.append((statement, parameters))
+
+        event.listen(pg_engine, "before_cursor_execute", record)
+        try:
+            with Session(pg_engine) as session:
+                ProjectService(session).transfer_ownership(project, new_admin_id)
+        finally:
+            event.remove(pg_engine, "before_cursor_execute", record)
+        return sent
+
+    @staticmethod
+    def _role_updates(sent: list[tuple]) -> list[str]:
+        """Return the roles written to project_members, in the order they were sent."""
+        roles = []
+        for statement, parameters in sent:
+            if not statement.startswith("UPDATE project_members"):
+                continue
+            rows = parameters if isinstance(parameters, list) else [parameters]
+            roles.extend(row["role"] for row in rows)
+        return roles
+
+    @pytest.mark.parametrize(
+        ("old_admin_membership_id", "new_admin_membership_id"),
+        [(LOW_ID, HIGH_ID), (HIGH_ID, LOW_ID)],
+        ids=["new-admin-row-sorts-last", "new-admin-row-sorts-first"],
+    )
+    def test_old_admin_is_demoted_before_new_admin_is_promoted(
+        self, pg_engine, old_admin_membership_id, new_admin_membership_id
+    ):
+        """
+        GIVEN a project whose two membership rows sort in either primary-key order
+        WHEN ownership moves to the expert
+        THEN the demotion reaches the database before the promotion, so the project never
+            has two admin rows at once
+        """
+        # GIVEN
+        project_id, expert_id = self._seed(
+            pg_engine, old_admin_membership_id, new_admin_membership_id
+        )
+
+        # WHEN
+        sent = self._transfer_statements(pg_engine, project_id, expert_id)
+
+        # THEN
+        assert self._role_updates(sent) == ["EXPERT", "ADMIN"]
+
+    def test_project_row_is_locked_before_any_member_row_is_touched(self, pg_engine):
+        """
+        GIVEN a project with an admin and an expert member
+        WHEN ownership moves to the expert
+        THEN the first statement locks the project row with FOR NO KEY UPDATE, the lock a
+            project deletion and the opinion and member writers take before member rows
+        """
+        # GIVEN
+        project_id, expert_id = self._seed(pg_engine, self.LOW_ID, self.HIGH_ID)
+
+        # WHEN
+        sent = self._transfer_statements(pg_engine, project_id, expert_id)
+
+        # THEN
+        first_statement = sent[0][0]
+        assert "FROM projects" in first_statement
+        assert first_statement.rstrip().endswith("FOR NO KEY UPDATE")
 
 
 class TestSavepointAndPartialRollback:

@@ -5,10 +5,10 @@ from api.db.models import (
     ExpertOpinion,
     Invitation,
     MemberRole,
-    Project,
     ProjectMember,
     User,
 )
+from tests.shared.helpers import add_project
 
 
 class TestRelationships:
@@ -25,9 +25,8 @@ class TestRelationships:
         session.add(user)
         session.commit()
 
-        project1 = Project(name="Project 1", admin_id=user.id)
-        project2 = Project(name="Project 2", admin_id=user.id)
-        session.add_all([project1, project2])
+        add_project(session, user, name="Project 1")
+        add_project(session, user, name="Project 2")
         session.commit()
 
         # WHEN
@@ -53,8 +52,7 @@ class TestRelationships:
         session.add_all([admin, expert])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         opinion1 = ExpertOpinion(
@@ -105,8 +103,7 @@ class TestRelationships:
         session.add_all([admin, expert1, expert2])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         member1 = ProjectMember(
@@ -125,8 +122,8 @@ class TestRelationships:
         # WHEN
         session.refresh(project)
 
-        # THEN
-        assert len(project.members) == 2
+        # THEN: the two experts and the admin, whose membership add_project created
+        assert len(project.members) == 3
 
     def test_project_result_one_to_one(self, session):
         # GIVEN
@@ -139,8 +136,7 @@ class TestRelationships:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         result = CalculationResult(
@@ -190,8 +186,7 @@ class TestRelationships:
         session.add_all([admin, invitee1, invitee2])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         inv1 = Invitation(

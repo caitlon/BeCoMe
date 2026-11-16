@@ -14,6 +14,7 @@ from api.exceptions import (
 )
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
+from api.services.calculation_service import CalculationService
 
 logger = logging.getLogger("api.service.project")
 
@@ -195,12 +196,22 @@ class ProjectService(BaseService):
         the ``ProjectMember`` role rows. The new owner becomes admin and the
         former owner is demoted to expert.
 
+        The order of the writes matters. The project row is locked first, as a project
+        deletion and the opinion and member writers do, so a transfer cannot deadlock
+        against them over the project and its member rows. The old owner is demoted and
+        flushed before the new one is promoted, so the project never has two admin rows
+        at once: the ORM would otherwise send both role updates in primary-key order, and
+        a promoted row that sorts first would collide with the old admin.
+
         :param project: Project to transfer (current admin already verified)
         :param new_admin_id: User ID of the member to promote to admin
         :return: Updated project
         :raises MemberNotFoundError: If the target user is not a project member, or is
             one of the demo accounts (see ``User.is_demo``)
         """
+        # A project deleted before the lock has no members left, so the lookup below
+        # refuses it and the result of the lock needs no check of its own.
+        CalculationService(self._session).lock_project(project.id)
         new_admin_membership = self._session.exec(
             select(ProjectMember).where(
                 ProjectMember.project_id == project.id,
@@ -226,13 +237,14 @@ class ProjectService(BaseService):
             )
         ).first()
 
+        if old_admin_membership:
+            old_admin_membership.role = MemberRole.EXPERT
+            self._session.add(old_admin_membership)
+            self._session.flush()
         project.admin_id = new_admin_id
         new_admin_membership.role = MemberRole.ADMIN
         self._session.add(project)
         self._session.add(new_admin_membership)
-        if old_admin_membership:
-            old_admin_membership.role = MemberRole.EXPERT
-            self._session.add(old_admin_membership)
         self._session.commit()
         self._session.refresh(project)
         logger.info(
