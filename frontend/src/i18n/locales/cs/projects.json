@@ -182,7 +182,7 @@
   "leaveProject": {
     "button": "Opustit projekt",
     "title": "Opustit tento projekt?",
-    "description": "Váš názor bude odstraněn a výsledek se přepočítá bez něj. Zpět se dostanete, jen pokud vás správce projektu znovu pozve.",
+    "description": "Pokud jste zadali svůj názor, bude odstraněn a výsledek se přepočítá bez něj. Zpět se dostanete, jen pokud vás správce projektu znovu pozve.",
     "confirm": "Opustit projekt",
     "leaving": "Opouštění..."
   },

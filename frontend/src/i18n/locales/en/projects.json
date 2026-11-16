@@ -176,7 +176,7 @@
   "leaveProject": {
     "button": "Leave project",
     "title": "Leave this project?",
-    "description": "Your opinion will be removed and the result recalculated without it. You can only come back if the project admin invites you again.",
+    "description": "If you submitted an opinion, it will be removed and the result recalculated without it. You can only come back if the project admin invites you again.",
     "confirm": "Leave project",
     "leaving": "Leaving..."
   },

@@ -234,6 +234,8 @@ const ProjectDetail = () => {
         description: describeError(error, tCommon, t("toast.leaveProjectFailed")),
         variant: "destructive",
       });
+      // The role may be stale after a transfer or removal in another session.
+      invalidateProject();
     }
   };
 

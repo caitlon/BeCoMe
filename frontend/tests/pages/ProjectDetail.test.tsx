@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   createProject,
   createProjectWithRole,
@@ -903,6 +905,13 @@ describe('ProjectDetail - Leave Project', () => {
     return screen.getByRole('dialog');
   };
 
+  const expectDialogOpenAndProjectRefetched = async (callsBefore: number) => {
+    await waitFor(() => {
+      expect(mockApi.getProject.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+    expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+  };
+
   it('shows the Leave project button to an expert', async () => {
     render(<ProjectDetail />);
 
@@ -926,7 +935,13 @@ describe('ProjectDetail - Leave Project', () => {
 
     render(<ProjectDetail />);
 
+    const removeSpy = vi.spyOn(QueryClient.prototype, 'removeQueries');
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
     const dialog = await openLeaveDialog(user);
+    expect(
+      within(dialog).getByText(/if you submitted an opinion, it will be removed/i)
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
 
     await waitFor(() => {
@@ -934,6 +949,10 @@ describe('ProjectDetail - Leave Project', () => {
       expect(mockToast).toHaveBeenCalledWith({ title: 'You left the project' });
       expect(mockNavigate).toHaveBeenCalledWith('/projects');
     });
+    expect(removeSpy).toHaveBeenCalledWith({ queryKey: queryKeys.project('project-1') });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.projects, exact: true });
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
   });
 
   it('does nothing when the confirmation is cancelled', async () => {
@@ -958,6 +977,7 @@ describe('ProjectDetail - Leave Project', () => {
     render(<ProjectDetail />);
 
     const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
     await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
 
     await waitFor(() => {
@@ -970,6 +990,7 @@ describe('ProjectDetail - Leave Project', () => {
       );
     });
     expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
   });
 
   it('explains that the owner cannot leave when the API refuses with admin_cannot_leave', async () => {
@@ -981,6 +1002,7 @@ describe('ProjectDetail - Leave Project', () => {
     render(<ProjectDetail />);
 
     const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
     await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
 
     await waitFor(() => {
@@ -993,6 +1015,7 @@ describe('ProjectDetail - Leave Project', () => {
       );
     });
     expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
   });
 });
 
