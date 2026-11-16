@@ -4,12 +4,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
+import { Translate } from "@/lib/errorMessages";
 import { Opinion, ProjectWithRole } from "@/types/api";
 
 // Mirrors max_length on the position field in api/schemas/opinion.py.
 const POSITION_MAX_LENGTH = 255;
-
-type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 const numericField = (requiredMessage: string, invalidMessage: string) =>
   z
