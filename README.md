@@ -33,7 +33,7 @@ The usual move is to average everything, and it fails quietly here. The plain av
 
 ## How BeCoMe answers it
 
-Each expert gives three numbers instead of one: the lowest value they would accept, the value they consider most likely, and the highest. That is a fuzzy triangular number, and it lets someone say "around 40, but I could live with 37" without claiming a precision they do not have.
+Each expert gives three numbers instead of one: the lowest value they would accept, the value they prefer most, and the highest. That is a fuzzy triangular number, and it lets someone say "around 40, but I could live with 37" without claiming a precision they do not have.
 
 The method then computes two things the panel already implies. The average shows where the opinions sit in aggregate. The median shows where the middle of the panel sits, and it barely moves when one person takes an extreme position. BeCoMe combines the two into a best compromise, and it reports the distance between them as a number in its own right.
 

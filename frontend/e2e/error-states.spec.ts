@@ -22,7 +22,7 @@ test.describe('Error States', () => {
     // Fill opinion with invalid values: lower > peak
     await page.getByLabel('Position').first().fill('Tester');
     await page.getByLabel('Lower (pessimistic)').first().fill('80');
-    await page.getByLabel('Peak (most likely)').first().fill('50');
+    await page.getByLabel('Peak (most preferred)').first().fill('50');
     await page.getByLabel('Upper (optimistic)').first().fill('90');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();

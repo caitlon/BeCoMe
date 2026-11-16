@@ -28,7 +28,7 @@
     "intro": "Pochopte, jak fuzzy trojúhelníková čísla reprezentují nejistotu v expertních odhadech.",
     "whatIsFuzzy": {
       "question": "Co je fuzzy trojúhelníkové číslo?",
-      "answer": "Fuzzy trojúhelníkové číslo A = (a, c, b) reprezentuje nejistotu v expertním odhadu: 'a' je dolní mez (pesimistická), 'c' je vrchol (nejpravděpodobnější hodnota) a 'b' je horní mez (optimistická)."
+      "answer": "Fuzzy trojúhelníkové číslo A = (a, c, b) reprezentuje nejistotu v expertním odhadu: 'a' je dolní mez (pesimistická), 'c' je vrchol (nejvhodnější hodnota) a 'b' je horní mez (optimistická)."
     },
     "whatIsCentroid": {
       "question": "Co je centroid (Gx)?",
@@ -58,7 +58,7 @@
     },
     "whatInputFormats": {
       "question": "Jaké vstupní formáty jsou podporovány?",
-      "answer": "Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejpravděpodobnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici."
+      "answer": "Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejvhodnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici."
     }
   },
   "troubleshooting": {

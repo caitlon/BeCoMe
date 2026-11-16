@@ -20,7 +20,7 @@ describe('Landing', () => {
 
     expect(
       screen.getByText(
-        'For panels that must settle on one number, such as a budget, a deadline or a risk level. Each expert gives a lowest, most likely and highest estimate, and BeCoMe combines them into the best compromise.'
+        'For panels that must settle on one number, such as a budget, a percentage share or a risk level. Each expert gives a lowest, most preferred and highest estimate, and BeCoMe combines them into the best compromise.'
       )
     ).toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe('Landing - Czech', () => {
     expect(screen.getByText('jeden nejlepší kompromis')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, termínu nebo míře rizika. Každý expert zadá nejnižší, nejpravděpodobnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.'
+        'Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, procentním podílu nebo míře rizika. Každý expert zadá nejnižší, nejvhodnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.'
       )
     ).toBeInTheDocument();
     expect(

@@ -72,7 +72,7 @@
     "upperAbbr": "H",
     "centroid": "Centroid",
     "lowerDesc": "Dolní (pesimistický)",
-    "peakDesc": "Vrchol (nejpravděpodobnější)",
+    "peakDesc": "Vrchol (nejvhodnější)",
     "upperDesc": "Horní (optimistický)",
     "membershipFunction": "μ(x)",
     "mean": "Průměr",

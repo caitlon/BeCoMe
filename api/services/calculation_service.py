@@ -1,6 +1,7 @@
 """BeCoMe calculation business logic service."""
 
 import logging
+from time import perf_counter
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -78,6 +79,7 @@ class CalculationService(BaseService):
         :return: CalculationResult if opinions exist, None otherwise
         """
         self.lock_project(project_id)
+        start = perf_counter()
         opinions = self._get_opinions(project_id)
 
         if not opinions:
@@ -108,6 +110,7 @@ class CalculationService(BaseService):
                 "event": "recalculation_completed",
                 "project_id": str(project_id),
                 "num_experts": len(opinions),
+                "duration_ms": round((perf_counter() - start) * 1000.0, 1),
             },
         )
         return saved

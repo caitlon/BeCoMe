@@ -20,6 +20,9 @@ import { describeError } from "@/lib/errorMessages";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+// Mirrors max_length on ProjectCreate.description in api/schemas/project.py.
+export const DESCRIPTION_MAX_LENGTH = 2000;
+
 type CreateProjectFormData = {
   name: string;
   description?: string;
@@ -56,7 +59,10 @@ export function CreateProjectModal({
             .max(255, t("create.validation.nameMaxLength")),
           description: z
             .string()
-            .max(1000, t("create.validation.descriptionMaxLength"))
+            .max(
+              DESCRIPTION_MAX_LENGTH,
+              t("create.validation.descriptionMaxLength", { max: DESCRIPTION_MAX_LENGTH })
+            )
             .optional(),
           scale_min: z.coerce.number(),
           scale_max: z.coerce.number(),

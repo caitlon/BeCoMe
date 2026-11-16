@@ -95,7 +95,7 @@ test.describe.serial('Invitation Flow', () => {
     // Fill opinion form
     await expertPage.getByLabel('Position').first().fill('Invited Expert');
     await expertPage.getByLabel('Lower (pessimistic)').first().fill('30');
-    await expertPage.getByLabel('Peak (most likely)').first().fill('50');
+    await expertPage.getByLabel('Peak (most preferred)').first().fill('50');
     await expertPage.getByLabel('Upper (optimistic)').first().fill('70');
 
     await expertPage.getByRole('button', { name: 'Save Opinion' }).click();
@@ -108,7 +108,7 @@ test.describe.serial('Invitation Flow', () => {
     // Owner fills their opinion on the same project
     await ownerPage.getByLabel('Position').first().fill('Project Owner');
     await ownerPage.getByLabel('Lower (pessimistic)').first().fill('20');
-    await ownerPage.getByLabel('Peak (most likely)').first().fill('40');
+    await ownerPage.getByLabel('Peak (most preferred)').first().fill('40');
     await ownerPage.getByLabel('Upper (optimistic)').first().fill('60');
 
     await ownerPage.getByRole('button', { name: 'Save Opinion' }).click();

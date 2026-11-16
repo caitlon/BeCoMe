@@ -22,7 +22,7 @@ cannot hear the difference.
 ## How it answers
 
 Each expert gives three numbers rather than one: the lowest value they would accept, the value they
-consider most likely, and the highest. That is a fuzzy triangular number, and it lets someone say
+prefer most, and the highest. That is a fuzzy triangular number, and it lets someone say
 "around forty, but I could live with thirty-seven" without claiming a precision they do not have.
 
 The method then computes two things the panel already implies. The **average** shows where the

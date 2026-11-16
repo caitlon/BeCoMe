@@ -72,7 +72,7 @@
     "upperAbbr": "U",
     "centroid": "Centroid",
     "lowerDesc": "Lower (pessimistic)",
-    "peakDesc": "Peak (most likely)",
+    "peakDesc": "Peak (most preferred)",
     "upperDesc": "Upper (optimistic)",
     "membershipFunction": "μ(x)",
     "mean": "Mean",

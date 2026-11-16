@@ -28,7 +28,7 @@
     "intro": "Understand how fuzzy triangular numbers represent uncertainty in expert estimates.",
     "whatIsFuzzy": {
       "question": "What is a fuzzy triangular number?",
-      "answer": "A fuzzy triangular number A = (a, c, b) represents uncertainty in an expert's estimate: 'a' is the lower bound (pessimistic), 'c' is the peak (most likely value), and 'b' is the upper bound (optimistic)."
+      "answer": "A fuzzy triangular number A = (a, c, b) represents uncertainty in an expert's estimate: 'a' is the lower bound (pessimistic), 'c' is the peak (most preferred value), and 'b' is the upper bound (optimistic)."
     },
     "whatIsCentroid": {
       "question": "What is the centroid (Gx)?",
@@ -58,7 +58,7 @@
     },
     "whatInputFormats": {
       "question": "What input formats are supported?",
-      "answer": "One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you consider most likely, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet."
+      "answer": "One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you prefer most, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet."
     }
   },
   "troubleshooting": {

@@ -61,7 +61,7 @@ export const caseStudies: CaseStudy[] = [
     scaleMax: 100,
     scaleUnit: "CZK billion",
     context: "The COVID-19 pandemic created unprecedented economic challenges. Businesses across sectors faced closures and reduced revenue due to government-mandated restrictions. The government needed to balance fiscal responsibility with the urgent need to support affected entrepreneurs and maintain economic stability.",
-    methodology: "Each expert provided their opinion as a fuzzy triangular number with three values: best proposal (most likely value), lower limit (pessimistic estimate), and upper limit (optimistic estimate). The BeCoMe method aggregated these opinions to find the best compromise.",
+    methodology: "Each expert provided their opinion as a fuzzy triangular number with three values: best proposal (most preferred value), lower limit (pessimistic estimate), and upper limit (optimistic estimate). The BeCoMe method aggregated these opinions to find the best compromise.",
     opinions: [
       { role: "Chairman", bestProposal: 70, lowerLimit: 40, upperLimit: 90 },
       { role: "Deputy Chairman", bestProposal: 80, lowerLimit: 60, upperLimit: 90 },
