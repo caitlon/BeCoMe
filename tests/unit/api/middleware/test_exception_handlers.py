@@ -28,6 +28,7 @@ from api.exceptions import (
     PhotoTypeNotAllowedError,
     PhotoUnreadableError,
     ProjectNotFoundError,
+    ProjectOwnershipChangedError,
     ScaleExcludesOpinionsError,
     ScaleRangeError,
     TurnstileVerificationError,
@@ -657,6 +658,26 @@ class TestInvitationAndPhotoErrorCodes:
 
         # THEN
         assert status_code == status.HTTP_409_CONFLICT
+
+    def test_a_stale_ownership_transfer_is_a_409_with_a_fixed_detail(self):
+        """
+        GIVEN ProjectOwnershipChangedError, whose message names the project
+        WHEN the handler builds the response
+        THEN it is a 409 whose detail is the fixed sentence, not the message
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = ProjectOwnershipChangedError("Project 1234 changed owner before the transfer")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert json.loads(response.body) == {
+            "detail": "The project owner changed while this request was being processed. "
+            "Reload the project and try again."
+        }
 
 
 class TestRegisterExceptionHandlers:

@@ -6,6 +6,7 @@ service can pick one by format and stay open for new formats.
 
 import csv
 import io
+import threading
 from abc import ABC, abstractmethod
 
 from reportlab.graphics.shapes import Drawing, Rect
@@ -40,6 +41,12 @@ from api.services.export.fuzzy_chart import (
 )
 from api.services.export.labels import ResultLabels
 from api.services.export.theme import ExportPalette, ReportTheme, get_palette
+
+# reportlab keeps per-document font subset state on the process-global TTFont faces and
+# builds the subset when the document is saved, which is not thread-safe: two builds
+# running at once fail inside ``makeSubset`` with ``KeyError`` or ``IndexError``. A
+# render takes about 8 ms, so serialising the builds costs nothing noticeable.
+_BUILD_LOCK = threading.Lock()
 
 
 def _n2(value: float) -> str:
@@ -272,9 +279,9 @@ class PdfResultRenderer(ResultRenderer):
             bottomMargin=36,
             title=f"{data.project_name} - {labels.report_title}",
         )
-        doc.build(
-            self._story(data, labels), onFirstPage=self._paint_page, onLaterPages=self._paint_page
-        )
+        story = self._story(data, labels)
+        with _BUILD_LOCK:
+            doc.build(story, onFirstPage=self._paint_page, onLaterPages=self._paint_page)
         return buffer.getvalue()
 
     def _story(self, data: ResultExportData, labels: ResultLabels) -> list[object]:

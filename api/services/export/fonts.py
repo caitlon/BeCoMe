@@ -32,6 +32,7 @@ worse trade. If it is revisited, the shape of the fix is a third face passed as 
 ``fallback`` argument, not a change of default.
 """
 
+import threading
 from pathlib import Path
 
 from reportlab.pdfbase import pdfmetrics
@@ -53,17 +54,32 @@ _FILES = {
 }
 
 
+# Held across the check and the registration loop, so that a second export
+# arriving while the first is still loading files waits for it instead of finding
+# the first face registered and taking the rest for granted.
+_REGISTRATION_LOCK = threading.Lock()
+
+
 def register_fonts() -> None:
     """Register the report's typefaces with reportlab, once.
 
     Registration is idempotent: repeated report builds reuse the already
     registered faces instead of re-reading the TTF files from disk.
+
+    Exports run in worker threads, and the first few after a cold start arrive
+    together. Each face is checked, not just the first one, and the check and the
+    loop sit under one lock: otherwise a request that came in while another was
+    halfway through the loop saw ``FONT_SANS`` registered, returned early, and
+    failed on a later face with ``KeyError``.
     """
-    if FONT_SANS in pdfmetrics.getRegisteredFontNames():
-        return
-    for name, filename in _FILES.items():
-        pdfmetrics.registerFont(TTFont(name, str(_FONT_DIR / filename)))
-    pdfmetrics.registerFontFamily(FONT_SANS, normal=FONT_SANS, bold=FONT_SANS_BOLD)
+    with _REGISTRATION_LOCK:
+        registered = set(pdfmetrics.getRegisteredFontNames())
+        if registered.issuperset(_FILES):
+            return
+        for name, filename in _FILES.items():
+            if name not in registered:
+                pdfmetrics.registerFont(TTFont(name, str(_FONT_DIR / filename)))
+        pdfmetrics.registerFontFamily(FONT_SANS, normal=FONT_SANS, bold=FONT_SANS_BOLD)
 
 
 def font_for(text: str, preferred: str, fallback: str = FONT_SANS) -> str:

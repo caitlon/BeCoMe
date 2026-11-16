@@ -59,6 +59,7 @@ class TestProjectServiceLogging:
         project = Project(id=uuid4(), name="P", admin_id=old_admin_id, scale_min=0, scale_max=10)
         mock_session = MagicMock()
         mock_session.exec.return_value.first.side_effect = [
+            project,
             ProjectMember(project_id=project.id, user_id=new_admin_id, role=MemberRole.EXPERT),
             ProjectMember(project_id=project.id, user_id=old_admin_id, role=MemberRole.ADMIN),
         ]

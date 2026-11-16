@@ -257,7 +257,7 @@ recalculated in the same transaction, or removed when no opinion is left.
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
-| POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
+| POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member; a 409 when another transfer changed the owner while this one waited (reload and retry) |
 | POST | `/api/v1/projects/{id}/invite` | Invite user; refusals carry a code: 404 `invitee_not_found`, 409 `already_invited`, `already_member` or `example_project_not_invitable` |
 | GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
 

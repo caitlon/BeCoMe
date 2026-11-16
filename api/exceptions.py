@@ -77,6 +77,10 @@ class MemberNotFoundError(NotFoundError):
     """Raised when member is not found in project."""
 
 
+class ProjectOwnershipChangedError(BeCoMeAPIError):
+    """Raised when a transfer finds the project owner changed since the caller read it."""
+
+
 # Invitation-related exceptions
 class InvitationNotFoundError(NotFoundError):
     """Raised when invitation is not found."""

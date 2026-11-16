@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import ExpertOpinion, Project, User
-from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
+from api.exceptions import OpinionNotFoundError, ProjectNotFoundError, ValuesOutOfRangeError
 from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 
@@ -228,6 +228,22 @@ class TestOpinionServiceUpsertOpinion:
             self._upsert(service, uuid4(), uuid4(), calculation_service)
         mock_session.commit.assert_not_called()
 
+    def test_raises_when_the_project_is_gone_at_lock_time(self):
+        """A project deleted before the lock is refused, and nothing is written."""
+        # GIVEN
+        mock_session = MagicMock()
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.lock_project.return_value = False
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ProjectNotFoundError):
+            self._upsert(service, uuid4(), uuid4(), calculation_service)
+        mock_session.add.assert_not_called()
+        mock_session.flush.assert_not_called()
+        mock_session.commit.assert_not_called()
+        calculation_service.stage_recalculation.assert_not_called()
+
     def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
         """Callers that recalculate themselves get one commit and no recalculation."""
         # GIVEN
@@ -328,6 +344,21 @@ class TestOpinionServiceDeleteOpinion:
         with pytest.raises(RuntimeError, match="boom"):
             service.delete_opinion(uuid4(), uuid4(), calculation_service)
         mock_session.commit.assert_not_called()
+
+    def test_raises_when_the_project_is_gone_at_lock_time(self):
+        """A project deleted before the lock is refused, and nothing is deleted."""
+        # GIVEN
+        mock_session = MagicMock()
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.lock_project.return_value = False
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ProjectNotFoundError):
+            service.delete_opinion(uuid4(), uuid4(), calculation_service)
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+        calculation_service.stage_recalculation.assert_not_called()
 
     def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
         """Without a calculation service the opinion goes in one commit, nothing recalculated."""

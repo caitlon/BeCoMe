@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import CalculationResult, ExpertOpinion, Project, User
+from tests.shared.helpers import add_project
 
 
 def _make_user(session) -> User:
@@ -27,8 +28,7 @@ def _make_user(session) -> User:
 
 def _make_project(session, user: User) -> Project:
     """Persist and return a valid project owned by the given user."""
-    project = Project(name="Project", admin_id=user.id, scale_min=0.0, scale_max=100.0)
-    session.add(project)
+    project = add_project(session, user, name="Project", scale_min=0.0, scale_max=100.0)
     session.commit()
     return project
 
@@ -64,12 +64,29 @@ class TestCheckConstraints:
         """
         # GIVEN
         user = _make_user(session)
-        project = Project(name="Bad", admin_id=user.id, scale_min=100.0, scale_max=100.0)
 
         # WHEN/THEN
-        session.add(project)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        with pytest.raises(IntegrityError, match="ck_projects_scale_order"):
+            add_project(session, user, name="Bad", scale_min=100.0, scale_max=100.0)
+        session.rollback()
+
+    @pytest.mark.parametrize(
+        ("scale_min", "scale_max"),
+        [(0.0, 1e16), (-1e16, 0.0), (0.0, float("inf")), (float("-inf"), 0.0)],
+    )
+    def test_projects_scale_bounds_rejected(self, session, scale_min, scale_max):
+        """
+        GIVEN a project row with a scale bound beyond plus or minus 1e15, or infinite
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+
+        # WHEN/THEN
+        with pytest.raises(IntegrityError, match="ck_projects_scale_bounds"):
+            add_project(session, user, name="Bad", scale_min=scale_min, scale_max=scale_max)
+        session.rollback()
 
     def test_expert_opinion_fuzzy_order_rejected(self, session):
         """

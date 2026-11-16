@@ -13,10 +13,20 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from alembic.script import ScriptDirectory
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    create_engine,
+    inspect,
+    text,
+)
 from sqlalchemy.exc import IntegrityError
 
 from api.data.example_project import EXAMPLE_EXPERTS
+from api.db.models import Project, ProjectMember
+from api.schemas.validators import MAX_ABS_FUZZY_VALUE
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
@@ -869,6 +879,523 @@ class TestAssistantObjectionMigration:
             assert "assistant_objection" not in {
                 c["name"] for c in inspect(engine).get_columns("users")
             }
+        finally:
+            engine.dispose()
+
+
+class TestProjectScaleBoundsMigration:
+    """The migration adding ck_projects_scale_bounds."""
+
+    # Pinned to the revision ids, so a later migration cannot change what is tested.
+    BEFORE = "e7b3d2a94c18"  # pragma: allowlist secret
+    REVISION = "c4e8a1f7b265"  # pragma: allowlist secret
+
+    def test_api_cap_matches_the_database_check(self):
+        """
+        GIVEN the 1e15 bound written into the migration and the model CHECK
+        WHEN the API cap and both CHECK texts are read
+        THEN the model and the migration carry the same text and the cap is still 1e15, so
+        raising it needs a new migration first (otherwise the API would accept values the
+        database refuses, a 500)
+        """
+        migration = ScriptDirectory.from_config(Config("alembic.ini")).get_revision(self.REVISION)
+        model_check = next(
+            c
+            for c in Project.__table__.constraints
+            if isinstance(c, CheckConstraint) and c.name == "ck_projects_scale_bounds"
+        )
+        assert str(model_check.sqltext) == migration.module._CONDITION
+        assert MAX_ABS_FUZZY_VALUE == 1e15
+
+    @staticmethod
+    def _insert_project(engine, admin_id, scale_min: str, scale_max: str) -> None:
+        """Insert one project; the bounds are cast from text so NaN and Infinity can be sent."""
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO projects "
+                    "(id, name, admin_id, scale_min, scale_max, scale_unit, created_at, "
+                    "updated_at) "
+                    "VALUES (:id, 'Scale', :admin_id, CAST(:scale_min AS double precision), "
+                    "CAST(:scale_max AS double precision), '', :now, :now)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "admin_id": str(admin_id),
+                    "scale_min": scale_min,
+                    "scale_max": scale_max,
+                    "now": datetime(2026, 1, 1, tzinfo=UTC),
+                },
+            )
+
+    def test_upgrade_refuses_non_finite_and_huge_bounds_and_downgrade_lifts_it(
+        self, migration_pg, monkeypatch
+    ):
+        """The constraint refuses NaN, infinities and 1e16, and the migration reverses cleanly."""
+        # GIVEN: a database one revision before this one, holding an admin user
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+        admin_id = uuid4()
+
+        try:
+            command.upgrade(config, self.BEFORE)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'admin@example.com', 'hash', 'Ad', 'Min', :now)"
+                    ),
+                    {"id": str(admin_id), "now": datetime(2026, 1, 1, tzinfo=UTC)},
+                )
+
+            # WHEN
+            command.upgrade(config, self.REVISION)
+
+            # THEN: a normal row and the exact ceiling pass
+            self._insert_project(engine, admin_id, "0", "100")
+            self._insert_project(engine, admin_id, "-1e15", "1e15")
+
+            # THEN: every non-finite or oversized bound is refused
+            for scale_min, scale_max in [
+                ("0", "NaN"),
+                ("0", "Infinity"),
+                ("-Infinity", "0"),
+                ("0", "1e16"),
+                ("-1e16", "0"),
+                ("-1.7e308", "1.7e308"),
+            ]:
+                with pytest.raises(IntegrityError):
+                    self._insert_project(engine, admin_id, scale_min, scale_max)
+
+            # WHEN: rolled back
+            command.downgrade(config, self.BEFORE)
+
+            # THEN: the constraint is gone and the NaN bound is accepted again
+            self._insert_project(engine, admin_id, "0", "NaN")
+
+            # WHEN: re-applied over a table that now holds a NaN row
+            with pytest.raises(IntegrityError):
+                command.upgrade(config, self.REVISION)
+        finally:
+            engine.dispose()
+
+    def test_upgrade_downgrade_upgrade_round_trips(self, migration_pg, monkeypatch):
+        """Applying, reverting and re-applying leaves the constraint in force."""
+        # GIVEN
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            # WHEN
+            command.upgrade(config, self.REVISION)
+            command.downgrade(config, self.BEFORE)
+            command.upgrade(config, self.REVISION)
+
+            # THEN
+            with engine.connect() as conn:
+                found = conn.execute(
+                    text(
+                        "SELECT 1 FROM pg_constraint "
+                        "WHERE conname = 'ck_projects_scale_bounds' AND contype = 'c'"
+                    )
+                ).scalar()
+            assert found == 1
+        finally:
+            engine.dispose()
+
+
+class TestOneAdminPerProjectMigration:
+    """The migration tying projects.admin_id to the project's one ADMIN membership."""
+
+    # Pinned to the revision ids, so a later migration cannot change what is tested.
+    BEFORE = "c4e8a1f7b265"  # pragma: allowlist secret
+    REVISION = "9b2f6c4d1a87"  # pragma: allowlist secret
+
+    _INDEX = "uq_project_members_one_admin"
+    _UNIQUE = "uq_project_members_project_user_role"
+    _CHECK = "ck_projects_admin_role_is_admin"
+    _FOREIGN_KEY = "fk_projects_admin_membership"
+
+    @classmethod
+    def _migrated(cls, migration_pg, monkeypatch, revision: str):
+        """Point Alembic at the clean database, upgrade it to ``revision``, return (config, engine)."""
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        command.upgrade(config, revision)
+        return config, create_engine(url)
+
+    @staticmethod
+    def _insert_user(conn, name: str):
+        """Insert one user and return its id."""
+        user_id = uuid4()
+        conn.execute(
+            text(
+                "INSERT INTO users "
+                "(id, email, hashed_password, first_name, last_name, created_at) "
+                "VALUES (:id, :email, 'hash', :name, 'User', :now)"
+            ),
+            {
+                "id": str(user_id),
+                "email": f"{name}@example.com",
+                "name": name,
+                "now": datetime(2026, 1, 1, tzinfo=UTC),
+            },
+        )
+        return user_id
+
+    @staticmethod
+    def _insert_project(conn, admin_id):
+        """Insert one project administered by ``admin_id`` and return its id."""
+        project_id = uuid4()
+        conn.execute(
+            text(
+                "INSERT INTO projects "
+                "(id, name, admin_id, scale_min, scale_max, scale_unit, created_at, updated_at) "
+                "VALUES (:id, 'Admin', :admin_id, 0, 100, '', :now, :now)"
+            ),
+            {
+                "id": str(project_id),
+                "admin_id": str(admin_id),
+                "now": datetime(2026, 1, 1, tzinfo=UTC),
+            },
+        )
+        return project_id
+
+    @staticmethod
+    def _insert_member(conn, project_id, user_id, role: str) -> None:
+        """Insert one project membership."""
+        conn.execute(
+            text(
+                "INSERT INTO project_members (id, project_id, user_id, role, joined_at) "
+                "VALUES (:id, :project_id, :user_id, :role, :now)"
+            ),
+            {
+                "id": str(uuid4()),
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+                "role": role,
+                "now": datetime(2026, 1, 1, tzinfo=UTC),
+            },
+        )
+
+    @classmethod
+    def _seed_project(cls, engine, *, admin_role: str = "ADMIN", expert_role: str = "EXPERT"):
+        """Commit a project and two members; return (project_id, admin_id, expert_id).
+
+        ``projects.admin_id`` is the first user whatever roles the two memberships hold, which
+        lets a caller seed a project the new rules refuse.
+        """
+        with engine.begin() as conn:
+            admin_id = cls._insert_user(conn, "admin")
+            expert_id = cls._insert_user(conn, "expert")
+            project_id = cls._insert_project(conn, admin_id)
+            cls._insert_member(conn, project_id, admin_id, admin_role)
+            cls._insert_member(conn, project_id, expert_id, expert_role)
+        return project_id, admin_id, expert_id
+
+    @staticmethod
+    def _objects(engine) -> dict[str, bool]:
+        """Report which of the five objects this migration adds exist."""
+        with engine.connect() as conn:
+            constraints = set(
+                conn.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint WHERE conname IN "
+                        "('uq_project_members_project_user_role', "
+                        "'ck_projects_admin_role_is_admin', 'fk_projects_admin_membership')"
+                    )
+                ).scalars()
+            )
+            index = conn.execute(
+                text(
+                    "SELECT 1 FROM pg_indexes WHERE indexname = 'uq_project_members_one_admin' "
+                    "AND tablename = 'project_members'"
+                )
+            ).scalar()
+        columns = {c["name"] for c in inspect(engine).get_columns("projects")}
+        return {
+            "index": index == 1,
+            "unique": "uq_project_members_project_user_role" in constraints,
+            "column": "admin_role" in columns,
+            "check": "ck_projects_admin_role_is_admin" in constraints,
+            "foreign_key": "fk_projects_admin_membership" in constraints,
+        }
+
+    def test_model_matches_the_migration(self):
+        """
+        GIVEN the names and predicates written into the migration
+        WHEN the models are read
+        THEN every constraint, index and column carries the same name and text, because
+        SQLite tests and the end-to-end suite build their schema from the models
+        """
+        migration = ScriptDirectory.from_config(Config("alembic.ini")).get_revision(self.REVISION)
+        module = migration.module
+        projects = Project.__table__
+        members = ProjectMember.__table__
+
+        check = next(
+            c
+            for c in projects.constraints
+            if isinstance(c, CheckConstraint) and c.name == module._ADMIN_ROLE_CHECK
+        )
+        foreign_key = next(
+            c
+            for c in projects.constraints
+            if isinstance(c, ForeignKeyConstraint) and c.name == module._ADMIN_FK
+        )
+        unique = next(
+            c
+            for c in members.constraints
+            if isinstance(c, UniqueConstraint) and c.name == module._MEMBERSHIP_UNIQUE
+        )
+        index = next(i for i in members.indexes if i.name == module._ONE_ADMIN_INDEX)
+
+        assert str(check.sqltext) == module._ADMIN_ROLE_CONDITION
+        assert [c.name for c in foreign_key.columns] == ["id", "admin_id", "admin_role"]
+        assert [e.target_fullname for e in foreign_key.elements] == [
+            "project_members.project_id",
+            "project_members.user_id",
+            "project_members.role",
+        ]
+        assert foreign_key.deferrable is True
+        assert foreign_key.initially == "DEFERRED"
+        assert [c.name for c in unique.columns] == ["project_id", "user_id", "role"]
+        assert index.unique is True
+        assert [c.name for c in index.columns] == ["project_id"]
+        assert str(index.dialect_options["postgresql"]["where"]) == module._ONE_ADMIN_PREDICATE
+        assert str(index.dialect_options["sqlite"]["where"]) == module._ONE_ADMIN_PREDICATE
+        column = projects.c.admin_role
+        assert column.nullable is False
+        assert str(column.server_default.arg) == "ADMIN"
+
+    @pytest.mark.parametrize(
+        ("admin_role", "expert_role"),
+        [
+            pytest.param("EXPERT", "EXPERT", id="no-admin-row"),
+            pytest.param("ADMIN", "ADMIN", id="two-admin-rows"),
+            pytest.param("EXPERT", "ADMIN", id="admin-row-belongs-to-another-user"),
+        ],
+    )
+    def test_upgrade_refuses_a_project_that_breaks_the_rule_and_changes_nothing(
+        self, migration_pg, monkeypatch, admin_role, expert_role
+    ):
+        """
+        GIVEN a project whose memberships break the one-admin rule
+        WHEN the migration runs
+        THEN it aborts with an integrity error and leaves none of its objects behind
+        """
+        # GIVEN
+        config, engine = self._migrated(migration_pg, monkeypatch, self.BEFORE)
+
+        try:
+            self._seed_project(engine, admin_role=admin_role, expert_role=expert_role)
+
+            # WHEN / THEN
+            with pytest.raises(IntegrityError):
+                command.upgrade(config, self.REVISION)
+            assert not any(self._objects(engine).values())
+        finally:
+            engine.dispose()
+
+    def test_upgrade_accepts_a_valid_project_and_fills_the_admin_role(
+        self, migration_pg, monkeypatch
+    ):
+        """
+        GIVEN a project with one ADMIN membership that belongs to admin_id
+        WHEN the migration runs
+        THEN it succeeds, every object exists and the project reads admin_role ADMIN
+        """
+        # GIVEN
+        config, engine = self._migrated(migration_pg, monkeypatch, self.BEFORE)
+
+        try:
+            self._seed_project(engine)
+
+            # WHEN
+            command.upgrade(config, self.REVISION)
+
+            # THEN
+            assert all(self._objects(engine).values())
+            with engine.connect() as conn:
+                assert conn.execute(text("SELECT admin_role::text FROM projects")).scalar() == (
+                    "ADMIN"
+                )
+        finally:
+            engine.dispose()
+
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            pytest.param(
+                "UPDATE project_members SET role = 'ADMIN' WHERE user_id = :expert_id",
+                id="second-admin",
+            ),
+            pytest.param(
+                "UPDATE project_members SET role = 'EXPERT' WHERE user_id = :admin_id",
+                id="admin-demoted-without-a-promotion",
+            ),
+            pytest.param(
+                "DELETE FROM project_members WHERE user_id = :admin_id",
+                id="admin-membership-deleted",
+            ),
+            pytest.param(
+                "UPDATE projects SET admin_id = :expert_id",
+                id="admin-id-moved-without-a-promotion",
+            ),
+        ],
+    )
+    def test_the_database_refuses_a_change_that_breaks_the_rule(
+        self, migration_pg, monkeypatch, statement
+    ):
+        """
+        GIVEN a migrated database holding a valid project
+        WHEN one statement breaks the rule and the transaction commits
+        THEN the commit fails and the project keeps its admin
+        """
+        # GIVEN
+        _, engine = self._migrated(migration_pg, monkeypatch, self.REVISION)
+
+        try:
+            project_id, admin_id, expert_id = self._seed_project(engine)
+
+            # WHEN / THEN
+            with pytest.raises(IntegrityError), engine.begin() as conn:
+                conn.execute(
+                    text(statement), {"admin_id": str(admin_id), "expert_id": str(expert_id)}
+                )
+            with engine.connect() as conn:
+                admins = conn.execute(
+                    text(
+                        "SELECT user_id FROM project_members "
+                        "WHERE project_id = :id AND role = 'ADMIN'"
+                    ),
+                    {"id": str(project_id)},
+                ).all()
+            assert [row.user_id for row in admins] == [admin_id]
+        finally:
+            engine.dispose()
+
+    def test_a_project_without_an_admin_membership_is_refused_at_commit(
+        self, migration_pg, monkeypatch
+    ):
+        """
+        GIVEN a migrated database
+        WHEN a project is inserted with no membership at all
+        THEN the commit fails
+        """
+        # GIVEN
+        _, engine = self._migrated(migration_pg, monkeypatch, self.REVISION)
+
+        try:
+            with engine.begin() as conn:
+                admin_id = self._insert_user(conn, "admin")
+
+            # WHEN / THEN
+            with pytest.raises(IntegrityError), engine.begin() as conn:
+                self._insert_project(conn, admin_id)
+        finally:
+            engine.dispose()
+
+    def test_a_valid_project_a_swap_and_a_delete_pass(self, migration_pg, monkeypatch):
+        """
+        GIVEN a migrated database
+        WHEN a project is created with its membership in one transaction, ownership is swapped
+        by demoting before promoting in one transaction, and the project is deleted
+        THEN each commit succeeds and the delete cascades to the memberships
+        """
+        # GIVEN
+        _, engine = self._migrated(migration_pg, monkeypatch, self.REVISION)
+
+        try:
+            # WHEN: created with its membership
+            project_id, admin_id, expert_id = self._seed_project(engine)
+
+            # WHEN: ownership moves to the expert
+            with engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE project_members SET role = 'EXPERT' WHERE user_id = :id"),
+                    {"id": str(admin_id)},
+                )
+                conn.execute(
+                    text("UPDATE project_members SET role = 'ADMIN' WHERE user_id = :id"),
+                    {"id": str(expert_id)},
+                )
+                conn.execute(
+                    text("UPDATE projects SET admin_id = :id WHERE id = :project_id"),
+                    {"id": str(expert_id), "project_id": str(project_id)},
+                )
+
+            # THEN
+            with engine.connect() as conn:
+                admins = conn.execute(
+                    text(
+                        "SELECT user_id FROM project_members "
+                        "WHERE project_id = :id AND role = 'ADMIN'"
+                    ),
+                    {"id": str(project_id)},
+                ).all()
+            assert [row.user_id for row in admins] == [expert_id]
+
+            # WHEN: the project is deleted
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM projects WHERE id = :id"), {"id": str(project_id)})
+
+            # THEN
+            with engine.connect() as conn:
+                assert conn.execute(text("SELECT count(*) FROM project_members")).scalar() == 0
+        finally:
+            engine.dispose()
+
+    def test_downgrade_removes_all_five_objects_and_keeps_the_role_type(
+        self, migration_pg, monkeypatch
+    ):
+        """
+        GIVEN a migrated database
+        WHEN the migration is rolled back
+        THEN the index, both constraints, the foreign key and the column are gone, the
+        memberrole type stays, and a project without an admin row is accepted again
+        """
+        # GIVEN
+        config, engine = self._migrated(migration_pg, monkeypatch, self.REVISION)
+
+        try:
+            assert all(self._objects(engine).values())
+
+            # WHEN
+            command.downgrade(config, self.BEFORE)
+
+            # THEN
+            assert not any(self._objects(engine).values())
+            with engine.connect() as conn:
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM pg_type WHERE typname = 'memberrole'")
+                    ).scalar()
+                    == 1
+                )
+            with engine.begin() as conn:
+                self._insert_project(conn, self._insert_user(conn, "orphan"))
+        finally:
+            engine.dispose()
+
+    def test_upgrade_downgrade_upgrade_round_trips(self, migration_pg, monkeypatch):
+        """Applying, reverting and re-applying leaves all five objects in force."""
+        # GIVEN
+        config, engine = self._migrated(migration_pg, monkeypatch, self.REVISION)
+
+        try:
+            # WHEN
+            command.downgrade(config, self.BEFORE)
+            command.upgrade(config, self.REVISION)
+
+            # THEN
+            assert all(self._objects(engine).values())
         finally:
             engine.dispose()
 

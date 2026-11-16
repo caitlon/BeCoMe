@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlmodel import col, or_, select
 
 from api.db.models import ExpertOpinion, Project, User
-from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
+from api.exceptions import OpinionNotFoundError, ProjectNotFoundError, ValuesOutOfRangeError
 from api.schemas.internal import OpinionWithUser, UpsertResult
 from api.services.base import BaseService
 from api.services.calculation_service import CalculationService
@@ -89,9 +89,10 @@ class OpinionService(BaseService):
         :param upper_bound: Fuzzy number upper bound
         :param calculation_service: Recalculates the project's result with the new opinion
         :return: UpsertResult with opinion and creation flag
+        :raises ProjectNotFoundError: If the project was deleted before it could be locked
         """
-        if calculation_service is not None:
-            calculation_service.lock_project(project_id)
+        if calculation_service is not None and not calculation_service.lock_project(project_id):
+            raise ProjectNotFoundError("Project not found")
         existing = self.get_user_opinion(project_id, user_id)
 
         if existing:
@@ -146,10 +147,11 @@ class OpinionService(BaseService):
         :param project_id: Project UUID
         :param user_id: User UUID
         :param calculation_service: Recalculates the project's result without the opinion
+        :raises ProjectNotFoundError: If the project was deleted before it could be locked
         :raises OpinionNotFoundError: If opinion doesn't exist
         """
-        if calculation_service is not None:
-            calculation_service.lock_project(project_id)
+        if calculation_service is not None and not calculation_service.lock_project(project_id):
+            raise ProjectNotFoundError("Project not found")
         opinion = self.get_user_opinion(project_id, user_id)
         if not opinion:
             raise OpinionNotFoundError("Opinion not found")
