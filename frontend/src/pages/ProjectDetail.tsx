@@ -237,13 +237,15 @@ const ProjectDetail = () => {
     try {
       await api.revokeInvitation(projectId, invitationId);
       toast({ title: t("toast.invitationRevoked") });
-      invalidateProject();
     } catch (error) {
       toast({
         title: t("toast.error"),
         description: describeError(error, tCommon, t("toast.revokeInvitationFailed")),
         variant: "destructive",
       });
+    } finally {
+      // Refetch on failure too: a 404 means the invitee already answered, so the row is stale.
+      invalidateProject();
     }
   };
 
