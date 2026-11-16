@@ -973,6 +973,50 @@ class TestTransferOwnershipStatementOrder:
         self._assert_ownership_settled(pg_engine, project_id, y_id)
 
 
+class TestAccountErasureAfterTransfer:
+    """Deleting the account of an owner who handed the project over."""
+
+    def test_the_old_owner_can_delete_the_account_and_the_project_keeps_one_admin(self, pg_engine):
+        """
+        GIVEN an owner who transferred the project to an expert
+        WHEN the former owner deletes the account
+        THEN both steps succeed, and the project stays with exactly one admin, the expert
+        """
+        # GIVEN
+        with Session(pg_engine) as setup:
+            owner = User(
+                email="owner@example.com", hashed_password="x", first_name="O", last_name="O"
+            )
+            expert = User(
+                email="expert@example.com", hashed_password="x", first_name="E", last_name="E"
+            )
+            setup.add_all([owner, expert])
+            setup.flush()
+            project = add_project(setup, owner, name="Handed over")
+            setup.add(
+                ProjectMember(project_id=project.id, user_id=expert.id, role=MemberRole.EXPERT)
+            )
+            setup.commit()
+            project_id, owner_id, expert_id = project.id, owner.id, expert.id
+
+        # WHEN
+        with Session(pg_engine) as session:
+            ProjectService(session).transfer_ownership(session.get(Project, project_id), expert_id)
+        with Session(pg_engine) as session:
+            UserService(session).delete_user(
+                session.get(User, owner_id), CalculationService(session)
+            )
+
+        # THEN
+        with Session(pg_engine) as check:
+            assert check.get(User, owner_id) is None
+            assert check.get(Project, project_id).admin_id == expert_id
+            members = check.exec(
+                select(ProjectMember).where(ProjectMember.project_id == project_id)
+            ).all()
+            assert [(m.user_id, m.role) for m in members] == [(expert_id, MemberRole.ADMIN)]
+
+
 class TestSavepointAndPartialRollback:
     """Tests for SAVEPOINT functionality in PostgreSQL."""
 

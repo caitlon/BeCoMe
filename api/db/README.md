@@ -18,8 +18,8 @@ SQLModel-based database layer for BeCoMe API.
 | Table | Description |
 |-------|-------------|
 | `users` | User accounts with authentication data |
-| `projects` | Decision-making projects with scale configuration |
-| `project_members` | Many-to-many: users ↔ projects with roles |
+| `projects` | Decision-making projects with scale configuration. `admin_id` is the project's one ADMIN member: a deferred composite foreign key on `(id, admin_id, admin_role)` ties it to `project_members`, and `admin_role` is always `ADMIN` |
+| `project_members` | Many-to-many: users ↔ projects with roles. At most one `ADMIN` row per project (partial unique index `uq_project_members_one_admin`) |
 | `invitations` | Per-user invitations to join a project (unique per project+invitee) |
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
 | `calculation_results` | Cached BeCoMe calculation results. Holds the numbers only: the Likert agreement verdict is derived from the project scale on read (`api/services/likert_verdict.py`), never stored, so it cannot drift from the project |
@@ -79,7 +79,7 @@ def get_user(user_id: UUID, session: Session = Depends(get_session)):
 ### Model examples
 
 ```python
-from api.db.models import User, Project, ExpertOpinion, MemberRole
+from api.db.models import User, Project, ProjectMember, ExpertOpinion, MemberRole
 
 # Create user
 user = User(
@@ -98,6 +98,10 @@ project = Project(
     scale_max=100.0,
     scale_unit="%",
 )
+
+# Its admin is also its one ADMIN member; the database refuses to commit a project
+# without that membership
+membership = ProjectMember(project_id=project.id, user_id=user.id, role=MemberRole.ADMIN)
 
 # Add expert opinion (fuzzy triangular number)
 opinion = ExpertOpinion(
