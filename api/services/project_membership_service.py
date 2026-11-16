@@ -197,8 +197,9 @@ class ProjectMembershipService(BaseService):
     ) -> bool:
         """Delete a membership with the member's opinion and commit.
 
-        Expects the project row to be locked already. The result is staged for
-        recalculation only when an opinion was discarded, before the one commit.
+        Whenever a calculation service is passed, the caller locks the project row
+        first, as ``remove_member`` and ``leave_project`` do. The result is staged
+        for recalculation only when an opinion was discarded, before the one commit.
 
         :param membership: The membership to delete
         :param calculation_service: Recalculates the result; ``None`` skips it

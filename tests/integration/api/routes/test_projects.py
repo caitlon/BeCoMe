@@ -878,6 +878,62 @@ class TestLeaveProject:
         assert after["num_experts"] == 1
         assert after != before
 
+    def test_former_admin_leaves_after_a_transfer(self, client):
+        """After handing over ownership, the former admin is an expert and may leave."""
+        # GIVEN a project whose ownership moved from the creator to an expert
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        owner_id = project["admin_id"]
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        transfer = client.post(
+            f"/api/v1/projects/{project['id']}/transfer-ownership",
+            json={"new_admin_id": expert_id},
+            headers=auth_header(owner),
+        )
+        assert transfer.status_code == 200
+
+        # WHEN the former admin leaves
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(owner)
+        )
+
+        # THEN they are gone from the members and the new admin is still the admin
+        assert response.status_code == 204
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(expert)
+        ).json()
+        assert owner_id not in [member["user_id"] for member in members]
+        roles = {member["user_id"]: member["role"] for member in members}
+        assert roles[expert_id] == "admin"
+
+    def test_member_with_the_only_opinion_leaves_and_the_result_is_cleared(self, client):
+        """Leaving removes the last opinion, so the project has no result any more."""
+        # GIVEN a project whose only opinion belongs to an expert
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, _expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        submit_opinion(client, expert, project["id"], 10.0, 20.0, 30.0)
+        before = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert before is not None
+
+        # WHEN the expert leaves
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+
+        # THEN no opinion is left and the result is gone
+        assert response.status_code == 204
+        opinions = client.get(
+            f"/api/v1/projects/{project['id']}/opinions", headers=auth_header(owner)
+        ).json()
+        assert opinions == []
+        after = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert after is None
+
     def test_me_is_not_read_as_a_user_id(self, client):
         """The path segment ``me`` reaches the leave route and not the removal route's 422."""
         # GIVEN
