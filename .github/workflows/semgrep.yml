@@ -130,10 +130,10 @@ jobs:
 
   # Finding messages and code lines are left out of the comment on purpose: only the path,
   # the line, the rule id and the severity reach it, and for a scan error the path and its
-  # line ranges. A path can come from a fork, so it is stripped of backticks, backslashes and
-  # control characters and its pipes are escaped before it enters Markdown. The comment is
-  # found by its hidden marker and by its author, so a comment quoting the marker is never
-  # overwritten.
+  # line ranges. A path is repository content the pull request controls, so it is stripped of
+  # backticks, backslashes and control characters and its pipes are escaped before it enters
+  # Markdown. The comment is found by its hidden marker and by its author, so a comment
+  # quoting the marker is never overwritten.
   # `!cancelled()` rather than `always()`: a run cancelled by a newer push must not touch
   # the shared comment.
   semgrep-comment:
@@ -173,14 +173,17 @@ jobs:
           fi
           if [ -n "$data" ]; then
             total=$(jq '.results | length' <<< "$data")
-            # A scan error with a path is a file Semgrep could only partly parse: those are
-            # grouped by file with their distinct line ranges. The rest count as other errors.
-            files=$(jq -c '[.errors[] | select(type == "object" and (.path | type) == "string" and (.path | length) > 0)]
+            # A parse error (PartialParsing or a syntax error) is a file Semgrep could only
+            # partly parse: those are grouped by file with their distinct line ranges. Every
+            # other error counts as an other scan error.
+            files=$(jq -c 'def parse_error: type == "object" and (.path | type) == "string" and (.path | length) > 0 and (.type | IN("PartialParsing", "Syntax error", "Lexical error", "Other syntax error"));
+              [.errors[] | select(parse_error)]
               | group_by(.path)
               | map({path: .[0].path, lines: ([.[] | (.lines | if type == "array" then .[] else empty end)
                 | select(type == "array" and length == 2 and all(.[]; type == "number"))] | unique)})' <<< "$data")
             partial=$(jq 'length' <<< "$files")
-            other=$(jq '[.errors[] | select((type == "object" and (.path | type) == "string" and (.path | length) > 0) | not)] | length' <<< "$data")
+            other=$(jq 'def parse_error: type == "object" and (.path | type) == "string" and (.path | length) > 0 and (.type | IN("PartialParsing", "Syntax error", "Lexical error", "Other syntax error"));
+              [.errors[] | select(parse_error | not)] | length' <<< "$data")
             if [ "$total" -eq 0 ]; then
               title='Semgrep: no new findings'
             elif [ "$total" -eq 1 ]; then
@@ -218,11 +221,7 @@ jobs:
                         else " lines \($r | join(", "))" end;
                     .[:10][] | "| Not fully parsed | `\(.path | clean)`\(.lines | ranges) |"' <<< "$files"
                   if [ "$partial" -gt 10 ]; then
-                    if [ "$partial" -eq 11 ]; then
-                      echo '| Not fully parsed | ... and 1 more file |'
-                    else
-                      echo "| Not fully parsed | ... and $((partial - 10)) more files |"
-                    fi
+                    echo "| Not fully parsed | ... and $((partial - 10)) more |"
                   fi
                 fi
                 if [ "$other" -gt 0 ]; then
