@@ -152,6 +152,7 @@ def revoke_invitation(
 ) -> None:
     """Revoke a pending invitation. Accessible to the project admin only.
 
+    :param project_id: Project UUID (path parameter; access is checked by ProjectAdmin)
     :param invitation_id: Invitation UUID
     :param project: Project (verified admin access)
     :param current_user: Authenticated admin user

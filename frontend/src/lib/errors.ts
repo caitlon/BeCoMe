@@ -39,7 +39,7 @@ export const ALREADY_MEMBER_CODE = 'already_member';
 /** The shared example project does not take invitations. */
 export const EXAMPLE_PROJECT_NOT_INVITABLE_CODE = 'example_project_not_invitable';
 
-/** The invitation being accepted or declined no longer exists. */
+/** The invitation being accepted, declined or revoked by the project admin no longer exists. */
 export const INVITATION_NOT_FOUND_CODE = 'invitation_not_found';
 
 /** The uploaded photo is not a JPEG, PNG, GIF or WebP file. */

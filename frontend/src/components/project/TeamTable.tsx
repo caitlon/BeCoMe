@@ -149,8 +149,8 @@ export const TeamTable = ({
             {pendingInvitations.map((inv) => {
               const fullName = `${inv.invitee_first_name} ${inv.invitee_last_name ?? ""}`.trim();
               return (
-                <TableRow key={inv.id} className="opacity-50">
-                  <TableCell className="font-medium">
+                <TableRow key={inv.id}>
+                  <TableCell className="font-medium opacity-50">
                     <div className="flex items-center gap-2">
                       <Avatar className="h-7 w-7" aria-hidden="true">
                         <AvatarFallback className="text-xs">
@@ -164,16 +164,16 @@ export const TeamTable = ({
                     </div>
                   </TableCell>
                   {isAdmin && (
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground opacity-50">
                       {inv.invitee_email}
                     </TableCell>
                   )}
-                  <TableCell>
+                  <TableCell className="opacity-50">
                     <Badge variant="outline">
                       {t("roles.invited")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tCommon("a11y.noDataAvailable")}</span></TableCell>
+                  <TableCell className="text-muted-foreground opacity-50"><span aria-hidden="true">—</span><span className="sr-only">{tCommon("a11y.noDataAvailable")}</span></TableCell>
                   {isAdmin && (
                     <TableCell>
                       {onRevokeInvitation && (

@@ -92,6 +92,30 @@ describe('TeamTable - Pending Invitations', () => {
 
     expect(screen.getByText('Cher')).toBeInTheDocument();
   });
+
+  it('dims the data cells of an invitation row but not the revoke button cell', () => {
+    const invitations = [
+      createProjectInvitation({
+        invitee_first_name: 'Sophie',
+        invitee_last_name: 'Wagner',
+      }),
+    ];
+
+    render(
+      <TeamTable
+        {...baseProps}
+        members={[]}
+        pendingInvitations={invitations}
+        onRevokeInvitation={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByText('Sophie Wagner').closest('tr');
+    expect(row).not.toHaveClass('opacity-50');
+    expect(screen.getByText('Sophie Wagner').closest('td')).toHaveClass('opacity-50');
+    const revokeButton = screen.getByRole('button', { name: /revoke the invitation for sophie wagner/i });
+    expect(revokeButton.closest('td')).not.toHaveClass('opacity-50');
+  });
 });
 
 describe('TeamTable - Revoke Invitation', () => {

@@ -991,9 +991,11 @@ describe('ProjectDetail - Revoke Invitation', () => {
     const revokeButtons = await screen.findAllByRole('button', {
       name: /revoke the invitation for sophie wagner/i,
     });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
     await user.click(revokeButtons[0]);
 
     await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Error',
@@ -1015,9 +1017,11 @@ describe('ProjectDetail - Revoke Invitation', () => {
     const revokeButtons = await screen.findAllByRole('button', {
       name: /revoke the invitation for sophie wagner/i,
     });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
     await user.click(revokeButtons[0]);
 
     await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           description: 'This invitation no longer exists.',
