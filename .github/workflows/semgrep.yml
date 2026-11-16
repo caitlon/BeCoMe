@@ -173,17 +173,19 @@ jobs:
           fi
           if [ -n "$data" ]; then
             total=$(jq '.results | length' <<< "$data")
-            # A parse error (PartialParsing or a syntax error) is a file Semgrep could only
-            # partly parse: those are grouped by file with their distinct line ranges. Every
-            # other error counts as an other scan error.
-            files=$(jq -c 'def parse_error: type == "object" and (.path | type) == "string" and (.path | length) > 0 and (.type | IN("PartialParsing", "Syntax error", "Lexical error", "Other syntax error"));
-              [.errors[] | select(parse_error)]
-              | group_by(.path)
-              | map({path: .[0].path, lines: ([.[] | (.lines | if type == "array" then .[] else empty end)
-                | select(type == "array" and length == 2 and all(.[]; type == "number"))] | unique)})' <<< "$data")
-            partial=$(jq 'length' <<< "$files")
-            other=$(jq 'def parse_error: type == "object" and (.path | type) == "string" and (.path | length) > 0 and (.type | IN("PartialParsing", "Syntax error", "Lexical error", "Other syntax error"));
-              [.errors[] | select(parse_error | not)] | length' <<< "$data")
+            # A parse error (PartialParsing, a syntax error or an AST builder error) is a file
+            # Semgrep could only partly parse: those are grouped by file with their distinct
+            # line ranges. Every other error counts as an other scan error. One jq call defines
+            # the predicate once, so the two counts cannot drop or double-count an error.
+            split=$(jq -c 'def parse_error: type == "object" and (.path | type) == "string" and (.path | length) > 0 and (.type | IN("PartialParsing", "Syntax error", "Lexical error", "Other syntax error", "AST builder error"));
+              {files: ([.errors[] | select(parse_error)]
+                | group_by(.path)
+                | map({path: .[0].path, lines: ([.[] | (.lines | if type == "array" then .[] else empty end)
+                  | select(type == "array" and length == 2 and all(.[]; type == "number"))] | unique)})),
+               other: ([.errors[] | select(parse_error | not)] | length)}' <<< "$data")
+            files=$(jq -c '.files' <<< "$split")
+            partial=$(jq '.files | length' <<< "$split")
+            other=$(jq '.other' <<< "$split")
             if [ "$total" -eq 0 ]; then
               title='Semgrep: no new findings'
             elif [ "$total" -eq 1 ]; then
