@@ -71,6 +71,27 @@ updates:
       - "dependencies"
       - "area:infra"
 
+  # Bumps the exact Node tag of the frontend build stage. Weekly rather than monthly,
+  # because the pinned tag no longer picks up a patch release on its own. The major
+  # stays at 22, the version CI tests the frontend on. The nginx stage uses a moving
+  # tag, which Dependabot leaves alone.
+  - package-ecosystem: "docker"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    reviewers:
+      - "caitlon"
+    assignees:
+      - "caitlon"
+    labels:
+      - "dependencies"
+      - "area:infra"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
