@@ -29,7 +29,7 @@ from api.db.models import (
     ProjectMember,
     User,
 )
-from api.exceptions import ProjectNotFoundError
+from api.exceptions import ProjectNotFoundError, ProjectOwnershipChangedError
 from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
@@ -834,21 +834,34 @@ class TestTransferOwnershipStatementOrder:
     @staticmethod
     def _transfer_statements(pg_engine, project_id: UUID, new_admin_id: UUID) -> list[tuple]:
         """Run the transfer and return the (statement, parameters) pairs it sent."""
-        with Session(pg_engine) as loader:
-            project = loader.get(Project, project_id)
-            loader.expunge(project)
         sent: list[tuple] = []
 
         def record(_conn, _cursor, statement, parameters, _context, _executemany):
             sent.append((statement, parameters))
 
-        event.listen(pg_engine, "before_cursor_execute", record)
-        try:
-            with Session(pg_engine) as session:
+        with Session(pg_engine) as session:
+            # Loaded in the transferring session before recording starts, as the route's
+            # dependency does, so the first recorded statement is the transfer's own.
+            project = session.get(Project, project_id)
+            event.listen(pg_engine, "before_cursor_execute", record)
+            try:
                 ProjectService(session).transfer_ownership(project, new_admin_id)
-        finally:
-            event.remove(pg_engine, "before_cursor_execute", record)
+            finally:
+                event.remove(pg_engine, "before_cursor_execute", record)
         return sent
+
+    @staticmethod
+    def _assert_ownership_settled(pg_engine, project_id: UUID, admin_id: UUID):
+        """Assert, from a fresh session, that exactly one member holds ADMIN and it is the owner."""
+        with Session(pg_engine) as check:
+            project = check.get(Project, project_id)
+            members = check.exec(
+                select(ProjectMember).where(ProjectMember.project_id == project_id)
+            ).all()
+            admin_rows = [m for m in members if m.role == MemberRole.ADMIN]
+            assert project.admin_id == admin_id
+            assert [m.user_id for m in admin_rows] == [admin_id]
+            assert all(m.role == MemberRole.EXPERT for m in members if m.user_id != admin_id)
 
     @staticmethod
     def _role_updates(sent: list[tuple]) -> list[str]:
@@ -885,6 +898,7 @@ class TestTransferOwnershipStatementOrder:
 
         # THEN
         assert self._role_updates(sent) == ["EXPERT", "ADMIN"]
+        self._assert_ownership_settled(pg_engine, project_id, expert_id)
 
     def test_project_row_is_locked_before_any_member_row_is_touched(self, pg_engine):
         """
@@ -903,6 +917,60 @@ class TestTransferOwnershipStatementOrder:
         first_statement = sent[0][0]
         assert "FROM projects" in first_statement
         assert first_statement.rstrip().endswith("FOR NO KEY UPDATE")
+        self._assert_ownership_settled(pg_engine, project_id, expert_id)
+
+    def test_a_transfer_that_lost_the_race_is_refused_and_leaves_one_admin(self, pg_engine):
+        """
+        GIVEN a request that read the project while X was admin
+        AND another transfer that moved the project to Y and committed meanwhile
+        WHEN the stale request transfers the project to Z
+        THEN it is refused, and Y is still the project's one admin
+
+        Without the check the stale transfer demotes X again, who is no longer admin, and
+        promotes Z beside Y, leaving two admin rows.
+        """
+        # GIVEN
+        with Session(pg_engine) as setup:
+            users = [
+                User(
+                    email=f"{name}@example.com",
+                    hashed_password="x",
+                    first_name=name,
+                    last_name=name,
+                )
+                for name in ("x", "y", "z")
+            ]
+            setup.add_all(users)
+            setup.flush()
+            x_id, y_id, z_id = (user.id for user in users)
+            project = Project(name="Race", admin_id=x_id)
+            setup.add(project)
+            setup.flush()
+            setup.add_all(
+                [
+                    ProjectMember(
+                        project_id=project.id,
+                        user_id=user_id,
+                        role=MemberRole.ADMIN if user_id == x_id else MemberRole.EXPERT,
+                    )
+                    for user_id in (x_id, y_id, z_id)
+                ]
+            )
+            setup.commit()
+            project_id = project.id
+
+        with Session(pg_engine) as session_b, Session(pg_engine) as session_a:
+            project_b = session_b.get(Project, project_id)
+            assert project_b.admin_id == x_id
+
+            # WHEN another request transfers the project to Y and commits first
+            ProjectService(session_a).transfer_ownership(session_a.get(Project, project_id), y_id)
+
+            # THEN the stale request is refused
+            with pytest.raises(ProjectOwnershipChangedError):
+                ProjectService(session_b).transfer_ownership(project_b, z_id)
+
+        self._assert_ownership_settled(pg_engine, project_id, y_id)
 
 
 class TestSavepointAndPartialRollback:

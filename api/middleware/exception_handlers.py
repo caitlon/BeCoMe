@@ -45,6 +45,7 @@ from api.exceptions import (
     PhotoTypeNotAllowedError,
     PhotoUnreadableError,
     ProjectNotFoundError,
+    ProjectOwnershipChangedError,
     ResetTokenExpiredError,
     ScaleExcludesOpinionsError,
     ScaleRangeError,
@@ -259,6 +260,13 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_409_CONFLICT,
         "Existing opinions fall outside the new scale. "
         "Widen the range, or ask the experts to change their opinions first.",
+    ),
+    # Another transfer committed while this one waited for the project lock, so the admin the
+    # caller was authorized as is no longer the owner. Reloading the project shows the new one.
+    ProjectOwnershipChangedError: (
+        status.HTTP_409_CONFLICT,
+        "The project owner changed while this request was being processed. "
+        "Reload the project and try again.",
     ),
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (

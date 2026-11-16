@@ -50,9 +50,10 @@ def mock_datetime_offset(module_path: str, offset: timedelta):
 def add_project(session: Session, admin: User, **fields: Any) -> Project:
     """Add a project together with its admin's ADMIN membership.
 
-    The database holds that ``projects.admin_id`` is the project's one ADMIN member, so
-    a project row without that membership cannot be committed. The project is flushed
-    first, which gives it an id for the membership.
+    ``projects.admin_id`` is meant to be the project's one ADMIN member, so a project
+    row gets that membership, which keeps the project valid under the one-admin rule the
+    schema is getting. The project is flushed first, which gives it an id for the
+    membership.
 
     :param session: Session to add to; this function does not commit.
     :param admin: Persisted user who administers the project.

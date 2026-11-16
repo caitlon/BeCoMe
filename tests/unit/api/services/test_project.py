@@ -10,6 +10,7 @@ from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import (
     MemberNotFoundError,
     ProjectNotFoundError,
+    ProjectOwnershipChangedError,
     ScaleExcludesOpinionsError,
     ScaleRangeError,
 )
@@ -473,12 +474,49 @@ class TestProjectServiceTransferOwnership:
         assert old_membership.role == MemberRole.EXPERT
         mock_session.commit.assert_called_once()
 
+    def test_raises_when_project_was_deleted_before_the_lock(self):
+        """A project that is gone when it is locked is reported as not found, with no write."""
+        # GIVEN the lock finds no project row
+        project = Project(id=uuid4(), name="P", admin_id=uuid4(), scale_min=0, scale_max=100)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = ProjectService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(ProjectNotFoundError, match="Project not found"):
+            service.transfer_ownership(project, uuid4())
+        mock_session.commit.assert_not_called()
+        mock_session.add.assert_not_called()
+
+    def test_raises_when_admin_changed_under_the_lock(self):
+        """A transfer that lost the race to another one is refused before any write."""
+        # GIVEN a project whose admin_id, reloaded after the lock, is no longer the one the
+        # caller read
+        old_admin_id = uuid4()
+        project = Project(id=uuid4(), name="P", admin_id=old_admin_id, scale_min=0, scale_max=100)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = project
+
+        def reload_with_new_admin(instance):
+            instance.admin_id = uuid4()
+
+        mock_session.refresh.side_effect = reload_with_new_admin
+        service = ProjectService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(ProjectOwnershipChangedError):
+            service.transfer_ownership(project, uuid4())
+        mock_session.refresh.assert_called_once_with(project)
+        mock_session.commit.assert_not_called()
+        mock_session.add.assert_not_called()
+
     def test_raises_when_new_admin_not_member(self):
         """MemberNotFoundError is raised when the target user is not a member."""
         # GIVEN
         project = Project(id=uuid4(), name="P", admin_id=uuid4(), scale_min=0, scale_max=100)
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = None
+        # the project lock finds the project, the membership lookup finds nothing
+        mock_session.exec.return_value.first.side_effect = [project, None]
         service = ProjectService(mock_session)
 
         # WHEN/THEN
