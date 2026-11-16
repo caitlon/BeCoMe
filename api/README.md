@@ -260,6 +260,7 @@ recalculated in the same transaction, or removed when no opinion is left.
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member; a 409 when another transfer changed the owner while this one waited (reload and retry) |
 | POST | `/api/v1/projects/{id}/invite` | Invite user; refusals carry a code: 404 `invitee_not_found`, 409 `already_invited`, `already_member` or `example_project_not_invitable` |
 | GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
+| DELETE | `/api/v1/projects/{id}/invitations/{invitation_id}` | Revoke a pending invitation (project admin only); 404 `invitation_not_found` (missing and another project's look the same) |
 
 The members list (`email`) and the opinions list (`user_email`) return an address only to the project admin and on the caller's own row; every other row has `null` in that field.
 

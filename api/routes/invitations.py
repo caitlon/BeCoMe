@@ -138,6 +138,29 @@ def list_project_invitations(
     return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
+@router.delete(
+    "/projects/{project_id}/invitations/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a pending invitation",
+)
+def revoke_invitation(
+    project_id: UUID,
+    invitation_id: UUID,
+    project: ProjectAdmin,
+    current_user: CurrentUser,
+    invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+) -> None:
+    """Revoke a pending invitation. Accessible to the project admin only.
+
+    :param invitation_id: Invitation UUID
+    :param project: Project (verified admin access)
+    :param current_user: Authenticated admin user
+    :param invitation_service: Invitation service
+    :raises InvitationNotFoundError: If the invitation does not exist or is in another project
+    """
+    invitation_service.revoke_invitation(project.id, invitation_id, current_user.id)
+
+
 @router.get("/invitations", summary="List my invitations")
 def list_my_invitations(
     current_user: CurrentUser,

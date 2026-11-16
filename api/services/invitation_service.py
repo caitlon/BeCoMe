@@ -246,3 +246,31 @@ class InvitationService(BaseService):
                 "user_id": str(user_id),
             },
         )
+
+    def revoke_invitation(self, project_id: UUID, invitation_id: UUID, admin_id: UUID) -> None:
+        """Revoke a pending invitation of a project.
+
+        A missing invitation and one that belongs to another project raise the same error,
+        so an admin cannot probe for invitation ids outside their own project.
+
+        :param project_id: Project the admin manages
+        :param invitation_id: Invitation ID
+        :param admin_id: ID of the admin revoking
+        :raises InvitationNotFoundError: If invitation doesn't exist or not in this project
+        """
+        invitation = self.get_invitation_by_id(invitation_id)
+        if not invitation or invitation.project_id != project_id:
+            raise InvitationNotFoundError("Invitation not found")
+
+        invitee_id = invitation.invitee_id
+        self._delete_and_commit(invitation)
+        logger.info(
+            "Invitation revoked",
+            extra={
+                "event": "invitation_revoked",
+                "invitation_id": str(invitation_id),
+                "project_id": str(project_id),
+                "invitee_id": str(invitee_id),
+                "admin_id": str(admin_id),
+            },
+        )
