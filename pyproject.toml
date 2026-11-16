@@ -8,33 +8,33 @@ readme = "README.md"
 requires-python = ">=3.13"
 
 dependencies = [
-    "pydantic==2.14.1",
+    "pydantic==2.14.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.1.1",
-    "pytest-asyncio==1.4.0",
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1.post1",
     "pytest-cov==7.1.0",
-    "pytest-postgresql==9.1.1",
+    "pytest-postgresql==10.0.0",
     "pytest-xdist==3.8.0",
-    "hypothesis==6.170.9",
-    "ruff==0.17.2",
-    "mypy==2.4.0",
+    "hypothesis==6.170.15",
+    "ruff==0.17.4",
+    "mypy==2.4.1",
     "pip-audit==2.10.1",
     "bandit[toml]==1.9.4",
     "detect-secrets==1.5.0",
     "pre-commit==4.7.0",
-    "pip==26.2.2",
+    "pip==26.3",
     "types-passlib==1.7.7.20260211",
-    "boto3-stubs[s3]==1.43.118",
-    "mutmut==3.8.0",
+    "boto3-stubs[s3]==1.43.126",
+    "mutmut==3.8.1",
     "locust==2.47.0",
     "fakeredis==2.40.0",
 ]
 viz = [
     "numpy==2.5.4",
-    "pandas==3.1.0",
+    "pandas==3.1.1",
     "matplotlib==3.11.2",
     "plotly==7.1.0",
     "seaborn==0.13.2",
@@ -45,24 +45,24 @@ notebook = [
     "jupyter==1.1.1",
     "ipykernel==7.4.0",
     "ipywidgets==8.1.9",
-    "notebook==7.6.3",
+    "notebook==7.6.5",
 ]
 docs = [
     "mkdocs==1.6.1",
-    "mkdocs-material==9.8.0",
+    "mkdocs-material==9.8.1",
     # Ships with mkdocs-material, pinned here because the snippets extension is what
     # pulls the per-directory READMEs onto the site instead of copying them, and because
     # `scripts/docs/toc.py` imports its slug function to get the same anchors the site
     # and GitHub use.
-    "pymdown-extensions==12.3",
+    "pymdown-extensions==13.0",
     # Arrives with mkdocs anyway. Named because that same script imports it directly,
     # and an undeclared import is one dependency bump away from a puzzling failure.
-    "markdown==3.11.2",
+    "markdown==3.11.3",
 ]
 api = [
-    "fastapi==0.162.0",
+    "fastapi==0.162.2",
     "uvicorn[standard]==0.54.0",
-    "pydantic-settings==2.16.1",
+    "pydantic-settings==2.16.2",
     "httpx==0.28.1",
     "sqlmodel==0.0.44",
     "alembic==1.20.1",
@@ -70,14 +70,14 @@ api = [
     # Lowercase on purpose: Dependabot's uv updater matches names case-sensitively.
     "pyjwt==2.15.1",
     "passlib[bcrypt]==1.7.4",
-    "python-multipart==0.0.32",
+    "python-multipart==0.0.33",
     "email-validator==2.3.0",
-    "boto3==1.43.118",
+    "boto3==1.43.126",
     "slowapi==0.1.10",
     "bleach==6.4.0",
     "pillow==13.0.0",
-    "sentry-sdk[fastapi]==2.73.0",
-    "logtail-python==0.5.2",
+    "sentry-sdk[fastapi]==2.74.0",
+    "logtail-python==0.5.5",
     "reportlab==5.1.0",
     "redis==8.1.0",
     "dnspython==2.9.2",
@@ -90,16 +90,16 @@ assistant = [
     # Keep this order: each package comes after the packages it depends on. Dependabot
     # bumps a group one package at a time in the order listed here, so a package listed
     # before its dependency is tried against the old pin and the whole run fails.
-    "langsmith==0.14.12",
-    "langchain-core==1.7.0",
+    "langsmith==0.14.17",
+    "langchain-core==1.7.6",
     "langchain-text-splitters==1.1.3",
-    "openai==3.37.0",
-    "langchain-openai==1.7.2",
-    "psycopg[binary]==3.3.6",
+    "openai==3.48.0",
+    "langchain-openai==1.7.4",
+    "psycopg[binary]==3.3.8",
     "langchain-postgres==0.0.19",
-    "langgraph==1.2.17",
-    "langchain==1.4.7",
-    "pypdf==6.21.4",  # security fixes
+    "langgraph==1.2.20",
+    "langchain==1.4.9",
+    "pypdf==7.0.0",  # security fixes
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
