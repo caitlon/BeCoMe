@@ -32,8 +32,6 @@ from api.exceptions import (
     InvalidProjectDispositionError,
     InvalidResetTokenError,
     InvalidVerificationTokenError,
-    InvitationAlreadyUsedError,
-    InvitationExpiredError,
     InvitationNotFoundError,
     LoginThrottledError,
     MemberNotFoundError,
@@ -178,11 +176,6 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # the response must not repeat it.
     UserNotFoundForInvitationError: (status.HTTP_404_NOT_FOUND, "No user found with this email"),
     # 400 Bad Request
-    InvitationExpiredError: (status.HTTP_400_BAD_REQUEST, "Invitation has expired"),
-    InvitationAlreadyUsedError: (
-        status.HTTP_400_BAD_REQUEST,
-        "Invitation has already been used",
-    ),
     # Same opaque message for invalid and expired so neither can be distinguished.
     InvalidResetTokenError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
     ResetTokenExpiredError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
