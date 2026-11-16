@@ -847,7 +847,7 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
 | Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | Yes |
-| Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly with a 7-day cooldown | `.github/dependabot.yml` | No |
+| Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly, and the Node build image of the frontend, weekly, all with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
@@ -864,15 +864,20 @@ The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuse
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
 carry no such rule, and code reaches them only through `dev`.
 
-Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
-pull requests for base images. Both images upgrade their distribution packages when they are
-built, so a build that does not reuse a cached upgrade layer takes Alpine's security fixes
-before the base image is refreshed, and the API runtime stage removes the base
+Some things are not covered. `dependabot.yml` has a `docker` entry only for the Node build
+stage of the frontend image, which is pinned to an exact tag. The nginx stage and the API
+image's `python:3.13-alpine` stages use moving tags that Dependabot does not bump. A pinned Node
+tag picks up a patch only through that pull request, so a Node fix can lag by up to about two
+weeks (the weekly run plus the 7-day cooldown) unless it is merged by hand sooner. Node runs
+only in the build stage, not in the served image. Both images upgrade their distribution
+packages when they are built, so a build that does not reuse a cached upgrade layer takes
+Alpine's security fixes before the base image is refreshed, and the API runtime stage removes the base
 image's `pip`, which nothing there runs. The image scan builds both images afresh and reports
 only fixable findings, so what it still shows is a fix the upgrade cannot take, such as a
 vulnerable language package. It does not inspect the image Railway deployed, which may have
 been built from cached layers.
-Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
+Dependabot ignores `sqlmodel` from 0.0.45, major versions of TypeScript and major versions of
+the `node` image (the build stays on 22, the version CI uses), for the reasons in
 the comments beside those entries. Dependabot and fork pull requests get no repository secrets
 and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
 scan runs on them without uploading to code scanning.
