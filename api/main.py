@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     profile so the journal pins which build and environment served the run.
     The backends are checked in a background task once the app has started, so
     the app serves at once, and the task is cancelled if it is still running at
-    shutdown, including when the app exits on an exception. Test runs skip the checks,
-    which would reach the network.
+    shutdown, including when the app exits on an exception. Test runs skip the
+    checks, which would reach the network.
     """
     settings = get_settings()
     lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}

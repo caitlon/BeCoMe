@@ -1045,6 +1045,8 @@ class TestStartupChecksWiring:
         monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
         get_settings.cache_clear()
         cancelled = []
+        events = []
+        cancelled_at_shutdown = []
 
         async def checks(settings):
             try:
@@ -1052,6 +1054,12 @@ class TestStartupChecksWiring:
             except asyncio.CancelledError:
                 cancelled.append(True)
                 raise
+
+        def record(message, *args, **kwargs):
+            event = kwargs.get("extra", {}).get("event")
+            events.append(event)
+            if event == "app_shutdown":
+                cancelled_at_shutdown.append(list(cancelled))
 
         async def run_and_fail() -> None:
             async with lifespan(create_app()):
@@ -1063,14 +1071,11 @@ class TestStartupChecksWiring:
             patch("api.main.create_db_and_tables"),
             patch("api.main.warm_up_connection_pool"),
             patch("api.main.run_startup_checks", new=checks),
-            captured_log_records("api.main") as records,
+            patch("api.main.logger.info", side_effect=record),
             pytest.raises(RuntimeError, match="exit on error"),
         ):
             asyncio.run(run_and_fail())
 
         # THEN
-        assert cancelled == [True]
-        assert [getattr(record, "event", None) for record in records] == [
-            "app_startup",
-            "app_shutdown",
-        ]
+        assert events == ["app_startup", "app_shutdown"]
+        assert cancelled_at_shutdown == [[True]]
