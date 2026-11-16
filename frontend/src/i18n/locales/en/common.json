@@ -158,6 +158,7 @@
     "alreadyMember": "This account is already a member of the project.",
     "exampleProjectNotInvitable": "The example project cannot take invitations.",
     "invitationNotFound": "This invitation no longer exists.",
+    "adminCannotLeave": "The project owner cannot leave the project. Make another member the owner first.",
     "photoTypeNotAllowed": "Use a JPEG, PNG, GIF or WebP image.",
     "photoTooLarge": "File too large. Maximum size is 5 MB",
     "photoContentMismatch": "The file's content does not match its type. Save it again as JPEG or PNG.",

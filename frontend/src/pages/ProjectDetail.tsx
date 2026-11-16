@@ -7,6 +7,7 @@ import {
   Users,
   UserPlus,
   Trash2,
+  LogOut,
   ChevronDown,
   ChevronUp,
   Info,
@@ -71,6 +72,7 @@ const ProjectDetail = () => {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(true);
   const [showIndividual, setShowIndividual] = useState(false);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
@@ -214,6 +216,22 @@ const ProjectDetail = () => {
       toast({
         title: t("toast.error"),
         description: t("toast.deleteFailed"),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleLeaveProject = async () => {
+    try {
+      await api.leaveProject(projectId);
+      toast({ title: t("toast.leftProject") });
+      queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      navigate("/projects");
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: describeError(error, tCommon, t("toast.leaveProjectFailed")),
         variant: "destructive",
       });
     }
@@ -396,6 +414,17 @@ const ProjectDetail = () => {
                 </Button>
               </div>
             )}
+            {project.role === "expert" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive"
+                onClick={() => setLeaveModalOpen(true)}
+              >
+                <LogOut className="h-4 w-4" />
+                {t("leaveProject.button")}
+              </Button>
+            )}
             {result && opinions.length > 0 && (
               <div className="ml-auto">
                 <ResultExportMenu project={project} />
@@ -487,6 +516,16 @@ const ProjectDetail = () => {
           t("deleteModal.details.invitations"),
         ]}
         onConfirm={handleDeleteProject}
+      />
+
+      <DeleteConfirmModal
+        open={leaveModalOpen}
+        onOpenChange={setLeaveModalOpen}
+        title={t("leaveProject.title")}
+        description={t("leaveProject.description")}
+        onConfirm={handleLeaveProject}
+        confirmText={t("leaveProject.confirm")}
+        loadingText={t("leaveProject.leaving")}
       />
 
       <DeleteConfirmModal

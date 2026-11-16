@@ -80,7 +80,9 @@
     "memberRemoved": "Member removed",
     "removeMemberFailed": "Failed to remove member",
     "ownershipTransferred": "Ownership transferred",
-    "transferOwnershipFailed": "Failed to transfer ownership"
+    "transferOwnershipFailed": "Failed to transfer ownership",
+    "leftProject": "You left the project",
+    "leaveProjectFailed": "Failed to leave the project"
   },
   "detail": {
     "projects": "Projects",
@@ -170,6 +172,13 @@
     "joined": "Joined",
     "actions": "Actions",
     "transferOwnershipLabel": "Make {{name}} the owner"
+  },
+  "leaveProject": {
+    "button": "Leave project",
+    "title": "Leave this project?",
+    "description": "Your opinion will be removed and the result recalculated without it. You can only come back if the project admin invites you again.",
+    "confirm": "Leave project",
+    "leaving": "Leaving..."
   },
   "transferOwnership": {
     "title": "Transfer ownership?",

@@ -25,6 +25,7 @@ const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hois
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
+    leaveProject: vi.fn(),
     revokeInvitation: vi.fn(),
     transferOwnership: vi.fn(),
     exportProjectResult: vi.fn(),
@@ -882,6 +883,116 @@ describe('ProjectDetail - Delete Project Flow', () => {
         }),
       );
     });
+  });
+});
+
+describe('ProjectDetail - Leave Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+    );
+  });
+
+  const openLeaveDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^leave project$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+    });
+    return screen.getByRole('dialog');
+  };
+
+  it('shows the Leave project button to an expert', async () => {
+    render(<ProjectDetail />);
+
+    expect(await screen.findByRole('button', { name: /^leave project$/i })).toBeInTheDocument();
+  });
+
+  it('does not show the Leave project button to the admin', async () => {
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'admin' })
+    );
+
+    render(<ProjectDetail />);
+
+    await screen.findByText('Test Project');
+    expect(screen.queryByRole('button', { name: /leave project/i })).not.toBeInTheDocument();
+  });
+
+  it('leaves the project after confirmation and goes to the projects list', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockApi.leaveProject).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'You left the project' });
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    });
+  });
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Leave this project?')).not.toBeInTheDocument();
+    });
+    expect(mockApi.leaveProject).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the fallback error toast and stays on the page when leaving fails', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to leave the project',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('explains that the owner cannot leave when the API refuses with admin_cannot_leave', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(
+      new HttpError('The project admin cannot leave the project.', 409, 'admin_cannot_leave')
+    );
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            'The project owner cannot leave the project. Make another member the owner first.',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 
