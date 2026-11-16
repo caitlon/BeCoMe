@@ -1023,3 +1023,54 @@ class TestStartupChecksWiring:
 
         # THEN
         assert cancelled_at_shutdown == [[True]]
+
+    def test_the_shutdown_cleanup_runs_when_the_app_exits_on_an_exception(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a startup check that never finishes
+        WHEN an exception is raised inside the running lifespan
+        THEN the exception reaches the caller, the check was cancelled and the shutdown
+             record was written, so cleanup is not tied to a normal exit
+        """
+        from api.config import get_settings
+        from api.main import create_app, lifespan
+
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("TESTING", "0")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        cancelled = []
+
+        async def checks(settings):
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        async def run_and_fail() -> None:
+            async with lifespan(create_app()):
+                await asyncio.sleep(0)
+                raise RuntimeError("exit on error")
+
+        # WHEN
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.main.run_startup_checks", new=checks),
+            captured_log_records("api.main") as records,
+            pytest.raises(RuntimeError, match="exit on error"),
+        ):
+            asyncio.run(run_and_fail())
+
+        # THEN
+        assert cancelled == [True]
+        assert [getattr(record, "event", None) for record in records] == [
+            "app_startup",
+            "app_shutdown",
+        ]
