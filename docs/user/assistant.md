@@ -4,6 +4,15 @@ The assistant answers questions about the BeCoMe method, about your projects and
 the app. It is an AI language model, not a person, and its answers can be wrong. Treat what it says
 as a starting point, and check anything that matters on the result page and in this documentation.
 
+## Contents
+
+- [Where to find it](#where-to-find-it)
+- [What it can answer](#what-it-can-answer)
+- [Limits](#limits)
+- [When something goes wrong](#when-something-goes-wrong)
+- [What is kept](#what-is-kept)
+- [Your data](#your-data)
+
 ## Where to find it
 
 Sign in and click the assistant button in the top bar. It is a sparkle icon, and **Assistant**
