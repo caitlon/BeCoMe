@@ -194,7 +194,9 @@ class TestInvitationServiceLogging:
             invitation,
             Project(id=project_id, name="Project", admin_id=inviter_id),
         ]
-        session.exec.return_value.first.return_value = None
+        # The project lock finds the project, the DELETE removes one row, no membership yet.
+        session.exec.return_value.first.side_effect = [MagicMock(), None]
+        session.exec.return_value.rowcount = 1
         service = InvitationService(session)
 
         # WHEN
@@ -218,6 +220,7 @@ class TestInvitationServiceLogging:
         invitation.project_id = project_id
         session = MagicMock()
         session.get.return_value = invitation
+        session.exec.return_value.rowcount = 1
         service = InvitationService(session)
 
         # WHEN
@@ -240,6 +243,7 @@ class TestInvitationServiceLogging:
         invitation.project_id = project_id
         session = MagicMock()
         session.get.return_value = invitation
+        session.exec.return_value.rowcount = 1
         service = InvitationService(session)
 
         # WHEN
