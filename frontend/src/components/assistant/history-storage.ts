@@ -1,8 +1,9 @@
 // The sessionStorage key of an assistant conversation, and the removal of one project's
 // conversation. Kept apart from useAssistantChat.ts on purpose: pages in the main bundle
-// (ProjectDetail) import the removal, and the hook belongs to the lazy assistant chunk,
-// which a build without VITE_ASSISTANT_ENABLED must not contain. Nothing assistant-specific
-// (API paths, locale strings) may be imported here.
+// (the project page and the project list) reach the removal through the gated hook
+// useForgetAssistantProject in components/assistant/index.tsx, and useAssistantChat belongs
+// to the lazy assistant chunk, which a build without VITE_ASSISTANT_ENABLED must not contain.
+// Nothing assistant-specific (API paths, locale strings) may be imported here.
 
 export const STORAGE_BASE = "assistant-chat";
 /**
