@@ -86,14 +86,6 @@ class InvitationNotFoundError(NotFoundError):
     """Raised when invitation is not found."""
 
 
-class InvitationExpiredError(ValidationError):
-    """Raised when invitation has expired."""
-
-
-class InvitationAlreadyUsedError(ValidationError):
-    """Raised when invitation has already been used."""
-
-
 class UserAlreadyMemberError(ValidationError):
     """Raised when user is already a member of the project."""
 
