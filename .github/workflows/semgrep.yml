@@ -56,7 +56,8 @@ jobs:
 
       # The full report carries finding messages and the matched code, and artifacts of a
       # public repository can be downloaded. Only what the comment reads is kept: path, line,
-      # rule id and severity per finding, and one empty object per scan error. A missing or
+      # rule id and severity per finding, and per scan error the path, the error type and the
+      # line ranges it covers, never its message, which quotes the code. A missing or
       # unreadable report leaves no new file, so the comment says the scan produced no result;
       # on a re-run, though, the summary of an earlier attempt may remain if this one writes none.
       - name: Reduce the Semgrep report
@@ -65,6 +66,36 @@ jobs:
           python3 -I - <<'PY'
           import json
           import sys
+
+
+          def is_line(value):
+              return isinstance(value, int) and not isinstance(value, bool)
+
+
+          def reduce_error(err):
+              # Errors without a path (a rule or network error) and odd shapes reduce to nulls.
+              path = None
+              kind = None
+              lines = []
+              if isinstance(err, dict):
+                  if isinstance(err.get("path"), str):
+                      path = err["path"]
+                  err_type = err.get("type")
+                  if isinstance(err_type, list) and err_type and isinstance(err_type[0], str):
+                      kind = err_type[0]
+                  elif isinstance(err_type, str):
+                      kind = err_type
+                  spans = err.get("spans")
+                  for span in spans if isinstance(spans, list) else []:
+                      if not isinstance(span, dict):
+                          continue
+                      start, end = span.get("start"), span.get("end")
+                      first = start.get("line") if isinstance(start, dict) else None
+                      last = end.get("line") if isinstance(end, dict) else None
+                      if is_line(first) and is_line(last):
+                          lines.append([first, last])
+              return {"path": path, "type": kind, "lines": lines}
+
 
           try:
               with open("semgrep.json", encoding="utf-8") as f:
@@ -78,7 +109,7 @@ jobs:
                   }
                   for r in data.get("results") or []
               ]
-              errors = [{} for _ in data.get("errors") or []]
+              errors = [reduce_error(e) for e in data.get("errors") or []]
           except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
               print(f"::warning::Semgrep report could not be reduced: {type(exc).__name__}: {exc}")
               sys.exit(0)
@@ -98,8 +129,11 @@ jobs:
           overwrite: true
 
   # Finding messages and code lines are left out of the comment on purpose: only the path,
-  # the line, the rule id and the severity reach it. The comment is found by its hidden
-  # marker and by its author, so a comment quoting the marker is never overwritten.
+  # the line, the rule id and the severity reach it, and for a scan error the path and its
+  # line ranges. A path can come from a fork, so it is stripped of backticks, backslashes and
+  # control characters and its pipes are escaped before it enters Markdown. The comment is
+  # found by its hidden marker and by its author, so a comment quoting the marker is never
+  # overwritten.
   # `!cancelled()` rather than `always()`: a run cancelled by a newer push must not touch
   # the shared comment.
   semgrep-comment:
@@ -139,7 +173,14 @@ jobs:
           fi
           if [ -n "$data" ]; then
             total=$(jq '.results | length' <<< "$data")
-            errors=$(jq '.errors | length' <<< "$data")
+            # A scan error with a path is a file Semgrep could only partly parse: those are
+            # grouped by file with their distinct line ranges. The rest count as other errors.
+            files=$(jq -c '[.errors[] | select(type == "object" and (.path | type) == "string" and (.path | length) > 0)]
+              | group_by(.path)
+              | map({path: .[0].path, lines: ([.[] | (.lines | if type == "array" then .[] else empty end)
+                | select(type == "array" and length == 2 and all(.[]; type == "number"))] | unique)})' <<< "$data")
+            partial=$(jq 'length' <<< "$files")
+            other=$(jq '[.errors[] | select((type == "object" and (.path | type) == "string" and (.path | length) > 0) | not)] | length' <<< "$data")
             if [ "$total" -eq 0 ]; then
               title='Semgrep: no new findings'
             elif [ "$total" -eq 1 ]; then
@@ -147,15 +188,20 @@ jobs:
             else
               title="Semgrep: $total new findings"
             fi
-            if [ "$errors" -eq 1 ]; then
-              title="$title, 1 scan error"
-            elif [ "$errors" -gt 1 ]; then
-              title="$title, $errors scan errors"
+            if [ "$partial" -eq 1 ]; then
+              title="$title, 1 file only partly scanned"
+            elif [ "$partial" -gt 1 ]; then
+              title="$title, $partial files only partly scanned"
+            fi
+            if [ "$other" -eq 1 ]; then
+              title="$title, 1 other scan error"
+            elif [ "$other" -gt 1 ]; then
+              title="$title, $other other scan errors"
             fi
             {
               echo "$marker"
               echo "### $title"
-              if [ "$total" -gt 0 ] || [ "$errors" -gt 0 ]; then
+              if [ "$total" -gt 0 ] || [ "$partial" -gt 0 ] || [ "$other" -gt 0 ]; then
                 echo
                 echo '| Severity | Count |'
                 echo '| --- | --- |'
@@ -164,13 +210,32 @@ jobs:
                   | map({s: .[0].extra.severity, n: length})
                   | sort_by(.s as $s | [($order | index($s) // 99), ($s | tostring | ascii_downcase)])
                   | .[] | "| \(.s | tostring | ascii_downcase | .[:1] as $h | ($h | ascii_upcase) + .[1:]) | \(.n) |"' <<< "$data"
-                if [ "$errors" -gt 0 ]; then
-                  echo "| Scan errors | $errors |"
+                if [ "$partial" -gt 0 ]; then
+                  jq -r 'def clean: tostring | gsub("[`\\\\\\x00-\\x1f\\x7f]"; "") | gsub("[|]"; "\\|");
+                    def ranges: map(if .[0] == .[1] then (.[0] | tostring) else "\(.[0])-\(.[1])" end) as $r
+                      | if length == 0 then ""
+                        elif length == 1 and .[0][0] == .[0][1] then " line \($r[0])"
+                        else " lines \($r | join(", "))" end;
+                    .[:10][] | "| Not fully parsed | `\(.path | clean)`\(.lines | ranges) |"' <<< "$files"
+                  if [ "$partial" -gt 10 ]; then
+                    if [ "$partial" -eq 11 ]; then
+                      echo '| Not fully parsed | ... and 1 more file |'
+                    else
+                      echo "| Not fully parsed | ... and $((partial - 10)) more files |"
+                    fi
+                  fi
+                fi
+                if [ "$other" -gt 0 ]; then
+                  echo "| Other scan errors | $other |"
+                fi
+                if [ "$partial" -gt 0 ]; then
+                  echo
+                  echo 'Semgrep could not parse these lines, so no rule looked at them. The base commit is scanned too, so a range can refer to the file before this pull request.'
                 fi
               fi
               if [ "$total" -gt 0 ]; then
                 echo
-                jq -r '.results[:10][] | "- `\(.path | gsub("`"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' <<< "$data"
+                jq -r '.results[:10][] | "- `\(.path | tostring | gsub("[`\\\\\\x00-\\x1f\\x7f]"; "")):\(.start.line)` \(.check_id | gsub("`"; "")) (\(.extra.severity))"' <<< "$data"
                 if [ "$total" -gt 10 ]; then
                   echo "- ... and $((total - 10)) more"
                 fi
