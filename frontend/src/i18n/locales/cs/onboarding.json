@@ -61,7 +61,7 @@
         "lower": "Dolní mez",
         "lowerHint": "Pesimistický odhad",
         "peak": "Vrchol",
-        "peakHint": "Nejpravděpodobnější hodnota",
+        "peakHint": "Nejvhodnější hodnota",
         "upper": "Horní mez",
         "upperHint": "Optimistický odhad"
       },

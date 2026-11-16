@@ -38,7 +38,7 @@ test.describe('Project Detail: Edge Cases', () => {
     // Submit initial opinion
     await page.getByLabel('Position').first().fill('Tester');
     await page.getByLabel('Lower (pessimistic)').first().fill('20');
-    await page.getByLabel('Peak (most likely)').first().fill('40');
+    await page.getByLabel('Peak (most preferred)').first().fill('40');
     await page.getByLabel('Upper (optimistic)').first().fill('60');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();
@@ -50,7 +50,7 @@ test.describe('Project Detail: Edge Cases', () => {
     await expect(updateBtn).toBeDisabled();
 
     // Now change a value to enable the button (fetchData already done, won't overwrite)
-    const peakField = page.getByLabel('Peak (most likely)').first();
+    const peakField = page.getByLabel('Peak (most preferred)').first();
     await peakField.fill('50');
     await peakField.blur();
 
@@ -70,7 +70,7 @@ test.describe('Project Detail: Edge Cases', () => {
     // Submit opinion so results appear
     await page.getByLabel('Position').first().fill('Viz Expert');
     await page.getByLabel('Lower (pessimistic)').first().fill('20');
-    await page.getByLabel('Peak (most likely)').first().fill('40');
+    await page.getByLabel('Peak (most preferred)').first().fill('40');
     await page.getByLabel('Upper (optimistic)').first().fill('60');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();
@@ -109,7 +109,7 @@ test.describe('Project Detail: Edge Cases', () => {
     // Submit opinion
     await page.getByLabel('Position').first().fill('Individual Expert');
     await page.getByLabel('Lower (pessimistic)').first().fill('30');
-    await page.getByLabel('Peak (most likely)').first().fill('50');
+    await page.getByLabel('Peak (most preferred)').first().fill('50');
     await page.getByLabel('Upper (optimistic)').first().fill('70');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();

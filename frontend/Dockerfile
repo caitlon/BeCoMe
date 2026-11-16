@@ -54,6 +54,14 @@ RUN API_ORIGIN="$(printf '%s' "${VITE_API_URL}" | sed -n 's#^\(https\{0,1\}://[^
 # nginx-unprivileged runs as the non-root "nginx" user (UID 101) and listens on 8080.
 FROM nginxinc/nginx-unprivileged:alpine
 
+# Take the Alpine security fixes published since the base image was built (upstream
+# refreshes it on its own schedule), then drop back to the image's own user. USER
+# takes the numeric UID the base image sets, so a platform that checks for a
+# non-root user by number still sees one.
+USER root
+RUN apk upgrade --no-cache
+USER 101
+
 # Copy built files from builder stage (owned by the non-root nginx user)
 COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 

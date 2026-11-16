@@ -76,7 +76,7 @@ test.describe.serial('Project Actions Flow', () => {
     // Submit opinion
     await expertPage.getByLabel('Position').first().fill('Expert Tester');
     await expertPage.getByLabel('Lower (pessimistic)').first().fill('30');
-    await expertPage.getByLabel('Peak (most likely)').first().fill('50');
+    await expertPage.getByLabel('Peak (most preferred)').first().fill('50');
     await expertPage.getByLabel('Upper (optimistic)').first().fill('70');
 
     await expertPage.getByRole('button', { name: 'Save Opinion' }).click();
@@ -105,7 +105,7 @@ test.describe.serial('Project Actions Flow', () => {
   test('expert re-submits opinion for next test', async () => {
     await expertPage.getByLabel('Position').first().fill('Re-Expert');
     await expertPage.getByLabel('Lower (pessimistic)').first().fill('25');
-    await expertPage.getByLabel('Peak (most likely)').first().fill('45');
+    await expertPage.getByLabel('Peak (most preferred)').first().fill('45');
     await expertPage.getByLabel('Upper (optimistic)').first().fill('65');
 
     await expertPage.getByRole('button', { name: 'Save Opinion' }).click();

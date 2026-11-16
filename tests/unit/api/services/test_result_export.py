@@ -306,4 +306,7 @@ class TestResultExportServiceExport:
         with patch("api.services.export.result_export_service.logger") as mock_logger:
             ResultExportService(session).export(project, ExportFormat.PDF, ReportLang.EN)
 
-        assert mock_logger.info.call_args[1]["extra"]["event"] == "result_export_generated"
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "result_export_generated"
+        assert isinstance(extra["duration_ms"], float)
+        assert extra["duration_ms"] >= 0

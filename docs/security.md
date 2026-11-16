@@ -44,7 +44,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
-| Dependencies and code scanning | Partial, no container image scanning | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
+| Dependencies and code scanning | Implemented | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
 | GDPR export and erasure | Implemented | `api/routes/users.py` |
 | Database least-privilege, network, auditing | Implemented | `scripts/db/`, `api/db/engine.py` |
 | Automated database backups | Partial, manual dumps | `scripts/db/backup.sh` |
@@ -614,6 +614,11 @@ One request needs no secret. It is `GET /api/v1/health` addressed to a platform 
 host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
+The lock was checked from outside on 2 November 2026, on dev, test and prod. One
+`GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
+naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
+covers the three API hosts.
+
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
 `--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
@@ -720,7 +725,7 @@ same budget, so a store outage leaves a cap per process, not none, and the recor
 in production, the alert rule below fires for it as for the other throttles; on the dev and test
 services the record is for whoever reads their log.
 
-The level alone is not the whole alert, because the project's only other rule fires on
+The level alone is not the whole alert, because the Sentry project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
 dedicated rule, **"Fail-open throttle: store unavailable"** on the `python-fastapi` project,
 matches any event whose message contains `throttle store unavailable` and notifies on a new
@@ -737,7 +742,47 @@ request already failed and the caller already knows.
 Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` carries a value,
 Sentry.
 
-Two separate switches keep credentials out of the tracker, and the product needs both.
+Better Stack watches the deployed services from outside and from the logs. Besides the
+monitor on `https://www.becomify.app/`, three uptime monitors call `/api/v1/health` through
+Cloudflare on each API host: `api.becomify.app` (prod), `api-harbor.becomify.app` (test) and
+`api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
+redirects, and opens an incident and emails the team on any status other than 200. The API
+monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
+Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
+monitor alone would stay green. The origin lock lets the health route through without the secret
+only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
+addressed to an API host passes the origin check like any other request. A crashed backend is
+caught the same way. The health route is in
+`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
+
+The three backend log sources (`become-backend`, `become-backend-test`, `become-backend-prod`)
+extract four values from every record: the `event` field; `req_kind`, which sorts a request-log
+completion line into `heavy` (`POST /api/v1/calculate`, opinion writes, which recalculate, and the
+result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status_class` (`2xx` to
+`5xx`); and `duration_ms` as a histogram. The extraction applies only to records ingested after it
+was created. The dashboard "BeCoMe backend alerts" charts these values, and the alert rules read
+them. The rules exist on prod only and notify the team by email.
+
+Two rules watch for abuse and errors. The first counts `login_failure` and `access_denied` events
+apart and opens an incident of its own for either one that reaches 10 within five minutes.
+The logs of all three sources for 7 to 10 November 2026 held no `login_failure` or
+`access_denied` at all. The login lockout trips at 10 failures per account in 15 minutes, so ten
+in five minutes is one account running into its lockout, or several accounts at once. The second
+fires on any 5xx response within five minutes, counted by `status_class`.
+
+Two rules watch latency. CRUD p95 above 500 ms over an hour fires when at least 20 such requests
+fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
+`calculation_completed` or `recalculation_completed` events do; it reads their own
+`duration_ms`, the time of the work itself and not of the request.
+
+The minimum counts are there because at current traffic a p95 over two or three requests is
+noise. Test and dev have the same extraction and dashboard but no rules: their traffic is probes
+and testing, not users.
+
+Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
+receive, so that trigger stays unwatched until it is decided where metrics live.
+
+Two separate switches keep credentials out of Sentry, and the product needs both.
 `send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
 `include_local_variables=False` drops the frame locals of every traceback frame, which
 `send_default_pii` does not cover and which default to on: the auth handlers bind the parsed
@@ -789,7 +834,7 @@ rotation steps, is in [`secrets.md`](secrets.md).
 
 ## Dependencies and code scanning
 
-What watches the dependencies and the code, as read from `.github/` and the GitHub API on 2
+What watches the dependencies and the code, as read from `.github/` and the GitHub API on 11
 November 2026. Some of it blocks a merge and some only reports, so the last column says which.
 
 | Check | What it covers | Where it runs | Blocks a merge |
@@ -798,27 +843,39 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
 | pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
+| Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
-| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | No |
+| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | Yes |
 | Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
 `ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
 `dev` the required check `Check` demands that every job pass or skip, the SonarCloud job
-included. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the checks
-required by name. No branch requires the SonarCloud quality gate.
+included. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the
+checks required by name. `semgrep/ci` is required by name on all three branches; on a promotion
+it covers the Dependabot changes that Semgrep skips on `dev`. A skipped job counts as passed, so
+the Dependabot and fork pull requests Semgrep skips still merge. The check fails only on
+findings the Semgrep policy marks as blocking, and passes when the scan cannot reach the
+platform. No branch requires the SonarCloud quality gate.
 
 The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
 CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
 carry no such rule, and code reaches them only through `dev`.
 
-Some things are not covered. No workflow scans a container image, and `dependabot.yml` has no
-`docker` entry, so nothing opens update pull requests for base images. Dependabot ignores
-`sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in the comments beside
-those entries. Dependabot and fork pull requests get no repository secrets, so Semgrep skips
-them and SonarCloud has no token for them.
+Some things are not covered. `dependabot.yml` has no `docker` entry, so nothing opens update
+pull requests for base images. Both images upgrade their distribution packages when they are
+built, so a build that does not reuse a cached upgrade layer takes Alpine's security fixes
+before the base image is refreshed, and the API runtime stage removes the base
+image's `pip`, which nothing there runs. The image scan builds both images afresh and reports
+only fixable findings, so what it still shows is a fix the upgrade cannot take, such as a
+vulnerable language package. It does not inspect the image Railway deployed, which may have
+been built from cached layers.
+Dependabot ignores `sqlmodel` from 0.0.45 and major versions of TypeScript, for the reasons in
+the comments beside those entries. Dependabot and fork pull requests get no repository secrets
+and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
+scan runs on them without uploading to code scanning.
 
 GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
 

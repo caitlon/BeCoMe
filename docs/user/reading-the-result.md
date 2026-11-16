@@ -41,7 +41,7 @@ Which is why the chart is not decoration.
 ## What the chart shows
 
 The horizontal axis is your scale. The vertical axis is membership, running from 0 to 1: how
-strongly a value belongs to an opinion. A triangle peaks at 1 at the expert's most likely value and
+strongly a value belongs to an opinion. A triangle peaks at 1 at the expert's most preferred value and
 falls to 0 at the bounds.
 
 Grey triangles are individual opinions. The blue dashed line is the arithmetic mean, the green

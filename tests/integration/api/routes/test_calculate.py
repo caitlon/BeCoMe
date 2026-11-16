@@ -363,6 +363,23 @@ class TestCalculateEdgeCases:
         assert data["max_error"] == 0.0
         assert data["num_experts"] == 1
 
+    def test_completed_calculation_logs_its_duration(self, client: TestClient):
+        """
+        GIVEN a valid calculation request
+        WHEN POST /api/v1/calculate is called
+        THEN a calculation_completed record at INFO carries the calculation's duration
+        """
+        # GIVEN/WHEN
+        with patch("api.routes.calculate.logger") as mock_logger:
+            response = client.post(CALCULATE_URL, json=ONE_EXPERT)
+
+        # THEN
+        assert response.status_code == 200
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "calculation_completed"
+        assert isinstance(extra["duration_ms"], float)
+        assert extra["duration_ms"] >= 0
+
     def test_two_experts_uses_even_strategy(self, client: TestClient):
         """
         GIVEN two experts (minimum for even strategy)

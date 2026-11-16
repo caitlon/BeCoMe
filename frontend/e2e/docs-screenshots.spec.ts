@@ -207,7 +207,7 @@ test.describe('documentation screenshots', () => {
 
     await page.getByLabel('Position').first().fill('Head of Department');
     await page.getByLabel('Lower (pessimistic)').first().fill('60');
-    await page.getByLabel('Peak (most likely)').first().fill('75');
+    await page.getByLabel('Peak (most preferred)').first().fill('75');
     await page.getByLabel('Upper (optimistic)').first().fill('90');
     await page.getByRole('button', { name: 'Save Opinion' }).click();
 
