@@ -193,7 +193,8 @@ class UserService(BaseService):
         transaction, so a failure leaves both the account and the results untouched. Those
         projects are locked in id order before the account is deleted, so two concurrent
         deletions lock shared projects in the same order, and a project deletion, which locks
-        its project first, cannot deadlock with this one.
+        its project first, cannot deadlock with this one. A project deleted in the meantime
+        cannot be locked and is left out, so the account deletion goes through.
 
         :param user: User to delete
         :param calculation_service: Recalculates results of projects that lose an opinion
@@ -204,9 +205,11 @@ class UserService(BaseService):
             statement = (
                 select(ExpertOpinion.project_id).where(ExpertOpinion.user_id == user_id).distinct()
             )
-            project_ids = sorted(self._session.exec(statement).all())
-            for project_id in project_ids:
-                calculation_service.lock_project(project_id)
+            project_ids = [
+                project_id
+                for project_id in sorted(self._session.exec(statement).all())
+                if calculation_service.lock_project(project_id)
+            ]
 
         self._session.delete(user)
         self._session.flush()

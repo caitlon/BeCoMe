@@ -29,6 +29,7 @@ from api.db.models import (
     ProjectMember,
     User,
 )
+from api.exceptions import ProjectNotFoundError
 from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
@@ -625,6 +626,168 @@ class TestProjectDeleteAgainstOpinionWriters:
         # THEN
         assert errors == []
         self._assert_project_gone(pg_engine, project_id)
+        with Session(pg_engine) as check:
+            assert check.get(User, expert_id) is None
+
+
+class TestProjectDeleteBeforeWriterLock:
+    """Tests that a writer arriving after the project is deleted gets a clean refusal."""
+
+    @staticmethod
+    def _seed_expert_member(pg_engine) -> tuple[UUID, UUID]:
+        """Commit a project and one expert member who has no opinion; return the ids."""
+        project_id, expert_id, _ = TestConcurrentRecalculation._seed_project(pg_engine)
+        with Session(pg_engine) as setup:
+            setup.add(
+                ProjectMember(project_id=project_id, user_id=expert_id, role=MemberRole.EXPERT)
+            )
+            setup.commit()
+        return project_id, expert_id
+
+    @staticmethod
+    def _race_delete_before_lock(
+        pg_engine, monkeypatch, project_id: UUID, write: Callable[[Session], object]
+    ) -> list[BaseException]:
+        """Run ``write`` so that the project deletion commits just before its first lock.
+
+        The write stops at its first ``lock_project`` call, which is where a request lands
+        after its membership check passed; the delete runs to its commit there, and only then
+        does the write take the lock.
+
+        :return: Errors raised by either transaction
+        """
+        at_lock = threading.Event()
+        deleted = threading.Event()
+        lock = CalculationService.lock_project
+
+        def waiting_lock(service: CalculationService, pid: UUID) -> bool:
+            if not at_lock.is_set():
+                at_lock.set()
+                assert deleted.wait(timeout=10)
+            return lock(service, pid)
+
+        monkeypatch.setattr(CalculationService, "lock_project", waiting_lock)
+
+        def write_transaction() -> None:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                write(session)
+
+        def delete_transaction() -> None:
+            assert at_lock.wait(timeout=10)
+            try:
+                with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                    ProjectService(session).delete_project(project_id)
+            finally:
+                deleted.set()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(write_transaction), executor.submit(delete_transaction)]
+            errors = [future.exception(timeout=30) for future in futures]
+        return [error for error in errors if error is not None]
+
+    @pytest.mark.parametrize("with_opinion", [False, True])
+    def test_opinion_update(self, pg_engine, monkeypatch, with_opinion):
+        """
+        GIVEN an expert member, with or without a committed opinion
+        WHEN the project is deleted after the expert's request passed its membership check
+        THEN the update is refused as project-not-found and leaves no opinion behind
+        """
+        # GIVEN
+        if with_opinion:
+            project_id, expert_id = (
+                TestProjectDeleteAgainstOpinionWriters._seed_expert_with_opinion(pg_engine)
+            )
+        else:
+            project_id, expert_id = self._seed_expert_member(pg_engine)
+
+        # WHEN
+        errors = self._race_delete_before_lock(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).upsert_opinion(
+                project_id, expert_id, "Expert", 11.0, 21.0, 31.0, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert [type(error) for error in errors] == [ProjectNotFoundError]
+        TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
+
+    def test_opinion_delete(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert's committed opinion
+        WHEN the project is deleted after the expert's withdrawal passed its membership check
+        THEN the withdrawal is refused as project-not-found
+        """
+        # GIVEN
+        project_id, expert_id = TestProjectDeleteAgainstOpinionWriters._seed_expert_with_opinion(
+            pg_engine
+        )
+
+        # WHEN
+        errors = self._race_delete_before_lock(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: OpinionService(session).delete_opinion(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert [type(error) for error in errors] == [ProjectNotFoundError]
+        TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
+
+    def test_member_removal(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the project is deleted after the admin's removal request passed its checks
+        THEN the removal is refused as project-not-found
+        """
+        # GIVEN
+        project_id, expert_id = TestProjectDeleteAgainstOpinionWriters._seed_expert_with_opinion(
+            pg_engine
+        )
+
+        # WHEN
+        errors = self._race_delete_before_lock(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: ProjectMembershipService(session).remove_member(
+                project_id, expert_id, CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert [type(error) for error in errors] == [ProjectNotFoundError]
+        TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
+
+    def test_account_deletion(self, pg_engine, monkeypatch):
+        """
+        GIVEN an expert member with a committed opinion
+        WHEN the project is deleted after the expert's account deletion listed its projects
+        THEN the account deletion still succeeds, and both the project and the account are gone
+        """
+        # GIVEN
+        project_id, expert_id = TestProjectDeleteAgainstOpinionWriters._seed_expert_with_opinion(
+            pg_engine
+        )
+
+        # WHEN
+        errors = self._race_delete_before_lock(
+            pg_engine,
+            monkeypatch,
+            project_id,
+            lambda session: UserService(session).delete_user(
+                session.get(User, expert_id), CalculationService(session)
+            ),
+        )
+
+        # THEN
+        assert errors == []
+        TestProjectDeleteAgainstOpinionWriters._assert_project_gone(pg_engine, project_id)
         with Session(pg_engine) as check:
             assert check.get(User, expert_id) is None
 

@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlmodel import col, select
 
 from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
-from api.exceptions import MemberNotFoundError
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError
 from api.schemas.internal import MemberWithUser
 from api.services.base import BaseService
 from api.services.calculation_service import CalculationService
@@ -63,10 +63,11 @@ class ProjectMembershipService(BaseService):
         :param user_id: User ID to remove
         :param calculation_service: Recalculates the result without the discarded opinion
         :return: True when an opinion was discarded
+        :raises ProjectNotFoundError: If the project was deleted before it could be locked
         :raises MemberNotFoundError: If user is not a member of the project
         """
-        if calculation_service is not None:
-            calculation_service.lock_project(project_id)
+        if calculation_service is not None and not calculation_service.lock_project(project_id):
+            raise ProjectNotFoundError("Project not found")
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")

@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
-from api.exceptions import MemberNotFoundError
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError
 from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 
@@ -180,6 +180,21 @@ class TestProjectMembershipServiceRemoveMember:
         with pytest.raises(RuntimeError, match="boom"):
             service.remove_member(project_id, user_id, calculation_service)
         mock_session.commit.assert_not_called()
+
+    def test_raises_when_the_project_is_gone_at_lock_time(self):
+        """A project deleted before the lock is refused, and nothing is removed."""
+        # GIVEN
+        mock_session = MagicMock()
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.lock_project.return_value = False
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ProjectNotFoundError):
+            service.remove_member(uuid4(), uuid4(), calculation_service)
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+        calculation_service.stage_recalculation.assert_not_called()
 
     def test_without_a_calculation_service_commits_once_and_stages_nothing(self):
         """Without a calculation service the removal is one commit, nothing recalculated."""

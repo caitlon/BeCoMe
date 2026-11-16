@@ -52,7 +52,7 @@ class CalculationService(BaseService):
             self._session.refresh(saved)
         return saved
 
-    def lock_project(self, project_id: UUID) -> None:
+    def lock_project(self, project_id: UUID) -> bool:
         """Lock the project row for the rest of the caller's transaction.
 
         A writer that changes a project's opinions or members calls this before touching
@@ -60,11 +60,13 @@ class CalculationService(BaseService):
         does; otherwise the two wait for each other's rows and deadlock.
 
         :param project_id: Project UUID
+        :return: True when the project was found and locked, False when it no longer exists
         """
         # NO KEY UPDATE, not UPDATE: an opinion insert holds KEY SHARE on this row through its FK.
-        self._session.exec(
+        locked = self._session.exec(
             select(Project).where(Project.id == project_id).with_for_update(key_share=True)
         ).first()
+        return locked is not None
 
     def stage_recalculation(self, project_id: UUID) -> CalculationResult | None:
         """Recalculate a project's result inside the caller's transaction.
