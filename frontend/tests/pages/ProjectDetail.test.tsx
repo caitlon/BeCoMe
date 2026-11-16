@@ -6,6 +6,8 @@ import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
+import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 import {
   createProject,
   createProjectWithRole,
@@ -1377,6 +1379,142 @@ describe('ProjectDetail - Header Result Export', () => {
     await waitFor(() => {
       expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en', 'light');
       expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
+    });
+  });
+});
+
+describe('ProjectDetail - assistant history of a left project', () => {
+  const OWN = `${STORAGE_PREFIX}:user-1:project-1`;
+  const OTHER_PROJECT = `${STORAGE_PREFIX}:user-1:project-2`;
+  const GENERAL = `${STORAGE_PREFIX}:user-1:general`;
+  const OTHER_USER = `${STORAGE_PREFIX}:user-2:project-1`;
+  const ALL_KEYS = [OWN, OTHER_PROJECT, GENERAL, OTHER_USER];
+
+  const seedHistory = () => {
+    ALL_KEYS.forEach((key) => window.sessionStorage.setItem(key, '[]'));
+  };
+  const storedKeys = () => ALL_KEYS.filter((key) => window.sessionStorage.getItem(key) !== null);
+
+  // Stands for the panel: it is opened for a project and keeps it, as the real one does.
+  const PanelProbe = ({ openFor }: { openFor: string }) => {
+    const { projectId, openAssistant } = useAssistantUI();
+    return (
+      <>
+        <button onClick={() => openAssistant(openFor)}>open panel</button>
+        <output aria-label="panel project">{projectId ?? 'none'}</output>
+      </>
+    );
+  };
+
+  const renderWithPanel = (openFor = 'project-1') =>
+    render(
+      <AssistantUIProvider>
+        <PanelProbe openFor={openFor} />
+        <ProjectDetail />
+      </AssistantUIProvider>
+    );
+
+  const leave = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^leave project$/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+  };
+
+  const deleteProject = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^delete$/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /delete/i }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    seedHistory();
+    defaultSetup();
+  });
+
+  describe('leaving', () => {
+    beforeEach(() => {
+      mockApi.getProject.mockResolvedValue(
+        createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+      );
+    });
+
+    it('removes that project\'s history and keeps every other one', async () => {
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await leave(userEvent.setup());
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('keeps the history when leaving fails', async () => {
+      mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+      renderWithPanel();
+      await leave(userEvent.setup());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('makes the panel forget the project it was opened for', async () => {
+      const user = userEvent.setup();
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-1');
+      await leave(user);
+
+      await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
+    });
+
+    it('leaves a panel that was opened for another project alone', async () => {
+      const user = userEvent.setup();
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel('project-2');
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      await leave(user);
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-2');
+    });
+  });
+
+  describe('deleting', () => {
+    it('removes that project\'s history and keeps every other one', async () => {
+      mockApi.deleteProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await deleteProject(userEvent.setup());
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('keeps the history when deleting fails', async () => {
+      mockApi.deleteProject.mockRejectedValue(new Error('Delete failed'));
+
+      renderWithPanel();
+      await deleteProject(userEvent.setup());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('makes the panel forget the project it was opened for', async () => {
+      const user = userEvent.setup();
+      mockApi.deleteProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      await deleteProject(user);
+
+      await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
     });
   });
 });

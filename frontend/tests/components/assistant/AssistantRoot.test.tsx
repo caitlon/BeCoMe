@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import i18n from '@/i18n';
 import AssistantRoot from '@/components/assistant/AssistantRoot';
-import { STORAGE_PREFIX } from '@/components/assistant/useAssistantChat';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
 import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 
 const mockSetAvailable = vi.fn();

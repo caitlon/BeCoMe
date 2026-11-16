@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import '@/i18n';
 import AssistantRoot from '@/components/assistant/AssistantRoot';
-import { STORAGE_PREFIX } from '@/components/assistant/useAssistantChat';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 import { queryKeys } from '@/lib/queryKeys';

@@ -22,6 +22,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAssistantProjectScope } from "@/components/assistant";
+import { removeAssistantProjectHistory } from "@/components/assistant/history-storage";
 import { NotFoundState } from "@/components/NotFoundState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -49,6 +50,7 @@ import { api, HttpError } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { queryKeys } from "@/lib/queryKeys";
 import { Member, ProjectInvitation } from "@/types/api";
+import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -58,6 +60,7 @@ const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { projectId: panelProjectId, forgetProject } = useAssistantUI();
   const { toast } = useToast();
   const { t } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
@@ -205,12 +208,20 @@ const ProjectDetail = () => {
     }
   };
 
+  // The user no longer belongs to the project, so its conversation is dropped from the
+  // tab and the panel stops being about it.
+  const forgetAssistantConversation = () => {
+    if (user) removeAssistantProjectHistory(user.id, projectId);
+    if (panelProjectId === projectId) forgetProject();
+  };
+
   const handleDeleteProject = async () => {
     try {
       await api.deleteProject(projectId);
       toast({ title: t("toast.projectDeleted") });
       queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantConversation();
       navigate("/projects");
     } catch {
       toast({
@@ -227,6 +238,7 @@ const ProjectDetail = () => {
       toast({ title: t("toast.leftProject") });
       queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantConversation();
       navigate("/projects");
     } catch (error) {
       toast({
