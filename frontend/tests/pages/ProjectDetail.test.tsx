@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// The assistant hooks are chosen when components/assistant is first imported, so the
+// flag is set before any import below runs.
+vi.hoisted(() => vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true'));
 import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

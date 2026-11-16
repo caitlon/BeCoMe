@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
 import * as Sentry from "@sentry/react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { logger } from "@/lib/logger";
+import { removeAssistantProjectHistory } from "./history-storage";
 
 /**
  * Build-time kill switch for the whole assistant feature,
@@ -183,3 +185,31 @@ function useProjectScope(projectId: string | undefined): void {
 export const useAssistantProjectScope: (projectId: string | undefined) => void = enabled
   ? useProjectScope
   : () => {};
+
+function useForgetProject(): (projectId: string) => void {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const { projectId: panelProjectId, forgetProject } = useAssistantUI();
+
+  return useCallback(
+    (projectId: string) => {
+      if (userId) removeAssistantProjectHistory(userId, projectId);
+      if (panelProjectId === projectId) forgetProject();
+    },
+    [userId, panelProjectId, forgetProject]
+  );
+}
+
+const noopForget = (): void => {};
+
+/**
+ * For a project the user no longer belongs to (left, or deleted): drops its
+ * conversation from this tab and, when the panel was opened for it, makes the panel
+ * forget the project. A conversation still mounted for it cannot write the key
+ * back (history-storage.ts). Chosen at module load like everything above: a build
+ * without the flag gets a constant no-op and the hook body is dropped.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook gated by the same build flag as the exports above
+export const useForgetAssistantProject: () => (projectId: string) => void = enabled
+  ? useForgetProject
+  : () => noopForget;
