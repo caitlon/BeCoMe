@@ -266,6 +266,35 @@ def list_members(
 
 
 @router.delete(
+    "/{project_id}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Leave project",
+)
+def leave_project(
+    project_id: UUID,
+    project: ProjectMember,
+    current_user: CurrentUser,
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
+    calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
+) -> None:
+    """Leave a project the caller is a member of.
+
+    The caller's opinion is discarded along with their membership, so the result is
+    recalculated without it, as when the admin removes a member. The admin cannot leave:
+    ownership has to be transferred first, which answers 409 with code ``admin_cannot_leave``.
+    Declared before the removal route so that ``me`` is not read as a user id.
+
+    :param project: Project (verified member)
+    :param current_user: Authenticated user
+    :param membership_service: Membership service
+    :param calculation_service: Calculation service (result no longer counts the member)
+    """
+    membership_service.leave_project(project.id, current_user.id, calculation_service)
+
+
+@router.delete(
     "/{project_id}/members/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove member from project",

@@ -841,6 +841,169 @@ class TestRemoveMember:
         assert response.status_code == 404
 
 
+class TestLeaveProject:
+    """Tests for DELETE /api/v1/projects/{id}/members/me."""
+
+    def test_expert_with_an_opinion_leaves_and_the_result_is_recalculated(self, client):
+        """Leaving drops the membership and the opinion, and the result stops counting them."""
+        # GIVEN a project where both the admin and an expert submitted an opinion
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        submit_opinion(client, owner, project["id"], 30.0, 50.0, 70.0)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        submit_opinion(client, expert, project["id"], 10.0, 20.0, 30.0)
+        before = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert before["num_experts"] == 2
+
+        # WHEN the expert leaves
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+
+        # THEN the membership, the opinion and the expert's share of the result are gone
+        assert response.status_code == 204
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        ).json()
+        assert expert_id not in [member["user_id"] for member in members]
+        opinions = client.get(
+            f"/api/v1/projects/{project['id']}/opinions", headers=auth_header(owner)
+        ).json()
+        assert [item["user_email"] for item in opinions] == ["owner@example.com"]
+        after = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert after["num_experts"] == 1
+        assert after != before
+
+    def test_me_is_not_read_as_a_user_id(self, client):
+        """The path segment ``me`` reaches the leave route and not the removal route's 422."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, _expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+
+        # THEN
+        assert response.status_code == 204
+
+    def test_expert_without_an_opinion_leaves(self, client):
+        """An expert who submitted nothing leaves, and the result is unchanged."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        submit_opinion(client, owner, project["id"], 30.0, 50.0, 70.0)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        before = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+
+        # THEN
+        assert response.status_code == 204
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        ).json()
+        assert expert_id not in [member["user_id"] for member in members]
+        after = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert after == before
+
+    def test_admin_cannot_leave_and_is_told_to_transfer(self, client):
+        """The admin is refused with code admin_cannot_leave and stays a member."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(owner)
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json()["code"] == "admin_cannot_leave"
+        assert "Transfer ownership" in response.json()["detail"]
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        ).json()
+        assert project["admin_id"] in [member["user_id"] for member in members]
+
+    def test_non_member_gets_404(self, client):
+        """A user outside the project gets the same 404 as for an unknown project."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        outsider = register_and_login(client, "outsider@example.com")
+        project = create_project(client, owner)
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(outsider)
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_unauthenticated_gets_401(self, client):
+        """Leaving needs a signed-in user."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+
+        # WHEN
+        response = client.delete(f"/api/v1/projects/{project['id']}/members/me")
+
+        # THEN
+        assert response.status_code == 401
+
+    def test_leaving_twice_gets_404(self, client):
+        """After leaving, the project is hidden from the ex-member, so a second call is a 404."""
+        # GIVEN an expert who has left
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, _expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        first = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+        assert first.status_code == 204
+
+        # WHEN they leave again
+        second = client.delete(
+            f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert)
+        )
+
+        # THEN
+        assert second.status_code == 404
+
+    def test_the_project_leaves_the_ex_members_list(self, client):
+        """The project no longer appears in GET /projects of the user who left."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, _expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        listed = client.get("/api/v1/projects", headers=auth_header(expert)).json()
+        assert project["id"] in [item["id"] for item in listed]
+
+        # WHEN
+        client.delete(f"/api/v1/projects/{project['id']}/members/me", headers=auth_header(expert))
+
+        # THEN
+        listed = client.get("/api/v1/projects", headers=auth_header(expert)).json()
+        assert project["id"] not in [item["id"] for item in listed]
+
+
 class TestTransferOwnership:
     """Tests for POST /api/v1/projects/{id}/transfer-ownership."""
 
