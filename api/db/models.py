@@ -9,7 +9,6 @@ from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from api.db.utils import utc_now
-from api.schemas.validators import MAX_ABS_FUZZY_VALUE
 
 _USERS_FK = "users.id"
 _PROJECTS_FK = "projects.id"
@@ -78,12 +77,12 @@ class Project(SQLModel, table=True):
 
     __tablename__ = "projects"
     # The bounds CHECK also refuses NaN and both infinities: PostgreSQL orders NaN above every
-    # number, so it fails the upper test, and the infinities fall outside the range.
+    # number, so it fails the upper test, and the infinities fall outside the range. The literal
+    # matches the migration and the API's MAX_ABS_FUZZY_VALUE, and a test pins that constant.
     __table_args__ = (
         CheckConstraint("scale_min < scale_max", name="ck_projects_scale_order"),
         CheckConstraint(
-            f"scale_min >= -{MAX_ABS_FUZZY_VALUE:g} AND scale_min <= {MAX_ABS_FUZZY_VALUE:g} "
-            f"AND scale_max >= -{MAX_ABS_FUZZY_VALUE:g} AND scale_max <= {MAX_ABS_FUZZY_VALUE:g}",
+            "scale_min >= -1e15 AND scale_min <= 1e15 AND scale_max >= -1e15 AND scale_max <= 1e15",
             name="ck_projects_scale_bounds",
         ),
     )

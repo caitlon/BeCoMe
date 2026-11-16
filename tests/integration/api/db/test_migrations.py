@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from api.data.example_project import EXAMPLE_EXPERTS
+from api.schemas.validators import MAX_ABS_FUZZY_VALUE
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
@@ -879,6 +880,15 @@ class TestProjectScaleBoundsMigration:
     # Pinned to the revision ids, so a later migration cannot change what is tested.
     BEFORE = "e7b3d2a94c18"  # pragma: allowlist secret
     REVISION = "c4e8a1f7b265"  # pragma: allowlist secret
+
+    def test_api_cap_matches_the_database_check(self):
+        """
+        GIVEN the 1e15 bound written into the migration and the model CHECK
+        WHEN the API cap MAX_ABS_FUZZY_VALUE is read
+        THEN it is still 1e15, so raising it needs a new migration first (otherwise the API
+        would accept values the database refuses, a 500)
+        """
+        assert MAX_ABS_FUZZY_VALUE == 1e15
 
     @staticmethod
     def _insert_project(engine, admin_id, scale_min: str, scale_max: str) -> None:
