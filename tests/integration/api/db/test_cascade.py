@@ -12,10 +12,10 @@ from api.db.models import (
     Invitation,
     MemberRole,
     PasswordResetToken,
-    Project,
     ProjectMember,
     User,
 )
+from tests.shared.helpers import add_project
 
 
 class TestProjectCascadeDelete:
@@ -43,8 +43,7 @@ class TestProjectCascadeDelete:
         session.add_all([admin, expert])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         membership = ProjectMember(
@@ -86,8 +85,7 @@ class TestProjectCascadeDelete:
         session.add_all([admin, invitee])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         invitation = Invitation(
@@ -123,8 +121,7 @@ class TestProjectCascadeDelete:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         opinion = ExpertOpinion(
@@ -163,8 +160,7 @@ class TestProjectCascadeDelete:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         result = CalculationResult(
@@ -226,8 +222,7 @@ class TestUserCascadeDelete:
         session.add_all([admin, member])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         membership = ProjectMember(
@@ -269,8 +264,7 @@ class TestUserCascadeDelete:
         session.add_all([admin, expert])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         opinion = ExpertOpinion(
@@ -381,8 +375,7 @@ class TestUserCascadeDelete:
         session.add(admin)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        add_project(session, admin, name="Test Project")
         session.commit()
         admin_id = admin.id
 

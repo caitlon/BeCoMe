@@ -3,7 +3,8 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from api.db.models import CalculationResult, ExpertOpinion, Project, User
+from api.db.models import CalculationResult, ExpertOpinion, User
+from tests.shared.helpers import add_project
 
 
 class TestExpertOpinionModel:
@@ -20,8 +21,7 @@ class TestExpertOpinionModel:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         # WHEN
@@ -52,8 +52,7 @@ class TestExpertOpinionModel:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         opinion1 = ExpertOpinion(
@@ -92,9 +91,8 @@ class TestExpertOpinionModel:
         session.add(user)
         session.commit()
 
-        project1 = Project(name="Project 1", admin_id=user.id)
-        project2 = Project(name="Project 2", admin_id=user.id)
-        session.add_all([project1, project2])
+        project1 = add_project(session, user, name="Project 1")
+        project2 = add_project(session, user, name="Project 2")
         session.commit()
 
         # WHEN: same user gives opinions in different projects
@@ -136,8 +134,7 @@ class TestCalculationResultModel:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         # WHEN
@@ -178,8 +175,7 @@ class TestCalculationResultModel:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         result1 = CalculationResult(
