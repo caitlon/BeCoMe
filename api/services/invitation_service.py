@@ -19,6 +19,9 @@ from api.services.query_helpers import member_count_subquery, select_account_by_
 
 logger = logging.getLogger("api.service.invitation")
 
+# One message for a missing invitation and for one that is not the caller's to act on.
+INVITATION_NOT_FOUND_MESSAGE = "Invitation not found"
+
 
 @dataclass(frozen=True)
 class InvitationWithDetails:
@@ -158,7 +161,7 @@ class InvitationService(BaseService):
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         # Refusing at creation covers new invitations only. One sent before that rule
         # existed is still pending, and accepting it is the step that actually writes the
@@ -231,7 +234,7 @@ class InvitationService(BaseService):
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         project_id = invitation.project_id
         inviter_id = invitation.inviter_id
@@ -260,7 +263,7 @@ class InvitationService(BaseService):
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.project_id != project_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         invitee_id = invitation.invitee_id
         self._delete_and_commit(invitation)
