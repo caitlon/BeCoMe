@@ -114,6 +114,31 @@ class TestCreateProject:
         # THEN
         assert response.status_code == 422
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("scale_max", 1e16),
+            ("scale_min", -1e16),
+            ("scale_max", 1.7e308),
+            ("scale_min", -1.7e308),
+        ],
+    )
+    def test_create_project_scale_beyond_magnitude_ceiling_fails(self, client, field, value):
+        """Project creation fails when a scale bound exceeds 1e15 in absolute value."""
+        # GIVEN
+        token = register_and_login(client)
+
+        # WHEN
+        response = client.post(
+            "/api/v1/projects",
+            json={"name": "Huge", "scale_min": 0, "scale_max": 100, field: value},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert any(error["loc"][-1] == field for error in response.json()["detail"])
+
     @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
     @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
     def test_create_project_non_finite_scale_fails(self, client, field, literal):
@@ -386,6 +411,37 @@ class TestUpdateProject:
 
         # THEN
         assert response.status_code == 422
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("scale_max", 1e16),
+            ("scale_min", -1e16),
+            ("scale_max", 1.7e308),
+            ("scale_min", -1.7e308),
+        ],
+    )
+    def test_update_project_scale_beyond_magnitude_ceiling_fails(self, client, field, value):
+        """Update fails when a scale bound exceeds 1e15 in absolute value."""
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 0, "scale_max": 100},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={field: value},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert any(error["loc"][-1] == field for error in response.json()["detail"])
 
     @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
     @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])

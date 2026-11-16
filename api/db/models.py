@@ -76,7 +76,16 @@ class Project(SQLModel, table=True):
     """A project for group decision-making."""
 
     __tablename__ = "projects"
-    __table_args__ = (CheckConstraint("scale_min < scale_max", name="ck_projects_scale_order"),)
+    # The bounds CHECK also refuses NaN and both infinities: PostgreSQL orders NaN above every
+    # number, so it fails the upper test, and the infinities fall outside the range. The literal
+    # matches the migration and the API's MAX_ABS_FUZZY_VALUE, and a test pins that constant.
+    __table_args__ = (
+        CheckConstraint("scale_min < scale_max", name="ck_projects_scale_order"),
+        CheckConstraint(
+            "scale_min >= -1e15 AND scale_min <= 1e15 AND scale_max >= -1e15 AND scale_max <= 1e15",
+            name="ck_projects_scale_bounds",
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(max_length=255)

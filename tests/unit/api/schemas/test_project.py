@@ -128,6 +128,35 @@ class TestProjectCreate:
             for error in exc_info.value.errors()
         )
 
+    def test_scale_at_magnitude_ceiling_accepted(self):
+        """
+        GIVEN scale bounds exactly at minus and plus 1e15
+        WHEN ProjectCreate is created
+        THEN both bounds are accepted
+        """
+        # WHEN
+        project = ProjectCreate(name="Project", scale_min=-1e15, scale_max=1e15)
+
+        # THEN
+        assert project.scale_min == -1e15
+        assert project.scale_max == 1e15
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("value", [1e15 * 1.0001, -1e15 * 1.0001, 1.7e308, -1.7e308])
+    def test_scale_beyond_magnitude_ceiling_rejected(self, field, value):
+        """
+        GIVEN a scale bound larger than 1e15 in absolute value
+        WHEN ProjectCreate is created
+        THEN ValidationError is raised for that field
+        """
+        # GIVEN
+        bounds = {"scale_min": -1.0, "scale_max": 1.0, field: value}
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as exc_info:
+            ProjectCreate(name="Project", **bounds)
+        assert any(error["loc"] == (field,) for error in exc_info.value.errors())
+
 
 class TestProjectUpdate:
     """Tests for ProjectUpdate schema."""
@@ -204,6 +233,33 @@ class TestProjectUpdate:
             error["type"] == "finite_number" and error["loc"] == (field,)
             for error in exc_info.value.errors()
         )
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("value", [-1e15, 1e15])
+    def test_scale_at_magnitude_ceiling_accepted(self, field, value):
+        """
+        GIVEN a scale bound exactly at plus or minus 1e15
+        WHEN ProjectUpdate is created
+        THEN the bound is accepted
+        """
+        # WHEN
+        update = ProjectUpdate(**{field: value})
+
+        # THEN
+        assert getattr(update, field) == value
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("value", [1e15 * 1.0001, -1e15 * 1.0001, 1.7e308, -1.7e308])
+    def test_scale_beyond_magnitude_ceiling_rejected(self, field, value):
+        """
+        GIVEN a scale bound larger than 1e15 in absolute value
+        WHEN ProjectUpdate is created
+        THEN ValidationError is raised for that field
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as exc_info:
+            ProjectUpdate(**{field: value})
+        assert any(error["loc"] == (field,) for error in exc_info.value.errors())
 
 
 class TestProjectResponseFromModel:

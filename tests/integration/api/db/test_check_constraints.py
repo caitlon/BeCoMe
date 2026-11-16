@@ -71,6 +71,25 @@ class TestCheckConstraints:
         with pytest.raises(IntegrityError):
             session.commit()
 
+    @pytest.mark.parametrize(
+        ("scale_min", "scale_max"),
+        [(0.0, 1e16), (-1e16, 0.0), (0.0, float("inf")), (float("-inf"), 0.0)],
+    )
+    def test_projects_scale_bounds_rejected(self, session, scale_min, scale_max):
+        """
+        GIVEN a project row with a scale bound beyond plus or minus 1e15, or infinite
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+        project = Project(name="Bad", admin_id=user.id, scale_min=scale_min, scale_max=scale_max)
+
+        # WHEN/THEN
+        session.add(project)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
     def test_expert_opinion_fuzzy_order_rejected(self, session):
         """
         GIVEN an expert opinion whose bounds violate lower <= peak <= upper
