@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
+from tests.shared.helpers import add_project
 
 
 class TestProjectModel:
@@ -48,15 +49,15 @@ class TestProjectModel:
         session.commit()
 
         # WHEN
-        project = Project(
+        project = add_project(
+            session,
+            admin,
             name="Test Project",
             description="A test project",
-            admin_id=admin.id,
             scale_min=1.0,
             scale_max=10.0,
             scale_unit="points",
         )
-        session.add(project)
         session.commit()
         session.refresh(project)
 
@@ -88,8 +89,7 @@ class TestProjectMemberModel:
         session.add_all([admin, expert])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         # WHEN
@@ -113,23 +113,28 @@ class TestProjectMemberModel:
 
     def test_duplicate_membership_fails(self, session):
         # GIVEN
-        user = User(
-            email="user@example.com",
+        admin = User(
+            email="admin@example.com",
             hashed_password="hash",
-            first_name="Test",
+            first_name="Admin",
             last_name="User",
         )
-        session.add(user)
+        expert = User(
+            email="expert@example.com",
+            hashed_password="hash",
+            first_name="Expert",
+            last_name="User",
+        )
+        session.add_all([admin, expert])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         member1 = ProjectMember(
             project_id=project.id,
-            user_id=user.id,
-            role=MemberRole.ADMIN,
+            user_id=expert.id,
+            role=MemberRole.EXPERT,
         )
         session.add(member1)
         session.commit()
@@ -137,7 +142,7 @@ class TestProjectMemberModel:
         # WHEN/THEN: adding same user to same project should fail
         member2 = ProjectMember(
             project_id=project.id,
-            user_id=user.id,
+            user_id=expert.id,
             role=MemberRole.EXPERT,
         )
         session.add(member2)
@@ -147,18 +152,23 @@ class TestProjectMemberModel:
 
     def test_user_can_be_member_of_multiple_projects(self, session):
         # GIVEN
+        admin = User(
+            email="admin@example.com",
+            hashed_password="hash",
+            first_name="Admin",
+            last_name="User",
+        )
         user = User(
             email="user@example.com",
             hashed_password="hash",
             first_name="Test",
             last_name="User",
         )
-        session.add(user)
+        session.add_all([admin, user])
         session.commit()
 
-        project1 = Project(name="Project 1", admin_id=user.id)
-        project2 = Project(name="Project 2", admin_id=user.id)
-        session.add_all([project1, project2])
+        project1 = add_project(session, admin, name="Project 1")
+        project2 = add_project(session, admin, name="Project 2")
         session.commit()
 
         # WHEN
@@ -192,8 +202,7 @@ class TestInvitationModel:
         session.add_all([admin, invitee])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         # WHEN
@@ -229,8 +238,7 @@ class TestInvitationModel:
         session.add_all([admin, invitee])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         inv1 = Invitation(
@@ -269,9 +277,8 @@ class TestInvitationModel:
         session.add_all([admin, invitee])
         session.commit()
 
-        project1 = Project(name="Project 1", admin_id=admin.id)
-        project2 = Project(name="Project 2", admin_id=admin.id)
-        session.add_all([project1, project2])
+        project1 = add_project(session, admin, name="Project 1")
+        project2 = add_project(session, admin, name="Project 2")
         session.commit()
 
         # WHEN

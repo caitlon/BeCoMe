@@ -599,6 +599,25 @@ class TestUserServiceDeleteUser:
         mock_session.delete.assert_called_once_with(user)
         mock_session.commit.assert_called_once()
 
+    def test_skips_a_project_deleted_before_it_could_be_locked(self):
+        """A vanished project is neither recalculated nor an obstacle to the account deletion."""
+        # GIVEN a user with opinions in two projects, one of which is gone at lock time
+        user = User(id=uuid4(), email="race@example.com", hashed_password="xxx", first_name="R")
+        kept, gone = sorted([uuid4(), uuid4()])
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [kept, gone]
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.lock_project.side_effect = lambda project_id: project_id == kept
+        service = UserService(mock_session)
+
+        # WHEN
+        service.delete_user(user, calculation_service)
+
+        # THEN only the project that could be locked is recalculated, and the user is deleted
+        assert [c.args[0] for c in calculation_service.stage_recalculation.call_args_list] == [kept]
+        mock_session.delete.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+
     def test_recalculates_after_the_user_is_flushed_out(self):
         """The cascade runs on flush, so recalculation must come after it and before commit."""
         # GIVEN

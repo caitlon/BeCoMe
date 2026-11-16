@@ -8,10 +8,10 @@ from sqlalchemy.exc import IntegrityError
 
 from api.db.models import (
     ExpertOpinion,
-    Project,
     ProjectMember,
     User,
 )
+from tests.shared.helpers import add_project
 
 
 class TestStringFieldEdgeCases:
@@ -34,12 +34,7 @@ class TestStringFieldEdgeCases:
         session.commit()
 
         # WHEN
-        project = Project(
-            name="Test Project",
-            description="",
-            admin_id=user.id,
-        )
-        session.add(project)
+        project = add_project(session, user, name="Test Project", description="")
         session.commit()
 
         # THEN
@@ -63,12 +58,7 @@ class TestStringFieldEdgeCases:
         session.commit()
 
         # WHEN
-        project = Project(
-            name="Test Project",
-            description=None,
-            admin_id=user.id,
-        )
-        session.add(project)
+        project = add_project(session, user, name="Test Project", description=None)
         session.commit()
 
         # THEN
@@ -91,8 +81,7 @@ class TestStringFieldEdgeCases:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         # WHEN
@@ -159,13 +148,7 @@ class TestFloatFieldEdgeCases:
         session.commit()
 
         # WHEN
-        project = Project(
-            name="Test Project",
-            admin_id=user.id,
-            scale_min=0.0,
-            scale_max=100.0,
-        )
-        session.add(project)
+        project = add_project(session, user, name="Test Project", scale_min=0.0, scale_max=100.0)
         session.commit()
 
         # THEN
@@ -189,13 +172,7 @@ class TestFloatFieldEdgeCases:
         session.commit()
 
         # WHEN
-        project = Project(
-            name="Test Project",
-            admin_id=user.id,
-            scale_min=-100.0,
-            scale_max=100.0,
-        )
-        session.add(project)
+        project = add_project(session, user, name="Test Project", scale_min=-100.0, scale_max=100.0)
         session.commit()
 
         # THEN
@@ -219,8 +196,7 @@ class TestFloatFieldEdgeCases:
         session.add(user)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Test Project")
         session.commit()
 
         # WHEN: crisp number (degenerate fuzzy number)
@@ -279,8 +255,7 @@ class TestDatetimeEdgeCases:
         session.add(user)
         session.commit()
 
-        project = Project(name="Original Name", admin_id=user.id)
-        session.add(project)
+        project = add_project(session, user, name="Original Name")
         session.commit()
         session.refresh(project)
         original_updated_at = project.updated_at
@@ -317,8 +292,7 @@ class TestUuidEdgeCases:
         session.add(admin)
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
+        project = add_project(session, admin, name="Test Project")
         session.commit()
 
         # Not the nil UUID, just one that no user has

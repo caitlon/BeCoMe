@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy.dialects import postgresql
 
 from api.db.models import CalculationResult, ExpertOpinion, Project
@@ -305,6 +306,20 @@ class TestCalculationServiceStageRecalculation:
         assert "FROM projects" in first_sql
         assert first_sql.endswith("FOR NO KEY UPDATE")
         assert "expert_opinions" in str(second.compile(dialect=postgresql.dialect()))
+
+    @pytest.mark.parametrize(("row", "expected"), [(MagicMock(), True), (None, False)])
+    def test_lock_project_reports_whether_the_project_row_was_locked(self, row, expected):
+        """lock_project returns True for a locked row and False when the project is gone."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = row
+        service = CalculationService(mock_session)
+
+        # WHEN
+        locked = service.lock_project(uuid4())
+
+        # THEN
+        assert locked is expected
 
     def test_deletes_result_without_committing_when_no_opinions(self):
         """Stages the removal of the result when no opinions are left, without a commit."""

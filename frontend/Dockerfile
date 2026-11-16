@@ -45,7 +45,10 @@ RUN npm run build
 # locally, in which case the placeholder collapses to nothing and connect-src
 # stays at 'self'. Done here rather than at runtime so the served policy is fixed
 # in the image and cannot drift with the container environment.
-RUN API_ORIGIN="$(printf '%s' "${VITE_API_URL}" | sed -n 's#^\(https\{0,1\}://[^/]*\).*#\1#p')" && \
+# The origin is cut with grep -oE and no backslash: Semgrep's Dockerfile parser
+# stops where a `#` sits next to a backslash escape inside a quoted command
+# substitution (the old sed `s#...\)#\1#p`) and skips the rest of the file.
+RUN API_ORIGIN="$(printf '%s' "${VITE_API_URL}" | grep -oE '^https?://[^/]*' || true)" && \
     if [ -n "${API_ORIGIN}" ]; then REPLACEMENT=" ${API_ORIGIN}"; else REPLACEMENT=""; fi && \
     sed -i "s#__API_ORIGIN__#${REPLACEMENT}#g" nginx.conf && \
     ! grep -q '__API_ORIGIN__' nginx.conf
