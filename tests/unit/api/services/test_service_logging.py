@@ -231,6 +231,29 @@ class TestInvitationServiceLogging:
         assert extra["inviter_id"] == str(inviter_id)
         assert extra["project_id"] == str(project_id)
 
+    def test_revoke_logs_event_with_actor_context(self):
+        """revoke_invitation logs invitation_revoked with the admin, invitee and project."""
+        # GIVEN
+        invitation_id, admin_id, invitee_id, project_id = uuid4(), uuid4(), uuid4(), uuid4()
+        invitation = MagicMock()
+        invitation.invitee_id = invitee_id
+        invitation.project_id = project_id
+        session = MagicMock()
+        session.get.return_value = invitation
+        service = InvitationService(session)
+
+        # WHEN
+        with patch("api.services.invitation_service.logger") as mock_logger:
+            service.revoke_invitation(project_id, invitation_id, admin_id)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "invitation_revoked"
+        assert extra["invitation_id"] == str(invitation_id)
+        assert extra["admin_id"] == str(admin_id)
+        assert extra["invitee_id"] == str(invitee_id)
+        assert extra["project_id"] == str(project_id)
+
 
 class TestCalculationServiceLogging:
     """Recalculation outcomes are logged at INFO."""

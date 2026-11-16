@@ -233,6 +233,22 @@ const ProjectDetail = () => {
     }
   };
 
+  const handleRevokeInvitation = async (invitationId: string) => {
+    try {
+      await api.revokeInvitation(projectId, invitationId);
+      toast({ title: t("toast.invitationRevoked") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: describeError(error, tCommon, t("toast.revokeInvitationFailed")),
+        variant: "destructive",
+      });
+    } finally {
+      // Refetch on failure too: a 404 means the invitee already answered, so the row is stale.
+      invalidateProject();
+    }
+  };
+
   const handleTransferOwnership = async () => {
     /* v8 ignore next -- defensive guard: target is always set when invoked */
     if (!transferTarget) return;
@@ -309,6 +325,7 @@ const ProjectDetail = () => {
       currentUserId={user?.id}
       selectedMemberId={profileMember?.user_id}
       onRemove={handleRemoveMember}
+      onRevokeInvitation={handleRevokeInvitation}
       onTransfer={(member) => setTransferTarget(member)}
       onMemberClick={(member) => setProfileMember(member)}
     />

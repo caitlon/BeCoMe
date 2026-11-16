@@ -19,6 +19,9 @@ from api.services.query_helpers import member_count_subquery, select_account_by_
 
 logger = logging.getLogger("api.service.invitation")
 
+# One message for a missing invitation and for one that is not the caller's to act on.
+INVITATION_NOT_FOUND_MESSAGE = "Invitation not found"
+
 
 @dataclass(frozen=True)
 class InvitationWithDetails:
@@ -158,7 +161,7 @@ class InvitationService(BaseService):
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         # Refusing at creation covers new invitations only. One sent before that rule
         # existed is still pending, and accepting it is the step that actually writes the
@@ -231,7 +234,7 @@ class InvitationService(BaseService):
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         project_id = invitation.project_id
         inviter_id = invitation.inviter_id
@@ -244,5 +247,33 @@ class InvitationService(BaseService):
                 "project_id": str(project_id),
                 "inviter_id": str(inviter_id),
                 "user_id": str(user_id),
+            },
+        )
+
+    def revoke_invitation(self, project_id: UUID, invitation_id: UUID, admin_id: UUID) -> None:
+        """Revoke a pending invitation of a project.
+
+        A missing invitation and one that belongs to another project raise the same error,
+        so an admin cannot probe for invitation ids outside their own project.
+
+        :param project_id: Project the admin manages
+        :param invitation_id: Invitation ID
+        :param admin_id: ID of the admin revoking
+        :raises InvitationNotFoundError: If invitation doesn't exist or not in this project
+        """
+        invitation = self.get_invitation_by_id(invitation_id)
+        if not invitation or invitation.project_id != project_id:
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
+
+        invitee_id = invitation.invitee_id
+        self._delete_and_commit(invitation)
+        logger.info(
+            "Invitation revoked",
+            extra={
+                "event": "invitation_revoked",
+                "invitation_id": str(invitation_id),
+                "project_id": str(project_id),
+                "invitee_id": str(invitee_id),
+                "admin_id": str(admin_id),
             },
         )

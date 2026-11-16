@@ -356,6 +356,62 @@ class TestInvitationServiceDeclineInvitation:
             service.decline_invitation(invitation.id, uuid4())
 
 
+class TestInvitationServiceRevokeInvitation:
+    """Tests for InvitationService.revoke_invitation method."""
+
+    def test_deletes_invitation(self):
+        """Invitation is deleted when its project's admin revokes it."""
+        # GIVEN
+        project_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        service = InvitationService(mock_session)
+
+        # WHEN
+        service.revoke_invitation(project_id, invitation.id, uuid4())
+
+        # THEN
+        mock_session.delete.assert_called_once_with(invitation)
+        mock_session.commit.assert_called_once()
+
+    def test_raises_error_when_invitation_not_found(self):
+        """InvitationNotFoundError is raised when invitation doesn't exist."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.revoke_invitation(uuid4(), uuid4(), uuid4())
+        mock_session.delete.assert_not_called()
+
+    def test_raises_error_when_invitation_belongs_to_another_project(self):
+        """InvitationNotFoundError is raised for an invitation of a different project."""
+        # GIVEN
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=uuid4(),
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.revoke_invitation(uuid4(), invitation.id, uuid4())
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+
+
 class TestInvitationServiceGetUserInvitations:
     """Tests for InvitationService.get_user_invitations method."""
 

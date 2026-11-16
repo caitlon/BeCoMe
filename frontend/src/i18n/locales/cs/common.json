@@ -89,6 +89,7 @@
     "resultsChartDesc": "Graf zobrazující aritmetický průměr, medián a nejlepší kompromis",
     "opinionPreviewDesc": "Náhled fuzzy trojúhelníkového čísla s hodnotami {{lower}}, {{peak}}, {{upper}}",
     "removeTeamMember": "Odebrat {{name}} z týmu",
+    "revokeInvitation": "Zrušit pozvánku pro {{name}}",
     "expertOpinions": "Tabulka expertních názorů",
     "teamMembers": "Tabulka členů týmu",
     "mainNavigation": "Hlavní navigace",
