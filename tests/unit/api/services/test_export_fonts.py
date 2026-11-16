@@ -5,6 +5,7 @@ reportlab has no per-glyph fallback: a character the face lacks is drawn as
 would still pass. These tests are what turns that silence into a red build.
 """
 
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -278,3 +279,39 @@ class TestConcurrentRegistration:
         # THEN none of them fails and every face ends up registered
         assert errors == [None] * (latecomers + 1)
         assert {FONT_SANS, FONT_SANS_BOLD, FONT_MONO, FONT_DISPLAY} <= set(pdfmetrics._fonts)
+
+
+class TestConcurrentRendering:
+    """Reportlab's per-document font state is shared, so renders must not overlap."""
+
+    def test_concurrent_renders_all_produce_a_pdf(self):
+        """Many simultaneous renders with the fonts already registered all succeed.
+
+        The faces are process-global ``TTFont`` objects, and reportlab keeps the
+        per-document subset state on them and builds the subset at save time. Two
+        builds running at once corrupted each other and failed inside
+        ``makeSubset`` with ``KeyError`` or ``IndexError``. A tiny switch interval
+        makes the threads interleave inside one render, as a busy server would.
+        """
+        # GIVEN registered fonts and a thread switch interval short enough to interleave builds
+        register_fonts()
+        labels = get_labels(ReportLang.EN)
+        data = _export_data()
+        previous_interval = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+
+        def export(_: int) -> bytes:
+            return PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(data, labels)
+
+        # WHEN many renders run at once
+        try:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [pool.submit(export, index) for index in range(200)]
+                errors = [future.exception() for future in futures]
+        finally:
+            sys.setswitchinterval(previous_interval)
+
+        # THEN every one of them succeeds and returns a PDF
+        failed = [error for error in errors if error is not None]
+        assert not failed, f"{len(failed)} of {len(errors)} renders failed, first: {failed[0]!r}"
+        assert all(future.result().startswith(b"%PDF") for future in futures)
