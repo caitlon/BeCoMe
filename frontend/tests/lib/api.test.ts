@@ -1316,6 +1316,20 @@ describe('ApiClient', () => {
       );
     });
 
+    it('leaveProject sends DELETE to /projects/:id/members/me', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await api.leaveProject('proj-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/members/me'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+
     it('transferOwnership sends POST to /projects/:id/transfer-ownership', async () => {
       const project = { id: 'proj-1', admin_id: 'user-1' };
       mockFetch.mockResolvedValueOnce({

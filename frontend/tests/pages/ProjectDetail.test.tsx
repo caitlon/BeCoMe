@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   createProject,
   createProjectWithRole,
@@ -25,6 +27,7 @@ const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hois
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
+    leaveProject: vi.fn(),
     revokeInvitation: vi.fn(),
     transferOwnership: vi.fn(),
     exportProjectResult: vi.fn(),
@@ -882,6 +885,137 @@ describe('ProjectDetail - Delete Project Flow', () => {
         }),
       );
     });
+  });
+});
+
+describe('ProjectDetail - Leave Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+    );
+  });
+
+  const openLeaveDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^leave project$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+    });
+    return screen.getByRole('dialog');
+  };
+
+  const expectDialogOpenAndProjectRefetched = async (callsBefore: number) => {
+    await waitFor(() => {
+      expect(mockApi.getProject.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+    expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+  };
+
+  it('shows the Leave project button to an expert', async () => {
+    render(<ProjectDetail />);
+
+    expect(await screen.findByRole('button', { name: /^leave project$/i })).toBeInTheDocument();
+  });
+
+  it('does not show the Leave project button to the admin', async () => {
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'admin' })
+    );
+
+    render(<ProjectDetail />);
+
+    await screen.findByText('Test Project');
+    expect(screen.queryByRole('button', { name: /leave project/i })).not.toBeInTheDocument();
+  });
+
+  it('leaves the project after confirmation and goes to the projects list', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    const removeSpy = vi.spyOn(QueryClient.prototype, 'removeQueries');
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+    const dialog = await openLeaveDialog(user);
+    expect(
+      within(dialog).getByText(/if you submitted an opinion, it will be removed/i)
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockApi.leaveProject).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'You left the project' });
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    });
+    expect(removeSpy).toHaveBeenCalledWith({ queryKey: queryKeys.project('project-1') });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.projects, exact: true });
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Leave this project?')).not.toBeInTheDocument();
+    });
+    expect(mockApi.leaveProject).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the fallback error toast and stays on the page when leaving fails', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to leave the project',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
+  });
+
+  it('explains that the owner cannot leave when the API refuses with admin_cannot_leave', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(
+      new HttpError('The project admin cannot leave the project.', 409, 'admin_cannot_leave')
+    );
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            'The project owner cannot leave the project. Make another member the owner first.',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
   });
 });
 

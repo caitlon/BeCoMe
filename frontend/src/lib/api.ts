@@ -661,6 +661,12 @@ class ApiClient {
     });
   }
 
+  async leaveProject(projectId: string): Promise<void> {
+    return this.request<void>(`/projects/${projectId}/members/me`, {
+      method: 'DELETE',
+    });
+  }
+
   async transferOwnership(projectId: string, newAdminId: string): Promise<Project> {
     return this.request<Project>(`/projects/${projectId}/transfer-ownership`, {
       method: 'POST',
