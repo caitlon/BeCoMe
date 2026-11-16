@@ -256,10 +256,12 @@ recalculated in the same transaction, or removed when no opinion is left.
 | PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422; a scale minimum not below the maximum is a 422 with code `scale_range_invalid`; a scale change that would leave an existing opinion outside the new range is a 409 with code `scale_excludes_opinions`) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
+| DELETE | `/api/v1/projects/{id}/members/me` | Leave the project as the caller (`204`; discards their opinion and recalculates). The admin is refused with `409` and code `admin_cannot_leave` and must transfer ownership first; a non-member gets `404` |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member; a 409 when another transfer changed the owner while this one waited (reload and retry) |
 | POST | `/api/v1/projects/{id}/invite` | Invite user; refusals carry a code: 404 `invitee_not_found`, 409 `already_invited`, `already_member` or `example_project_not_invitable` |
 | GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
+| DELETE | `/api/v1/projects/{id}/invitations/{invitation_id}` | Revoke a pending invitation (project admin only); 404 `invitation_not_found` (missing and another project's look the same) |
 
 The members list (`email`) and the opinions list (`user_email`) return an address only to the project admin and on the caller's own row; every other row has `null` in that field.
 

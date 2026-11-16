@@ -705,6 +705,206 @@ class TestListProjectInvitations:
         assert response.status_code == 401
 
 
+class TestRevokeInvitation:
+    """Tests for DELETE /api/v1/projects/{id}/invitations/{invitation_id}."""
+
+    def test_admin_revokes_pending_invitation(self, client):
+        """Revoking returns 204 and the invitation leaves both lists."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/{invitation_id}",
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 204
+        project_list = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        )
+        assert project_list.json() == []
+        own_list = client.get("/api/v1/invitations", headers=auth_header(invitee_token))
+        assert own_list.json() == []
+
+    def test_revoked_invitation_cannot_be_accepted(self, client):
+        """Accepting a revoked invitation gives 404 and adds no member."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/{invitation_id}",
+            headers=auth_header(admin_token),
+        )
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+        assert response.json()["code"] == "invitation_not_found"
+        members = client.get(
+            f"/api/v1/projects/{project['id']}/members",
+            headers=auth_header(admin_token),
+        )
+        assert len(members.json()) == 1
+
+    def test_revoked_invitation_can_be_sent_again(self, client):
+        """The invitee can be invited once more after a revoke."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/{invitation_id}",
+            headers=auth_header(admin_token),
+        )
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 201
+
+    def test_not_allowed_for_expert_member(self, client):
+        """A non-admin member gets 403 and the invitation stays."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        expert_invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "expert@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        client.post(
+            f"/api/v1/invitations/{expert_invitation_id}/accept",
+            headers=auth_header(expert_token),
+        )
+        pending_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/{pending_id}",
+            headers=auth_header(expert_token),
+        )
+
+        # THEN
+        assert response.status_code == 403
+        remaining = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        ).json()
+        assert [item["id"] for item in remaining] == [pending_id]
+
+    def test_not_allowed_for_non_member(self, client):
+        """A non-member gets 404 and the invitation stays."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        outsider_token = register_and_login(client, "outsider@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/{invitation_id}",
+            headers=auth_header(outsider_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+        remaining = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        ).json()
+        assert [item["id"] for item in remaining] == [invitation_id]
+
+    def test_requires_authentication(self, client):
+        """401 returned when not authenticated."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/invitations/00000000-0000-0000-0000-000000000000",
+        )
+
+        # THEN
+        assert response.status_code == 401
+
+    def test_invitation_of_another_project_looks_like_a_missing_one(self, client):
+        """Another project's invitation id answers exactly like an unknown id, and survives."""
+        # GIVEN
+        admin_a_token = register_and_login(client, "admin-a@example.com")
+        admin_b_token = register_and_login(client, "admin-b@example.com")
+        register_and_login(client, "invitee@example.com")
+        project_a = create_project(client, admin_a_token)
+        project_b = create_project(client, admin_b_token)
+        foreign_id = client.post(
+            f"/api/v1/projects/{project_b['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_b_token),
+        ).json()["id"]
+        missing_id = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN
+        responses = [
+            client.delete(
+                f"/api/v1/projects/{project_a['id']}/invitations/{target}",
+                headers=auth_header(admin_a_token),
+            )
+            for target in (missing_id, foreign_id)
+        ]
+
+        # THEN
+        expected = {"detail": "Invitation not found", "code": "invitation_not_found"}
+        assert [r.status_code for r in responses] == [404, 404]
+        assert [r.json() for r in responses] == [expected] * 2
+        remaining = client.get(
+            f"/api/v1/projects/{project_b['id']}/invitations",
+            headers=auth_header(admin_b_token),
+        ).json()
+        assert [item["id"] for item in remaining] == [foreign_id]
+
+
 class TestInvitationErrorCodes:
     """Refusals carry a stable code beside the unchanged detail sentence."""
 

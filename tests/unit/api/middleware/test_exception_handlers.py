@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 
 from api.exceptions import (
     AccountHasOwnedProjectsError,
+    AdminCannotLeaveProjectError,
     AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
@@ -605,6 +606,13 @@ class TestInvitationAndPhotoErrorCodes:
                 "Cannot delete your account while you are the admin of one or more projects. "
                 "Transfer ownership or delete those projects first.",
                 "account_has_owned_projects",
+            ),
+            (
+                AdminCannotLeaveProjectError("user 1 is the admin of project 2"),
+                status.HTTP_409_CONFLICT,
+                "The project admin cannot leave the project. "
+                "Transfer ownership to another member first.",
+                "admin_cannot_leave",
             ),
         ],
     )

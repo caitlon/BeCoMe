@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { Storage } from 'happy-dom';
 import i18n from '@/i18n';
+import { STORAGE_PREFIX, removeAssistantProjectHistory } from '@/components/assistant/history-storage';
 import {
-  STORAGE_PREFIX,
   clearAssistantHistory,
   useAssistantChat,
   type AssistantMessage,
@@ -1482,6 +1482,82 @@ describe('useAssistantChat', () => {
       await waitFor(() => expect(stored()?.[1].status).toBe('cut'));
       expect(stored()?.[1].content).toBe('Half');
     });
+  });
+});
+
+describe('removeAssistantProjectHistory', () => {
+  beforeEach(() => {
+    mockStreamAssistantMessage.mockReset();
+    mockReadAssistantSseStream.mockReset();
+    mockStreamAssistantMessage.mockResolvedValue({ body: {} } as Response);
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('removes one project of one user and nothing else', () => {
+    seed([storedMessage(0, 'user')], 'u1', 'p1');
+    seed([storedMessage(0, 'user')], 'u1', 'p2');
+    seed([storedMessage(0, 'user')], 'u1', 'general');
+    seed([storedMessage(0, 'user')], 'u2', 'p1');
+
+    removeAssistantProjectHistory('u1', 'p1');
+
+    expect(stored('u1', 'p1')).toBeNull();
+    expect(stored('u1', 'p2')).not.toBeNull();
+    expect(stored('u1', 'general')).not.toBeNull();
+    expect(stored('u2', 'p1')).not.toBeNull();
+  });
+
+  it('does not throw when storage is blocked', () => {
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    expect(() => removeAssistantProjectHistory('u1', 'p1')).not.toThrow();
+    // An instance-level spy outlives restoreAllMocks here, so it is undone by hand.
+    removeItem.mockRestore();
+  });
+
+  it('keeps a mounted thread of that project from writing the key again when its turn settles', async () => {
+    const stream = openStream();
+    const { result } = setup({ projectId: 'p1' });
+    ask(result);
+    stream.token('Partial');
+    await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+    expect(stored('u1', 'p1')).toHaveLength(2);
+
+    removeAssistantProjectHistory('u1', 'p1');
+    stream.done();
+
+    await waitFor(() => expect(result.current.messages[1].status).toBe('done'));
+    expect(stored('u1', 'p1')).toBeNull();
+  });
+
+  it('does not stop a mounted thread of another project from writing', async () => {
+    const stream = openStream();
+    const { result } = setup({ projectId: 'p2' });
+    ask(result);
+    stream.token('Partial');
+    await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+    removeAssistantProjectHistory('u1', 'p1');
+    stream.done();
+
+    await waitFor(() => expect(stored('u1', 'p2')?.[1].status).toBe('done'));
+  });
+
+  it('lets a thread mounted after the removal store its conversation', async () => {
+    removeAssistantProjectHistory('u1', 'p1');
+    const stream = openStream();
+    const { result } = setup({ projectId: 'p1' });
+
+    ask(result);
+    stream.done();
+
+    await waitFor(() => expect(stored('u1', 'p1')?.[1].status).toBe('done'));
   });
 });
 

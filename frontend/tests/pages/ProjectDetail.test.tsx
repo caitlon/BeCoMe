@@ -1,9 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+
+// The assistant hooks are chosen when components/assistant is first imported, so the
+// flag is set before any import below runs.
+vi.hoisted(() => vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true'));
+
+// The stub above must not outlive this file.
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
+import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 import {
   createProject,
   createProjectWithRole,
@@ -25,6 +38,8 @@ const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hois
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
+    leaveProject: vi.fn(),
+    revokeInvitation: vi.fn(),
     transferOwnership: vi.fn(),
     exportProjectResult: vi.fn(),
   },
@@ -884,6 +899,137 @@ describe('ProjectDetail - Delete Project Flow', () => {
   });
 });
 
+describe('ProjectDetail - Leave Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+    );
+  });
+
+  const openLeaveDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^leave project$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+    });
+    return screen.getByRole('dialog');
+  };
+
+  const expectDialogOpenAndProjectRefetched = async (callsBefore: number) => {
+    await waitFor(() => {
+      expect(mockApi.getProject.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+    expect(screen.getByText('Leave this project?')).toBeInTheDocument();
+  };
+
+  it('shows the Leave project button to an expert', async () => {
+    render(<ProjectDetail />);
+
+    expect(await screen.findByRole('button', { name: /^leave project$/i })).toBeInTheDocument();
+  });
+
+  it('does not show the Leave project button to the admin', async () => {
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'admin' })
+    );
+
+    render(<ProjectDetail />);
+
+    await screen.findByText('Test Project');
+    expect(screen.queryByRole('button', { name: /leave project/i })).not.toBeInTheDocument();
+  });
+
+  it('leaves the project after confirmation and goes to the projects list', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    const removeSpy = vi.spyOn(QueryClient.prototype, 'removeQueries');
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+    const dialog = await openLeaveDialog(user);
+    expect(
+      within(dialog).getByText(/if you submitted an opinion, it will be removed/i)
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockApi.leaveProject).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'You left the project' });
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    });
+    expect(removeSpy).toHaveBeenCalledWith({ queryKey: queryKeys.project('project-1') });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.projects, exact: true });
+    removeSpy.mockRestore();
+    invalidateSpy.mockRestore();
+  });
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Leave this project?')).not.toBeInTheDocument();
+    });
+    expect(mockApi.leaveProject).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the fallback error toast and stays on the page when leaving fails', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to leave the project',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
+  });
+
+  it('explains that the owner cannot leave when the API refuses with admin_cannot_leave', async () => {
+    const user = userEvent.setup();
+    mockApi.leaveProject.mockRejectedValue(
+      new HttpError('The project admin cannot leave the project.', 409, 'admin_cannot_leave')
+    );
+
+    render(<ProjectDetail />);
+
+    const dialog = await openLeaveDialog(user);
+    const callsBefore = mockApi.getProject.mock.calls.length;
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            'The project owner cannot leave the project. Make another member the owner first.',
+          variant: 'destructive',
+        }),
+      );
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await expectDialogOpenAndProjectRefetched(callsBefore);
+  });
+});
+
 describe('ProjectDetail - Remove Member', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -937,6 +1083,93 @@ describe('ProjectDetail - Remove Member', () => {
         expect.objectContaining({
           title: 'Error',
           description: 'Failed to remove member',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Revoke Invitation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getMembers.mockResolvedValue([
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+    ]);
+    mockApi.getProjectInvitations.mockResolvedValue([
+      createProjectInvitation({
+        id: 'inv-9',
+        invitee_first_name: 'Sophie',
+        invitee_last_name: 'Wagner',
+      }),
+    ]);
+  });
+
+  it('revokes a pending invitation and reloads the project', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.revokeInvitation).toHaveBeenCalledWith('project-1', 'inv-9');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Invitation revoked' });
+    });
+    await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  it('shows error toast when revoking fails', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockRejectedValue(new HttpError('Bad request', 400));
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to revoke invitation',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+
+  it('tells the admin the invitation is gone when the invitee already answered it', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockRejectedValue(
+      new HttpError('Invitation not found', 404, 'invitation_not_found')
+    );
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'This invitation no longer exists.',
           variant: 'destructive',
         }),
       );
@@ -1155,6 +1388,142 @@ describe('ProjectDetail - Header Result Export', () => {
     await waitFor(() => {
       expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en', 'light');
       expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
+    });
+  });
+});
+
+describe('ProjectDetail - assistant history of a left project', () => {
+  const OWN = `${STORAGE_PREFIX}:user-1:project-1`;
+  const OTHER_PROJECT = `${STORAGE_PREFIX}:user-1:project-2`;
+  const GENERAL = `${STORAGE_PREFIX}:user-1:general`;
+  const OTHER_USER = `${STORAGE_PREFIX}:user-2:project-1`;
+  const ALL_KEYS = [OWN, OTHER_PROJECT, GENERAL, OTHER_USER];
+
+  const seedHistory = () => {
+    ALL_KEYS.forEach((key) => window.sessionStorage.setItem(key, '[]'));
+  };
+  const storedKeys = () => ALL_KEYS.filter((key) => window.sessionStorage.getItem(key) !== null);
+
+  // Stands for the panel: it is opened for a project and keeps it, as the real one does.
+  const PanelProbe = ({ openFor }: { openFor: string }) => {
+    const { projectId, openAssistant } = useAssistantUI();
+    return (
+      <>
+        <button onClick={() => openAssistant(openFor)}>open panel</button>
+        <output aria-label="panel project">{projectId ?? 'none'}</output>
+      </>
+    );
+  };
+
+  const renderWithPanel = (openFor = 'project-1') =>
+    render(
+      <AssistantUIProvider>
+        <PanelProbe openFor={openFor} />
+        <ProjectDetail />
+      </AssistantUIProvider>
+    );
+
+  const leave = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^leave project$/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^leave project$/i }));
+  };
+
+  const deleteProject = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: /^delete$/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /delete/i }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    seedHistory();
+    defaultSetup();
+  });
+
+  describe('leaving', () => {
+    beforeEach(() => {
+      mockApi.getProject.mockResolvedValue(
+        createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+      );
+    });
+
+    it('removes that project\'s history and keeps every other one', async () => {
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await leave(userEvent.setup());
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('keeps the history when leaving fails', async () => {
+      mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+      renderWithPanel();
+      await leave(userEvent.setup());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('makes the panel forget the project it was opened for', async () => {
+      const user = userEvent.setup();
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-1');
+      await leave(user);
+
+      await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
+    });
+
+    it('leaves a panel that was opened for another project alone', async () => {
+      const user = userEvent.setup();
+      mockApi.leaveProject.mockResolvedValue(undefined);
+
+      renderWithPanel('project-2');
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      await leave(user);
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-2');
+    });
+  });
+
+  describe('deleting', () => {
+    it('removes that project\'s history and keeps every other one', async () => {
+      mockApi.deleteProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await deleteProject(userEvent.setup());
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('keeps the history when deleting fails', async () => {
+      mockApi.deleteProject.mockRejectedValue(new Error('Delete failed'));
+
+      renderWithPanel();
+      await deleteProject(userEvent.setup());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('makes the panel forget the project it was opened for', async () => {
+      const user = userEvent.setup();
+      mockApi.deleteProject.mockResolvedValue(undefined);
+
+      renderWithPanel();
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      await deleteProject(user);
+
+      await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
     });
   });
 });

@@ -4,6 +4,7 @@ import { HttpError, RateLimitError, StreamIncompleteError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type { AnswerChecks, ChatTurn, SourceRef, TurnTiming } from "@/types/api";
 import { streamAssistantMessage } from "./assistant-api";
+import { generationOf, STORAGE_BASE, storageKeyFor } from "./history-storage";
 import { isRecord } from "./message-shape";
 import { readAssistantSseStream, type AssistantSseEvent } from "./sse";
 
@@ -30,14 +31,6 @@ export interface AssistantMessage {
   readonly createdAt: number;
 }
 
-const STORAGE_BASE = "assistant-chat";
-/**
- * sessionStorage keys are `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`. The
- * version is bumped when the stored shape changes, e.g. SourceRef; a key of an older
- * version is never read, and sign-out still removes it.
- */
-export const STORAGE_PREFIX = `${STORAGE_BASE}:v1`;
-
 // AssistantChatRequest.history takes at most 20 entries (api/schemas/assistant.py).
 const MAX_HISTORY_ENTRIES = 20;
 // The list kept in memory, and the same number is what is stored.
@@ -52,14 +45,12 @@ interface Thread {
   readonly key: string;
   readonly messages: AssistantMessage[];
   readonly epoch: number;
+  // Which removal of this key (removeAssistantProjectHistory) the thread was loaded after.
+  readonly generation: number;
   // How many times an action (append, settle, clear) asked for the thread to be
   // stored. It travels inside the state with the change it belongs to, so no render
   // can take the request for a save without also holding that change.
   readonly writes: number;
-}
-
-function storageKeyFor(userId: string, projectId: string | null): string {
-  return `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`;
 }
 
 function isStoredMessage(value: unknown): value is AssistantMessage {
@@ -101,8 +92,8 @@ function loadMessages(key: string): AssistantMessage[] {
 }
 
 // Storage that is blocked, full or absent must never throw out of the hook.
-function saveMessages({ key, messages, epoch }: Thread): void {
-  if (epoch !== historyEpoch) return;
+function saveMessages({ key, messages, epoch, generation }: Thread): void {
+  if (epoch !== historyEpoch || generation !== generationOf(key)) return;
   try {
     if (messages.length === 0) {
       window.sessionStorage.removeItem(key);
@@ -283,6 +274,7 @@ export function useAssistantChat({
     key: storageKey,
     messages: loadMessages(storageKey),
     epoch: historyEpoch,
+    generation: generationOf(storageKey),
     writes: 0,
   }));
   const [draft, setDraft] = useState("");
@@ -294,7 +286,13 @@ export function useAssistantChat({
   // sees the new key swaps the thread before anything is committed.
   let current = thread;
   if (thread.key !== storageKey) {
-    current = { key: storageKey, messages: loadMessages(storageKey), epoch: historyEpoch, writes: 0 };
+    current = {
+      key: storageKey,
+      messages: loadMessages(storageKey),
+      epoch: historyEpoch,
+      generation: generationOf(storageKey),
+      writes: 0,
+    };
     setThread(current);
   }
   const { messages } = current;

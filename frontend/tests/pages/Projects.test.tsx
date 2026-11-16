@@ -1,10 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+
+// The assistant hooks are chosen when components/assistant is first imported, so the
+// flag is set before any import below runs.
+vi.hoisted(() => vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true'));
+
+// The stub above must not outlive this file.
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
 import { HttpError } from '@/lib/errors';
 import Projects from '@/pages/Projects';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
+import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 import { createProjectWithRole, createInvitation } from '@tests/factories/project';
 
 // Mock api
@@ -848,5 +859,89 @@ describe('Projects - Create Project', () => {
     await waitFor(() => {
       expect(mockApi.getProjects).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('Projects - assistant history of a deleted project', () => {
+  const OWN = `${STORAGE_PREFIX}:1:proj-del`;
+  const OTHER_PROJECT = `${STORAGE_PREFIX}:1:proj-kept`;
+  const GENERAL = `${STORAGE_PREFIX}:1:general`;
+  const OTHER_USER = `${STORAGE_PREFIX}:2:proj-del`;
+  const ALL_KEYS = [OWN, OTHER_PROJECT, GENERAL, OTHER_USER];
+
+  const storedKeys = () => ALL_KEYS.filter((key) => window.sessionStorage.getItem(key) !== null);
+
+  // Stands for the panel: it is opened for a project and keeps it, as the real one does.
+  const PanelProbe = ({ openFor }: { openFor: string }) => {
+    const { projectId, openAssistant } = useAssistantUI();
+    return (
+      <>
+        <button onClick={() => openAssistant(openFor)}>open panel</button>
+        <output aria-label="panel project">{projectId ?? 'none'}</output>
+      </>
+    );
+  };
+
+  const deleteFromList = async (openFor = 'proj-del') => {
+    const user = userEvent.setup();
+    mockApi.getProjects.mockResolvedValue([
+      createProjectWithRole({ id: 'proj-del', name: 'Deletable Project', role: 'admin' }),
+    ]);
+    render(
+      <AssistantUIProvider>
+        <PanelProbe openFor={openFor} />
+        <Projects />
+      </AssistantUIProvider>
+    );
+    await screen.findByText('Deletable Project');
+    await user.click(screen.getByRole('button', { name: /open panel/i }));
+    await user.click(screen.getByRole('button', { name: /project options/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete project/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /delete project/i }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    ALL_KEYS.forEach((key) => window.sessionStorage.setItem(key, '[]'));
+    mockApi.getProjects.mockResolvedValue([]);
+    mockApi.getInvitations.mockResolvedValue([]);
+  });
+
+  it('removes that project\'s history for the current user and keeps every other one', async () => {
+    mockApi.deleteProject.mockResolvedValue({});
+
+    await deleteFromList();
+
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Project deleted' })));
+    expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+  });
+
+  it('keeps the history when deleting fails', async () => {
+    mockApi.deleteProject.mockRejectedValue(new Error('Server error'));
+
+    await deleteFromList();
+
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })));
+    expect(storedKeys()).toEqual(ALL_KEYS);
+    expect(screen.getByLabelText('panel project')).toHaveTextContent('proj-del');
+  });
+
+  it('makes the panel forget the deleted project', async () => {
+    mockApi.deleteProject.mockResolvedValue({});
+
+    await deleteFromList();
+
+    await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
+  });
+
+  it('leaves a panel that was opened for another project alone', async () => {
+    mockApi.deleteProject.mockResolvedValue({});
+
+    await deleteFromList('proj-kept');
+
+    await waitFor(() => expect(storedKeys()).not.toContain(OWN));
+    expect(screen.getByLabelText('panel project')).toHaveTextContent('proj-kept');
   });
 });

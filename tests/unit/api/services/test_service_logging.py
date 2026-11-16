@@ -194,7 +194,9 @@ class TestInvitationServiceLogging:
             invitation,
             Project(id=project_id, name="Project", admin_id=inviter_id),
         ]
-        session.exec.return_value.first.return_value = None
+        # The project lock finds the project, the DELETE removes one row, no membership yet.
+        session.exec.return_value.first.side_effect = [MagicMock(), None]
+        session.exec.return_value.rowcount = 1
         service = InvitationService(session)
 
         # WHEN
@@ -218,6 +220,7 @@ class TestInvitationServiceLogging:
         invitation.project_id = project_id
         session = MagicMock()
         session.get.return_value = invitation
+        session.exec.return_value.rowcount = 1
         service = InvitationService(session)
 
         # WHEN
@@ -229,6 +232,30 @@ class TestInvitationServiceLogging:
         assert extra["event"] == "invitation_declined"
         assert extra["user_id"] == str(user_id)
         assert extra["inviter_id"] == str(inviter_id)
+        assert extra["project_id"] == str(project_id)
+
+    def test_revoke_logs_event_with_actor_context(self):
+        """revoke_invitation logs invitation_revoked with the admin, invitee and project."""
+        # GIVEN
+        invitation_id, admin_id, invitee_id, project_id = uuid4(), uuid4(), uuid4(), uuid4()
+        invitation = MagicMock()
+        invitation.invitee_id = invitee_id
+        invitation.project_id = project_id
+        session = MagicMock()
+        session.get.return_value = invitation
+        session.exec.return_value.rowcount = 1
+        service = InvitationService(session)
+
+        # WHEN
+        with patch("api.services.invitation_service.logger") as mock_logger:
+            service.revoke_invitation(project_id, invitation_id, admin_id)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "invitation_revoked"
+        assert extra["invitation_id"] == str(invitation_id)
+        assert extra["admin_id"] == str(admin_id)
+        assert extra["invitee_id"] == str(invitee_id)
         assert extra["project_id"] == str(project_id)
 
 

@@ -5,8 +5,12 @@ from uuid import uuid4
 
 import pytest
 
-from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError
+from api.db.models import ExpertOpinion, MemberRole, Project, ProjectMember, User
+from api.exceptions import (
+    AdminCannotLeaveProjectError,
+    MemberNotFoundError,
+    ProjectNotFoundError,
+)
 from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 
@@ -251,6 +255,202 @@ class TestProjectMembershipServiceRemoveMember:
         assert extra["project_id"] == str(project_id)
         assert extra["user_id"] == str(user_id)
         assert extra["opinion_discarded"] is False
+
+
+class TestProjectMembershipServiceLeaveProject:
+    """Tests for ProjectMembershipService.leave_project method."""
+
+    @staticmethod
+    def _opinion(project_id, user_id) -> ExpertOpinion:
+        return ExpertOpinion(
+            project_id=project_id,
+            user_id=user_id,
+            lower_bound=1.0,
+            peak=2.0,
+            upper_bound=3.0,
+        )
+
+    @staticmethod
+    def _project(project_id) -> Project:
+        return Project(id=project_id, name="Project", admin_id=uuid4())
+
+    def test_expert_leaves_and_the_opinion_goes_with_the_membership(self):
+        """The expert's membership and opinion are deleted and the result is recalculated."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        opinion = self._opinion(project_id, user_id)
+        calls = MagicMock()
+        calls.calculation_service.lock_project.return_value = True
+        calls.session.get.return_value = self._project(project_id)
+        calls.session.exec.return_value.first.side_effect = [membership, opinion]
+        service = ProjectMembershipService(calls.session)
+
+        # WHEN
+        discarded = service.leave_project(project_id, user_id, calls.calculation_service)
+
+        # THEN
+        assert calls.session.delete.call_args_list == [call(membership), call(opinion)]
+        calls.calculation_service.stage_recalculation.assert_called_once_with(project_id)
+        calls.session.commit.assert_called_once()
+        assert discarded is True
+
+    def test_locks_the_project_before_reading_it_again(self):
+        """The project is locked first, then reloaded from the database, not the identity map."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        calls = MagicMock()
+        calls.calculation_service.lock_project.return_value = True
+        calls.session.get.return_value = self._project(project_id)
+        calls.session.exec.return_value.first.side_effect = [membership, None]
+        service = ProjectMembershipService(calls.session)
+
+        # WHEN
+        service.leave_project(project_id, user_id, calls.calculation_service)
+
+        # THEN
+        names = [
+            c[0]
+            for c in calls.mock_calls
+            if c[0] in {"calculation_service.lock_project", "session.get"}
+        ]
+        assert names == ["calculation_service.lock_project", "session.get"]
+        assert calls.session.get.call_args == call(Project, project_id, populate_existing=True)
+
+    def test_expert_without_an_opinion_stages_no_recalculation(self):
+        """A member without an opinion changes no result, so nothing is recalculated."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        mock_session = MagicMock()
+        mock_session.get.return_value = self._project(project_id)
+        mock_session.exec.return_value.first.side_effect = [membership, None]
+        calculation_service = MagicMock(spec=CalculationService)
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        discarded = service.leave_project(project_id, user_id, calculation_service)
+
+        # THEN
+        mock_session.delete.assert_called_once_with(membership)
+        calculation_service.stage_recalculation.assert_not_called()
+        mock_session.commit.assert_called_once()
+        assert discarded is False
+
+    def test_admin_cannot_leave(self):
+        """The project admin is refused, and nothing is deleted or committed."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        project = Project(id=project_id, name="Project", admin_id=user_id)
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.ADMIN)
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        mock_session.exec.return_value.first.return_value = membership
+        calculation_service = MagicMock(spec=CalculationService)
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(AdminCannotLeaveProjectError):
+            service.leave_project(project_id, user_id, calculation_service)
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+        calculation_service.stage_recalculation.assert_not_called()
+
+    def test_an_admin_role_row_is_refused_even_when_the_project_names_another_owner(self):
+        """The refreshed membership role alone is enough to refuse the leave."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.ADMIN)
+        mock_session = MagicMock()
+        mock_session.get.return_value = self._project(project_id)
+        mock_session.exec.return_value.first.return_value = membership
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(AdminCannotLeaveProjectError):
+            service.leave_project(project_id, user_id, MagicMock(spec=CalculationService))
+        mock_session.delete.assert_not_called()
+
+    def test_raises_when_the_project_is_gone_at_lock_time(self):
+        """A project deleted before the lock is refused, and nothing is removed."""
+        # GIVEN
+        mock_session = MagicMock()
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.lock_project.return_value = False
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ProjectNotFoundError):
+            service.leave_project(uuid4(), uuid4(), calculation_service)
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+
+    def test_raises_when_the_user_is_not_a_member(self):
+        """MemberNotFoundError is raised and nothing is committed."""
+        # GIVEN
+        project_id = uuid4()
+        mock_session = MagicMock()
+        mock_session.get.return_value = self._project(project_id)
+        mock_session.exec.return_value.first.return_value = None
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(MemberNotFoundError, match="not a member"):
+            service.leave_project(project_id, uuid4(), MagicMock(spec=CalculationService))
+        mock_session.delete.assert_not_called()
+        mock_session.commit.assert_not_called()
+
+    def test_failed_recalculation_commits_nothing(self):
+        """An error while staging the result propagates before the commit."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        mock_session = MagicMock()
+        mock_session.get.return_value = self._project(project_id)
+        mock_session.exec.return_value.first.side_effect = [
+            membership,
+            self._opinion(project_id, user_id),
+        ]
+        calculation_service = MagicMock(spec=CalculationService)
+        calculation_service.stage_recalculation.side_effect = RuntimeError("boom")
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(RuntimeError, match="boom"):
+            service.leave_project(project_id, user_id, calculation_service)
+        mock_session.commit.assert_not_called()
+
+    def test_logs_member_left_event(self):
+        """A successful leave logs a member_left event with ids and the discard flag only."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        mock_session = MagicMock()
+        mock_session.get.return_value = self._project(project_id)
+        mock_session.exec.return_value.first.side_effect = [membership, None]
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        with patch("api.services.project_membership_service.logger") as mock_logger:
+            service.leave_project(project_id, user_id, MagicMock(spec=CalculationService))
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert mock_logger.info.call_args[0][0] == "Member left"
+        assert extra == {
+            "event": "member_left",
+            "project_id": str(project_id),
+            "user_id": str(user_id),
+            "opinion_discarded": False,
+        }
 
 
 class TestProjectMembershipServiceIsMember:
