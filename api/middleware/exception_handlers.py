@@ -21,6 +21,7 @@ from api.auth.logging import (
 from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
+    AdminCannotLeaveProjectError,
     AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
@@ -32,8 +33,6 @@ from api.exceptions import (
     InvalidProjectDispositionError,
     InvalidResetTokenError,
     InvalidVerificationTokenError,
-    InvitationAlreadyUsedError,
-    InvitationExpiredError,
     InvitationNotFoundError,
     LoginThrottledError,
     MemberNotFoundError,
@@ -152,6 +151,10 @@ SCALE_RANGE_INVALID_CODE = "scale_range_invalid"
 ACCOUNT_HAS_OWNED_PROJECTS_CODE = "account_has_owned_projects"
 INVALID_PROJECT_DISPOSITION_CODE = "invalid_project_disposition"
 
+# The machine-readable half of the 409 a project admin gets when they try to leave their own
+# project (DELETE /projects/{id}/members/me). The SPA offers the ownership transfer instead.
+ADMIN_CANNOT_LEAVE_CODE = "admin_cannot_leave"
+
 # The machine-readable half of the 403 the CSRF middleware sends. That answer is built in the
 # middleware, outside these handlers, so it takes the code from here and does not go through
 # ERROR_CODES. One value for both refusals (header absent, header wrong), as they share a body.
@@ -178,11 +181,6 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # the response must not repeat it.
     UserNotFoundForInvitationError: (status.HTTP_404_NOT_FOUND, "No user found with this email"),
     # 400 Bad Request
-    InvitationExpiredError: (status.HTTP_400_BAD_REQUEST, "Invitation has expired"),
-    InvitationAlreadyUsedError: (
-        status.HTTP_400_BAD_REQUEST,
-        "Invitation has already been used",
-    ),
     # Same opaque message for invalid and expired so neither can be distinguished.
     InvalidResetTokenError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
     ResetTokenExpiredError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
@@ -256,6 +254,10 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "Cannot delete your account while you are the admin of one or more projects. "
         "Transfer ownership or delete those projects first.",
     ),
+    AdminCannotLeaveProjectError: (
+        status.HTTP_409_CONFLICT,
+        "The project admin cannot leave the project. Transfer ownership to another member first.",
+    ),
     ScaleExcludesOpinionsError: (
         status.HTTP_409_CONFLICT,
         "Existing opinions fall outside the new scale. "
@@ -322,6 +324,7 @@ ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     ScaleRangeError: SCALE_RANGE_INVALID_CODE,
     AccountHasOwnedProjectsError: ACCOUNT_HAS_OWNED_PROJECTS_CODE,
     InvalidProjectDispositionError: INVALID_PROJECT_DISPOSITION_CODE,
+    AdminCannotLeaveProjectError: ADMIN_CANNOT_LEAVE_CODE,
 }
 
 # Default mappings for base exception classes

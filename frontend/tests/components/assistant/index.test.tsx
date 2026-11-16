@@ -27,6 +27,11 @@ vi.mock('@/components/assistant/AssistantPrivacyCard', () => ({
   },
 }));
 
+// The panel's own user: the forget-project hook reads it through useAuth.
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'u1' } }),
+}));
+
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     triggers.throws = false;
@@ -401,6 +406,76 @@ describe('components/assistant build gate', () => {
       const { useAssistantProjectScope } = await import('@/components/assistant');
 
       expect(() => renderHook(() => useAssistantProjectScope('project-9'))).not.toThrow();
+    });
+  });
+
+  describe('useForgetAssistantProject', () => {
+    const KEY = 'assistant-chat:v1:u1:project-9';
+    const OTHER_KEY = 'assistant-chat:v1:u1:project-8';
+
+    async function importHarness() {
+      const { AssistantProvider, useForgetAssistantProject } = await import('@/components/assistant');
+      const { useAssistantUI } = await import('@/contexts/AssistantUIContext');
+
+      function Harness({ openFor }: { openFor: string }) {
+        const { projectId, openAssistant } = useAssistantUI();
+        const forget = useForgetAssistantProject();
+        return (
+          <>
+            <span data-testid="panel-project">{projectId ?? 'none'}</span>
+            <button onClick={() => openAssistant(openFor)}>open</button>
+            <button onClick={() => forget('project-9')}>forget</button>
+          </>
+        );
+      }
+      return ({ openFor }: { openFor: string }) => (
+        <AssistantProvider>
+          <Harness openFor={openFor} />
+        </AssistantProvider>
+      );
+    }
+
+    beforeEach(() => {
+      window.sessionStorage.clear();
+      window.sessionStorage.setItem(KEY, '[]');
+      window.sessionStorage.setItem(OTHER_KEY, '[]');
+    });
+
+    it('removes the conversation and makes the panel forget a project it was opened for', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      const Harness = await importHarness();
+      const user = userEvent.setup();
+
+      render(<Harness openFor="project-9" />);
+      await user.click(screen.getByText('open'));
+      await user.click(screen.getByText('forget'));
+
+      expect(window.sessionStorage.getItem(KEY)).toBeNull();
+      expect(window.sessionStorage.getItem(OTHER_KEY)).not.toBeNull();
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('none');
+    });
+
+    it('leaves a panel opened for another project alone', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      const Harness = await importHarness();
+      const user = userEvent.setup();
+
+      render(<Harness openFor="project-8" />);
+      await user.click(screen.getByText('open'));
+      await user.click(screen.getByText('forget'));
+
+      expect(window.sessionStorage.getItem(KEY)).toBeNull();
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('project-8');
+    });
+
+    it('is a no-op when disabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+      const { useForgetAssistantProject } = await import('@/components/assistant');
+
+      const { result } = renderHook(() => useForgetAssistantProject());
+      result.current('project-9');
+
+      expect(window.sessionStorage.getItem(KEY)).not.toBeNull();
     });
   });
 });

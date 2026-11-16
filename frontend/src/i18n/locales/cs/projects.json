@@ -74,15 +74,19 @@
     "deleteOpinionFailed": "Nepodařilo se smazat názor",
     "invitationAccepted": "Pozvánka přijata",
     "invitationDeclined": "Pozvánka odmítnuta",
+    "invitationRevoked": "Pozvánka byla zrušena",
     "projectDeleted": "Projekt smazán",
     "acceptFailed": "Nepodařilo se přijmout pozvánku",
     "declineFailed": "Nepodařilo se odmítnout pozvánku",
+    "revokeInvitationFailed": "Pozvánku se nepodařilo zrušit",
     "deleteFailed": "Nepodařilo se smazat projekt",
     "createFailed": "Nepodařilo se vytvořit projekt",
     "memberRemoved": "Člen odebrán",
     "removeMemberFailed": "Nepodařilo se odebrat člena",
     "ownershipTransferred": "Vlastnictví předáno",
-    "transferOwnershipFailed": "Předání vlastnictví se nezdařilo"
+    "transferOwnershipFailed": "Předání vlastnictví se nezdařilo",
+    "leftProject": "Projekt jste opustili",
+    "leaveProjectFailed": "Projekt se nepodařilo opustit"
   },
   "detail": {
     "projects": "Projekty",
@@ -174,6 +178,13 @@
     "joined": "Přidal se",
     "actions": "Akce",
     "transferOwnershipLabel": "Učinit uživatele {{name}} vlastníkem"
+  },
+  "leaveProject": {
+    "button": "Opustit projekt",
+    "title": "Opustit tento projekt?",
+    "description": "Pokud jste zadali svůj názor, bude odstraněn a výsledek se přepočítá bez něj. Zpět se dostanete, jen pokud vás správce projektu znovu pozve.",
+    "confirm": "Opustit projekt",
+    "leaving": "Opouštění..."
   },
   "transferOwnership": {
     "title": "Předat vlastnictví?",

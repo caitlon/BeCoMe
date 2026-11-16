@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useForgetAssistantProject } from "@/components/assistant";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -57,6 +58,7 @@ const Projects = () => {
   const { toast } = useToast();
   useDocumentTitle(tCommon("pageTitle.projects"));
   const queryClient = useQueryClient();
+  const forgetAssistantProject = useForgetAssistantProject();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -126,11 +128,12 @@ const Projects = () => {
 
   const deleteProject = useMutation({
     mutationFn: (projectId: string) => api.deleteProject(projectId),
-    onSuccess: () => {
+    onSuccess: (_data, projectId) => {
       toast({ title: t("toast.projectDeleted") });
       setDeleteModalOpen(false);
       setSelectedProject(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      forgetAssistantProject(projectId);
     },
     onError: (error) => {
       if (isUnauthorized(error)) return;

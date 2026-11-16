@@ -35,7 +35,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     profile so the journal pins which build and environment served the run.
     The backends are checked in a background task once the app has started, so
     the app serves at once, and the task is cancelled if it is still running at
-    shutdown. Test runs skip the checks, which would reach the network.
+    shutdown, including when the app exits on an exception. Test runs skip the
+    checks, which would reach the network.
     """
     settings = get_settings()
     lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}
@@ -46,22 +47,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
     checks = None if settings.testing else asyncio.create_task(run_startup_checks(settings))
-    yield
-    if checks is not None:
-        checks.cancel()
-        with suppress(asyncio.CancelledError):
-            await checks
-    if settings.assistant_enabled:
-        # Imported only when the flag is on, like the router in create_app(), so a
-        # deployed process never loads the assistant package.
-        from api.assistant.agent.tracing import shutdown_tracing
-        from api.assistant.deps import close_assistant_resources
+    try:
+        yield
+    finally:
+        if checks is not None:
+            checks.cancel()
+            with suppress(asyncio.CancelledError):
+                await checks
+        if settings.assistant_enabled:
+            # Imported only when the flag is on, like the router in create_app(), so a
+            # deployed process never loads the assistant package.
+            from api.assistant.agent.tracing import shutdown_tracing
+            from api.assistant.deps import close_assistant_resources
 
-        try:
-            shutdown_tracing()
-        finally:
-            await close_assistant_resources()
-    logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
+            try:
+                shutdown_tracing()
+            finally:
+                await close_assistant_resources()
+        logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 
 def _init_sentry(settings: Settings) -> None:

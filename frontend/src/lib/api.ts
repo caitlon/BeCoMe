@@ -644,6 +644,12 @@ class ApiClient {
     return this.request<ProjectInvitation[]>(`/projects/${projectId}/invitations`);
   }
 
+  async revokeInvitation(projectId: string, invitationId: string): Promise<void> {
+    return this.request<void>(`/projects/${projectId}/invitations/${invitationId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Members
   async getMembers(projectId: string): Promise<Member[]> {
     return this.request<Member[]>(`/projects/${projectId}/members`);
@@ -651,6 +657,12 @@ class ApiClient {
 
   async removeMember(projectId: string, userId: string): Promise<void> {
     return this.request<void>(`/projects/${projectId}/members/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async leaveProject(projectId: string): Promise<void> {
+    return this.request<void>(`/projects/${projectId}/members/me`, {
       method: 'DELETE',
     });
   }

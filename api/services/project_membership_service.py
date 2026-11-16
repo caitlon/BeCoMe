@@ -5,13 +5,20 @@ from uuid import UUID
 
 from sqlmodel import col, select
 
-from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError
+from api.db.models import ExpertOpinion, MemberRole, Project, ProjectMember, User
+from api.exceptions import (
+    AdminCannotLeaveProjectError,
+    MemberNotFoundError,
+    ProjectNotFoundError,
+)
 from api.schemas.internal import MemberWithUser
 from api.services.base import BaseService
 from api.services.calculation_service import CalculationService
 
 logger = logging.getLogger("api.service.membership")
+
+# A project deleted before its row could be locked reads as missing.
+PROJECT_NOT_FOUND_MESSAGE = "Project not found"
 
 
 class ProjectMembershipService(BaseService):
@@ -67,25 +74,12 @@ class ProjectMembershipService(BaseService):
         :raises MemberNotFoundError: If user is not a member of the project
         """
         if calculation_service is not None and not calculation_service.lock_project(project_id):
-            raise ProjectNotFoundError("Project not found")
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
 
-        opinion = self._session.exec(
-            select(ExpertOpinion).where(
-                ExpertOpinion.project_id == project_id,
-                ExpertOpinion.user_id == user_id,
-            )
-        ).first()
-
-        self._session.delete(membership)
-        if opinion is not None:
-            self._session.delete(opinion)
-        self._session.flush()
-        if opinion is not None and calculation_service is not None:
-            calculation_service.stage_recalculation(project_id)
-        self._session.commit()
+        opinion_discarded = self._delete_membership(membership, calculation_service)
 
         logger.info(
             "Member removed",
@@ -93,10 +87,64 @@ class ProjectMembershipService(BaseService):
                 "event": "member_removed",
                 "project_id": str(project_id),
                 "user_id": str(user_id),
-                "opinion_discarded": opinion is not None,
+                "opinion_discarded": opinion_discarded,
             },
         )
-        return opinion is not None
+        return opinion_discarded
+
+    def leave_project(
+        self,
+        project_id: UUID,
+        user_id: UUID,
+        calculation_service: CalculationService,
+    ) -> bool:
+        """Remove the caller's own membership and opinion, and recalculate the result.
+
+        Does what :meth:`remove_member` does for an admin's removal. The project row is
+        locked first, as a transfer of ownership locks it, so the two serialize. The
+        project and the membership are then read from the database again, because the
+        request's dependencies loaded them before the wait and, under READ COMMITTED, a
+        transfer that committed meanwhile would otherwise stay invisible. The admin is
+        refused here: a project cannot be left without an admin, and the database would
+        reject the delete at commit.
+
+        :param project_id: Project ID
+        :param user_id: ID of the member who leaves
+        :param calculation_service: Recalculates the result without the discarded opinion
+        :return: True when an opinion was discarded
+        :raises ProjectNotFoundError: If the project was deleted before it could be locked
+        :raises AdminCannotLeaveProjectError: If the user is the project's admin
+        :raises MemberNotFoundError: If user is not a member of the project
+        """
+        if not calculation_service.lock_project(project_id):
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
+        project = self._session.get(Project, project_id, populate_existing=True)
+        membership = self._session.exec(
+            select(ProjectMember)
+            .where(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
+            .execution_options(populate_existing=True)
+        ).first()
+        if project is None:
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
+        if not membership:
+            raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
+        if project.admin_id == user_id or membership.role == MemberRole.ADMIN:
+            raise AdminCannotLeaveProjectError(
+                f"User {user_id} is the admin of project {project_id} and cannot leave it"
+            )
+
+        opinion_discarded = self._delete_membership(membership, calculation_service)
+
+        logger.info(
+            "Member left",
+            extra={
+                "event": "member_left",
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+                "opinion_discarded": opinion_discarded,
+            },
+        )
+        return opinion_discarded
 
     def is_member(self, project_id: UUID, user_id: UUID) -> bool:
         """Check if user is a member of the project.
@@ -144,6 +192,37 @@ class ProjectMembershipService(BaseService):
         """
         membership = self._get_membership(project_id, user_id)
         return membership.role if membership else None
+
+    def _delete_membership(
+        self,
+        membership: ProjectMember,
+        calculation_service: CalculationService | None,
+    ) -> bool:
+        """Delete a membership with the member's opinion and commit.
+
+        Whenever a calculation service is passed, the caller locks the project row
+        first, as ``remove_member`` and ``leave_project`` do. The result is staged
+        for recalculation only when an opinion was discarded, before the one commit.
+
+        :param membership: The membership to delete
+        :param calculation_service: Recalculates the result; ``None`` skips it
+        :return: True when an opinion was discarded
+        """
+        opinion = self._session.exec(
+            select(ExpertOpinion).where(
+                ExpertOpinion.project_id == membership.project_id,
+                ExpertOpinion.user_id == membership.user_id,
+            )
+        ).first()
+
+        self._session.delete(membership)
+        if opinion is not None:
+            self._session.delete(opinion)
+        self._session.flush()
+        if opinion is not None and calculation_service is not None:
+            calculation_service.stage_recalculation(membership.project_id)
+        self._session.commit()
+        return opinion is not None
 
     def _get_membership(self, project_id: UUID, user_id: UUID) -> ProjectMember | None:
         """Get membership record for user in project.

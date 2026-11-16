@@ -7,6 +7,7 @@ import {
   Users,
   UserPlus,
   Trash2,
+  LogOut,
   ChevronDown,
   ChevronUp,
   Info,
@@ -20,7 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useAssistantProjectScope } from "@/components/assistant";
+import { useAssistantProjectScope, useForgetAssistantProject } from "@/components/assistant";
 import { NotFoundState } from "@/components/NotFoundState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -71,6 +72,7 @@ const ProjectDetail = () => {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(true);
   const [showIndividual, setShowIndividual] = useState(false);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
@@ -81,6 +83,7 @@ const ProjectDetail = () => {
   const projectId = id ?? "";
 
   useAssistantProjectScope(id);
+  const forgetAssistantProject = useForgetAssistantProject();
 
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId),
@@ -209,6 +212,7 @@ const ProjectDetail = () => {
       toast({ title: t("toast.projectDeleted") });
       queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantProject(projectId);
       navigate("/projects");
     } catch {
       toast({
@@ -216,6 +220,25 @@ const ProjectDetail = () => {
         description: t("toast.deleteFailed"),
         variant: "destructive",
       });
+    }
+  };
+
+  const handleLeaveProject = async () => {
+    try {
+      await api.leaveProject(projectId);
+      toast({ title: t("toast.leftProject") });
+      queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantProject(projectId);
+      navigate("/projects");
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: describeError(error, tCommon, t("toast.leaveProjectFailed")),
+        variant: "destructive",
+      });
+      // The role may be stale after a transfer or removal in another session.
+      invalidateProject();
     }
   };
 
@@ -230,6 +253,22 @@ const ProjectDetail = () => {
         description: t("toast.removeMemberFailed"),
         variant: "destructive",
       });
+    }
+  };
+
+  const handleRevokeInvitation = async (invitationId: string) => {
+    try {
+      await api.revokeInvitation(projectId, invitationId);
+      toast({ title: t("toast.invitationRevoked") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: describeError(error, tCommon, t("toast.revokeInvitationFailed")),
+        variant: "destructive",
+      });
+    } finally {
+      // Refetch on failure too: a 404 means the invitee already answered, so the row is stale.
+      invalidateProject();
     }
   };
 
@@ -309,6 +348,7 @@ const ProjectDetail = () => {
       currentUserId={user?.id}
       selectedMemberId={profileMember?.user_id}
       onRemove={handleRemoveMember}
+      onRevokeInvitation={handleRevokeInvitation}
       onTransfer={(member) => setTransferTarget(member)}
       onMemberClick={(member) => setProfileMember(member)}
     />
@@ -378,6 +418,17 @@ const ProjectDetail = () => {
                   {t("detail.delete")}
                 </Button>
               </div>
+            )}
+            {project.role === "expert" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive"
+                onClick={() => setLeaveModalOpen(true)}
+              >
+                <LogOut className="h-4 w-4" />
+                {t("leaveProject.button")}
+              </Button>
             )}
             {result && opinions.length > 0 && (
               <div className="ml-auto">
@@ -470,6 +521,16 @@ const ProjectDetail = () => {
           t("deleteModal.details.invitations"),
         ]}
         onConfirm={handleDeleteProject}
+      />
+
+      <DeleteConfirmModal
+        open={leaveModalOpen}
+        onOpenChange={setLeaveModalOpen}
+        title={t("leaveProject.title")}
+        description={t("leaveProject.description")}
+        onConfirm={handleLeaveProject}
+        confirmText={t("leaveProject.confirm")}
+        loadingText={t("leaveProject.leaving")}
       />
 
       <DeleteConfirmModal

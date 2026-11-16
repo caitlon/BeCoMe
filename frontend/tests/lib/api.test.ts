@@ -1268,6 +1268,20 @@ describe('ApiClient', () => {
         expect.objectContaining({ method: 'POST' })
       );
     });
+
+    it('revokeInvitation sends DELETE to /projects/:id/invitations/:invitationId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await api.revokeInvitation('proj-1', 'inv-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/invitations/inv-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
   });
 
   describe('Member Endpoints', () => {
@@ -1298,6 +1312,20 @@ describe('ApiClient', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/projects/proj-1/members/user-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+
+    it('leaveProject sends DELETE to /projects/:id/members/me', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await api.leaveProject('proj-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/members/me'),
         expect.objectContaining({ method: 'DELETE' })
       );
     });

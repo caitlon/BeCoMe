@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import ColumnElement, delete
 from sqlmodel import col, select
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
@@ -15,9 +16,13 @@ from api.exceptions import (
     UserNotFoundForInvitationError,
 )
 from api.services.base import BaseService
+from api.services.calculation_service import CalculationService
 from api.services.query_helpers import member_count_subquery, select_account_by_email
 
 logger = logging.getLogger("api.service.invitation")
+
+# One message for a missing invitation and for one that is not the caller's to act on.
+INVITATION_NOT_FOUND_MESSAGE = "Invitation not found"
 
 
 @dataclass(frozen=True)
@@ -152,42 +157,55 @@ class InvitationService(BaseService):
         :param invitation_id: Invitation ID
         :param user_id: ID of the user accepting
         :return: Created ProjectMember instance
-        :raises InvitationNotFoundError: If invitation doesn't exist or is not for this user
+        :raises InvitationNotFoundError: If invitation doesn't exist or is not for this user,
+            or if a concurrent revoke, decline or project deletion removed it first
         :raises ExampleProjectInvitationError: If the invitation is into the seeded example
         :raises UserAlreadyMemberError: If user is already a member
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
+
+        project_id = invitation.project_id
+        inviter_id = invitation.inviter_id
+
+        # The project row is locked first, as ProjectService.delete_project and every other
+        # writer of a project's members do, so accepting never waits for the invitation row
+        # while a deletion holds the project and waits for it in turn. A project that is
+        # gone took its invitations with it.
+        if not CalculationService(self._session).lock_project(project_id):
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         # Refusing at creation covers new invitations only. One sent before that rule
         # existed is still pending, and accepting it is the step that actually writes the
         # membership, so the same refusal has to stand here. The invitation row is left
         # alone: declining still removes it, and nothing is deleted on the strength of a
         # single flag.
-        project = self._session.get(Project, invitation.project_id)
+        project = self._session.get(Project, project_id)
         if project and project.is_example:
             raise ExampleProjectInvitationError("The example project cannot take invitations")
 
+        # The invitation is removed before the membership is written, and a DELETE that
+        # matched no row means a revoke or a decline committed first: the accept is then
+        # refused instead of adding a member nobody invited any more.
+        self._delete_invitation(invitation_id, col(Invitation.invitee_id) == user_id)
+
         existing_membership = self._session.exec(
             select(ProjectMember).where(
-                ProjectMember.project_id == invitation.project_id,
+                ProjectMember.project_id == project_id,
                 ProjectMember.user_id == user_id,
             )
         ).first()
         if existing_membership:
-            self._delete_and_commit(invitation)
+            self._session.commit()
             raise UserAlreadyMemberError("User is already a member of this project")
 
-        project_id = invitation.project_id
-        inviter_id = invitation.inviter_id
         membership = ProjectMember(
             project_id=project_id,
             user_id=user_id,
             role=MemberRole.EXPERT,
         )
         self._session.add(membership)
-        self._session.delete(invitation)
         self._session.commit()
         self._session.refresh(membership)
         logger.info(
@@ -227,15 +245,17 @@ class InvitationService(BaseService):
 
         :param invitation_id: Invitation ID
         :param user_id: ID of the user declining
-        :raises InvitationNotFoundError: If invitation doesn't exist or not for this user
+        :raises InvitationNotFoundError: If invitation doesn't exist or not for this user,
+            or if a concurrent accept or revoke removed it first
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
-            raise InvitationNotFoundError("Invitation not found")
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
 
         project_id = invitation.project_id
         inviter_id = invitation.inviter_id
-        self._delete_and_commit(invitation)
+        self._delete_invitation(invitation_id, col(Invitation.invitee_id) == user_id)
+        self._session.commit()
         logger.info(
             "Invitation declined",
             extra={
@@ -246,3 +266,53 @@ class InvitationService(BaseService):
                 "user_id": str(user_id),
             },
         )
+
+    def revoke_invitation(self, project_id: UUID, invitation_id: UUID, admin_id: UUID) -> None:
+        """Revoke a pending invitation of a project.
+
+        A missing invitation and one that belongs to another project raise the same error,
+        so an admin cannot probe for invitation ids outside their own project.
+
+        :param project_id: Project the admin manages
+        :param invitation_id: Invitation ID
+        :param admin_id: ID of the admin revoking
+        :raises InvitationNotFoundError: If invitation doesn't exist or not in this project,
+            or if a concurrent accept or decline removed it first
+        """
+        invitation = self.get_invitation_by_id(invitation_id)
+        if not invitation or invitation.project_id != project_id:
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
+
+        invitee_id = invitation.invitee_id
+        self._delete_invitation(invitation_id, col(Invitation.project_id) == project_id)
+        self._session.commit()
+        logger.info(
+            "Invitation revoked",
+            extra={
+                "event": "invitation_revoked",
+                "invitation_id": str(invitation_id),
+                "project_id": str(project_id),
+                "invitee_id": str(invitee_id),
+                "admin_id": str(admin_id),
+            },
+        )
+
+    def _delete_invitation(self, invitation_id: UUID, scope: ColumnElement[bool]) -> None:
+        """Delete one invitation in the caller's transaction and require that it was there.
+
+        Accept, decline and revoke each load the invitation before they delete it, so a
+        concurrent one of the three can remove it in between. Deleting the loaded object
+        would only warn that no row matched. Here the database says whether this call
+        removed the row, and the caller that did not gets the same refusal as for an
+        invitation that never existed.
+
+        :param invitation_id: Invitation ID
+        :param scope: Condition that ties the invitation to the caller, as the load checked it
+        :raises InvitationNotFoundError: If no row matched; the transaction is rolled back
+        """
+        result = self._session.exec(
+            delete(Invitation).where(col(Invitation.id) == invitation_id, scope)
+        )
+        if result.rowcount != 1:
+            self._session.rollback()
+            raise InvitationNotFoundError(INVITATION_NOT_FOUND_MESSAGE)
