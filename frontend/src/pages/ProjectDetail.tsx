@@ -21,7 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useAssistantProjectScope } from "@/components/assistant";
+import { useAssistantProjectScope, useForgetAssistantProject } from "@/components/assistant";
 import { NotFoundState } from "@/components/NotFoundState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -83,6 +83,7 @@ const ProjectDetail = () => {
   const projectId = id ?? "";
 
   useAssistantProjectScope(id);
+  const forgetAssistantProject = useForgetAssistantProject();
 
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId),
@@ -211,6 +212,7 @@ const ProjectDetail = () => {
       toast({ title: t("toast.projectDeleted") });
       queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantProject(projectId);
       navigate("/projects");
     } catch {
       toast({
@@ -227,6 +229,7 @@ const ProjectDetail = () => {
       toast({ title: t("toast.leftProject") });
       queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
+      forgetAssistantProject(projectId);
       navigate("/projects");
     } catch (error) {
       toast({
