@@ -17,6 +17,14 @@ from api.exceptions import (
 from api.services.invitation_service import InvitationService
 
 
+def _result(*, first=None, rowcount=1) -> MagicMock:
+    """Build one ``session.exec`` result: a row for ``first()``, a count for a DELETE."""
+    result = MagicMock()
+    result.first.return_value = first
+    result.rowcount = rowcount
+    return result
+
+
 class TestInvitationServiceInviteByEmail:
     """Tests for InvitationService.invite_by_email method."""
 
@@ -198,13 +206,16 @@ class TestInvitationServiceAcceptInvitation:
             invitee_id=user_id,
             inviter_id=uuid4(),
         )
+        project = Project(id=project_id, name="Project", admin_id=uuid4())
         mock_session = MagicMock()
         # Two gets: the invitation, then the project the example-project rule reads.
-        mock_session.get.side_effect = [
-            invitation,
-            Project(id=project_id, name="Project", admin_id=uuid4()),
+        mock_session.get.side_effect = [invitation, project]
+        # Three statements: lock the project, delete the invitation, look for a membership.
+        mock_session.exec.side_effect = [
+            _result(first=project),
+            _result(rowcount=1),
+            _result(first=None),
         ]
-        mock_session.exec.return_value.first.return_value = None  # No existing membership
         service = InvitationService(mock_session)
 
         # WHEN
@@ -214,8 +225,55 @@ class TestInvitationServiceAcceptInvitation:
         assert membership.project_id == project_id
         assert membership.user_id == user_id
         assert membership.role == MemberRole.EXPERT
-        mock_session.delete.assert_called_once_with(invitation)
+        mock_session.add.assert_called_once_with(membership)
+        mock_session.delete.assert_not_called()
         mock_session.commit.assert_called_once()
+        mock_session.rollback.assert_not_called()
+
+    def test_refuses_and_adds_no_member_when_the_invitation_was_removed_meanwhile(self):
+        """A DELETE that matched no row means a revoke or a decline won; no member is added."""
+        # GIVEN
+        user_id = uuid4()
+        project_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=user_id,
+            inviter_id=uuid4(),
+        )
+        project = Project(id=project_id, name="Project", admin_id=uuid4())
+        mock_session = MagicMock()
+        mock_session.get.side_effect = [invitation, project]
+        mock_session.exec.side_effect = [_result(first=project), _result(rowcount=0)]
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.accept_invitation(invitation.id, user_id)
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_called()
+        mock_session.rollback.assert_called_once()
+
+    def test_refuses_when_the_project_no_longer_exists(self):
+        """A project deleted meanwhile took its invitations with it."""
+        # GIVEN
+        user_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=uuid4(),
+            invitee_id=user_id,
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        mock_session.exec.side_effect = [_result(first=None)]
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.accept_invitation(invitation.id, user_id)
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_called()
 
     def test_raises_error_when_invitation_not_found(self):
         """InvitationNotFoundError is raised when invitation doesn't exist."""
@@ -262,17 +320,22 @@ class TestInvitationServiceAcceptInvitation:
             user_id=user_id,
             role=MemberRole.EXPERT,
         )
+        project = Project(id=project_id, name="Project", admin_id=uuid4())
         mock_session = MagicMock()
-        mock_session.get.side_effect = [
-            invitation,
-            Project(id=project_id, name="Project", admin_id=uuid4()),
+        mock_session.get.side_effect = [invitation, project]
+        mock_session.exec.side_effect = [
+            _result(first=project),
+            _result(rowcount=1),
+            _result(first=existing_membership),
         ]
-        mock_session.exec.return_value.first.return_value = existing_membership
         service = InvitationService(mock_session)
 
         # WHEN/THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
             service.accept_invitation(invitation.id, user_id)
+        # The invitation is still consumed, and nothing is added
+        mock_session.commit.assert_called_once()
+        mock_session.add.assert_not_called()
 
     def test_refuses_an_invitation_into_the_example_project(self):
         """An invitation that predates the creation rule still cannot be accepted.
@@ -292,6 +355,7 @@ class TestInvitationServiceAcceptInvitation:
         example = Project(id=project_id, name="Example", admin_id=uuid4(), is_example=True)
         mock_session = MagicMock()
         mock_session.get.side_effect = [invitation, example]
+        mock_session.exec.side_effect = [_result(first=example)]
         service = InvitationService(mock_session)
 
         # WHEN/THEN
@@ -318,14 +382,37 @@ class TestInvitationServiceDeclineInvitation:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = invitation
+        mock_session.exec.return_value = _result(rowcount=1)
         service = InvitationService(mock_session)
 
         # WHEN
         service.decline_invitation(invitation_id, user_id)
 
         # THEN
-        mock_session.delete.assert_called_once_with(invitation)
+        mock_session.exec.assert_called_once()
         mock_session.commit.assert_called_once()
+        mock_session.rollback.assert_not_called()
+
+    def test_refuses_when_the_invitation_was_removed_meanwhile(self):
+        """A DELETE that matched no row means an accept or a revoke won."""
+        # GIVEN
+        user_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=uuid4(),
+            invitee_id=user_id,
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        mock_session.exec.return_value = _result(rowcount=0)
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.decline_invitation(invitation.id, user_id)
+        mock_session.commit.assert_not_called()
+        mock_session.rollback.assert_called_once()
 
     def test_raises_error_when_invitation_not_found(self):
         """InvitationNotFoundError is raised when invitation doesn't exist."""
@@ -371,14 +458,37 @@ class TestInvitationServiceRevokeInvitation:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = invitation
+        mock_session.exec.return_value = _result(rowcount=1)
         service = InvitationService(mock_session)
 
         # WHEN
         service.revoke_invitation(project_id, invitation.id, uuid4())
 
         # THEN
-        mock_session.delete.assert_called_once_with(invitation)
+        mock_session.exec.assert_called_once()
         mock_session.commit.assert_called_once()
+        mock_session.rollback.assert_not_called()
+
+    def test_refuses_when_the_invitation_was_removed_meanwhile(self):
+        """A DELETE that matched no row means an accept or a decline won."""
+        # GIVEN
+        project_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        mock_session.exec.return_value = _result(rowcount=0)
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.revoke_invitation(project_id, invitation.id, uuid4())
+        mock_session.commit.assert_not_called()
+        mock_session.rollback.assert_called_once()
 
     def test_raises_error_when_invitation_not_found(self):
         """InvitationNotFoundError is raised when invitation doesn't exist."""
@@ -390,7 +500,7 @@ class TestInvitationServiceRevokeInvitation:
         # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.revoke_invitation(uuid4(), uuid4(), uuid4())
-        mock_session.delete.assert_not_called()
+        mock_session.exec.assert_not_called()
 
     def test_raises_error_when_invitation_belongs_to_another_project(self):
         """InvitationNotFoundError is raised for an invitation of a different project."""
@@ -408,7 +518,7 @@ class TestInvitationServiceRevokeInvitation:
         # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.revoke_invitation(uuid4(), invitation.id, uuid4())
-        mock_session.delete.assert_not_called()
+        mock_session.exec.assert_not_called()
         mock_session.commit.assert_not_called()
 
 

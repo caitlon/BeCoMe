@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, delete, event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import Session, SQLModel, select
@@ -24,6 +24,7 @@ from api.db.models import (
     CalculationResult,
     EmailVerificationToken,
     ExpertOpinion,
+    Invitation,
     MemberRole,
     Project,
     ProjectMember,
@@ -31,10 +32,12 @@ from api.db.models import (
 )
 from api.exceptions import (
     AdminCannotLeaveProjectError,
+    InvitationNotFoundError,
     ProjectNotFoundError,
     ProjectOwnershipChangedError,
 )
 from api.services.calculation_service import CalculationService
+from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
@@ -1111,6 +1114,238 @@ class TestAccountErasureAfterTransfer:
                 select(ProjectMember).where(ProjectMember.project_id == project_id)
             ).all()
             assert [(m.user_id, m.role) for m in members] == [(expert_id, MemberRole.ADMIN)]
+
+
+class TestInvitationRaces:
+    """An invitation that is accepted, declined and revoked at the same time."""
+
+    @staticmethod
+    def _seed(pg_engine) -> tuple[UUID, UUID, UUID, UUID]:
+        """Commit a project with a pending invitation; return project, invitation, invitee, admin."""
+        with Session(pg_engine) as setup:
+            admin = User(
+                email="admin@example.com", hashed_password="x", first_name="A", last_name="A"
+            )
+            invitee = User(
+                email="invitee@example.com", hashed_password="x", first_name="I", last_name="I"
+            )
+            setup.add_all([admin, invitee])
+            setup.flush()
+            project = add_project(setup, admin, name="Invited")
+            invitation = Invitation(
+                project_id=project.id, invitee_id=invitee.id, inviter_id=admin.id
+            )
+            setup.add(invitation)
+            setup.commit()
+            return project.id, invitation.id, invitee.id, admin.id
+
+    @staticmethod
+    def _invitee_is_member(pg_engine, project_id: UUID, invitee_id: UUID) -> bool:
+        with Session(pg_engine) as check:
+            return (
+                check.exec(
+                    select(ProjectMember).where(
+                        ProjectMember.project_id == project_id,
+                        ProjectMember.user_id == invitee_id,
+                    )
+                ).first()
+                is not None
+            )
+
+    @staticmethod
+    def _invitation_exists(pg_engine, invitation_id: UUID) -> bool:
+        with Session(pg_engine) as check:
+            return check.get(Invitation, invitation_id) is not None
+
+    @pytest.mark.parametrize("winner", ["revoke", "decline"])
+    def test_an_accept_that_lost_the_race_is_refused_and_adds_no_member(self, pg_engine, winner):
+        """
+        GIVEN an accept request that already loaded the pending invitation
+        AND a revoke or a decline that deleted the invitation and committed meanwhile
+        WHEN the accept goes on
+        THEN it is refused as not found and the invitee is not a member
+
+        Without the row-count check the accept inserts the membership anyway and the
+        admin's revoke is a success the database does not stand behind.
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, admin_id = self._seed(pg_engine)
+
+        with Session(pg_engine) as stale, Session(pg_engine) as other:
+            loaded = stale.get(Invitation, invitation_id)
+            assert loaded is not None  # held, so the session cannot reload the row
+
+            # WHEN the other request removes the invitation and commits first
+            if winner == "revoke":
+                InvitationService(other).revoke_invitation(project_id, invitation_id, admin_id)
+            else:
+                InvitationService(other).decline_invitation(invitation_id, invitee_id)
+
+            # THEN the stale accept is refused
+            with pytest.raises(InvitationNotFoundError):
+                InvitationService(stale).accept_invitation(invitation_id, invitee_id)
+
+        assert not self._invitee_is_member(pg_engine, project_id, invitee_id)
+        assert not self._invitation_exists(pg_engine, invitation_id)
+
+    def test_a_revoke_that_lost_the_race_to_an_accept_is_refused(self, pg_engine):
+        """
+        GIVEN a revoke request that already loaded the pending invitation
+        AND an accept that committed meanwhile
+        WHEN the revoke goes on
+        THEN it is refused as not found, and the invitee stays a member
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, admin_id = self._seed(pg_engine)
+
+        with Session(pg_engine) as stale, Session(pg_engine) as other:
+            loaded = stale.get(Invitation, invitation_id)
+            assert loaded is not None  # held, so the session cannot reload the row
+
+            # WHEN
+            InvitationService(other).accept_invitation(invitation_id, invitee_id)
+
+            # THEN
+            with pytest.raises(InvitationNotFoundError):
+                InvitationService(stale).revoke_invitation(project_id, invitation_id, admin_id)
+
+        assert self._invitee_is_member(pg_engine, project_id, invitee_id)
+        assert not self._invitation_exists(pg_engine, invitation_id)
+
+    def test_a_decline_that_lost_the_race_to_an_accept_is_refused(self, pg_engine):
+        """
+        GIVEN a decline request that already loaded the pending invitation
+        AND an accept that committed meanwhile
+        WHEN the decline goes on
+        THEN it is refused as not found, and the invitee stays a member
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, _ = self._seed(pg_engine)
+
+        with Session(pg_engine) as stale, Session(pg_engine) as other:
+            loaded = stale.get(Invitation, invitation_id)
+            assert loaded is not None  # held, so the session cannot reload the row
+
+            # WHEN
+            InvitationService(other).accept_invitation(invitation_id, invitee_id)
+
+            # THEN
+            with pytest.raises(InvitationNotFoundError):
+                InvitationService(stale).decline_invitation(invitation_id, invitee_id)
+
+        assert self._invitee_is_member(pg_engine, project_id, invitee_id)
+        assert not self._invitation_exists(pg_engine, invitation_id)
+
+    def test_an_accept_waiting_on_an_uncommitted_revoke_is_refused_when_it_commits(self, pg_engine):
+        """
+        GIVEN a revoke that has deleted the invitation row but not committed yet
+        WHEN an accept reaches the same row, waits for it, and the revoke then commits
+        THEN the accept is refused as not found and the invitee is not a member
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, _ = self._seed(pg_engine)
+
+        def accept_transaction() -> None:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                InvitationService(session).accept_invitation(invitation_id, invitee_id)
+
+        # WHEN
+        with (
+            TestConcurrentRecalculation._open_session(pg_engine) as revoke,
+            ThreadPoolExecutor(max_workers=1) as executor,
+        ):
+            revoke.exec(delete(Invitation).where(Invitation.id == invitation_id))
+            future = executor.submit(accept_transaction)
+            time.sleep(0.5)
+            still_waiting = not future.done()
+            revoke.commit()
+            error = future.exception(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert isinstance(error, InvitationNotFoundError)
+        assert not self._invitee_is_member(pg_engine, project_id, invitee_id)
+
+    def test_an_accept_that_waits_for_a_project_delete_is_refused_without_deadlock(self, pg_engine):
+        """
+        GIVEN a project deletion that holds the project row
+        WHEN an accept of one of its invitations reaches the project lock and the delete commits
+        THEN the accept is refused as not found, and the project is gone
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, _ = self._seed(pg_engine)
+
+        def accept_transaction() -> None:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                InvitationService(session).accept_invitation(invitation_id, invitee_id)
+
+        # WHEN
+        with (
+            TestConcurrentRecalculation._open_session(pg_engine) as delete_session,
+            ThreadPoolExecutor(max_workers=1) as executor,
+        ):
+            delete_session.exec(
+                select(Project).where(Project.id == project_id).with_for_update()
+            ).one()
+            future = executor.submit(accept_transaction)
+            time.sleep(0.5)
+            still_waiting = not future.done()
+            ProjectService(delete_session).delete_project(project_id)
+            error = future.exception(timeout=30)
+
+        # THEN
+        assert still_waiting
+        assert isinstance(error, InvitationNotFoundError)
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
+
+    def test_a_project_delete_that_waits_for_an_accept_does_not_deadlock(
+        self, pg_engine, monkeypatch
+    ):
+        """
+        GIVEN an accept that holds the project lock
+        WHEN the project deletion starts and waits for it, and the accept then commits
+        THEN neither side deadlocks, the accept returns its membership, and the project is gone
+        """
+        # GIVEN
+        project_id, invitation_id, invitee_id, _ = self._seed(pg_engine)
+        holding = threading.Event()
+        delete_waiting = threading.Event()
+        lock = CalculationService.lock_project
+
+        def pausing_lock(service: CalculationService, pid: UUID) -> bool:
+            if holding.is_set():
+                return lock(service, pid)
+            locked = lock(service, pid)
+            holding.set()
+            assert delete_waiting.wait(timeout=10)
+            time.sleep(0.5)
+            return locked
+
+        monkeypatch.setattr(CalculationService, "lock_project", pausing_lock)
+
+        def accept_transaction() -> ProjectMember:
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                return InvitationService(session).accept_invitation(invitation_id, invitee_id)
+
+        def delete_transaction() -> None:
+            assert holding.wait(timeout=10)
+            delete_waiting.set()
+            with TestConcurrentRecalculation._open_session(pg_engine) as session:
+                ProjectService(session).delete_project(project_id)
+
+        # WHEN
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            accept = executor.submit(accept_transaction)
+            deletion = executor.submit(delete_transaction)
+            accept_error = accept.exception(timeout=30)
+            delete_error = deletion.exception(timeout=30)
+
+        # THEN
+        assert accept_error is None
+        assert delete_error is None
+        with Session(pg_engine) as check:
+            assert check.get(Project, project_id) is None
 
 
 class TestSavepointAndPartialRollback:
