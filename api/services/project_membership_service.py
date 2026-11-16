@@ -17,6 +17,9 @@ from api.services.calculation_service import CalculationService
 
 logger = logging.getLogger("api.service.membership")
 
+# A project deleted before its row could be locked reads as missing.
+PROJECT_NOT_FOUND_MESSAGE = "Project not found"
+
 
 class ProjectMembershipService(BaseService):
     """Service for project membership operations.
@@ -71,7 +74,7 @@ class ProjectMembershipService(BaseService):
         :raises MemberNotFoundError: If user is not a member of the project
         """
         if calculation_service is not None and not calculation_service.lock_project(project_id):
-            raise ProjectNotFoundError("Project not found")
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
@@ -114,7 +117,7 @@ class ProjectMembershipService(BaseService):
         :raises MemberNotFoundError: If user is not a member of the project
         """
         if not calculation_service.lock_project(project_id):
-            raise ProjectNotFoundError("Project not found")
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
         project = self._session.get(Project, project_id, populate_existing=True)
         membership = self._session.exec(
             select(ProjectMember)
@@ -122,7 +125,7 @@ class ProjectMembershipService(BaseService):
             .execution_options(populate_existing=True)
         ).first()
         if project is None:
-            raise ProjectNotFoundError("Project not found")
+            raise ProjectNotFoundError(PROJECT_NOT_FOUND_MESSAGE)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
         if project.admin_id == user_id or membership.role == MemberRole.ADMIN:
