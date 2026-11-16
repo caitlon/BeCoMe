@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, text
 from sqlmodel import Field, Relationship, SQLModel
 
 from api.db.utils import utc_now
@@ -73,7 +73,12 @@ class User(SQLModel, table=True):
 
 
 class Project(SQLModel, table=True):
-    """A project for group decision-making."""
+    """A project for group decision-making.
+
+    ``admin_id`` is the project's one ADMIN member: the database requires a matching ADMIN
+    row in ``project_members`` at commit, so create a project together with its membership
+    and change owners only through ``ProjectService.transfer_ownership``.
+    """
 
     __tablename__ = "projects"
     # The bounds CHECK also refuses NaN and both infinities: PostgreSQL orders NaN above every
@@ -85,6 +90,18 @@ class Project(SQLModel, table=True):
             "scale_min >= -1e15 AND scale_min <= 1e15 AND scale_max >= -1e15 AND scale_max <= 1e15",
             name="ck_projects_scale_bounds",
         ),
+        CheckConstraint("admin_role = 'ADMIN'", name="ck_projects_admin_role_is_admin"),
+        # Deferred, so a transfer can demote the old admin and promote the new one inside one
+        # transaction; it is checked at commit. use_alter keeps it out of the table creation
+        # order, since project_members already points back at projects.
+        ForeignKeyConstraint(
+            ["id", "admin_id", "admin_role"],
+            ["project_members.project_id", "project_members.user_id", "project_members.role"],
+            name="fk_projects_admin_membership",
+            use_alter=True,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
@@ -95,6 +112,13 @@ class Project(SQLModel, table=True):
     # The API rejects such deletes with 409 first (see delete_current_user); this is
     # the defense-in-depth backstop. Ownership transfer keeps admin_id in sync.
     admin_id: UUID = Field(foreign_key=_USERS_FK, ondelete="RESTRICT")
+    # Always ADMIN: the CHECK pins it, and the composite foreign key to project_members
+    # (id, admin_id, admin_role) then requires admin_id to hold that project's ADMIN
+    # membership. The column exists only to carry that tie, so the API never exposes it.
+    admin_role: MemberRole = Field(
+        default=MemberRole.ADMIN,
+        sa_column_kwargs={"server_default": "ADMIN"},
+    )
     scale_min: float = Field(default=0.0)
     scale_max: float = Field(default=100.0)
     scale_unit: str = Field(default="", max_length=50)
@@ -110,7 +134,11 @@ class Project(SQLModel, table=True):
     admin: User = Relationship(back_populates="owned_projects")
     members: list["ProjectMember"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"cascade": _CASCADE_ALL_DELETE_ORPHAN},
+        sa_relationship_kwargs={
+            "cascade": _CASCADE_ALL_DELETE_ORPHAN,
+            # The composite admin foreign key is a second path between the two tables.
+            "foreign_keys": "[ProjectMember.project_id]",
+        },
     )
     invitations: list["Invitation"] = Relationship(
         back_populates="project",
@@ -129,11 +157,27 @@ class Project(SQLModel, table=True):
 class ProjectMember(SQLModel, table=True):
     """Many-to-many relationship between users and projects with roles.
 
-    One user can be a member of a project only once (unique constraint).
+    One user can be a member of a project only once (unique constraint), and a project has
+    exactly one ADMIN member, the user in ``projects.admin_id``. The partial unique index
+    allows at most one ADMIN row per project, and the deferred composite foreign key on
+    ``projects`` requires that row to exist and to belong to ``admin_id``. The unique
+    constraint over (project_id, user_id, role) is that foreign key's target.
     """
 
     __tablename__ = "project_members"
-    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id"),
+        UniqueConstraint(
+            "project_id", "user_id", "role", name="uq_project_members_project_user_role"
+        ),
+        Index(
+            "uq_project_members_one_admin",
+            "project_id",
+            unique=True,
+            postgresql_where=text("role = 'ADMIN'"),
+            sqlite_where=text("role = 'ADMIN'"),
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key=_PROJECTS_FK, index=True, ondelete="CASCADE")
@@ -141,7 +185,10 @@ class ProjectMember(SQLModel, table=True):
     role: MemberRole = Field(default=MemberRole.EXPERT)
     joined_at: datetime = Field(default_factory=utc_now)
 
-    project: Project = Relationship(back_populates="members")
+    project: Project = Relationship(
+        back_populates="members",
+        sa_relationship_kwargs={"foreign_keys": "[ProjectMember.project_id]"},
+    )
     user: User = Relationship(back_populates="memberships")
 
 

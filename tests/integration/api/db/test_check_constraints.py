@@ -64,12 +64,11 @@ class TestCheckConstraints:
         """
         # GIVEN
         user = _make_user(session)
-        project = Project(name="Bad", admin_id=user.id, scale_min=100.0, scale_max=100.0)
 
         # WHEN/THEN
-        session.add(project)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        with pytest.raises(IntegrityError, match="ck_projects_scale_order"):
+            add_project(session, user, name="Bad", scale_min=100.0, scale_max=100.0)
+        session.rollback()
 
     @pytest.mark.parametrize(
         ("scale_min", "scale_max"),
@@ -83,12 +82,11 @@ class TestCheckConstraints:
         """
         # GIVEN
         user = _make_user(session)
-        project = Project(name="Bad", admin_id=user.id, scale_min=scale_min, scale_max=scale_max)
 
         # WHEN/THEN
-        session.add(project)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        with pytest.raises(IntegrityError, match="ck_projects_scale_bounds"):
+            add_project(session, user, name="Bad", scale_min=scale_min, scale_max=scale_max)
+        session.rollback()
 
     def test_expert_opinion_fuzzy_order_rejected(self, session):
         """

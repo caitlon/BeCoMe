@@ -1115,6 +1115,14 @@ themselves through `ON DELETE CASCADE` (memberships, opinions, sent and received
 invitations, reset tokens, activation tokens). A project a user **admins** is shared work,
 so `projects.admin_id` uses `ON DELETE RESTRICT`: the database refuses to orphan or silently
 erase a shared project, which is why the erasure endpoint requires an explicit disposition
-for each one (see [GDPR](#gdpr-export-and-erasure)). Schema changes ship as reversible
+for each one (see [GDPR](#gdpr-export-and-erasure)). Every project has exactly one ADMIN
+membership, and `projects.admin_id` is that member. A partial unique index on
+`project_members` (`uq_project_members_one_admin`) allows one ADMIN row per project, and a
+deferred composite foreign key from `projects (id, admin_id, admin_role)` to
+`project_members (project_id, user_id, role)`, with `admin_role` pinned to `ADMIN` by a
+CHECK, requires that row to exist and to belong to `admin_id`. The check runs at commit, so
+a transfer demotes the old admin and promotes the new one in one transaction, and a project
+is created together with its membership; a commit that leaves a project with no admin, two
+admins or an admin other than `admin_id` is refused. Schema changes ship as reversible
 Alembic migrations run through the migration-only superuser URL, keeping DDL off the runtime
 role.
