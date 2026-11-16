@@ -94,6 +94,55 @@ describe('TeamTable - Pending Invitations', () => {
   });
 });
 
+describe('TeamTable - Revoke Invitation', () => {
+  const invitation = createProjectInvitation({
+    id: 'inv-7',
+    invitee_first_name: 'Sophie',
+    invitee_last_name: 'Wagner',
+  });
+
+  it('calls onRevokeInvitation with the invitation id when the admin clicks revoke', async () => {
+    const user = userEvent.setup();
+    const onRevokeInvitation = vi.fn();
+
+    render(
+      <TeamTable
+        {...baseProps}
+        members={[]}
+        pendingInvitations={[invitation]}
+        onRevokeInvitation={onRevokeInvitation}
+      />
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Revoke the invitation for Sophie Wagner' })
+    );
+
+    expect(onRevokeInvitation).toHaveBeenCalledTimes(1);
+    expect(onRevokeInvitation).toHaveBeenCalledWith('inv-7');
+  });
+
+  it('shows no revoke button to a non-admin', () => {
+    render(
+      <TeamTable
+        {...baseProps}
+        isAdmin={false}
+        members={[]}
+        pendingInvitations={[invitation]}
+        onRevokeInvitation={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /revoke the invitation/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no revoke button when no handler is given', () => {
+    render(<TeamTable {...baseProps} members={[]} pendingInvitations={[invitation]} />);
+
+    expect(screen.queryByRole('button', { name: /revoke the invitation/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('TeamTable - Row Semantics', () => {
   const members = [
     createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),

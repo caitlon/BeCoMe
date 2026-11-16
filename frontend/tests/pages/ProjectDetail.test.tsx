@@ -25,6 +25,7 @@ const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hois
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
+    revokeInvitation: vi.fn(),
     transferOwnership: vi.fn(),
     exportProjectResult: vi.fn(),
   },
@@ -937,6 +938,89 @@ describe('ProjectDetail - Remove Member', () => {
         expect.objectContaining({
           title: 'Error',
           description: 'Failed to remove member',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Revoke Invitation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getMembers.mockResolvedValue([
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+    ]);
+    mockApi.getProjectInvitations.mockResolvedValue([
+      createProjectInvitation({
+        id: 'inv-9',
+        invitee_first_name: 'Sophie',
+        invitee_last_name: 'Wagner',
+      }),
+    ]);
+  });
+
+  it('revokes a pending invitation and reloads the project', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    const callsBefore = mockApi.getProjectInvitations.mock.calls.length;
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.revokeInvitation).toHaveBeenCalledWith('project-1', 'inv-9');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Invitation revoked' });
+    });
+    await waitFor(() => {
+      expect(mockApi.getProjectInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  it('shows error toast when revoking fails', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockRejectedValue(new HttpError('Bad request', 400));
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to revoke invitation',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+
+  it('tells the admin the invitation is gone when the invitee already answered it', async () => {
+    const user = userEvent.setup();
+    mockApi.revokeInvitation.mockRejectedValue(
+      new HttpError('Invitation not found', 404, 'invitation_not_found')
+    );
+
+    render(<ProjectDetail />);
+
+    const revokeButtons = await screen.findAllByRole('button', {
+      name: /revoke the invitation for sophie wagner/i,
+    });
+    await user.click(revokeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'This invitation no longer exists.',
           variant: 'destructive',
         }),
       );

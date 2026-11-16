@@ -1268,6 +1268,20 @@ describe('ApiClient', () => {
         expect.objectContaining({ method: 'POST' })
       );
     });
+
+    it('revokeInvitation sends DELETE to /projects/:id/invitations/:invitationId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await api.revokeInvitation('proj-1', 'inv-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/invitations/inv-1'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
   });
 
   describe('Member Endpoints', () => {

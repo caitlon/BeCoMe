@@ -89,6 +89,7 @@
     "resultsChartDesc": "Chart showing arithmetic mean, median, and best compromise triangles",
     "opinionPreviewDesc": "Preview of your fuzzy triangular number with values {{lower}}, {{peak}}, {{upper}}",
     "removeTeamMember": "Remove {{name}} from team",
+    "revokeInvitation": "Revoke the invitation for {{name}}",
     "expertOpinions": "Expert opinions table",
     "teamMembers": "Team members table",
     "mainNavigation": "Main navigation",
