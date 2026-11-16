@@ -873,6 +873,115 @@ class TestAssistantObjectionMigration:
             engine.dispose()
 
 
+class TestProjectScaleBoundsMigration:
+    """The migration adding ck_projects_scale_bounds."""
+
+    # Pinned to the revision ids, so a later migration cannot change what is tested.
+    BEFORE = "e7b3d2a94c18"  # pragma: allowlist secret
+    REVISION = "c4e8a1f7b265"  # pragma: allowlist secret
+
+    @staticmethod
+    def _insert_project(engine, admin_id, scale_min: str, scale_max: str) -> None:
+        """Insert one project; the bounds are cast from text so NaN and Infinity can be sent."""
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO projects "
+                    "(id, name, admin_id, scale_min, scale_max, scale_unit, created_at, "
+                    "updated_at) "
+                    "VALUES (:id, 'Scale', :admin_id, CAST(:scale_min AS double precision), "
+                    "CAST(:scale_max AS double precision), '', :now, :now)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "admin_id": str(admin_id),
+                    "scale_min": scale_min,
+                    "scale_max": scale_max,
+                    "now": datetime(2026, 1, 1, tzinfo=UTC),
+                },
+            )
+
+    def test_upgrade_refuses_non_finite_and_huge_bounds_and_downgrade_lifts_it(
+        self, migration_pg, monkeypatch
+    ):
+        """The constraint refuses NaN, infinities and 1e16, and the migration reverses cleanly."""
+        # GIVEN: a database one revision before this one, holding an admin user
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+        admin_id = uuid4()
+
+        try:
+            command.upgrade(config, self.BEFORE)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'admin@example.com', 'hash', 'Ad', 'Min', :now)"
+                    ),
+                    {"id": str(admin_id), "now": datetime(2026, 1, 1, tzinfo=UTC)},
+                )
+
+            # WHEN
+            command.upgrade(config, self.REVISION)
+
+            # THEN: a normal row and the exact ceiling pass
+            self._insert_project(engine, admin_id, "0", "100")
+            self._insert_project(engine, admin_id, "-1e15", "1e15")
+
+            # THEN: every non-finite or oversized bound is refused
+            for scale_min, scale_max in [
+                ("0", "NaN"),
+                ("0", "Infinity"),
+                ("-Infinity", "0"),
+                ("0", "1e16"),
+                ("-1e16", "0"),
+                ("-1.7e308", "1.7e308"),
+            ]:
+                with pytest.raises(IntegrityError):
+                    self._insert_project(engine, admin_id, scale_min, scale_max)
+
+            # WHEN: rolled back
+            command.downgrade(config, self.BEFORE)
+
+            # THEN: the constraint is gone and the NaN bound is accepted again
+            self._insert_project(engine, admin_id, "0", "NaN")
+
+            # WHEN: re-applied over a table that now holds a NaN row
+            with pytest.raises(IntegrityError):
+                command.upgrade(config, self.REVISION)
+        finally:
+            engine.dispose()
+
+    def test_upgrade_downgrade_upgrade_round_trips(self, migration_pg, monkeypatch):
+        """Applying, reverting and re-applying leaves the constraint in force."""
+        # GIVEN
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            # WHEN
+            command.upgrade(config, self.REVISION)
+            command.downgrade(config, self.BEFORE)
+            command.upgrade(config, self.REVISION)
+
+            # THEN
+            with engine.connect() as conn:
+                found = conn.execute(
+                    text(
+                        "SELECT 1 FROM pg_constraint "
+                        "WHERE conname = 'ck_projects_scale_bounds' AND contype = 'c'"
+                    )
+                ).scalar()
+            assert found == 1
+        finally:
+            engine.dispose()
+
+
 class TestMigrationsKeepAppLoggers:
     """Running Alembic in process leaves the application's own loggers working."""
 
