@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from api.db.models import Project, User
+from tests.shared.helpers import add_project
 
 
 class TestTransactionRollback:
@@ -133,17 +134,13 @@ class TestTransactionRollback:
         session.commit()
 
         # Add project (valid) and duplicate user (invalid) together
-        project = Project(
-            name="Will Be Rolled Back",
-            admin_id=user1.id,
-        )
+        add_project(session, user1, name="Will Be Rolled Back")
         user_duplicate = User(
             email="first@example.com",  # Duplicate
             hashed_password="hash2",
             first_name="Duplicate",
             last_name="User",
         )
-        session.add(project)
         session.add(user_duplicate)
 
         # WHEN
