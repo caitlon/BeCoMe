@@ -144,9 +144,9 @@ const ProjectDetail = () => {
 
   // A 404 on the project means it was deleted or the user is no longer a member (the API
   // answers both the same way), on the first load or on a refetch of a page already open. A
-  // 403 does not mean lost access here: this route demands no member level, so it only comes
-  // from the origin lock. Once per failure: a later change of the forget callback must not
-  // clear a conversation started since.
+  // 403 does not mean lost access here: this route needs membership only, no admin level, so a
+  // 403 comes only from the origin lock. Once per failure: a later change of the forget
+  // callback must not clear a conversation started since.
   const projectError = projectQuery.error;
   const forgottenError = useRef<unknown>(null);
   useEffect(() => {

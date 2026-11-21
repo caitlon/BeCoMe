@@ -131,6 +131,8 @@ describe('a project that answers 404 in the panel', () => {
     await waitFor(() => expect(window.sessionStorage.getItem(OWN)).toBeNull());
     expect(window.sessionStorage.getItem(OTHER)).toBe('[]');
 
+    // The 404 put the question back into the box, so this turn sends it with the new text; the
+    // assertions do not depend on the text.
     await userEvent.type(box(), 'Third?{Enter}');
     await waitFor(() => expect(mockStream).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(screen.getAllByText(RESPONSE.answer)).toHaveLength(2));
