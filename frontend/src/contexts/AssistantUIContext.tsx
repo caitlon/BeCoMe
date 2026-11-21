@@ -11,7 +11,7 @@ interface AssistantUIValue {
   /** No argument: the page's project. `null`: the general panel, whatever page this is. */
   readonly openAssistant: (projectId?: string | null) => void;
   readonly closeAssistant: () => void;
-  /** For a sign-out, or a project the user left or deleted: the panel forgets the project it was last opened for. */
+  /** For a sign-out, or a project the user left, deleted or lost access to: the panel forgets the project it was last opened for. */
   readonly forgetProject: () => void;
 }
 

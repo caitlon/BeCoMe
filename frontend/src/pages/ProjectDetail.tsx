@@ -142,16 +142,17 @@ const ProjectDetail = () => {
     membersQuery.isLoadingError ||
     invitationsQuery.isLoadingError;
 
-  // A 403 or 404 on the project means access to it is gone (the member was removed, or the
-  // project was deleted), on the first load or on a refetch of a page already open. Once
-  // per failure: a later change of the forget callback must not clear a conversation
-  // started since.
+  // A 404 on the project means it was deleted or the user is no longer a member (the API
+  // answers both the same way), on the first load or on a refetch of a page already open. A
+  // 403 does not mean lost access here: this route demands no member level, so it only comes
+  // from the origin lock. Once per failure: a later change of the forget callback must not
+  // clear a conversation started since.
   const projectError = projectQuery.error;
   const forgottenError = useRef<unknown>(null);
   useEffect(() => {
     if (
       projectError instanceof HttpError &&
-      (projectError.status === 403 || projectError.status === 404) &&
+      projectError.status === 404 &&
       forgottenError.current !== projectError
     ) {
       forgottenError.current = projectError;
