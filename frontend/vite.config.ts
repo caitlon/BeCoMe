@@ -19,7 +19,12 @@ const https = process.env.E2E_HTTPS
 
 export default defineConfig({
   server: {
-    host: "::",
+    // The e2e run binds loopback only: its proxy leads to a test API with rate limiting
+    // off and a fixed SECRET_KEY, which no other host on the network should reach.
+    // "localhost" rather than an address, so the dev server binds the same family that
+    // Node resolves for Playwright's readiness probe of https://localhost:8080.
+    // Everyday `npm run dev` keeps every interface, so the app opens from other devices.
+    host: process.env.E2E_HTTPS ? "localhost" : "::",
     port: 8080,
     https,
     proxy: {
