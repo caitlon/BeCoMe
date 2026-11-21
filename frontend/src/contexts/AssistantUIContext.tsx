@@ -11,7 +11,7 @@ interface AssistantUIValue {
   /** No argument: the page's project. `null`: the general panel, whatever page this is. */
   readonly openAssistant: (projectId?: string | null) => void;
   readonly closeAssistant: () => void;
-  /** For a sign-out, or a project the user left or deleted: the panel forgets the project it was last opened for. */
+  /** For a sign-out, or a project the user left, deleted or lost access to: the panel forgets the project it was last opened for. */
   readonly forgetProject: () => void;
 }
 
@@ -38,8 +38,8 @@ const DEFAULT_VALUE: AssistantUIValue = {
  * trigger buttons live in this feature's lazy chunks. Callers are the two
  * triggers (triggers.tsx), the panel root, the feed (AssistantFeed.tsx, for the
  * way out of a missing project), and the page-scope and forget-project hooks in
- * components/assistant/index.tsx (the latter for a project the user left or
- * deleted); Navbar and ResultsSection only render slots.
+ * components/assistant/index.tsx (the latter for a project the user left,
+ * deleted or lost access to); Navbar and ResultsSection only render slots.
  *
  * Two project ids on purpose. `pageProjectId` follows the page (set and
  * cleared by the scope hook as routes change); `projectId` belongs to the
