@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@tests/utils';
 import userEvent from '@testing-library/user-event';
 import i18n from '@/i18n';
 import { AssistantFeed, type AssistantFeedProps } from '@/components/assistant/AssistantFeed';
 import type { AssistantMessage } from '@/components/assistant/useAssistantChat';
 import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
 import '@/components/assistant/i18n';
 
 // Counts how often a message body is rendered, standing in for the markdown reparse.
@@ -35,6 +36,8 @@ function props(overrides: Partial<AssistantFeedProps> = {}): AssistantFeedProps 
     mode: 'workflow',
     onRetry: vi.fn(),
     projectScoped: true,
+    projectId: 'p1',
+    userId: 'user-1',
     ...overrides,
   };
 }
@@ -383,6 +386,58 @@ describe('AssistantFeed', () => {
       unmount();
 
       expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('the stored conversation of a project that is gone', () => {
+    const OWN = `${STORAGE_PREFIX}:user-1:p1`;
+    const OTHER_PROJECT = `${STORAGE_PREFIX}:user-1:p2`;
+    const GENERAL = `${STORAGE_PREFIX}:user-1:general`;
+    const OTHER_USER = `${STORAGE_PREFIX}:user-2:p1`;
+    const ALL_KEYS = [OWN, OTHER_PROJECT, GENERAL, OTHER_USER];
+    const storedKeys = () => ALL_KEYS.filter((key) => window.sessionStorage.getItem(key) !== null);
+
+    beforeEach(() => {
+      window.sessionStorage.clear();
+      ALL_KEYS.forEach((key) => window.sessionStorage.setItem(key, '[]'));
+    });
+
+    afterEach(() => {
+      window.sessionStorage.clear();
+    });
+
+    it('is removed on a 404, and every other conversation stays', () => {
+      renderFeed({ messages: [user('Q?'), failure(404)] });
+
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('is removed when the 404 arrives after the feed was showing the question', () => {
+      const { rerender } = renderFeed({ isPending: true, messages: [user('Q?'), answer('', { status: 'pending' })] });
+      expect(storedKeys()).toEqual(ALL_KEYS);
+
+      rerender({ isPending: false, messages: [user('Q?'), failure(404)] });
+
+      expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]);
+    });
+
+    it('still shows the not-found message and its two actions', () => {
+      renderFeed({ messages: [user('Q?'), failure(404)] });
+
+      expect(screen.getByRole('button', { name: 'Ask without the project' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Open projects' })).toBeInTheDocument();
+    });
+
+    it.each([403, 429, 500])('is kept on a %i', (code) => {
+      renderFeed({ messages: [user('Q?'), failure(code)] });
+
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('is kept on a 404 outside a project', () => {
+      renderFeed({ messages: [user('Q?'), failure(404)], projectScoped: false, projectId: null });
+
+      expect(storedKeys()).toEqual(ALL_KEYS);
     });
   });
 

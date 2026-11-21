@@ -203,7 +203,7 @@ function useForgetProject(): (projectId: string) => void {
 const noopForget = (): void => {};
 
 /**
- * For a project the user no longer belongs to (left, or deleted): drops its
+ * For a project the user no longer belongs to (left, deleted, or access lost): drops its
  * conversation from this tab and, when the panel was opened for it, makes the panel
  * forget the project. A conversation still mounted for it cannot write the key
  * back (history-storage.ts). Chosen at module load like everything above: a build

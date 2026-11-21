@@ -226,6 +226,8 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
             mode={mode}
             onRetry={chat.retry}
             projectScoped={scoped}
+            projectId={projectId}
+            userId={userId}
           />
         )}
 

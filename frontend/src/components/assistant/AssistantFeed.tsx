@@ -4,6 +4,7 @@ import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import type { AssistantConfigResponse } from "@/types/api";
 import { AssistantMessage, type NotFoundActions } from "./AssistantMessage";
 import { AssistantPending, AssistantPendingStatus } from "./AssistantPending";
+import { removeAssistantProjectHistory } from "./history-storage";
 import type { AssistantMessage as AssistantMessageData } from "./useAssistantChat";
 
 // How far from the bottom the user may be and still count as following the answer.
@@ -84,6 +85,10 @@ export interface AssistantFeedProps {
   readonly onRetry: (text: string) => void;
   /** The conversation is about a project, not the general thread. */
   readonly projectScoped: boolean;
+  /** The project the conversation is about; null for the general thread. */
+  readonly projectId: string | null;
+  /** The user the conversation belongs to. */
+  readonly userId: string;
 }
 
 /**
@@ -99,6 +104,8 @@ export function AssistantFeed({
   mode,
   onRetry,
   projectScoped,
+  projectId,
+  userId,
 }: AssistantFeedProps) {
   const { t } = useTranslation("assistant");
   const { openAssistant, closeAssistant } = useAssistantUI();
@@ -112,6 +119,13 @@ export function AssistantFeed({
   const failed = !isPending && last?.role === "assistant" && (last.status === "error" || last.status === "cut");
   const projectGone = failed && projectScoped && last.error?.code === 404;
   const retryWaited = useRetryAfterElapsed(failed ? last : undefined);
+
+  // The project is gone for this user (removed from it, or it was deleted), so its stored
+  // conversation goes with it. Only the storage: the feed keeps showing the not-found
+  // message, and the removal stops the mounted thread from writing the key back.
+  useEffect(() => {
+    if (projectGone && projectId) removeAssistantProjectHistory(userId, projectId);
+  }, [projectGone, projectId, userId]);
 
   // Only the last answer can be tried again, and only with its own question. These
   // are memoised, and handed to nothing else, so no settled message ever sees a new one.
