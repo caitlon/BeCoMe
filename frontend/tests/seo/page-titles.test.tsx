@@ -1,0 +1,37 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { cleanup, render, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import type { ReactNode } from 'react';
+import { pageMeta, publicRoutes } from '@/entry-server';
+import { AppWithRouter } from '@/App';
+import { ThemeProvider } from '@/components/ThemeProvider';
+import i18n from '@/i18n';
+
+vi.mock('@/lib/api', () => ({
+  api: { getCurrentUser: vi.fn(), setOnSessionExpired: vi.fn(), requestJson: vi.fn() },
+}));
+
+afterEach(() => {
+  cleanup();
+  document.title = '';
+});
+
+describe('page titles in the prerendered head', () => {
+  it.each(publicRoutes)('match the title %s sets in the browser', async (path) => {
+    await i18n.changeLanguage('en');
+    const { api } = await import('@/lib/api');
+    // The session probe never answers, so the page stays signed out and loading, as on the server.
+    vi.mocked(api.getCurrentUser).mockImplementation(() => new Promise(() => {}));
+
+    const Router = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
+    );
+    render(
+      <ThemeProvider defaultTheme="system" storageKey="become-theme">
+        <AppWithRouter Router={Router} />
+      </ThemeProvider>,
+    );
+
+    await waitFor(() => expect(document.title).toBe(pageMeta(path).title), { timeout: 5000 });
+  });
+});

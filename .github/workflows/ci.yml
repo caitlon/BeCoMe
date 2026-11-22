@@ -351,6 +351,17 @@ jobs:
       - name: Check the assistant is present in that build
         run: ./scripts/ci/check-assistant-bundle.sh frontend/dist present
 
+      # The build also prerenders the public pages (frontend/scripts/prerender.mjs). The first
+      # check reads the files in dist/. The second builds the frontend image and fetches pages
+      # from its nginx, which the files cannot show: redirects, headers and which page a route
+      # gets. It shares this job because the runner already has Node and Docker and a build
+      # to read the route list from.
+      - name: Check the build prerenders the public pages
+        run: ./scripts/ci/check-prerender.sh
+
+      - name: Check nginx serves the prerendered pages
+        run: ./scripts/ci/check-prerender.sh --docker
+
       - name: Upload frontend coverage report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

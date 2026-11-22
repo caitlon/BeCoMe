@@ -651,6 +651,15 @@ and a language flag on `<html>` before first paint. It reads two `localStorage` 
 (`become-theme`, `become-language`) and the browser's language list, and takes no input from
 the URL. Changing one byte of it changes the hash, and the same test fails until `nginx.conf`
 carries the new one.
+
+The build prerenders the public pages, and nginx sends their HTML with `expires -1`, which gives
+`Cache-Control: no-cache`, rather than an `add_header Cache-Control`: a location that sets any
+`add_header` of its own stops inheriting the server-level security headers, and the HTML must keep
+them. `scripts/ci/check-prerender.sh --docker` fetches pages from the built image and checks the
+CSP header on each. The prerender fails the build on a `<script>` in the rendered HTML, and
+`check-prerender.sh` also checks that every inline script of every built page has its hash in the
+policy.
+
 Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
 unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
 information. The CSP is what constrains injection.

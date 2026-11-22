@@ -20,3 +20,6 @@ playwright-report
 # Editor / OS cruft
 .vscode
 .DS_Store
+
+# Server-render bundle, built to prerender the public pages and never shipped
+dist-ssr
