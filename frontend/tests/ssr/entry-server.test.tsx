@@ -90,10 +90,65 @@ describe('entry-server render', () => {
     }
   });
 
+  it('rejects when a page fails inside Suspense instead of shipping the fallback', async () => {
+    vi.resetModules();
+    vi.doMock('@/pages/About', () => ({
+      default: () => {
+        throw new Error('boom');
+      },
+    }));
+    try {
+      const { render } = await import('@/entry-server');
+      await expect(render('/about')).rejects.toThrow('Rendering /about failed: boom');
+    } finally {
+      vi.doUnmock('@/pages/About');
+    }
+  });
+
   it('renders signed out, in the default theme, with no session probe', async () => {
     const html = await renderRoute('/');
 
     expect(html).toContain('Sign In');
     expect(html).toContain('aria-label="Switch to dark mode"');
+  });
+});
+
+describe('entry-server pageMeta', () => {
+  async function meta(path: string) {
+    vi.resetModules();
+    const { pageMeta } = await import('@/entry-server');
+    return pageMeta(path);
+  }
+
+  it.each([
+    ['/', 'BeCoMe - Best Compromise Mean', 'For panels that must settle on one number'],
+    ['/about', 'About the Method - BeCoMe', 'Best Compromise Mean: a scientific method'],
+    ['/terms', 'Terms of use - BeCoMe', 'The rules for using BeCoMe, in plain words.'],
+    ['/case-study/budget', 'Case Study: COVID-19 Budget Support - BeCoMe', 'Budget allocation for pandemic response measures'],
+  ])('gives %s its title and description', async (path, title, description) => {
+    const result = await meta(path);
+
+    expect(result.title).toBe(title);
+    expect(result.description).toContain(description);
+  });
+
+  it('resolves every key of every public route to text', async () => {
+    for (const path of publicRoutes) {
+      const { title, description } = await meta(path);
+      // i18next answers a missing key with the key itself.
+      expect(title, path).not.toMatch(/^\w+(\.\w+)+$/);
+      expect(description, path).not.toMatch(/^\w+:\w+(\.\w+)*$/);
+      expect(description.length, path).toBeGreaterThan(20);
+    }
+  });
+
+  it('is in English whatever language the build machine reports', async () => {
+    vi.stubGlobal('navigator', { language: 'cs-CZ', languages: ['cs-CZ', 'cs'] });
+
+    expect((await meta('/about')).title).toBe('About the Method - BeCoMe');
+  });
+
+  it('refuses a path that is not a public route', async () => {
+    await expect(meta('/projects')).rejects.toThrow('No page metadata for /projects');
   });
 });
