@@ -5,9 +5,9 @@ import i18n from "@/i18n";
 import { AppWithRouter } from "@/App";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { documentTitle } from "@/hooks/useDocumentTitle";
-import { publicRouteMeta, publicRoutes } from "@/seo/publicRoutes";
+import { publicRouteMeta } from "@/seo/publicRoutes";
 
-export { publicRoutes };
+export { publicRoutes } from "@/seo/publicRoutes";
 
 /**
  * Renders one route to static HTML, the same tree main.tsx mounts with a static
@@ -38,7 +38,11 @@ export async function render(url: string): Promise<string> {
         <AppWithRouter Router={Router} />
       </ThemeProvider>
     </StrictMode>,
-    { onError: (error) => void errors.push(error) },
+    {
+      onError: (error) => {
+        errors.push(error);
+      },
+    },
   );
   const html = await new Response(prelude).text();
   if (errors.length > 0) {
