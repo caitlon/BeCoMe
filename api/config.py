@@ -50,7 +50,8 @@ class Environment(StrEnum):
     """Deployment environment profile.
 
     :cvar DEV: Local development. Debug off unless DEBUG is set, localhost CORS, SQLite allowed.
-    :cvar TEST: Deployed staging for manual QA. Debug off, rate limiting on.
+    :cvar TEST: The test-suite profile (``APP_ENV=test`` with ``TESTING=1``). Debug off, rate
+        limiting on unless ``TESTING`` switches it off. No deployed environment uses it.
     :cvar PROD: Production. Strict secret and database validation enforced.
     """
 
@@ -111,10 +112,10 @@ _ASSISTANT_PROVIDER_ROLES = (
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 )
 
-# Railway environments the assistant may run in: the three real ones. An allowlist, so it
+# Railway environments the assistant may run in: the two real ones. An allowlist, so it
 # fails closed: before 2026-09-12 the names were production and staging, and a renamed or
 # preview environment (pr-123) must be refused rather than allowed.
-_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test", "prod"})
+_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "prod"})
 
 # The one LangSmith endpoint a deployed service may send traces to: the EU region.
 _LANGSMITH_EU_ENDPOINT = "https://eu.api.smith.langchain.com"
@@ -218,7 +219,7 @@ class Settings(BaseSettings):
     # Set by Railway on every deployed service, absent locally and in CI. Used to
     # decide whether the dev profile is a laptop or an internet-reachable service:
     # the dev deploy has its own database and public URL, so it has to satisfy the
-    # same invariants as staging and production.
+    # same invariants as production.
     railway_environment_name: str | None = Field(
         default=None, validation_alias="RAILWAY_ENVIRONMENT_NAME"
     )
@@ -338,8 +339,8 @@ class Settings(BaseSettings):
     turnstile_hostnames: list[str] = []
 
     # AI assistant (RAG + read-only project explainer). Off everywhere by default;
-    # _validate_assistant_deploy refuses to start a Railway environment other than dev,
-    # test and prod with it on, and on a deploy, the prod profile included, it demands
+    # _validate_assistant_deploy refuses to start a Railway environment other than dev
+    # and prod with it on, and on a deploy, the prod profile included, it demands
     # every model role be api. api/routes/assistant.py is registered only when this is true
     # (see api.main.create_app), so a service that leaves it off answers 404 for the whole
     # prefix.
@@ -347,7 +348,7 @@ class Settings(BaseSettings):
     # Whether a chat answer reaches the client with its sources, excerpts and [n] markers.
     # Off by default: the client then gets an empty sources list and an answer without
     # markers, in /chat and in every event of /chat/stream. Switched on by an environment
-    # variable on the dev and test services only. The assistant_turn log record lists the
+    # variable on the dev service only. The assistant_turn log record lists the
     # sources a turn used either way.
     assistant_show_sources: bool = False
     # The model for query transforms and index building: small and fast, so search stays
@@ -514,9 +515,10 @@ class Settings(BaseSettings):
         :meth:`_validate_deploy_invariants` and may not trust client-supplied
         forwarding headers.
 
-        ``Environment.TEST`` doubles as the pytest-runner profile (the conftests set
+        ``Environment.TEST`` is the pytest-runner profile (the conftests set
         ``APP_ENV=test`` with ``TESTING=1`` and weak throwaway secrets), so it counts
-        only when ``TESTING`` is unset, as on the real staging deploy. Production is
+        only when ``TESTING`` is unset, which no deployed environment does any more
+        since the ``test`` environment was retired. Production is
         never used by the test runner, so it always counts. The dev profile counts
         when it runs on Railway: that service has its own database and a public URL,
         so "dev" there means the data is separate, not that the service may be weakly
@@ -572,10 +574,10 @@ class Settings(BaseSettings):
         """Refuse an unknown Railway environment; on a deploy require hosted roles and a corpus DB.
 
         The assistant reads project data as the signed-in user and calls an LLM, so it may
-        run on a laptop and on the dev, test and prod services. The Railway name is checked
-        against an allowlist of those three, so an unknown or renamed environment
+        run on a laptop and on the dev and prod services. The Railway name is checked
+        against an allowlist of those two, so an unknown or renamed environment
         (``production``, ``staging``, a preview) is refused. The prod profile is a deploy
-        like the other two and is held to every rule below. A deployed service has no
+        too and is held to every rule below. A deployed service has no
         llama-server to reach, so every model role there must be api; a laptop and a CI
         runner keep local roles. A zero message limit
         switches that cap off, so a deployed service may set neither the per-user nor the
@@ -621,7 +623,7 @@ class Settings(BaseSettings):
         if on_railway and railway_name not in _ASSISTANT_RAILWAY_ENVIRONMENTS:
             raise ValueError(
                 "assistant_enabled must stay false in any Railway environment other than "
-                f"dev, test and prod (the {self.environment.value} profile here, Railway "
+                f"dev and prod (the {self.environment.value} profile here, Railway "
                 f"environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:

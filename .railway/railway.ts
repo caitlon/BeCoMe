@@ -7,7 +7,7 @@ export const partial = "app";
 
 // Each environment has its own services, named after it, and deploys from the
 // branch of the same name.
-const ENVIRONMENTS = ["dev", "test", "prod"] as const;
+const ENVIRONMENTS = ["dev", "prod"] as const;
 type Environment = (typeof ENVIRONMENTS)[number];
 
 function environmentOf(name: string | undefined): Environment {
@@ -20,7 +20,7 @@ function environmentOf(name: string | undefined): Environment {
 
 export default defineRailway((ctx) => {
   const env = environmentOf(ctx.environment);
-  // dev and test sleep when idle to save cost; prod never sleeps.
+  // dev sleeps when idle to save cost; prod never sleeps.
   const deploy = {
     // Restart on failure: Railway's default policy, which it stores as null,
     // so only the retry cap is set here.

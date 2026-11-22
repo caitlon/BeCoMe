@@ -37,7 +37,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "0"
 
         # HTTP Strict Transport Security - only for HTTPS requests
-        # Sending HSTS on HTTP can cause issues in dev/staging
+        # Sending HSTS on HTTP can cause issues in dev
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains; preload"

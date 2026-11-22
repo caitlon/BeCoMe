@@ -170,7 +170,7 @@ def set_csrf_header(response: Response, csrf_token: str | None) -> None:
     session, which is what lets the SPA send it back in the header. CORS answers against
     an explicit origin allow-list, so a hostile origin can no more read the header than the
     cookie. Setting ``Domain=becomify.app`` on the cookie instead would look
-    simpler and break the deploys: dev, staging, and production all live under that parent
+    simpler and break the deploys: dev and production both live under that parent
     and would overwrite each other's token.
 
     Every value passed here is derived by :func:`csrf_token_for`, so it is a hex digest and

@@ -223,7 +223,7 @@ def create_app() -> FastAPI:
     # Imported only when the flag is on, so the assistant package - and, once later
     # PRs add them, its LangChain/LangGraph imports from the "assistant" extra -
     # never loads in a process that leaves the flag off. Settings._validate_assistant_deploy
-    # refuses to start a Railway environment other than dev, test and prod with
+    # refuses to start a Railway environment other than dev and prod with
     # assistant_enabled set.
     if settings.assistant_enabled:
         from api.assistant.errors import (
