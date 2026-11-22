@@ -37,11 +37,21 @@ export function setHydrating(value: boolean): void {
  *
  * @param pathname - The current location's path; a trailing slash is ignored.
  */
-export function shouldHydrate(rootElement: Element, language: SupportedLanguage, pathname: string): boolean {
-  const renderedRoute = rootElement.getAttribute("data-route");
+export function shouldHydrate(
+  rootElement: HTMLElement,
+  language: SupportedLanguage,
+  pathname: string,
+): boolean {
   return (
     rootElement.childElementCount > 0 &&
     language === "en" &&
-    renderedRoute === (pathname.replace(/\/+$/, "") || "/")
+    rootElement.dataset.route === withoutTrailingSlash(pathname)
   );
+}
+
+/** The path with its trailing slashes removed; the root path stays "/". */
+function withoutTrailingSlash(pathname: string): string {
+  let end = pathname.length;
+  while (end > 1 && pathname[end - 1] === "/") end--;
+  return pathname.slice(0, end);
 }
