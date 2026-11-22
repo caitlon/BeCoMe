@@ -1239,7 +1239,7 @@ _VECTOR_URL = (
 
 
 class TestAssistantSettings:
-    """The assistant runs on a laptop and on dev, test and prod with hosted roles."""
+    """The assistant runs on a laptop and on dev and prod with hosted roles."""
 
     def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
         """
@@ -1459,7 +1459,7 @@ class TestAssistantSettings:
             with the assistant on and one deploy rule broken: a local model role, an empty
             corpus database URL, a zero message limit or a non-EU LangSmith endpoint
         WHEN Settings is constructed
-        THEN validation fails with that rule's message, as it does on dev and test
+        THEN validation fails with that rule's message, as it does on dev
         """
         # GIVEN
         self._configure_deployed_assistant(

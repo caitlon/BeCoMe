@@ -598,7 +598,7 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 ## Network and edge
 
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
-environment has its own host under it: `api.becomify.app` (production),
+environment has its own host under it: `api.becomify.app` (production)
 and `api-atelier.becomify.app` (dev). A Cloudflare
 Transform Rule per host injects a shared secret header the origin then checks
 (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
