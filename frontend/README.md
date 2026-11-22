@@ -13,6 +13,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - [Accessibility](#accessibility)
 - [Layout](#layout)
 - [Assistant](#assistant)
+- [Server rendering](#server-rendering)
 - [Testing](#testing)
 
 ## Tech stack
@@ -182,11 +183,35 @@ It is skipped unless the flag is in the environment when Playwright starts its d
 VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
 ```
 
+## Server rendering
+
+The app can be rendered to HTML on a server and hydrated in the browser. Nothing in the build uses
+this yet: `src/main.tsx` still mounts with `createRoot`, and no step of `npm run build` renders a page.
+
+- `src/entry-server.tsx` exports `render(url)`, which returns the HTML of one route as a signed-out
+  visitor sees it in English and the default theme. `App.tsx` exports `AppWithRouter`, the same tree
+  with the router passed in, so the server can use a static one.
+- `src/seo/publicRoutes.ts` lists the routes that need no login.
+- `src/lib/hydration.ts` holds a flag the client entry sets right before `hydrateRoot`. While it is
+  set, the first render must match the server's HTML: `ThemeProvider` starts from its default theme
+  and applies the stored one afterwards, inside `startTransition`. Updates that can arrive while a lazy
+  page is still hydrating, such as the session probe in `AuthContext`, are transitions too, because a
+  plain update makes React discard the server HTML of that page. The copyright year in the footer is
+  the one text allowed to differ (`suppressHydrationWarning`).
+
 ## Testing
 
 Unit tests live in `tests/` and run under Vitest with happy-dom. The subdirectories are
-`components`, `contexts`, `data`, `hooks`, `i18n`, `lib` and `pages`, plus `factories` and
-`mocks` for shared test data and API mocks.
+`components`, `contexts`, `data`, `hooks`, `i18n`, `lib`, `pages` and `ssr`, plus `factories`,
+`mocks` and `support` for shared test data, API mocks and the hydration helpers.
+
+`tests/ssr/entry-server.test.tsx` runs the server render in the node environment, with no DOM. The
+hydration tests (`hydration.test.tsx`, and `hydration.reduced-motion.test.tsx` in a file of its own
+because framer-motion reads that preference once per process) get their HTML from a separate Node
+process, `tests/support/render-server-html.mjs`, which loads `src/entry-server.tsx` through Vite's SSR
+loader. They put that HTML in the page, run `hydrateRoot` over it, and expect no recoverable error, no
+console error and the server's own nodes still attached, for every public route in several browser
+states and with the assistant flag on and off.
 
 `npm run test:coverage` fails below these thresholds (`vitest.config.ts`): statements 98,
 branches 95, functions 97, lines 98. `./scripts/ci/ci-local.sh fast` runs `npm run test:run`

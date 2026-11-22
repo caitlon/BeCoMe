@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import { useAuth, registerSignOutListener } from "@/contexts/AuthContext";
 import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import { useAssistantConfig } from "./useAssistantConfig";
@@ -22,8 +22,10 @@ export default function AssistantRoot() {
   const configQuery = useAssistantConfig(signedIn);
   const available = signedIn && configQuery.isSuccess && configQuery.data.enabled;
 
+  // A transition, so that this update can never make React drop server-rendered HTML
+  // that is still hydrating (see src/lib/hydration.ts).
   useEffect(() => {
-    setAvailable(available);
+    startTransition(() => setAvailable(available));
   }, [available, setAvailable]);
 
   // If this root goes away (for example its error boundary swallowed a throw),

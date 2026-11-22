@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -34,7 +34,13 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = createQueryClient();
 
-const App = () => (
+interface AppWithRouterProps {
+  /** Wraps the routed tree: the browser router on the client, a static one on the server. */
+  readonly Router: ComponentType<{ children: ReactNode }>;
+}
+
+/** The whole app below the theme provider, with the router supplied by the caller. */
+export const AppWithRouter = ({ Router }: AppWithRouterProps) => (
   <ErrorBoundary>
     <MotionConfig reducedMotion="user">
       <QueryClientProvider client={queryClient}>
@@ -42,7 +48,7 @@ const App = () => (
           <TooltipProvider>
             <AssistantProvider>
               <Toaster />
-              <BrowserRouter>
+              <Router>
                 <RouteAnnouncer />
                 <Suspense fallback={<PageLoader />}>
                   <ErrorBoundary>
@@ -99,7 +105,7 @@ const App = () => (
                     </Suspense>
                   </ErrorBoundary>
                 )}
-              </BrowserRouter>
+              </Router>
             </AssistantProvider>
           </TooltipProvider>
         </AuthProvider>
@@ -107,5 +113,7 @@ const App = () => (
     </MotionConfig>
   </ErrorBoundary>
 );
+
+const App = () => <AppWithRouter Router={BrowserRouter} />;
 
 export default App;
