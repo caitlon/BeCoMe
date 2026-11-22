@@ -23,7 +23,7 @@ import { removeAssistantProjectHistory } from "./history-storage";
  *
  * Only a build with the variable set to exactly `true` includes the
  * assistant: a developer's own frontend/.env.development.local (gitignored
- * via the repo's `*.local` pattern), or the dev and test frontend services,
+ * via the repo's `*.local` pattern), or the dev frontend service,
  * which pass it through frontend/Dockerfile. Prod leaves it unset, so its
  * build takes the disabled branch below.
  */

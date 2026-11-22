@@ -71,7 +71,7 @@ def enforce_default_limits(request: Request) -> None:
 
 
 # Rate limiting is disabled only while the automated test suite runs (TESTING flag).
-# Deployed profiles, including staging, keep limiting enabled.
+# Deployed profiles keep limiting enabled.
 limiter = build_limiter(get_settings())
 
 # Rate limit constants for different endpoint types

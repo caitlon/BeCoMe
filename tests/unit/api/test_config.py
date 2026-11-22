@@ -1355,19 +1355,17 @@ class TestAssistantSettings:
         ("profile", "railway_name"),
         [
             ("dev", "dev"),
-            ("test", "test"),
             ("prod", "prod"),
             ("prod", None),
             ("prod", "dev"),
             ("dev", "prod"),
             ("test", "prod"),
             ("dev", " Dev "),
-            ("test", "TEST"),
             ("dev", "PROD"),
             ("dev", " prod "),
         ],
     )
-    def test_allows_the_assistant_on_the_dev_test_and_prod_services(
+    def test_allows_the_assistant_on_the_dev_and_prod_services(
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
@@ -1397,8 +1395,13 @@ class TestAssistantSettings:
             ("dev", "pr-123"),
             ("dev", "prod-eu"),
             ("dev", ""),
+            ("dev", "test"),
+            ("dev", " Test "),
             ("prod", "production"),
             ("prod", "staging"),
+            ("prod", "test"),
+            ("test", "test"),
+            ("test", "TEST"),
             ("test", "pr-123"),
         ],
     )
@@ -1406,8 +1409,8 @@ class TestAssistantSettings:
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
-        GIVEN a fully configured service whose Railway environment is none of dev, test and
-            prod (a retired or preview name, or an empty one), under any profile
+        GIVEN a fully configured service whose Railway environment is none of dev and prod
+            (a retired or preview name, including test, or an empty one), under any profile
         WHEN Settings is constructed with assistant_enabled=true
         THEN validation fails, naming the field and the allowed environments
         """
@@ -1418,7 +1421,7 @@ class TestAssistantSettings:
 
         # WHEN/THEN
         with pytest.raises(
-            ValidationError, match=r"assistant_enabled must stay false.*dev, test and prod"
+            ValidationError, match=r"assistant_enabled must stay false.*dev and prod"
         ):
             Settings()
 
@@ -1470,7 +1473,7 @@ class TestAssistantSettings:
             Settings()
 
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
-    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "test")])
+    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "prod")])
     def test_rejects_a_local_role_on_a_deployed_service(
         self, monkeypatch, tmp_path, profile, railway_name, provider, url
     ):
@@ -1610,7 +1613,7 @@ class TestAssistantSettings:
         ("profile", "railway_name", "testing", "endpoint"),
         [
             ("dev", "dev", False, "https://eu.api.smith.langchain.com"),
-            ("test", "test", False, "https://eu.api.smith.langchain.com"),
+            ("test", "prod", False, "https://eu.api.smith.langchain.com"),
             ("dev", "dev", True, "https://eu.api.smith.langchain.com"),
             ("dev", "dev", False, " HTTPS://EU.API.SMITH.LANGCHAIN.COM/ "),
         ],
@@ -1807,7 +1810,7 @@ class TestAssistantSettings:
         ("profile", "railway_name", "testing"),
         [
             ("dev", "dev", False),
-            ("test", "test", False),
+            ("test", "prod", False),
             ("test", None, False),
             ("dev", "dev", True),
         ],
@@ -2240,7 +2243,7 @@ class TestAssistantSettings:
 
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),
-        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+        [("dev", "dev", False), ("test", "prod", False), ("dev", "dev", True)],
     )
     @pytest.mark.parametrize(
         "setting", ["assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"]
