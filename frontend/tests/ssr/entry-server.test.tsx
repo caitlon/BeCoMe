@@ -90,11 +90,14 @@ describe('entry-server render', () => {
     }
   });
 
-  it('rejects when a page fails inside Suspense instead of shipping the fallback', async () => {
+  it.each([
+    ['an error', new Error('boom')],
+    ['a thrown string', 'boom'],
+  ])('rejects when a page fails inside Suspense with %s, instead of shipping the fallback', async (_name, thrown) => {
     vi.resetModules();
     vi.doMock('@/pages/About', () => ({
       default: () => {
-        throw new Error('boom');
+        throw thrown;
       },
     }));
     try {
