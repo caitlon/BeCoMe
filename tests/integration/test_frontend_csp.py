@@ -29,6 +29,7 @@ caseStudies.ts.
 import base64
 import hashlib
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -85,13 +86,39 @@ def _header_counts() -> dict[str, int]:
     return {header: declared.count(header) for header in _REQUIRED_HEADERS}
 
 
+class _InlineScriptCollector(HTMLParser):
+    """Collect the raw text of every ``<script>`` element that has no ``src`` attribute."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sources: list[str] = []
+        self._inside_inline_script = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script" and all(name != "src" for name, _ in attrs):
+            self.sources.append("")
+            self._inside_inline_script = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self._inside_inline_script = False
+
+    def handle_data(self, data: str) -> None:
+        if self._inside_inline_script:
+            self.sources[-1] += data
+
+
 def _inline_script_sources() -> list[str]:
     """Return the exact text of every inline script in frontend/index.html.
 
     A script with a ``src`` attribute is loaded from 'self' and needs no hash.
+
+    :return: The body of each inline script, exactly as written in the file.
     """
-    html = _INDEX_HTML.read_text(encoding="utf-8")
-    return re.findall(r"<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", html, re.DOTALL)
+    collector = _InlineScriptCollector()
+    collector.feed(_INDEX_HTML.read_text(encoding="utf-8"))
+    collector.close()
+    return collector.sources
 
 
 def _csp_hash(source: str) -> str:
