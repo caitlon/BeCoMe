@@ -42,7 +42,6 @@ export function shouldHydrate(rootElement: Element, language: SupportedLanguage,
   return (
     rootElement.childElementCount > 0 &&
     language === "en" &&
-    renderedRoute !== null &&
     renderedRoute === (pathname.replace(/\/+$/, "") || "/")
   );
 }

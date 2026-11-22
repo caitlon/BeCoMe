@@ -205,7 +205,8 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
   canonical link and `og:url` on `https://www.becomify.app`. Its root is
   `<div id="root" data-route="/about">`, the route the HTML was rendered for. It writes
   `dist/index.html` for `/` and `dist/<path>/index.html` for the rest. It fails the build on an empty
-  root, a `<script>` in the rendered HTML or a render error. It also writes two pages that are not routes to index. `dist/spa.html` is the template with
+  root, a `<script>` in the rendered HTML or a render error. It also writes two pages that are not
+  routes and are not indexed. `dist/spa.html` is the template with
   `<meta name="robots" content="noindex" />` and an empty root, the page nginx serves for the routes
   behind a login. `dist/404.html` is the not-found page (`render(notFoundPath)`), with its own title,
   the noindex tag, no canonical link and no `data-route`.
@@ -216,8 +217,10 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
   trailing slash) gets `spa.html` with status 200. The asset location comes first and wins for any
   path with an asset extension, so a missing `/assets/x.js` is a 404. The HTML sends
   `Cache-Control: no-cache`, except the 404 page, where `expires` does nothing. Trying the directory
-  itself (`$uri/`) would answer `/about` with a redirect to the container's port 8080. None of
-  these locations sets an `add_header`, so the server-level security headers apply to all of them.
+  itself (`$uri/`) would answer `/about` with a redirect to the container's port 8080. The 404
+  page and the app routes set no `add_header` of their own, so they get the server-level security
+  headers; the asset location repeats them, because a location with its own `add_header` stops
+  inheriting.
 - `tests/seo/routes-in-nginx.test.ts` reads the `<Route path>` values from `src/App.tsx` and the
   allowlist from `nginx.conf`. Each route must be either in `publicRoutes` or in the allowlist, never
   both, and neither list may hold a path `App.tsx` lacks. A route added to `App.tsx` alone fails

@@ -20,10 +20,12 @@ set -euo pipefail
 #
 # Image checks (--docker): builds the frontend image, runs it, and fetches pages over HTTP to
 # prove that nginx answers without a redirect, with the security headers, with no-cache on the
-# HTML, the prerendered page for a public route, the shell for each app route behind a login
-# (/login, /projects, /projects/<id>, /profile/), a real 404 with the not-found page for an
-# unknown path and an unknown case study, and a plain 404 for a missing asset. The container and
-# the image are removed afterwards.
+# HTML, the prerendered page for a public route, the shell for each app
+# route of the nginx allowlist (/login, /register, /forgot-password, /reset-password, /verify-email,
+# /projects, /projects/<id>, /profile, /profile/, /onboarding), a real 404 with the not-found page
+# for an unknown path and an unknown case study, and a plain 404 with the security headers for a
+# missing asset, also one under an allowlisted prefix (/projects/x.js). The container and the
+# image are removed afterwards.
 #
 # Usage (after `cd frontend && npm run build`):
 #   ./scripts/ci/check-prerender.sh
@@ -87,7 +89,7 @@ if ! node --input-type=module -e '
   cat "$WORK/routes.err" >&2
   exit 2
 fi
-[ -s "$ROUTES" ] || { echo "error: the renderer listed no public routes" >&2; exit 2; }
+[ "$(grep -c . "$ROUTES")" -gt 0 ] || { echo "error: the renderer listed no public routes" >&2; exit 2; }
 NOT_FOUND_TITLE="$(cat "$NOT_FOUND_TITLE_FILE")"
 
 page_file() {
@@ -98,7 +100,8 @@ title_for() {
   awk -F'\t' -v route="$1" '$1 == route { print $2 }' "$ROUTES"
 }
 
-has_empty_root() { grep -qF '<div id="root"></div>' "$1"; }
+# An empty root, with or without attributes (a prerendered page has data-route on it).
+has_empty_root() { grep -qE '<div id="root"[^>]*></div>' "$1"; }
 
 echo "=== Prerender build check ($(wc -l < "$ROUTES" | tr -d ' ') public routes) ==="
 
@@ -219,7 +222,8 @@ if [ "$DOCKER" = true ]; then
     fi
   done
 
-  for request in /login /projects /projects/123 /profile/; do
+  for request in /login /register /forgot-password /reset-password /verify-email /projects \
+    /projects/123 /profile /profile/ /onboarding; do
     fetch "$request"
     if check_response "GET $request"; then
       if has_empty_root "$WORK/body" && grep -qF '<meta name="robots" content="noindex" />' "$WORK/body"; then
@@ -241,13 +245,17 @@ if [ "$DOCKER" = true ]; then
     fi
   done
 
-  # A missing asset is a real 404 too, and never the app shell.
-  fetch /assets/missing.js
-  if [ "$STATUS" = "404" ] && ! grep -qF 'id="root"></div>' "$WORK/body"; then
-    pass "GET /assets/missing.js: 404"
-  else
-    fail "GET /assets/missing.js: expected 404 and no app shell, got $STATUS"
-  fi
+  # A missing asset is a real 404 too, with the security headers and never the app shell. The
+  # second path sits under an allowlisted prefix: the asset location has to win over the allowlist.
+  for request in /assets/missing.js /projects/x.js; do
+    fetch "$request"
+    if [ "$STATUS" = "404" ] && ! has_empty_root "$WORK/body" \
+      && grep -qi '^content-security-policy:' "$WORK/headers"; then
+      pass "GET $request: 404, security headers, no app shell"
+    else
+      fail "GET $request: expected 404 with the security headers and no app shell, got $STATUS"
+    fi
+  done
 fi
 
 echo ""
