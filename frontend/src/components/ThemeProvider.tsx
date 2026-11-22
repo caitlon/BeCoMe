@@ -26,9 +26,9 @@ function getSystemTheme(): ResolvedTheme {
 
 /**
  * The stored choice, or null when there is none or storage cannot be read. A
- * server has no window, and Node 22 and later put a localStorage global on
- * globalThis that warns or throws unless the process was given a storage file,
- * so the check is for the window, not for the global.
+ * server has no window, and newer Node versions expose a localStorage global
+ * that can throw when accessed without --localstorage-file, so the check is for
+ * the window, not for the global.
  */
 function readStoredTheme(storageKey: string): Theme | null {
   if (typeof window === "undefined") return null

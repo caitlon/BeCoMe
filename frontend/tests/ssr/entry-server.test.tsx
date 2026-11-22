@@ -68,7 +68,7 @@ describe('entry-server render', () => {
     expect(html).not.toContain('O BeCoMe');
   });
 
-  it('does not touch a localStorage global that throws, as Node 22 and later have it', async () => {
+  it('does not touch a localStorage global that throws, as newer Node versions expose it', async () => {
     const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,

@@ -189,8 +189,9 @@ export function Footer() {
         {/* Copyright */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           {/* The prerendered year is the build year and may differ from the viewer's. */}
-          <p className="text-sm text-muted-foreground" suppressHydrationWarning>
-            © {new Date().getFullYear()} {t("brand.name")}. {t("footer.copyright")}
+          <p className="text-sm text-muted-foreground">
+            © <span suppressHydrationWarning>{new Date().getFullYear()}</span> {t("brand.name")}.{" "}
+            {t("footer.copyright")}
           </p>
           <p className="text-sm text-muted-foreground">{t("footer.methodBy")}</p>
         </div>
