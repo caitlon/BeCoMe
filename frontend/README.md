@@ -144,8 +144,9 @@ The three calls that send a localised email, `register`, `resendVerification` an
   on the first load, so the skip link stays the first Tab stop.
 - **Loading placeholder.** While a page or the session check loads, `PageLoader` is the skip
   link's target and, if it held focus when the page replaces it, hands focus to that page's `main`.
-- **Page titles.** `useDocumentTitle` sets the title to `<page> - BeCoMe`. Every component in
-  `src/pages` calls it.
+- **Page titles.** `useDocumentTitle` sets the title to `<page> - BeCoMe`; the home page passes
+  `suffix: false` and is titled "BeCoMe - Best Compromise Mean". Every component in `src/pages`
+  calls it.
 - **Control names.** The close buttons of dialogs and toasts and the toast region take their
   names from the `a11y.close` and `a11y.notifications` keys (`src/components/ui/dialog.tsx`,
   `src/components/ui/toast.tsx`). The language switcher's accessible name comes from the

@@ -76,7 +76,7 @@ describe('RouteAnnouncer', () => {
   it('leaves focus alone on the first render so the skip link stays the first Tab stop', () => {
     const main = document.getElementById('main-content')!;
     const focusSpy = vi.spyOn(main, 'focus');
-    document.title = 'Home - BeCoMe';
+    document.title = 'About the Method - BeCoMe';
 
     renderAnnouncer();
 

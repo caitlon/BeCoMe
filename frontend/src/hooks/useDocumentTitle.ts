@@ -1,11 +1,8 @@
 import { useEffect } from "react";
 
-interface DocumentTitleOptions {
-  /** Append " - BeCoMe" to the title. Set to false for a title that already names the product. */
-  suffix?: boolean;
-}
-
-export function useDocumentTitle(title: string, { suffix = true }: DocumentTitleOptions = {}) {
+// A non-empty title gets " - BeCoMe" appended unless `suffix` is false;
+// an empty title always gives "BeCoMe".
+export function useDocumentTitle(title: string, { suffix = true }: { suffix?: boolean } = {}) {
   useEffect(() => {
     if (!title) {
       document.title = "BeCoMe";
