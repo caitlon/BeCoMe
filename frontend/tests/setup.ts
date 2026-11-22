@@ -25,10 +25,14 @@ if (typeof globalThis.localStorage === 'undefined') {
 // the vitest run while every test passed. Browsers mark that rejection handled; do the same here.
 // Only the promise that `cancel()` is about to reject is touched, so unrelated rejections still
 // surface, and code that awaits `finished` still sees the AbortError.
-const originalCancel = Animation.prototype.cancel
-Animation.prototype.cancel = function cancel(this: Animation) {
-  this.finished.catch(() => {})
-  originalCancel.call(this)
+//
+// Guarded because the server-render tests run in the node environment, where there is no Animation.
+if (typeof Animation !== 'undefined') {
+  const originalCancel = Animation.prototype.cancel
+  Animation.prototype.cancel = function cancel(this: Animation) {
+    this.finished.catch(() => {})
+    originalCancel.call(this)
+  }
 }
 
 afterEach(() => {
