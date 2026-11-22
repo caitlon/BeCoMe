@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, {
+  createContext,
+  startTransition,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { User } from '@/types/api';
@@ -76,17 +84,24 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
       // visitor on a public page is not treated as a session failure.
       const userData = await api.getCurrentUser(true);
-      setUser(userData);
-      setStatus('authenticated');
+      // The probe settles at an arbitrary moment, possibly while a prerendered page
+      // is still hydrating. A transition keeps React from answering a plain update
+      // by discarding the server HTML of a boundary that has not hydrated yet.
+      startTransition(() => {
+        setUser(userData);
+        setStatus('authenticated');
+      });
     } catch (err) {
       if (isUnauthorized(err) || err instanceof ForbiddenError) {
-        setUser(null);
-        setStatus('unauthenticated');
+        startTransition(() => {
+          setUser(null);
+          setStatus('unauthenticated');
+        });
         notifySignOutListeners();
       } else {
         // Network/server trouble, not "not logged in": keep the distinction so the
         // UI can offer a retry instead of bouncing an authenticated user to /login.
-        setStatus('serviceUnavailable');
+        startTransition(() => setStatus('serviceUnavailable'));
         logger.debug('Session probe unavailable', {
           error: err instanceof Error ? err.message : String(err),
         });

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Landing from '@/pages/Landing';
 import i18n from '@/i18n';
@@ -78,6 +78,29 @@ describe('Landing', () => {
 
     const learnMoreLink = screen.getByText(/learn more about the become method/i);
     expect(learnMoreLink).toHaveAttribute('href', '/about');
+  });
+});
+
+describe('Landing - document title', () => {
+  beforeEach(() => {
+    document.title = '';
+  });
+
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('names the method in the browser tab title in English', async () => {
+    render(<Landing />);
+
+    await waitFor(() => expect(document.title).toBe('BeCoMe - Best Compromise Mean'));
+  });
+
+  it('names the method in the browser tab title in Czech', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    await waitFor(() => expect(document.title).toBe('BeCoMe - Best Compromise Mean'));
   });
 });
 

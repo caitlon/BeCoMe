@@ -3,6 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      Pre-paint script: sets the theme class and, for Czech visitors, lang-pending on <html>
+      before first paint. It mirrors ThemeProvider and src/i18n/index.ts. nginx.conf allows
+      it by sha256, so any change to its text needs the new hash there (a test checks it).
+    -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var read = function (key) {
+            try {
+              return localStorage.getItem(key);
+            } catch (e) {
+              return null;
+            }
+          };
+          var theme = read("become-theme");
+          if (theme !== "dark" && theme !== "light") {
+            var dark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+            theme = dark ? "dark" : "light";
+          }
+          root.classList.add(theme);
+          var langs = [read("become-language")].concat(navigator.languages || [], navigator.language);
+          for (var i = 0; i < langs.length; i++) {
+            var base = String(langs[i]).toLowerCase().split("-")[0];
+            if (base === "cs") root.classList.add("lang-pending");
+            if (base === "cs" || base === "en") break;
+          }
+        } catch (e) {}
+      })();
+    </script>
     <title>BeCoMe - Best Compromise Mean | Expert Opinion Aggregation</title>
     <meta name="description" content="Experts give their lowest, most preferred and highest estimates, and BeCoMe combines them into one best compromise." />
     <meta name="author" content="BeCoMe" />

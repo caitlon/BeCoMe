@@ -17,12 +17,19 @@ same silent way: script-src has to allow the widget's script and frame-src the
 iframe it draws itself in. A policy missing either one leaves every auth form
 on a deploy that has a sitekey permanently unsubmittable.
 
+The page's one inline script (the pre-paint theme and language script in index.html) is
+allowed by its sha256 hash, never by 'unsafe-inline'. Changing one byte of it changes the
+hash, so a test recomputes it and fails until nginx.conf carries the new value.
+
 The config is plain text with no runtime the test suite can exercise, so this
 module parses it, the same way test_frontend_case_studies.py parses
 caseStudies.ts.
 """
 
+import base64
+import hashlib
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -30,6 +37,7 @@ import pytest
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NGINX_CONF = _PROJECT_ROOT / "frontend" / "nginx.conf"
 _DOCKERFILE = _PROJECT_ROOT / "frontend" / "Dockerfile"
+_INDEX_HTML = _PROJECT_ROOT / "frontend" / "index.html"
 
 _CSP_HEADER = re.compile(r'add_header\s+Content-Security-Policy\s+"([^"]*)"')
 
@@ -76,6 +84,47 @@ def _header_counts() -> dict[str, int]:
     ]
     declared = re.findall(r"add_header\s+(\S+)", "\n".join(lines))
     return {header: declared.count(header) for header in _REQUIRED_HEADERS}
+
+
+class _InlineScriptCollector(HTMLParser):
+    """Collect the raw text of every ``<script>`` element that has no ``src`` attribute."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sources: list[str] = []
+        self._inside_inline_script = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script" and all(name != "src" for name, _ in attrs):
+            self.sources.append("")
+            self._inside_inline_script = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self._inside_inline_script = False
+
+    def handle_data(self, data: str) -> None:
+        if self._inside_inline_script:
+            self.sources[-1] += data
+
+
+def _inline_script_sources() -> list[str]:
+    """Return the exact text of every inline script in frontend/index.html.
+
+    A script with a ``src`` attribute is loaded from 'self' and needs no hash.
+
+    :return: The body of each inline script, exactly as written in the file.
+    """
+    collector = _InlineScriptCollector()
+    collector.feed(_INDEX_HTML.read_text(encoding="utf-8"))
+    collector.close()
+    return collector.sources
+
+
+def _csp_hash(source: str) -> str:
+    """Return the CSP source expression that allows exactly this script text."""
+    digest = hashlib.sha256(source.encode("utf-8")).digest()
+    return f"'sha256-{base64.b64encode(digest).decode()}'"
 
 
 def _directive(csp: str, name: str) -> str:
@@ -127,6 +176,56 @@ class TestNginxContentSecurityPolicy:
         """
         for csp in _csp_headers():
             assert _TURNSTILE_HOST in _directive(csp, directive)
+
+    def test_inline_scripts_are_allowed_by_hash(self):
+        """
+        GIVEN the inline scripts in frontend/index.html
+        WHEN each one is hashed
+        THEN every copy of the policy lists that hash in script-src
+
+        Without the hash the browser blocks the script silently, and dark-mode
+        visitors get a white flash again while Czech visitors see English text
+        first. The hash covers the exact text between the tags, so editing the
+        script in any way makes this fail until nginx.conf is updated.
+        """
+        scripts = _inline_script_sources()
+        assert scripts
+
+        for csp in _csp_headers():
+            script_src = _directive(csp, "script-src")
+            for source in scripts:
+                assert _csp_hash(source) in script_src.split()
+
+    def test_script_src_carries_no_stale_hash(self):
+        """
+        GIVEN the inline scripts in frontend/index.html
+        WHEN the sha256 sources in each copy of script-src are counted
+        THEN there are exactly as many as there are inline scripts
+
+        Editing the script adds the new hash; a hash left behind from the old text would
+        keep allowing a script that no longer exists in the page.
+        """
+        expected = len(_inline_script_sources())
+
+        for csp in _csp_headers():
+            hashes = [
+                source
+                for source in _directive(csp, "script-src").split()
+                if source.startswith("'sha256-")
+            ]
+            assert len(hashes) == expected
+
+    def test_script_src_does_not_allow_unsafe_inline(self):
+        """
+        GIVEN every Content-Security-Policy declared in nginx.conf
+        WHEN script-src is read
+        THEN it does not contain 'unsafe-inline'
+
+        The hash above is what lets the one inline script run. 'unsafe-inline'
+        would let any injected script run too.
+        """
+        for csp in _csp_headers():
+            assert "'unsafe-inline'" not in _directive(csp, "script-src")
 
     def test_placeholder_substitution_is_global(self):
         """

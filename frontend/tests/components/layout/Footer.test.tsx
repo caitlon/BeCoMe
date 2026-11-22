@@ -50,7 +50,9 @@ describe('Footer', () => {
     render(<Footer />);
 
     const year = new Date().getFullYear().toString();
-    expect(screen.getByText(new RegExp(`© ${year}`))).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.tagName === 'P' && element.textContent?.startsWith(`© ${year} `) === true)
+    ).toBeInTheDocument();
   });
 
   it('offers the way to the projects, not sign-in, to a signed-in user', () => {

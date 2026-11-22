@@ -13,6 +13,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - [Accessibility](#accessibility)
 - [Layout](#layout)
 - [Assistant](#assistant)
+- [Server rendering](#server-rendering)
 - [Testing](#testing)
 
 ## Tech stack
@@ -144,8 +145,9 @@ The three calls that send a localised email, `register`, `resendVerification` an
   on the first load, so the skip link stays the first Tab stop.
 - **Loading placeholder.** While a page or the session check loads, `PageLoader` is the skip
   link's target and, if it held focus when the page replaces it, hands focus to that page's `main`.
-- **Page titles.** `useDocumentTitle` sets the title to `<page> - BeCoMe`. Every component in
-  `src/pages` calls it.
+- **Page titles.** `useDocumentTitle` sets the title to `<page> - BeCoMe`; the home page passes
+  `suffix: false` and is titled "BeCoMe - Best Compromise Mean". Every component in `src/pages`
+  calls it.
 - **Control names.** The close buttons of dialogs and toasts and the toast region take their
   names from the `a11y.close` and `a11y.notifications` keys (`src/components/ui/dialog.tsx`,
   `src/components/ui/toast.tsx`). The language switcher's accessible name comes from the
@@ -181,11 +183,95 @@ It is skipped unless the flag is in the environment when Playwright starts its d
 VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
 ```
 
+## Server rendering
+
+`npm run build` renders the public pages to HTML at build time, and the browser hydrates them.
+It runs three steps: `vite build` (the client), `vite build --ssr src/entry-server.tsx --outDir dist-ssr`
+(the renderer, never shipped: the Dockerfile copies `dist/` only) and `node scripts/prerender.mjs`.
+
+- `src/entry-server.tsx` exports `render(url)`, which returns the HTML of one route as a signed-out
+  visitor sees it in English and the default theme. It rejects when React reports any error, a
+  failure inside a Suspense boundary included, so a broken page fails the build instead of shipping
+  its loader. `pageMeta(path)` returns the title and description of a public route, built from the
+  same i18n keys and the same `documentTitle()` rule the page uses at runtime. `App.tsx` exports
+  `AppWithRouter`, the same tree with the router passed in, so the server can use a static one.
+- `src/seo/publicRoutes.ts` lists the routes that need no login, with the keys of their title and
+  description. A route added there gets a prerendered page, and `tests/seo/page-titles.test.tsx`
+  fails when its title differs from the one the page sets in a browser. The 404 page gets the same
+  check through `notFoundMeta()`, but it is not in `publicRoutes`, which would list it for indexing.
+- `scripts/prerender.mjs` takes the built `dist/index.html` as the template and renders the routes one
+  after another, because `render` shares an i18n instance and a query client between calls. Each page
+  gets its HTML inside `#root` and its own `<title>`, description, `og:` and `twitter:` text, a
+  canonical link and `og:url` on `https://www.becomify.app`. Its root is
+  `<div id="root" data-route="/about">`, the route the HTML was rendered for. It writes
+  `dist/index.html` for `/` and `dist/<path>/index.html` for the rest. It fails the build on an empty
+  root, a `<script>` in the rendered HTML or a render error. It also writes two pages that are not
+  routes and are not indexed. `dist/spa.html` is the template with
+  `<meta name="robots" content="noindex" />` and an empty root, the page nginx serves for the routes
+  behind a login. `dist/404.html` is the not-found page (`render(notFoundPath)`), with its own title,
+  the noindex tag, no canonical link and no `data-route`.
+- `nginx.conf` serves a request from `dist/` as `$uri`, then `$uri/index.html`, and answers 404
+  otherwise, with `404.html` as the body, so a crawler never meets a soft 404. A short allowlist of
+  the routes behind a login (`/login`, `/register`, `/forgot-password`, `/reset-password`,
+  `/verify-email`, `/projects`, `/projects/<id>`, `/profile`, `/onboarding`, with or without a
+  trailing slash) gets `spa.html` with status 200. The asset location comes first and wins for any
+  path with an asset extension, so a missing `/assets/x.js` is a 404. The HTML sends
+  `Cache-Control: no-cache`, except the 404 page, where `expires` does nothing. Trying the directory
+  itself (`$uri/`) would answer `/about` with a redirect to the container's port 8080. The 404
+  page and the app routes set no `add_header` of their own, so they get the server-level security
+  headers; the asset location repeats them, because a location with its own `add_header` stops
+  inheriting.
+- `tests/seo/routes-in-nginx.test.ts` reads the `<Route path>` values from `src/App.tsx` and the
+  allowlist from `nginx.conf`. Each route must be either in `publicRoutes` or in the allowlist, never
+  both, and neither list may hold a path `App.tsx` lacks. A route added to `App.tsx` alone fails
+  there instead of shipping as a 404. The allowlist is case-sensitive, so `/Login` is a 404 for nginx,
+  but the browser mounts fresh over the 404 page and the router, which ignores case, shows the page.
+- `src/lib/mount.ts`, called from `src/main.tsx`, hydrates when `#root` has prerendered content, the
+  detected language is English and `data-route` equals the current path (a trailing slash ignored),
+  and mounts a fresh tree otherwise. The 404 page is served at any unknown address, such as
+  `/case-study/unknown`, which the router renders differently, so it has no `data-route` and always
+  mounts fresh. A Czech visitor gets a fresh render, and the pre-paint script
+  keeps `#root` hidden until `RevealOnCommit` clears `lang-pending` after the first commit.
+- `src/lib/hydration.ts` holds a flag `mountApp` sets right before `hydrateRoot` and never
+  clears: it says this page load started from server HTML. While it is set, the first render must
+  match the server's HTML: `ThemeProvider` starts from its default theme
+  and applies the stored one afterwards, inside `startTransition`. Updates that can arrive while a lazy
+  page is still hydrating, such as the session probe in `AuthContext`, are transitions too, because a
+  plain update makes React discard the server HTML of that page. The copyright year in the footer is
+  the one text allowed to differ (`suppressHydrationWarning`).
+- A small inline script in `index.html` runs before first paint. It adds the stored (or system) theme
+  class to `<html>` and, for Czech visitors, a `lang-pending` class that `index.css` uses to hide `#root`
+  until React has committed its first render (`RevealOnCommit` removes it; a CSS animation reveals the
+  page after three seconds if the bundle never loads). `nginx.conf` allows the script by its sha256
+  hash, so editing the script means updating the hash there; `tests/integration/test_frontend_csp.py`
+  checks it.
+
+`scripts/ci/check-prerender.sh` checks a build: every public route has its file with a non-empty root
+that names its route, its title, its description and its canonical link, `spa.html` has the noindex tag
+and an empty root, `404.html` has its title, the noindex tag, no canonical link and no `data-route`, and
+every inline script of every built page has its hash in the Content-Security-Policy. With `--docker` it
+also builds the image, runs it and fetches `/`, `/about`, `/about/`, a case study and every app route
+of the nginx allowlist (`/projects/123` for the project page, `/profile/` for the trailing slash),
+expecting status 200 with no redirect, the security headers, `no-cache` and the right page (the shell
+for the app routes). It then fetches `/no-such-page` and `/case-study/unknown`, expecting status 404
+with the not-found page and the security headers, and `/assets/missing.js` and `/projects/x.js`,
+expecting 404 with the security headers and no app shell. The list of app routes it fetches is written
+out in the script, so a route added to the allowlist has to be added there too. CI runs both after
+the frontend build.
+
 ## Testing
 
 Unit tests live in `tests/` and run under Vitest with happy-dom. The subdirectories are
-`components`, `contexts`, `data`, `hooks`, `i18n`, `lib` and `pages`, plus `factories` and
-`mocks` for shared test data and API mocks.
+`components`, `contexts`, `data`, `hooks`, `i18n`, `lib`, `pages`, `seo` and `ssr`, plus `factories`,
+`mocks` and `support` for shared test data, API mocks and the hydration helpers.
+
+`tests/ssr/entry-server.test.tsx` runs the server render in the node environment, with no DOM. The
+hydration tests (`hydration.test.tsx`, and `hydration.reduced-motion.test.tsx` in a file of its own
+because framer-motion reads that preference once per process) get their HTML from a separate Node
+process, `tests/support/render-server-html.mjs`, which loads `src/entry-server.tsx` through Vite's SSR
+loader. They put that HTML in the page, run `hydrateRoot` over it, and expect no recoverable error, no
+console error and the server's own nodes still attached, for every public route in several browser
+states and with the assistant flag on and off.
 
 `npm run test:coverage` fails below these thresholds (`vitest.config.ts`): statements 98,
 branches 95, functions 97, lines 98. `./scripts/ci/ci-local.sh fast` runs `npm run test:run`

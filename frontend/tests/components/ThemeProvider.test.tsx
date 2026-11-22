@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from '@/components/ThemeProvider';
+import { setHydrating } from '@/lib/hydration';
 
 function ThemeConsumer() {
   const { theme, resolvedTheme, setTheme } = useTheme();
@@ -38,6 +39,10 @@ describe('ThemeProvider', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove('light', 'dark');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('falls back to defaultTheme when localStorage is empty', () => {
@@ -246,5 +251,83 @@ describe('ThemeProvider', () => {
 
     expect(localStorage.getItem('my-theme')).toBe('dark');
     expect(localStorage.getItem('vite-ui-theme')).toBeNull();
+  });
+
+  it('falls back to defaultTheme when localStorage cannot be read', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+  });
+
+  describe('while hydrating prerendered HTML', () => {
+    // Records what each render saw, since the first one is what has to match the server.
+    function renderRecording(defaultTheme: 'system' | 'light') {
+      const seen: string[] = [];
+      function Recorder() {
+        const { theme, resolvedTheme } = useTheme();
+        seen.push(`${theme}/${resolvedTheme}`);
+        return null;
+      }
+      render(
+        <ThemeProvider defaultTheme={defaultTheme}>
+          <Recorder />
+        </ThemeProvider>
+      );
+      return seen;
+    }
+
+    beforeEach(() => setHydrating(true));
+    afterEach(() => setHydrating(false));
+
+    it('renders the default theme first and the stored one after', async () => {
+      localStorage.setItem('vite-ui-theme', 'dark');
+      const classAdded = vi.spyOn(document.documentElement.classList, 'add');
+
+      const seen = renderRecording('system');
+
+      expect(seen[0]).toBe('system/light');
+      await waitFor(() => expect(seen[seen.length - 1]).toBe('dark/dark'));
+      // The stored choice reaches the page directly, with no flash of the default.
+      expect(classAdded).not.toHaveBeenCalledWith('light');
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    it('resolves "system" as light on the first render whatever the OS prefers', async () => {
+      const { mql } = createMatchMediaMock(true);
+      vi.spyOn(window, 'matchMedia').mockReturnValue(mql as unknown as MediaQueryList);
+
+      const seen = renderRecording('system');
+
+      expect(seen[0]).toBe('system/light');
+      await waitFor(() => expect(seen[seen.length - 1]).toBe('system/dark'));
+    });
+
+    it('keeps the default when the stored choice is the default', async () => {
+      localStorage.setItem('vite-ui-theme', 'system');
+
+      const seen = renderRecording('system');
+
+      await waitFor(() => expect(document.documentElement.classList.contains('light')).toBe(true));
+      expect(seen.every((entry) => entry.startsWith('system/'))).toBe(true);
+    });
+
+    it('keeps the default when nothing is stored or storage cannot be read', async () => {
+      const seen = renderRecording('light');
+      expect(seen[seen.length - 1]).toBe('light/light');
+
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('storage blocked');
+      });
+      const blocked = renderRecording('light');
+      await waitFor(() => expect(blocked[blocked.length - 1]).toBe('light/light'));
+    });
   });
 });

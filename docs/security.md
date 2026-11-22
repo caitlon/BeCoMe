@@ -645,6 +645,23 @@ there and runs its challenge in an iframe served by it. Without both, no token i
 minted and all four auth forms stay unsubmittable. `tests/integration/test_frontend_csp.py`
 asserts those directives against the config: a CSP that under-permits fails silently, since
 the browser drops the request before it reaches the origin and nothing appears in the logs.
+Its `script-src` also allows exactly one inline script, by its sha256 hash and never with
+`'unsafe-inline'`: the pre-paint script in `frontend/index.html`, which sets the theme class
+and a language flag on `<html>` before first paint. It reads two `localStorage` keys
+(`become-theme`, `become-language`) and the browser's language list, and takes no input from
+the URL. Changing one byte of it changes the hash, and the same test fails until `nginx.conf`
+carries the new one.
+
+The build prerenders the public pages, and nginx sends their HTML with `expires -1`, which gives
+`Cache-Control: no-cache`, rather than an `add_header Cache-Control`: a location that sets any
+`add_header` of its own stops inheriting the server-level security headers, and the HTML must keep
+them. The not-found page and the app shell for the routes behind a login are served the same way,
+from locations with no `add_header`, and every unknown path answers a real 404.
+`scripts/ci/check-prerender.sh --docker` fetches pages from the built image and checks the
+CSP header on each. The prerender fails the build on a `<script>` in the rendered HTML, and
+`check-prerender.sh` also checks that every inline script of every built page has its hash in the
+policy.
+
 Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
 unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
 information. The CSP is what constrains injection.
@@ -1000,7 +1017,8 @@ outage it was meant to cover.
 never reads it, since it uses the `HttpOnly` cookie, but programmatic clients can only
 obtain the token this way, and `POST /auth/refresh` accepts it in the request body for
 exactly that reason. Reading the body value requires script execution on the origin, which
-the CSP (`script-src` allows this origin and Cloudflare's Turnstile host, nothing else), the
+the CSP (`script-src` allows this origin, Cloudflare's Turnstile host and one inline script
+by its sha256 hash, the pre-paint script in `frontend/index.html`, nothing else), the
 explicit CORS allow-list, and `SameSite=Strict` between them prevent. Rotation with reuse
 detection then caps the value of a token that does leak.
 

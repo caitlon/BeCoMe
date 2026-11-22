@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "dev:e2e": "node scripts/e2e-cert.mjs && E2E_HTTPS=1 vite",
-    "build": "vite build",
+    "build": "vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview",

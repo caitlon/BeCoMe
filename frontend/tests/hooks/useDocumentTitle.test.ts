@@ -37,4 +37,16 @@ describe('useDocumentTitle', () => {
 
     expect(document.title).toBe('Projects - BeCoMe');
   });
+
+  it('omits the suffix when suffix is false', () => {
+    renderHook(() => useDocumentTitle('BeCoMe - Best Compromise Mean', { suffix: false }));
+
+    expect(document.title).toBe('BeCoMe - Best Compromise Mean');
+  });
+
+  it('still sets "BeCoMe" for an empty title when suffix is false', () => {
+    renderHook(() => useDocumentTitle('', { suffix: false }));
+
+    expect(document.title).toBe('BeCoMe');
+  });
 });
