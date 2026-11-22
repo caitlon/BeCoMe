@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
 import { scrubBreadcrumb, scrubEvent } from "@/lib/sentry";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { RevealOnCommit } from "@/components/RevealOnCommit";
 import "@/i18n";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
@@ -33,8 +34,10 @@ if (!rootElement) throw new Error("Root element not found");
 
 createRoot(rootElement).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="system" storageKey="become-theme">
-      <App />
-    </ThemeProvider>
+    <RevealOnCommit>
+      <ThemeProvider defaultTheme="system" storageKey="become-theme">
+        <App />
+      </ThemeProvider>
+    </RevealOnCommit>
   </StrictMode>
 );
