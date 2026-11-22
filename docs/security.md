@@ -645,6 +645,12 @@ there and runs its challenge in an iframe served by it. Without both, no token i
 minted and all four auth forms stay unsubmittable. `tests/integration/test_frontend_csp.py`
 asserts those directives against the config: a CSP that under-permits fails silently, since
 the browser drops the request before it reaches the origin and nothing appears in the logs.
+Its `script-src` also allows exactly one inline script, by its sha256 hash and never with
+`'unsafe-inline'`: the pre-paint script in `frontend/index.html`, which sets the theme class
+and a language flag on `<html>` before first paint. It reads two `localStorage` keys
+(`become-theme`, `become-language`) and the browser's language list, and takes no input from
+the URL. Changing one byte of it changes the hash, and the same test fails until `nginx.conf`
+carries the new one.
 Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
 unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
 information. The CSP is what constrains injection.

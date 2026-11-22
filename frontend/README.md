@@ -198,6 +198,12 @@ this yet: `src/main.tsx` still mounts with `createRoot`, and no step of `npm run
   page is still hydrating, such as the session probe in `AuthContext`, are transitions too, because a
   plain update makes React discard the server HTML of that page. The copyright year in the footer is
   the one text allowed to differ (`suppressHydrationWarning`).
+- A small inline script in `index.html` runs before first paint. It adds the stored (or system) theme
+  class to `<html>` and, for Czech visitors, a `lang-pending` class that `index.css` uses to hide `#root`
+  until React has committed its first render (`RevealOnCommit` removes it; a CSS animation reveals the
+  page after three seconds if the bundle never loads). `nginx.conf` allows the script by its sha256
+  hash, so editing the script means updating the hash there; `tests/integration/test_frontend_csp.py`
+  checks it.
 
 ## Testing
 

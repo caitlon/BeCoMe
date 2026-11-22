@@ -362,6 +362,21 @@
   main:focus {
     outline: none;
   }
+
+  /* The pre-paint script in index.html sets lang-pending for Czech visitors, so they
+     do not see English markup before React renders Czech. main.tsx removes the class
+     after the first commit. The animation is the safety net: if the bundle never
+     loads, the page shows itself after three seconds instead of staying blank. */
+  html.lang-pending #root {
+    visibility: hidden;
+    animation: reveal-root 0s linear 3s forwards;
+  }
+
+  @keyframes reveal-root {
+    to {
+      visibility: visible;
+    }
+  }
   
   /* Typography Classes */
   .font-display {
