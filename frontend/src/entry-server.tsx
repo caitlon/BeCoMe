@@ -74,3 +74,18 @@ export function pageMeta(path: string): PageMeta {
     description: t(route.descriptionKey),
   };
 }
+
+/**
+ * A path no route matches, rendered into the 404 page. nginx serves that page at every
+ * unknown address, so the page cannot belong to one of them.
+ */
+export const notFoundPath = "/404";
+
+/**
+ * The title and description of the 404 page, in English: what NotFound sets as its
+ * document title at runtime and what it says under the code.
+ */
+export function notFoundMeta(): PageMeta {
+  const t = (key: string) => i18n.t(key, { lng: "en" });
+  return { title: documentTitle(t("pageTitle.notFound")), description: t("notFound.description") };
+}

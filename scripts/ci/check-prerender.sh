@@ -4,21 +4,28 @@ set -euo pipefail
 # Checks that the frontend build prerenders the public pages and that nginx serves them.
 #
 # The build (`npm run build` in frontend/) renders every public route to dist/<route>/index.html
-# and writes dist/spa.html, the empty shell for the routes behind a login (see
-# frontend/scripts/prerender.mjs). The route list and the expected titles come from the
-# build's own renderer (frontend/dist-ssr), so a route added to the app is checked without
-# touching this script.
+# and writes dist/spa.html, the empty shell for the routes behind a login, and dist/404.html,
+# the not-found page (see frontend/scripts/prerender.mjs). The route list and the expected
+# titles come from the build's own renderer (frontend/dist-ssr), so a route added to the app
+# is checked without touching this script.
 #
 # Build checks (always):
-#   - every public route has its file, with a non-empty root, its own title and canonical link;
+#   - every public route has its file, with a non-empty root that names its route (data-route),
+#     its own title, description and canonical link, and no robots tag;
 #   - spa.html has the noindex tag and an empty root;
+#   - 404.html has a non-empty root with no data-route, the not-found title, the noindex tag
+#     and no canonical link;
 #   - every inline script in every built page has its sha256 in each Content-Security-Policy
 #     of frontend/nginx.conf, because a script the policy does not allow is blocked silently.
 #
 # Image checks (--docker): builds the frontend image, runs it, and fetches pages over HTTP to
 # prove that nginx answers without a redirect, with the security headers, with no-cache on the
-# HTML, the prerendered page for a public route and the shell for an app route. The container and
-# the image are removed afterwards.
+# HTML, the prerendered page for a public route, the shell for each app
+# route of the nginx allowlist (/login, /register, /forgot-password, /reset-password, /verify-email,
+# /projects, /projects/<id>, /profile, /profile/, /onboarding), a real 404 with the not-found page
+# for an unknown path and an unknown case study, and a plain 404 with the security headers for a
+# missing asset, also one under an allowlisted prefix (/projects/x.js). The container and the
+# image are removed afterwards.
 #
 # Usage (after `cd frontend && npm run build`):
 #   ./scripts/ci/check-prerender.sh
@@ -60,8 +67,10 @@ fail() { echo "  FAIL  $1" >&2; FAILURES=$((FAILURES + 1)); }
 # Every public route with its expected title and description as prerender.mjs writes them
 # (HTML-escaped), one "route<TAB>title<TAB>description" per line.
 ROUTES="$WORK/routes.tsv"
+NOT_FOUND_TITLE_FILE="$WORK/not-found-title.txt"
 if ! node --input-type=module -e '
-  const { publicRoutes, pageMeta } = await import(process.argv[1]);
+  const { publicRoutes, pageMeta, notFoundMeta } = await import(process.argv[1]);
+  const { writeFileSync } = await import("node:fs");
   const escapeHtml = (text) =>
     text
       .replaceAll("&", "&amp;")
@@ -69,16 +78,19 @@ if ! node --input-type=module -e '
       .replaceAll(">", "&gt;")
       .replaceAll("\"", "&quot;")
       .replaceAll("\u0027", "&#39;");
-  for (const route of publicRoutes) {
+  const lines = publicRoutes.map((route) => {
     const { title, description } = pageMeta(route);
-    console.log(`${route}\t${escapeHtml(title)}\t${escapeHtml(description)}`);
-  }
-' "$FRONTEND/dist-ssr/entry-server.js" > "$ROUTES" 2> "$WORK/routes.err"; then
+    return `${route}\t${escapeHtml(title)}\t${escapeHtml(description)}`;
+  });
+  writeFileSync(process.argv[2], lines.join("\n") + "\n");
+  writeFileSync(process.argv[3], escapeHtml(notFoundMeta().title));
+' "$FRONTEND/dist-ssr/entry-server.js" "$ROUTES" "$NOT_FOUND_TITLE_FILE" 2> "$WORK/routes.err"; then
   echo "error: could not load the renderer frontend/dist-ssr/entry-server.js:" >&2
   cat "$WORK/routes.err" >&2
   exit 2
 fi
-[ -s "$ROUTES" ] || { echo "error: the renderer listed no public routes" >&2; exit 2; }
+[ "$(grep -c . "$ROUTES")" -gt 0 ] || { echo "error: the renderer listed no public routes" >&2; exit 2; }
+NOT_FOUND_TITLE="$(cat "$NOT_FOUND_TITLE_FILE")"
 
 page_file() {
   if [ "$1" = "/" ]; then echo "$DIST/index.html"; else echo "$DIST$1/index.html"; fi
@@ -88,7 +100,8 @@ title_for() {
   awk -F'\t' -v route="$1" '$1 == route { print $2 }' "$ROUTES"
 }
 
-has_empty_root() { grep -qF '<div id="root"></div>' "$1"; }
+# An empty root, with or without attributes (a prerendered page has data-route on it).
+has_empty_root() { grep -qE '<div id="root"[^>]*></div>' "$1"; }
 
 echo "=== Prerender build check ($(wc -l < "$ROUTES" | tr -d ' ') public routes) ==="
 
@@ -100,6 +113,7 @@ while IFS=$'\t' read -r route title description; do
   fi
   problems=""
   if has_empty_root "$file"; then problems="$problems empty-root"; fi
+  grep -qF "<div id=\"root\" data-route=\"$route\">" "$file" || problems="$problems data-route"
   grep -qF "<title>$title</title>" "$file" || problems="$problems title"
   grep -qF "<meta name=\"description\" content=\"$description\" />" "$file" || problems="$problems description"
   grep -qF "<link rel=\"canonical\" href=\"$ORIGIN$route\" />" "$file" || problems="$problems canonical"
@@ -113,6 +127,18 @@ elif grep -qF '<meta name="robots" content="noindex" />' "$DIST/spa.html" && has
   pass "spa.html: noindex, empty root"
 else
   fail "spa.html needs the noindex tag and an empty root"
+fi
+
+if [ ! -f "$DIST/404.html" ]; then
+  fail "404.html does not exist"
+else
+  problems=""
+  if has_empty_root "$DIST/404.html"; then problems="$problems empty-root"; fi
+  if grep -qF 'data-route=' "$DIST/404.html"; then problems="$problems data-route"; fi
+  grep -qF "<title>$NOT_FOUND_TITLE</title>" "$DIST/404.html" || problems="$problems title"
+  grep -qF '<meta name="robots" content="noindex" />' "$DIST/404.html" || problems="$problems noindex"
+  if grep -qF 'rel="canonical"' "$DIST/404.html"; then problems="$problems canonical"; fi
+  if [ -n "$problems" ]; then fail "404.html:$problems"; else pass "404.html: not-found title, noindex, no canonical, no data-route"; fi
 fi
 
 # The SHA-256 of each inline script, as the Content-Security-Policy writes it.
@@ -163,12 +189,19 @@ if [ "$DOCKER" = true ]; then
     STATUS="$(curl -s -o "$WORK/body" -D "$WORK/headers" -w '%{http_code}' --max-time 10 "$BASE$1" || true)"
   }
 
+  # check_response <label> [expected status, 200 by default]
   check_response() {
-    local label="$1" problems=""
-    [ "$STATUS" = "200" ] || problems="$problems status-$STATUS"
+    local label="$1" expected="${2:-200}" problems=""
+    [ "$STATUS" = "$expected" ] || problems="$problems status-$STATUS"
     if grep -qi '^location:' "$WORK/headers"; then problems="$problems redirect"; fi
     grep -qi '^content-security-policy:' "$WORK/headers" || problems="$problems no-csp"
-    grep -qi '^cache-control: no-cache' "$WORK/headers" || problems="$problems cache-control"
+    if [ "$expected" = "200" ]; then
+      grep -qi '^cache-control: no-cache' "$WORK/headers" || problems="$problems cache-control"
+    elif grep -qiE '^(cache-control|last-modified):' "$WORK/headers"; then
+      # nginx's `expires` skips a 404, so the page has no cache header. Without a
+      # Last-Modified either, a cache has no freshness to work from and revalidates.
+      problems="$problems cache-header"
+    fi
     if [ -n "$problems" ]; then fail "$label:$problems"; return 1; fi
   }
 
@@ -189,14 +222,40 @@ if [ "$DOCKER" = true ]; then
     fi
   done
 
-  fetch /projects
-  if check_response "GET /projects"; then
-    if has_empty_root "$WORK/body" && grep -qF '<meta name="robots" content="noindex" />' "$WORK/body"; then
-      pass "GET /projects: 200, the app shell with noindex"
-    else
-      fail "GET /projects: expected the app shell (empty root, noindex)"
+  for request in /login /register /forgot-password /reset-password /verify-email /projects \
+    /projects/123 /profile /profile/ /onboarding; do
+    fetch "$request"
+    if check_response "GET $request"; then
+      if has_empty_root "$WORK/body" && grep -qF '<meta name="robots" content="noindex" />' "$WORK/body"; then
+        pass "GET $request: 200, the app shell with noindex"
+      else
+        fail "GET $request: expected the app shell (empty root, noindex)"
+      fi
     fi
-  fi
+  done
+
+  for request in /no-such-page /case-study/unknown; do
+    fetch "$request"
+    if check_response "GET $request" 404; then
+      if grep -qF "<title>$NOT_FOUND_TITLE</title>" "$WORK/body" && grep -qF '<meta name="robots" content="noindex" />' "$WORK/body"; then
+        pass "GET $request: 404, the not-found page"
+      else
+        fail "GET $request: expected the not-found page (title \"$NOT_FOUND_TITLE\", noindex)"
+      fi
+    fi
+  done
+
+  # A missing asset is a real 404 too, with the security headers and never the app shell. The
+  # second path sits under an allowlisted prefix: the asset location has to win over the allowlist.
+  for request in /assets/missing.js /projects/x.js; do
+    fetch "$request"
+    if [ "$STATUS" = "404" ] && ! has_empty_root "$WORK/body" \
+      && grep -qi '^content-security-policy:' "$WORK/headers"; then
+      pass "GET $request: 404, security headers, no app shell"
+    else
+      fail "GET $request: expected 404 with the security headers and no app shell, got $STATUS"
+    fi
+  done
 fi
 
 echo ""
@@ -205,7 +264,7 @@ if [ "$FAILURES" -gt 0 ]; then
   exit 1
 fi
 if [ "$DOCKER" = true ]; then
-  echo "PASS: the build prerenders the public pages and the image serves them"
+  echo "PASS: the build prerenders the public pages and the image serves them and answers 404 for the rest"
 else
   echo "PASS: the build prerenders the public pages"
 fi

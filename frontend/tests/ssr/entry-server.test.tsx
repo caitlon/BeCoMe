@@ -157,3 +157,24 @@ describe('entry-server pageMeta', () => {
     await expect(meta('/projects')).rejects.toThrow('No page metadata for /projects');
   });
 });
+
+describe('entry-server 404 page', () => {
+  it('renders the not-found screen at notFoundPath, which no route matches', async () => {
+    vi.resetModules();
+    const { render, notFoundPath, publicRoutes: listed } = await import('@/entry-server');
+
+    expect(listed).not.toContain(notFoundPath);
+    expect(heading(await render(notFoundPath))).toBe('404');
+  });
+
+  it('gives it the title and description NotFound shows, in English', async () => {
+    vi.resetModules();
+    vi.stubGlobal('navigator', { language: 'cs-CZ', languages: ['cs-CZ', 'cs'] });
+    const { notFoundMeta } = await import('@/entry-server');
+
+    expect(notFoundMeta()).toEqual({
+      title: 'Page Not Found - BeCoMe',
+      description: 'The requested page could not be found.',
+    });
+  });
+});
