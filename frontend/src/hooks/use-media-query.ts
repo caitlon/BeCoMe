@@ -11,9 +11,10 @@ import * as React from "react";
  *
  * Reading through an external store, rather than mirroring the match into
  * useState from an effect, keeps the value correct on the very first render and
- * avoids a synchronous setState inside an effect. Returns false in environments
- * without matchMedia: the app is a client-only Vite SPA with no server
- * rendering, so the fallback only guards non-DOM runtimes.
+ * avoids a synchronous setState inside an effect. Returns false where there is
+ * no matchMedia, which includes the server render of the prerendered pages and
+ * the first render of their hydration, so a page that depends on the query
+ * corrects itself once it is live.
  *
  * @param query - Media query string, for example "(min-width: 1024px)".
  * @returns true while the query matches the viewport.
