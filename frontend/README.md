@@ -13,6 +13,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - [Accessibility](#accessibility)
 - [Layout](#layout)
 - [Assistant](#assistant)
+- [Server rendering](#server-rendering)
 - [Testing](#testing)
 
 ## Tech stack
