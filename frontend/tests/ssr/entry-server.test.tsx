@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Window } from 'happy-dom';
 import { publicRoutes } from '@/seo/publicRoutes';
 
 // Each render gets a fresh module graph, as a separate prerender process would have, so a
@@ -10,9 +11,13 @@ async function renderRoute(url: string): Promise<string> {
   return render(url);
 }
 
+// Parses the server HTML in a separate happy-dom window, so the test file itself stays DOM-free.
 function heading(html: string): string {
-  const match = /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(html);
-  return (match?.[1] ?? '').replace(/<[^>]+>/g, '').trim();
+  const win = new Window();
+  win.document.body.innerHTML = html;
+  const text = win.document.querySelector('h1')?.textContent?.trim() ?? '';
+  void win.happyDOM.close();
+  return text;
 }
 
 describe('entry-server render', () => {
