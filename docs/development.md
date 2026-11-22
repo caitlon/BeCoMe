@@ -121,7 +121,7 @@ uv run uvicorn api.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
-The frontend dev server listens on `localhost` only (`[::1]` on macOS, so `http://127.0.0.1:8080` is refused), and no other host on the network reaches the local API through its proxy. To view the pages from another device for one run, start it with `npx vite --host` in `frontend/`; signing in does not work there, because the session cookies are `Secure` and a LAN address over plain HTTP is not a secure context.
+The frontend dev server listens on `localhost` only. On macOS that is `[::1]`, so nothing answers on `http://127.0.0.1:8080`. No other host on the network reaches the local API through its proxy. To view the pages from another device for one run, start it with `npx vite --host` in `frontend/`. That run opens the proxy, and the local API behind it, to the whole network. Signing in from there still fails, because the session cookies are `Secure` and plain HTTP on a LAN address is not a secure context.
 
 Run one case study without the web app:
 
