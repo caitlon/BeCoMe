@@ -197,20 +197,37 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
   `AppWithRouter`, the same tree with the router passed in, so the server can use a static one.
 - `src/seo/publicRoutes.ts` lists the routes that need no login, with the keys of their title and
   description. A route added there gets a prerendered page, and `tests/seo/page-titles.test.tsx`
-  fails when its title differs from the one the page sets in a browser.
+  fails when its title differs from the one the page sets in a browser. The 404 page gets the same
+  check through `notFoundMeta()`, but it is not in `publicRoutes`, which would list it for indexing.
 - `scripts/prerender.mjs` takes the built `dist/index.html` as the template and renders the routes one
   after another, because `render` shares an i18n instance and a query client between calls. Each page
   gets its HTML inside `#root` and its own `<title>`, description, `og:` and `twitter:` text, a
-  canonical link and `og:url` on `https://www.becomify.app`. It writes `dist/index.html` for `/` and
-  `dist/<path>/index.html` for the rest. It fails the build on an empty root, a `<script>` in the
-  rendered HTML or a render error. It also writes `dist/spa.html` first: the template with
+  canonical link and `og:url` on `https://www.becomify.app`. Its root is
+  `<div id="root" data-route="/about">`, the route the HTML was rendered for. It writes
+  `dist/index.html` for `/` and `dist/<path>/index.html` for the rest. It fails the build on an empty
+  root, a `<script>` in the rendered HTML or a render error. It also writes two pages that are not routes to index. `dist/spa.html` is the template with
   `<meta name="robots" content="noindex" />` and an empty root, the page nginx serves for the routes
-  behind a login.
-- `nginx.conf` serves a request from `dist/` as `$uri`, then `$uri/index.html`, then `/spa.html`, and
-  sends `Cache-Control: no-cache` for them. Trying the directory itself (`$uri/`) would answer `/about`
-  with a redirect to the container's port 8080.
-- `src/lib/mount.ts`, called from `src/main.tsx`, hydrates when `#root` has prerendered content and the detected language is English,
-  and mounts a fresh tree otherwise. A Czech visitor gets a fresh render, and the pre-paint script
+  behind a login. `dist/404.html` is the not-found page (`render(notFoundPath)`), with its own title,
+  the noindex tag, no canonical link and no `data-route`.
+- `nginx.conf` serves a request from `dist/` as `$uri`, then `$uri/index.html`, and answers 404
+  otherwise, with `404.html` as the body, so a crawler never meets a soft 404. A short allowlist of
+  the routes behind a login (`/login`, `/register`, `/forgot-password`, `/reset-password`,
+  `/verify-email`, `/projects`, `/projects/<id>`, `/profile`, `/onboarding`, with or without a
+  trailing slash) gets `spa.html` with status 200. The asset location comes first and wins for any
+  path with an asset extension, so a missing `/assets/x.js` is a 404. The HTML sends
+  `Cache-Control: no-cache`, except the 404 page, where `expires` does nothing. Trying the directory
+  itself (`$uri/`) would answer `/about` with a redirect to the container's port 8080. None of
+  these locations sets an `add_header`, so the server-level security headers apply to all of them.
+- `tests/seo/routes-in-nginx.test.ts` reads the `<Route path>` values from `src/App.tsx` and the
+  allowlist from `nginx.conf`. Each route must be either in `publicRoutes` or in the allowlist, never
+  both, and neither list may hold a path `App.tsx` lacks. A route added to `App.tsx` alone fails
+  there instead of shipping as a 404. The allowlist is case-sensitive, so `/Login` is a 404 for nginx,
+  but the browser mounts fresh over the 404 page and the router, which ignores case, shows the page.
+- `src/lib/mount.ts`, called from `src/main.tsx`, hydrates when `#root` has prerendered content, the
+  detected language is English and `data-route` equals the current path (a trailing slash ignored),
+  and mounts a fresh tree otherwise. The 404 page is served at any unknown address, such as
+  `/case-study/unknown`, which the router renders differently, so it has no `data-route` and always
+  mounts fresh. A Czech visitor gets a fresh render, and the pre-paint script
   keeps `#root` hidden until `RevealOnCommit` clears `lang-pending` after the first commit.
 - `src/lib/hydration.ts` holds a flag `mountApp` sets right before `hydrateRoot` and never
   clears: it says this page load started from server HTML. While it is set, the first render must
@@ -226,11 +243,15 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
   hash, so editing the script means updating the hash there; `tests/integration/test_frontend_csp.py`
   checks it.
 
-`scripts/ci/check-prerender.sh` checks a build: every public route has its file with a non-empty root,
-its title and its canonical link, `spa.html` has the noindex tag, and every inline script of every
-built page has its hash in the Content-Security-Policy. With `--docker` it also builds the image, runs
-it and fetches `/`, `/about`, `/about/`, a case study and `/projects`, expecting status 200 with no
-redirect, the security headers, `no-cache` and the right page. CI runs both after the frontend build.
+`scripts/ci/check-prerender.sh` checks a build: every public route has its file with a non-empty root
+that names its route, its title, its description and its canonical link, `spa.html` has the noindex tag
+and an empty root, `404.html` has its title, the noindex tag, no canonical link and no `data-route`, and
+every inline script of every built page has its hash in the Content-Security-Policy. With `--docker` it
+also builds the image, runs it and fetches `/`, `/about`, `/about/`, a case study, `/login`,
+`/projects`, `/projects/123` and `/profile/`, expecting status 200 with no redirect, the security
+headers, `no-cache` and the right page (the shell for the app routes). It then fetches `/no-such-page`
+and `/case-study/unknown`, expecting status 404 with the not-found page and the security headers, and
+`/assets/missing.js`, expecting 404. CI runs both after the frontend build.
 
 ## Testing
 

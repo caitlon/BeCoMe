@@ -655,7 +655,9 @@ carries the new one.
 The build prerenders the public pages, and nginx sends their HTML with `expires -1`, which gives
 `Cache-Control: no-cache`, rather than an `add_header Cache-Control`: a location that sets any
 `add_header` of its own stops inheriting the server-level security headers, and the HTML must keep
-them. `scripts/ci/check-prerender.sh --docker` fetches pages from the built image and checks the
+them. The not-found page and the app shell for the routes behind a login are served the same way,
+from locations with no `add_header`, and every unknown path answers a real 404.
+`scripts/ci/check-prerender.sh --docker` fetches pages from the built image and checks the
 CSP header on each. The prerender fails the build on a `<script>` in the rendered HTML, and
 `check-prerender.sh` also checks that every inline script of every built page has its hash in the
 policy.
