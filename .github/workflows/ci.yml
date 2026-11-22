@@ -146,10 +146,13 @@ jobs:
     needs: [lint-python, lint-frontend]
     steps:
       - name: Report lint results
+        env:
+          PYTHON_RESULT: ${{ needs.lint-python.result }}
+          FRONTEND_RESULT: ${{ needs.lint-frontend.result }}
         run: |
-          echo "python: ${{ needs.lint-python.result }}, frontend: ${{ needs.lint-frontend.result }}"
-          if [ "${{ needs.lint-python.result }}" != "success" ] || \
-             [ "${{ needs.lint-frontend.result }}" != "success" ]; then
+          echo "python: $PYTHON_RESULT, frontend: $FRONTEND_RESULT"
+          if [ "$PYTHON_RESULT" != "success" ] || \
+             [ "$FRONTEND_RESULT" != "success" ]; then
             echo "::error::a lint half did not pass"
             exit 1
           fi
@@ -601,9 +604,11 @@ jobs:
     if: always()
     steps:
       - name: Report shard results
+        env:
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
         run: |
-          echo "shards: ${{ needs.e2e-shard.result }}"
-          if [ "${{ needs.e2e-shard.result }}" != "success" ]; then
+          echo "shards: $SHARD_RESULT"
+          if [ "$SHARD_RESULT" != "success" ]; then
             echo "::error::at least one E2E shard did not pass"
             exit 1
           fi
