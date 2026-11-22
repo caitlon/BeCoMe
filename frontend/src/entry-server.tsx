@@ -48,7 +48,7 @@ export async function render(url: string): Promise<string> {
   return html;
 }
 
-export interface PageMeta {
+interface PageMeta {
   readonly title: string;
   readonly description: string;
 }

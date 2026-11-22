@@ -57,20 +57,31 @@ trap cleanup EXIT
 pass() { echo "  PASS  $1"; }
 fail() { echo "  FAIL  $1" >&2; FAILURES=$((FAILURES + 1)); }
 
-# Every public route with its expected title, one "route<TAB>title" per line.
+# Every public route with its expected title and description as prerender.mjs writes them
+# (HTML-escaped), one "route<TAB>title<TAB>description" per line.
 ROUTES="$WORK/routes.tsv"
-node --input-type=module -e '
+if ! node --input-type=module -e '
   const { publicRoutes, pageMeta } = await import(process.argv[1]);
-  for (const route of publicRoutes) console.log(`${route}\t${pageMeta(route).title}`);
-' "$FRONTEND/dist-ssr/entry-server.js" > "$ROUTES" 2> /dev/null
+  const escapeHtml = (text) =>
+    text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("\u0027", "&#39;");
+  for (const route of publicRoutes) {
+    const { title, description } = pageMeta(route);
+    console.log(`${route}\t${escapeHtml(title)}\t${escapeHtml(description)}`);
+  }
+' "$FRONTEND/dist-ssr/entry-server.js" > "$ROUTES" 2> "$WORK/routes.err"; then
+  echo "error: could not load the renderer frontend/dist-ssr/entry-server.js:" >&2
+  cat "$WORK/routes.err" >&2
+  exit 2
+fi
 [ -s "$ROUTES" ] || { echo "error: the renderer listed no public routes" >&2; exit 2; }
 
 page_file() {
   if [ "$1" = "/" ]; then echo "$DIST/index.html"; else echo "$DIST$1/index.html"; fi
-}
-
-canonical_for() {
-  if [ "$1" = "/" ]; then echo "$ORIGIN/"; else echo "$ORIGIN$1"; fi
 }
 
 title_for() {
@@ -81,7 +92,7 @@ has_empty_root() { grep -qF '<div id="root"></div>' "$1"; }
 
 echo "=== Prerender build check ($(wc -l < "$ROUTES" | tr -d ' ') public routes) ==="
 
-while IFS=$'\t' read -r route title; do
+while IFS=$'\t' read -r route title description; do
   file="$(page_file "$route")"
   if [ ! -f "$file" ]; then
     fail "$route: $file does not exist"
@@ -90,7 +101,8 @@ while IFS=$'\t' read -r route title; do
   problems=""
   if has_empty_root "$file"; then problems="$problems empty-root"; fi
   grep -qF "<title>$title</title>" "$file" || problems="$problems title"
-  grep -qF "<link rel=\"canonical\" href=\"$(canonical_for "$route")\" />" "$file" || problems="$problems canonical"
+  grep -qF "<meta name=\"description\" content=\"$description\" />" "$file" || problems="$problems description"
+  grep -qF "<link rel=\"canonical\" href=\"$ORIGIN$route\" />" "$file" || problems="$problems canonical"
   if grep -qF 'name="robots"' "$file"; then problems="$problems robots-tag"; fi
   if [ -n "$problems" ]; then fail "$route:$problems"; else pass "$route"; fi
 done < "$ROUTES"

@@ -205,15 +205,14 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
   `dist/<path>/index.html` for the rest. It fails the build on an empty root, a `<script>` in the
   rendered HTML or a render error. It also writes `dist/spa.html` first: the template with
   `<meta name="robots" content="noindex" />` and an empty root, the page nginx serves for the routes
-  behind a login. Inline `<style>` from `components/ui/chart.tsx` is baked into the shipped HTML as
-  it is. `style-src` allows inline styles, and the chart config is static.
+  behind a login.
 - `nginx.conf` serves a request from `dist/` as `$uri`, then `$uri/index.html`, then `/spa.html`, and
   sends `Cache-Control: no-cache` for them. Trying the directory itself (`$uri/`) would answer `/about`
   with a redirect to the container's port 8080.
-- `src/main.tsx` hydrates when `#root` has prerendered content and the detected language is English,
+- `src/lib/mount.ts`, called from `src/main.tsx`, hydrates when `#root` has prerendered content and the detected language is English,
   and mounts a fresh tree otherwise. A Czech visitor gets a fresh render, and the pre-paint script
   keeps `#root` hidden until `RevealOnCommit` clears `lang-pending` after the first commit.
-- `src/lib/hydration.ts` holds a flag the client entry sets right before `hydrateRoot` and never
+- `src/lib/hydration.ts` holds a flag `mountApp` sets right before `hydrateRoot` and never
   clears: it says this page load started from server HTML. While it is set, the first render must
   match the server's HTML: `ThemeProvider` starts from its default theme
   and applies the stored one afterwards, inside `startTransition`. Updates that can arrive while a lazy

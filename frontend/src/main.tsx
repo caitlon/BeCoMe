@@ -1,12 +1,11 @@
 import { StrictMode } from "react";
-import { createRoot, hydrateRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
 import { scrubBreadcrumb, scrubEvent } from "@/lib/sentry";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { RevealOnCommit } from "@/components/RevealOnCommit";
 import i18n, { toSupportedLanguage } from "@/i18n";
-import { setHydrating, shouldHydrate } from "@/lib/hydration";
+import { mountApp } from "@/lib/mount";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
@@ -43,9 +42,4 @@ const tree = (
   </StrictMode>
 );
 
-if (shouldHydrate(rootElement, toSupportedLanguage(i18n.language))) {
-  setHydrating(true);
-  hydrateRoot(rootElement, tree, { onRecoverableError: Sentry.reactErrorHandler() });
-} else {
-  createRoot(rootElement).render(tree);
-}
+mountApp(rootElement, tree, toSupportedLanguage(i18n.language));

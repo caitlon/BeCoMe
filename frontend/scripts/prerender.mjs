@@ -39,14 +39,10 @@ function replaceTag(html, pattern, replacement, label) {
   return html.replace(pattern, () => replacement);
 }
 
-function metaPattern(attribute, name) {
-  return new RegExp(`<meta ${attribute}="${name}" content="[^"]*"\\s*/?>`);
-}
-
 function setMeta(html, attribute, name, content) {
   return replaceTag(
     html,
-    metaPattern(attribute, name),
+    new RegExp(`<meta ${attribute}="${name}" content="[^"]*"\\s*/?>`),
     `<meta ${attribute}="${name}" content="${escapeHtml(content)}" />`,
     `<meta ${attribute}="${name}"> tag`,
   );
@@ -59,7 +55,7 @@ function addToHead(html, tags) {
 }
 
 function renderPage(template, route, html, meta) {
-  const canonical = `${origin}${route === "/" ? "/" : route}`;
+  const canonical = `${origin}${route}`;
   const rootTag = '<div id="root"></div>';
   if (!template.includes(rootTag)) fail(`the template has no ${rootTag}`);
 

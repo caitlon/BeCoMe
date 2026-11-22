@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Window } from 'happy-dom';
-import { publicRoutes } from '@/seo/publicRoutes';
+import { publicRoutes, publicRouteMeta } from '@/seo/publicRoutes';
 
 // Each render gets a fresh module graph, as a separate prerender process would have, so a
 // route's output cannot depend on which routes ran before it.
@@ -136,12 +136,14 @@ describe('entry-server pageMeta', () => {
   });
 
   it('resolves every key of every public route to text', async () => {
-    for (const path of publicRoutes) {
-      const { title, description } = await meta(path);
-      // i18next answers a missing key with the key itself.
-      expect(title, path).not.toMatch(/^\w+(\.\w+)+$/);
-      expect(description, path).not.toMatch(/^\w+:\w+(\.\w+)*$/);
-      expect(description.length, path).toBeGreaterThan(20);
+    vi.resetModules();
+    const { default: i18n } = await import('@/i18n');
+    for (const route of publicRouteMeta) {
+      const keys = [route.titleKey, route.descriptionKey, ...(route.titleNameKey ? [route.titleNameKey] : [])];
+      for (const key of keys) {
+        expect(i18n.exists(key, { lng: 'en' }), `${route.path}: ${key}`).toBe(true);
+      }
+      expect((await meta(route.path)).description.length, route.path).toBeGreaterThan(20);
     }
   });
 
