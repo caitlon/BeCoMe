@@ -250,11 +250,14 @@ It runs three steps: `vite build` (the client), `vite build --ssr src/entry-serv
 that names its route, its title, its description and its canonical link, `spa.html` has the noindex tag
 and an empty root, `404.html` has its title, the noindex tag, no canonical link and no `data-route`, and
 every inline script of every built page has its hash in the Content-Security-Policy. With `--docker` it
-also builds the image, runs it and fetches `/`, `/about`, `/about/`, a case study, `/login`,
-`/projects`, `/projects/123` and `/profile/`, expecting status 200 with no redirect, the security
-headers, `no-cache` and the right page (the shell for the app routes). It then fetches `/no-such-page`
-and `/case-study/unknown`, expecting status 404 with the not-found page and the security headers, and
-`/assets/missing.js`, expecting 404. CI runs both after the frontend build.
+also builds the image, runs it and fetches `/`, `/about`, `/about/`, a case study and every app route
+of the nginx allowlist (`/projects/123` for the project page, `/profile/` for the trailing slash),
+expecting status 200 with no redirect, the security headers, `no-cache` and the right page (the shell
+for the app routes). It then fetches `/no-such-page` and `/case-study/unknown`, expecting status 404
+with the not-found page and the security headers, and `/assets/missing.js` and `/projects/x.js`,
+expecting 404 with the security headers and no app shell. The list of app routes it fetches is written
+out in the script, so a route added to the allowlist has to be added there too. CI runs both after
+the frontend build.
 
 ## Testing
 
