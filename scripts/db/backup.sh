@@ -6,7 +6,7 @@
 # and ALWAYS removes the proxy again (even on error). Run it before risky changes and
 # periodically, and store the dumps somewhere safe, because they contain user data.
 #
-#   Usage:  ./scripts/db/backup.sh [prod|dev]      (default: prod)
+#   Usage:  ./scripts/db/backup.sh [prod|dev]  (default: prod)
 #   Output: backups/<env>-<UTC-timestamp>.dump  (custom format)
 #   Restore: pg_restore --no-owner --no-privileges -d <target-url> <dump>
 #
