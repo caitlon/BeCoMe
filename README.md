@@ -85,7 +85,7 @@ This is an MVP: a working proof of concept rather than a finished product. The t
 | [Core library](https://docs.becomify.app/dev/core/) | Models, calculators, interpreters, design patterns |
 | [REST API](https://docs.becomify.app/dev/api/) | Endpoints, auth flow, configuration, observability |
 | [Frontend](https://docs.becomify.app/dev/frontend/) | React app, environment variables, Docker |
-| [Environments](https://docs.becomify.app/environments/) | The dev, test, and prod profiles, and Railway deployment |
+| [Environments](https://docs.becomify.app/environments/) | The dev, prod, and test-suite profiles, and Railway deployment |
 | [Security](https://github.com/caitlon/BeCoMe/blob/prod/docs/security.md) | Authentication, tenant isolation, GDPR, database posture |
 | [Quality report](https://docs.becomify.app/quality-report/) | Coverage, mutation testing, performance |
 | [Tests](https://docs.becomify.app/dev/testing/) | Suite layout and how to run it |

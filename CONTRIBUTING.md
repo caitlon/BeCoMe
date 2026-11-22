@@ -25,12 +25,11 @@ steps that CI runs, without Docker.
 
 ## Branches and pull requests
 
-Work moves through three long-lived branches: `dev`, then `test`, then `prod`. Feature and
+Work moves through two long-lived branches: `dev`, then `prod`. Feature and
 fix branches are named `<type>/<short-topic>`, for example `docs/contributing-guide`, and
 land in `dev` through a pull request, from a fork if you are not a collaborator. Test-only
-branches use `tests/<topic>`, because git cannot hold a `test` branch and `test/...` branches
-together. Nothing is committed to the three long-lived branches directly, and the promotion
-pull requests between them are opened by the maintainer.
+branches use `tests/<topic>`. Nothing is committed to the two long-lived branches directly, and the
+promotion pull request from `dev` to `prod` is opened by the maintainer.
 
 - Fill in the five sections of the [pull request template](.github/pull_request_template.md).
 - Keep a pull request small and about one thing. The target is 300 to 600 changed lines.

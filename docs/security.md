@@ -358,8 +358,8 @@ JavaScript.
 Handing the value back changes nothing about the guarantee. The client that owns the session
 is meant to read it, and CORS answers against an explicit origin allow-list, so a hostile
 origin can no more read the header than the cookie. Widening the cookie with
-`Domain=becomify.app` would look like the smaller fix and is the one to avoid: dev, staging,
-and production all sit under that parent and would overwrite each other's token, breaking
+`Domain=becomify.app` would look like the smaller fix and is the one to avoid: dev and
+production both sit under that parent and would overwrite each other's token, breaking
 whichever the user visited last. Deriving the token also retired a sharp edge on `/auth/me`,
 which used to echo the caller's own cookie back: Starlette's RFC 2109 cookie unescape turns
 `csrf_token="\012..."` into a real newline, and uvicorn writes response headers without
@@ -421,7 +421,7 @@ limit applies on top of the defaults:
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export. Standalone calculate needs a signed-in user and counts per user, not per address |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
-| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev, test and prod services |
+| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and prod services |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
@@ -519,7 +519,7 @@ a deploy, because the check is fail-closed: while Cloudflare's siteverify is unr
 all four endpoints answer `403` to real users, and turning the check off is the only way out
 of that which is not a revert and a redeploy. So `Settings._validate_deploy_invariants`
 checks the configuration for consistency rather than demanding the check be on. With
-`TURNSTILE_ENABLED` true, production, staging, and the Railway dev service refuse to start
+`TURNSTILE_ENABLED` true, production and the Railway dev service refuse to start
 without a secret and a non-empty hostname list, since every request would be refused for
 want of configuration. With it false, the service starts and `api/main.py` records
 `turnstile_disabled` at **ERROR** on startup: Sentry raises that as an event and the log
@@ -546,29 +546,30 @@ is `https://`.
 ## Configuration and profiles
 
 The app runs under one of three profiles selected by `APP_ENV`: `dev`, `test`, `prod`
-(`api/config.py`). A deploy must satisfy nine invariants that fail startup rather than boot
+(`api/config.py`). Two environments are deployed, dev and prod. `test` is the profile of the
+test suite. A deploy must satisfy nine invariants that fail startup rather than boot
 insecurely (`_validate_deploy_invariants`): the `SECRET_KEY` must be strong, the guard
 refuses SQLite in favor of PostgreSQL, `redis_url` must carry a value,
 `cloudflare_origin_secret` must be present, `CORS_ORIGINS` must include at least one
 non-loopback origin, `frontend_base_url` must not be a loopback host, since every activation
 and reset link builds on it, a real email provider must answer, `DEBUG` must be off, and
 `MIGRATION_DATABASE_URL` must carry a value even when it repeats `DATABASE_URL`. All nine
-apply to every deploy, production and staging and the Railway dev service alike.
+apply to every deploy, production and the Railway dev service alike.
 
 "Deployed" is not the same as "not dev". The dev *service* has its own database and a public
 URL, so it meets the same invariants. `is_deploy` decides it in three steps. `prod` always
-counts, even on a laptop. `test` counts unless `TESTING` is set, which is what holds staging
-to the invariants and exempts the pytest suite. `dev` counts only when a
+counts, even on a laptop. `test` counts unless `TESTING` is set, which exempts the pytest suite and holds
+any other `test` process to the invariants. `dev` counts only when a
 `RAILWAY_ENVIRONMENT_NAME` marks it as a deploy, and again only when `TESTING` is unset. A
-laptop and a CI runner carry no such marker, so the invariants guard staging without
-breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
+laptop and a CI runner carry no such marker, so the invariants never break the local
+suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
 The assistant, which runs its models locally by default or at a hosted provider per role, has a
 check of its own, separate from the nine invariants. `assistant_enabled` defaults to `false`, and
 `_validate_assistant_deploy` refuses to start when it is `true` on a Railway environment whose
-name is not `dev`, `test` or `prod` (compared stripped and case-insensitively, so an unknown or
-renamed environment is refused). The `prod` profile is a deploy like the other two and is held to
+name is not `dev` or `prod` (compared stripped and case-insensitively, so an unknown or
+renamed environment is refused). The `prod` profile is a deploy like the dev service and is held to
 the rules that follow. On any deploy the validator also requires the three model roles to be `api`, since a local model
 server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR` or
 `ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch the cap off. The model is shown each
@@ -598,7 +599,7 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
 environment has its own host under it: `api.becomify.app` (production),
-`api-harbor.becomify.app` (staging), `api-atelier.becomify.app` (dev). A Cloudflare
+and `api-atelier.becomify.app` (dev). A Cloudflare
 Transform Rule per host injects a shared secret header the origin then checks
 (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
@@ -614,10 +615,10 @@ One request needs no secret. It is `GET /api/v1/health` addressed to a platform 
 host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
-The lock was checked from outside on 2 November 2026, on dev, test and prod. One
+The lock was checked from outside on 2 November 2026, on dev, test and prod, the three environments then in service. One
 `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
-covers the three API hosts.
+covers those three API hosts.
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
@@ -686,7 +687,7 @@ The value comes from `get_client_ip`, so a request without the origin secret log
 backend's Sentry events leave the address out (`send_default_pii=False`, below).
 
 Retention depends on the provider, not on this code. Better Stack keeps log records for 3
-days, a setting on each of the three backend sources. The backend also writes those records to
+days, a setting on each of the two backend sources. The backend also writes those records to
 stdout, and Railway makes that copy available for 7 days on the Hobby plan. It publishes no
 fixed date for deleting that copy. Sentry keeps crash reports, session records and
 performance traces for 30 days, which comes with the free Developer plan. A plan change moves
@@ -722,8 +723,8 @@ accepted risk is unchanged. What changed is that it now announces itself. The as
 hourly cap does not fail open. On a Redis error each process counts in its own memory with the
 same budget, so a store outage leaves a cap per process, not none, and the record
 `assistant_throttle_unavailable` goes out at ERROR. Where the assistant runs
-in production, the alert rule below fires for it as for the other throttles; on the dev and test
-services the record is for whoever reads their log.
+in production, the alert rule below fires for it as for the other throttles; on the dev
+service the record is for whoever reads its log.
 
 The level alone is not the whole alert, because the Sentry project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
@@ -743,8 +744,8 @@ Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` carries a 
 Sentry.
 
 Better Stack watches the deployed services from outside and from the logs. Besides the
-monitor on `https://www.becomify.app/`, three uptime monitors call `/api/v1/health` through
-Cloudflare on each API host: `api.becomify.app` (prod), `api-harbor.becomify.app` (test) and
+monitor on `https://www.becomify.app/`, two uptime monitors call `/api/v1/health` through
+Cloudflare on each API host: `api.becomify.app` (prod) and
 `api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
 redirects, and opens an incident and emails the team on any status other than 200. The API
 monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
@@ -755,7 +756,7 @@ addressed to an API host passes the origin check like any other request. A crash
 caught the same way. The health route is in
 `_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
 
-The three backend log sources (`become-backend`, `become-backend-test`, `become-backend-prod`)
+The two backend log sources (`become-backend`, `become-backend-prod`)
 extract four values from every record: the `event` field; `req_kind`, which sorts a request-log
 completion line into `heavy` (`POST /api/v1/calculate`, opinion writes, which recalculate, and the
 result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status_class` (`2xx` to
@@ -765,7 +766,7 @@ them. The rules exist on prod only and notify the team by email.
 
 Two rules watch for abuse and errors. The first counts `login_failure` and `access_denied` events
 apart and opens an incident of its own for either one that reaches 10 within five minutes.
-The logs of all three sources for 7 to 10 November 2026 held no `login_failure` or
+The logs of the three sources then in service for 7 to 10 November 2026 held no `login_failure` or
 `access_denied` at all. The login lockout trips at 10 failures per account in 15 minutes, so ten
 in five minutes is one account running into its lockout, or several accounts at once. The second
 fires on any 5xx response within five minutes, counted by `status_class`.
@@ -776,7 +777,7 @@ fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
 `duration_ms`, the time of the work itself and not of the request.
 
 The minimum counts are there because at current traffic a p95 over two or three requests is
-noise. Test and dev have the same extraction and dashboard but no rules: their traffic is probes
+noise. Dev has the same extraction and dashboard but no rules: its traffic is probes
 and testing, not users.
 
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
@@ -800,8 +801,8 @@ string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hoo
 event URLs and from navigation and fetch breadcrumbs.
 
 Those hooks were inert until a 2026 fix. `frontend/Dockerfile` declared only `ARG
-VITE_API_URL`, so `VITE_SENTRY_DSN` never reached the Vite build even though all three
-frontend services set it. The `if (import.meta.env.VITE_SENTRY_DSN)` guard in `main.tsx`
+VITE_API_URL`, so `VITE_SENTRY_DSN` never reached the Vite build even though every
+frontend service set it. The `if (import.meta.env.VITE_SENTRY_DSN)` guard in `main.tsx`
 folded to `false` and the bundler tree-shook the whole `Sentry.init` call out of every
 deployed bundle. No environment ever reported a browser error. The scrubbers now run because
 the SDK actually initializes, so read them as live code rather than as documentation of an
@@ -846,23 +847,23 @@ November 2026. Some of it blocks a merge and some only reports, so the last colu
 | Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
-| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev`, `test` and `prod` | Yes |
+| Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev` and `prod` | Yes |
 | Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly, and the Node build image of the frontend, weekly, all with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
-`ci.yml` runs on every pull request into `dev`, `test` and `prod` and on every push to them. On
+`ci.yml` runs on every pull request into `dev` and `prod` and on every push to them. On
 `dev` the required check `Check` demands that every job pass or skip, the SonarCloud job
-included. On `test` and `prod`, `Code Quality Checks` and `Dependency Audit` are among the
-checks required by name. `semgrep/ci` is required by name on all three branches; on a promotion
+included. On `prod`, `Code Quality Checks` and `Dependency Audit` are among the
+checks required by name. `semgrep/ci` is required by name on both branches; on a promotion
 it covers the Dependabot changes that Semgrep skips on `dev`. A skipped job counts as passed, so
 the Dependabot and fork pull requests Semgrep skips still merge. The check fails only on
 findings the Semgrep policy marks as blocking, and passes when the scan cannot reach the
 platform. No branch requires the SonarCloud quality gate.
 
 The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuses a merge when
-CodeQL reports a security alert of High or above, or an alert at error level. `test` and `prod`
-carry no such rule, and code reaches them only through `dev`.
+CodeQL reports a security alert of High or above, or an alert at error level. `prod`
+carries no such rule, and code reaches it only through `dev`.
 
 Some things are not covered. `dependabot.yml` has a `docker` entry only for the Node build
 stage of the frontend image, which is pinned to an exact tag. The nginx stage and the API
@@ -1050,14 +1051,14 @@ the path between the developer's machine and that proxy.
 
 ### Network exposure
 
-Production and staging databases answer only on Railway's private network
-(`*.railway.internal`). Their public TCP proxies are gone, so a leaked password is no longer
+The production database answers only on Railway's private network
+(`*.railway.internal`). Its public TCP proxy is gone, so a leaked password is no longer
 the sole barrier between the internet and the data. The dev database is the one exception,
 and even there the proxy normally stays closed. Someone opens it in the Railway dashboard
 only for a specific hands-on operation and shut again afterwards. That toggle is the
 project's substitute for an IP allowlist, which Railway's platform does not offer.
 
-Redis follows the same rule in all three environments. The backends reach it through
+Redis follows the same rule in both environments. The backends reach it through
 `REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
 carry was removed on 2026-09-12, after a check that no service referenced it. The exposure
 mattered more than a cache would suggest. Redis holds the login, current-password and

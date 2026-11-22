@@ -1,6 +1,6 @@
 # Environment profiles
 
-The backend runs under one of three profiles, chosen by the `APP_ENV` variable: `dev`, `test`, or `prod`. A separate flag, `TESTING`, marks an automated test run and works independently of the profile. This page is the reference for both.
+The backend runs under one of three profiles, chosen by the `APP_ENV` variable: `dev`, `test`, or `prod`. Dev and prod are the two deployed environments. The `test` profile belongs to the automated test suite. A separate flag, `TESTING`, marks an automated test run and works independently of the profile. This page is the reference for both.
 
 ## Contents
 
@@ -8,7 +8,7 @@ The backend runs under one of three profiles, chosen by the `APP_ENV` variable: 
 - [The two axes](#the-two-axes)
 - [Profiles in detail](#profiles-in-detail)
     - [dev](#dev)
-    - [test (staging and the test suite)](#test-staging-and-the-test-suite)
+    - [test (the test suite)](#test-the-test-suite)
     - [prod](#prod)
 - [Configuration files](#configuration-files)
 - [Local use](#local-use)
@@ -30,7 +30,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
 | dev | unset or `dev` | Local machine and the Railway dev service | Set by `DATABASE_URL`: PostgreSQL in Docker locally (SQLite if unset), PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
-| test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite or PostgreSQL (tests) | off | on when deployed, off under pytest |
+| test | `test` | The test suite and CI | In-memory SQLite or PostgreSQL | off | off (`TESTING=1`) |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
 ## The two axes
@@ -40,7 +40,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
 - **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL.
+The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL. The guard treats a `test` process that runs without `TESTING` as a deploy, so the profile name alone never switches it off.
 
 ## Profiles in detail
 
@@ -56,9 +56,9 @@ application refuses to start without it. The `env/.env.dev.example` template tur
 uv run uvicorn api.main:app --reload
 ```
 
-### test (staging and the test suite)
+### test (the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. Its unit and integration tests mostly use in-memory SQLite, and its end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import.
+The profile the automated suite and the CI jobs run under. It adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. The unit and integration tests mostly use in-memory SQLite, and the end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import. No deployed environment uses it: the `test` environment was retired on 2026-11-22, and promotion goes from `dev` straight to `prod`. Without `TESTING` the profile counts as a deploy. It then meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off.
 
 ### prod
 
@@ -71,7 +71,7 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 | `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the deploy guard |
 | `.env` | Shared base values, loaded first (gitignored) |
 | `.env.<stage>` | Per-profile overrides, loaded second (gitignored) |
-| `env/.env.example`, `env/.env.dev.example`, `env/.env.test.example`, `env/.env.prod.example` | Tracked templates to copy from |
+| `env/.env.example`, `env/.env.dev.example`, `env/.env.prod.example` | Tracked templates to copy from |
 | `frontend/.env.development`, `.env.production`, `.env.test` | Vite per-mode values, mainly `VITE_API_URL` |
 
 ## Local use
@@ -81,7 +81,6 @@ Copy the template for the profile you want, then fill in the real values:
 ```bash
 cp env/.env.example .env              # the shared base, always needed
 cp env/.env.dev.example .env.dev      # local development
-cp env/.env.test.example .env.test    # staging-like run
 cp env/.env.prod.example .env.prod    # production-like run
 ```
 
@@ -100,11 +99,11 @@ The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. 
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
+`.github/workflows/ci.yml` runs on every push and pull request to `dev` and `prod`, so both deploy branches get the same full pipeline. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
 The last job, `check` (shown as `Check`), waits on every other job in the workflow and fails unless each one succeeded or was skipped, so a failed or cancelled run ends in one red result. It runs even when a job it waits on fails, which a plain `needs` would not. Branch protection on `dev` requires `Check`.
 
-`.github/workflows/merge-guard.yml` runs on pull requests into `dev`, `test`, and `prod`, including the `labeled` and `unlabeled` events, and its job `Merge guard` fails while the pull request carries the `do-not-merge` label. It is a workflow of its own so that setting a label does not rerun the whole pipeline above. It checks nothing out and reads only the label list, through the API with a read-only token, when the job runs, so re-running a run reports the current labels. The runs of the workflow do not cancel each other, because a cancelled run stays on the head commit as a failed required check. Branch protection on `dev` also requires `Merge guard`, so the label blocks the merge.
+`.github/workflows/merge-guard.yml` runs on pull requests into `dev` and `prod`, including the `labeled` and `unlabeled` events, and its job `Merge guard` fails while the pull request carries the `do-not-merge` label. It is a workflow of its own so that setting a label does not rerun the whole pipeline above. It checks nothing out and reads only the label list, through the API with a read-only token, when the job runs, so re-running a run reports the current labels. The runs of the workflow do not cancel each other, because a cancelled run stays on the head commit as a failed required check. Branch protection on `dev` also requires `Merge guard`, so the label blocks the merge.
 
 ## Development workflow
 
@@ -113,10 +112,9 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 | Branch | Environment | Profile | Services |
 |--------|-------------|---------|----------|
 | `dev` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db`, `dev-photos` |
-| `test` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
 | `prod` | prod | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
-Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `dev` to `test`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `test` to `prod` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
+Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready to release, promote `dev` to `prod`, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
 
 Every pull request into `dev` gets one size label from `.github/workflows/pr-size.yml`, counted over the changed lines without lock files, notebooks and files deleted whole: `size:S` under 300, `size:M` from 300 to 600, `size:L` from 601 to 1000, `size:XL` above that. The target is `size:M` or smaller. The label informs and never blocks a merge. The workflow runs on `pull_request_target`, which reads it from `dev`, so a change to the workflow itself takes effect on a pull request at its next push or edit after the change merges.
 
@@ -124,7 +122,7 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend), the pre-deploy migration, one replica in `europe-west4` (Railway key `europe-west4-drams3a`), and a restart on failure up to three times. App Sleep is on for dev and test only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone.
+The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend), the pre-deploy migration, one replica in `europe-west4` (Railway key `europe-west4-drams3a`), and a restart on failure up to three times. App Sleep is on for dev only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone.
 
 To change the settings, you need Railway CLI 5.64.0 or newer. Run these steps from the repository root:
 
@@ -134,38 +132,38 @@ To change the settings, you need Railway CLI 5.64.0 or newer. Run these steps fr
 
 Railway does not apply the file on a push, so a change to it reaches an environment only through `apply`. An environment whose frontend still has a Railway Config File path set refuses the plan, and `railway config migrate cutover --service <env>-frontend` clears it once. The cutover acts on the linked environment, so switch to it first with `railway environment <env>`. Apply to an environment before the branch that deleted `railway.toml` and `frontend/railway.json` reaches it: until then those files supplied the settings, and the services' own settings still name the Railpack builder with no Dockerfile, health check or pre-deploy migration.
 
-Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev, test and prod backends, it also installs the `assistant` extra at build time.
+Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev and prod backends, it also installs the `assistant` extra at build time.
 
-| Variable | dev | test | prod |
-|----------|-----|------|------|
-| `APP_ENV` | `dev` | `test` | `prod` |
-| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
-| `DATABASE_URL` | dev `become_app` role | test `become_app` role | prod `become_app` role |
-| `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
-| `CORS_ORIGINS` | dev origins | test origins | prod origins |
-| `REDIS_URL` | dev Redis | test Redis | prod Redis |
-| `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
-| `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` | empty outside a rotation | empty outside a rotation | empty outside a rotation |
-| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, test frontend host | `true`, widget secret, prod frontend hosts |
-| `DEBUG` | `false` | `false` | `false` |
-| `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
-| `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | test values | prod values |
-| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | literal values from `dev-photos` | literal values from `test-photos` | literal values from `prod-photos` |
+| Variable | dev | prod |
+|----------|-----|------|
+| `APP_ENV` | `dev` | `prod` |
+| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value |
+| `DATABASE_URL` | dev `become_app` role | prod `become_app` role |
+| `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only |
+| `CORS_ORIGINS` | dev origins | prod origins |
+| `REDIS_URL` | dev Redis | prod Redis |
+| `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
+| `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` | empty outside a rotation | empty outside a rotation |
+| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, prod frontend hosts |
+| `DEBUG` | `false` | `false` |
+| `LOG_LEVEL` | `DEBUG` | `INFO` |
+| `API_PUBLIC_URL` | dev API URL | prod API URL |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | prod values |
+| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | literal values from `dev-photos` | literal values from `prod-photos` |
 
-A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
+A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev` or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
 
-`LOG_LEVEL` appears as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
+`LOG_LEVEL` appears as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
 
-Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
+Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like production and its `extra` fields stay indexable in the drain.
 
 `VITE_TURNSTILE_SITE_KEY` is the sitekey paired with the API's `TURNSTILE_SECRET_KEY` on the same service. Provisioning an environment that sets the three `TURNSTILE_*` variables and omits this one switches the check on with no widget in the bundle: no token reaches the API, and every sign-in, sign-up, password reset and resend answers `403`.
 
-In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
+In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on every frontend service while `Sentry.init` was tree-shaken out of every bundle.
 
 `VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod sets it to `true`, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
-The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question (for `ASSISTANT_LLM_MODEL`, the first question the language check does not take for English, since only the default `translate_en` query transform uses it; the check looks for a word such as "the" or "how"). Set each one explicitly on `dev` and `test`:
+The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question (for `ASSISTANT_LLM_MODEL`, the first question the language check does not take for English, since only the default `translate_en` query transform uses it; the check looks for a word such as "the" or "how"). Set each one explicitly on every deployed backend:
 
 - `ASSISTANT_ANSWER_LLM_MODEL`: the model that writes chat answers, `Qwen3.5-9B` on OVHcloud.
 - `ASSISTANT_LLM_MODEL`: the query model, `Qwen3.5-9B` on OVHcloud.
@@ -177,7 +175,7 @@ The assistant's model ids default to the local llama-server ids in `api/config.p
 
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases (a laptop run on a loopback or socket database uses `prefer`), tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
-On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
+On production the Postgres instance is reachable only over Railway's internal network: the public TCP proxy is gone, so the internet cannot reach that database. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
 
 ### Assistant corpus database
 
@@ -189,7 +187,7 @@ A deployed service with the assistant enabled refuses to start unless `ASSISTANT
 
 ## Photo storage
 
-Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. The backend reads `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY`, set on the service as literal values copied from the bucket's credentials. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
+Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. The backend reads `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID` and `BUCKET_SECRET_ACCESS_KEY`, set on the service as literal values copied from the bucket's credentials. When they are absent (plain local runs), photo upload switches off and the rest of the API keeps working.
 
 ## Email delivery
 
@@ -199,15 +197,14 @@ Two settings gate the address checks in `api/services/email_policy.py` that run 
 
 ## Current status
 
-All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
+Both environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production database is internal-only.
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`). Profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy.
-- **test / staging** is live from `test`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
 - **dev** deploys from `dev`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally without selecting a profile, since dev is the default, though the base `.env`
 with `SECRET_KEY` is still required.
 
-Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31. They had to. `up.railway.app` is on the Public Suffix List, so a frontend and an API on two of those hosts count as different sites. The browser never sent the `SameSite=Strict` session cookies between them. Login answered `200` and the next request answered `401`, which looked like a broken session rather than a domain-topology problem. Production was never affected, since `www.becomify.app` and `api.becomify.app` share one registrable domain. The names avoid `dev` and `staging` so guessing does not find the environments. Certificate Transparency logs publish the certificates anyway, so that is a speed bump rather than access control. Adding a domain, the `_railway-verify` TXT record a proxied CNAME needs, and the cutover order are covered by the `cloudflare-operations` skill.
+Dev, and the test environment that has since been retired, moved off their generated `*.up.railway.app` hosts on 2026-07-31. They had to. `up.railway.app` is on the Public Suffix List, so a frontend and an API on two of those hosts count as different sites. The browser never sent the `SameSite=Strict` session cookies between them. Login answered `200` and the next request answered `401`, which looked like a broken session rather than a domain-topology problem. Production was never affected, since `www.becomify.app` and `api.becomify.app` share one registrable domain. The dev names avoid the word `dev` so guessing does not find the environment. Certificate Transparency logs publish the certificates anyway, so that is a speed bump rather than access control. Adding a domain, the `_railway-verify` TXT record a proxied CNAME needs, and the cutover order are covered by the `cloudflare-operations` skill.
 
 ## Where the code lives
 
-The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards every deployed service: `prod`, a deployed `test`, and the Railway dev service. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
+The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards every deployed service: `prod`, the Railway dev service, and any `test` process that runs without `TESTING`. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.

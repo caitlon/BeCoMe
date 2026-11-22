@@ -1,18 +1,18 @@
 # Assistant
 
-Runs on a developer machine; the validator also allows it on the Railway `dev`, `test` and `prod`
+Runs on a developer machine; the validator also allows it on the Railway `dev` and `prod`
 services. `Settings` refuses to start any other Railway environment with `ASSISTANT_ENABLED=true`,
 and on a deployed service, the `prod` profile included, it requires all three model roles to be
 `api`.
 
-On the dev, test and prod services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
+On the dev and prod services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
 `ASSISTANT_LLM_PROVIDER` and `ASSISTANT_EMBEDDING_PROVIDER` are `api`, each base URL is the OVH
 endpoint, and `ASSISTANT_API_KEY_OVH` holds the key. LangSmith tracing is allowed there
 only to the EU endpoint, into a named project other than the local default, and through
 `ASSISTANT_LANGSMITH_ENABLED` alone: `LANGSMITH_TRACING` and its `LANGCHAIN_` variants, and
 `LANGSMITH_RUNS_ENDPOINTS` and `LANGCHAIN_RUNS_ENDPOINTS`, are refused on a deployed service. A
 deployed service needs an image built with the `assistant` extra and a corpus database reachable
-through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example`, `env/.env.test.example` and
+through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example` and
 `env/.env.prod.example` list the variables.
 
 How the pipeline is built and why, from the corpus to the streamed answer, is explained in
@@ -246,7 +246,7 @@ documentation `sources` it may cite as `[n]`, the `tools_used`, the grounding `c
 token `usage` of the turn. Each source carries a `snippet`, the first words of the passage in
 plain text, at most 240 characters.
 
-`ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev and test through an
+`ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev through an
 environment variable) decides whether the client is sent the sources. While it is off, `sources` is
 an empty list, the answer text has no `[n]` marker and no link target after one, and
 `checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
@@ -639,10 +639,10 @@ Also refresh after a change to the chunker settings or to the corpus code itself
 `corpus.py` (`PUBLIC_EXTRA_READMES`, `EXCLUDED_PUBLIC`), `loaders.py`, `chunkers.py`,
 `enrich.py` and `pipeline.py`, or to the embedding model.
 
-On dev, refresh after the merge into `dev` and the backend deploy. On test and prod, refresh as
+On dev, refresh after the merge into `dev` and the backend deploy. On prod, refresh as
 part of the promotion that carries the change, after that promotion's backend deploy. Build each
-environment's corpus from a clean checkout that is up to date with `origin/<branch>` (`dev`,
-`test` or `prod`). Then the corpus matches the documentation that environment serves, and
+environment's corpus from a clean checkout that is up to date with `origin/<branch>` (`dev`
+or `prod`). Then the corpus matches the documentation that environment serves, and
 `app_version` carries no `-dirty` suffix. A fresh checkout has no `supplementary/` folder, and
 `ASSISTANT_PRIVATE_CORPUS_MANIFEST`, `ASSISTANT_PRIVATE_CORPUS_DIRS` and `ASSISTANT_CAPTIONS_FILE`
 resolve against the repository root unless they are absolute paths, so set them to absolute paths
@@ -651,9 +651,9 @@ there (`ASSISTANT_PRIVATE_CORPUS_DIRS` is a JSON list, `'["/abs/corpus"]'`).
 1. Caption the new chunks, following [Refreshing captions after a corpus or chunker
    change](#refreshing-captions-after-a-corpus-or-chunker-change) through the commit of the
    captions file in the corpus repository, but skip `prune`. Captions that match no chunk cost
-   nothing, because `enrich` ignores them. Dev usually holds chunks that test and prod do not
+   nothing, because `enrich` ignores them. Dev usually holds chunks that prod does not
    have yet, so a `prune` from any one checkout drops captions another environment still needs.
-   Run it only when dev, test and prod hold the same corpus sources. A caption is keyed by the
+   Run it only when dev and prod hold the same corpus sources. A caption is keyed by the
    chunk's text, so captions written once serve every environment whose chunks have the same
    text.
 2. In the same checkout and the same shell environment as the ingest, run `uv run python
