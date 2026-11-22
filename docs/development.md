@@ -121,6 +121,8 @@ uv run uvicorn api.main:app --reload
 cd frontend && npm install && npm run dev
 ```
 
+The frontend dev server listens on loopback only, so no other host on the network reaches the local API through its proxy. To open it from another device for one run, start it with `npx vite --host` in `frontend/`.
+
 Run one case study without the web app:
 
 ```bash
