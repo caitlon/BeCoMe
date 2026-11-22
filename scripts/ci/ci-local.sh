@@ -45,6 +45,7 @@ run_test() {
   "$PROJECT_ROOT/scripts/ci/check-assistant-bundle.sh" "$PROJECT_ROOT/frontend/dist" absent
   VITE_ASSISTANT_ENABLED=true npm run build
   "$PROJECT_ROOT/scripts/ci/check-assistant-bundle.sh" "$PROJECT_ROOT/frontend/dist" present
+  "$PROJECT_ROOT/scripts/ci/check-prerender.sh"
   echo ""
   echo "Tests passed."
 }

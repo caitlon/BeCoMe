@@ -111,7 +111,8 @@ for (const route of publicRoutes) {
   try {
     html = await render(route);
   } catch (error) {
-    fail(`rendering ${route} failed: ${error instanceof Error ? error.message : error}`);
+    // render() names the route in its own message.
+    fail(error instanceof Error ? error.message : `rendering ${route} failed: ${error}`);
   }
   if (html.trim() === "") fail(`rendering ${route} gave an empty root`);
   if (/<script/i.test(html)) fail(`the HTML of ${route} contains a <script>, which the Content-Security-Policy would block`);
