@@ -5,7 +5,12 @@
 // script renders the route to HTML, puts it inside <div id="root"> and sets the page's own
 // title, description and canonical address in the head. The routes behind a login are not
 // prerendered: dist/spa.html, the template with a noindex tag and an empty root, is what
-// nginx serves for them.
+// nginx serves for them. dist/404.html is the not-found page, with a noindex tag and no
+// canonical link, which nginx serves with status 404 for every other address.
+//
+// The root of a public page carries data-route, the route the HTML was rendered for. The
+// browser hydrates the page only when that is the route it is on (src/lib/hydration.ts),
+// and the 404 page has none, so it is always replaced by a fresh render.
 //
 // Any problem fails the build: a render error, an empty root, or a script inside the
 // rendered HTML.
@@ -54,22 +59,45 @@ function addToHead(html, tags) {
   return html.replace(closing, (_match, indent) => `${tags.map((tag) => `${indent}  ${tag}\n`).join("")}${indent}</head>`);
 }
 
-function renderPage(template, route, html, meta) {
-  const canonical = `${origin}${route}`;
+// The template with the rendered HTML inside the root and the page's own title and description.
+function fillTemplate(template, rootAttributes, html, meta) {
   const rootTag = '<div id="root"></div>';
   if (!template.includes(rootTag)) fail(`the template has no ${rootTag}`);
 
-  let page = template.replace(rootTag, () => `<div id="root">${html}</div>`);
+  let page = template.replace(rootTag, () => `<div id="root"${rootAttributes}>${html}</div>`);
   page = replaceTag(page, /<title>[^<]*<\/title>/, `<title>${escapeHtml(meta.title)}</title>`, "<title>");
   page = setMeta(page, "name", "description", meta.description);
   page = setMeta(page, "property", "og:title", meta.title);
   page = setMeta(page, "property", "og:description", meta.description);
   page = setMeta(page, "name", "twitter:title", meta.title);
   page = setMeta(page, "name", "twitter:description", meta.description);
-  return addToHead(page, [
+  return page;
+}
+
+function renderPage(template, route, html, meta) {
+  const canonical = `${origin}${route}`;
+  return addToHead(fillTemplate(template, ` data-route="${escapeHtml(route)}"`, html, meta), [
     `<link rel="canonical" href="${escapeHtml(canonical)}" />`,
     `<meta property="og:url" content="${escapeHtml(canonical)}" />`,
   ]);
+}
+
+function renderNotFoundPage(template, html, meta) {
+  return addToHead(fillTemplate(template, "", html, meta), ['<meta name="robots" content="noindex" />']);
+}
+
+// Renders one route, failing the build on an error, an empty root or a script in the HTML.
+async function renderChecked(url) {
+  let html;
+  try {
+    html = await render(url);
+  } catch (error) {
+    // render() names the route in its own message.
+    fail(error instanceof Error ? error.message : `rendering ${url} failed: ${error}`);
+  }
+  if (html.trim() === "") fail(`rendering ${url} gave an empty root`);
+  if (/<script/i.test(html)) fail(`the HTML of ${url} contains a <script>, which the Content-Security-Policy would block`);
+  return html;
 }
 
 async function writePage(route, page) {
@@ -92,7 +120,7 @@ try {
 } catch (error) {
   fail(`cannot load dist-ssr/entry-server.js (run the SSR build first): ${error}`);
 }
-const { render, pageMeta, publicRoutes } = entry;
+const { render, pageMeta, publicRoutes, notFoundPath, notFoundMeta } = entry;
 
 const written = [];
 
@@ -103,17 +131,13 @@ written.push(path.relative(frontendDir, spaTarget));
 
 // One route after another: render() shares an i18n instance and a query client between calls.
 for (const route of publicRoutes) {
-  let html;
-  try {
-    html = await render(route);
-  } catch (error) {
-    // render() names the route in its own message.
-    fail(error instanceof Error ? error.message : `rendering ${route} failed: ${error}`);
-  }
-  if (html.trim() === "") fail(`rendering ${route} gave an empty root`);
-  if (/<script/i.test(html)) fail(`the HTML of ${route} contains a <script>, which the Content-Security-Policy would block`);
+  const html = await renderChecked(route);
   written.push(await writePage(route, renderPage(template, route, html, pageMeta(route))));
 }
+
+const notFoundTarget = path.join(distDir, "404.html");
+await writeFile(notFoundTarget, renderNotFoundPage(template, await renderChecked(notFoundPath), notFoundMeta()));
+written.push(path.relative(frontendDir, notFoundTarget));
 
 console.log(`prerender: wrote ${written.length} files`);
 for (const file of written) console.log(`  ${file}`);
