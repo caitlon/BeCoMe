@@ -26,7 +26,7 @@ const Landing = () => {
   const { t: tCommon } = useTranslation();
   const { isAuthenticated } = useAuth();
   const location = useLocation();
-  useDocumentTitle(tCommon("pageTitle.landing"));
+  useDocumentTitle(tCommon("pageTitle.landing"), { suffix: false });
   const localizedStudies = useLocalizedCaseStudies();
 
   useEffect(() => {

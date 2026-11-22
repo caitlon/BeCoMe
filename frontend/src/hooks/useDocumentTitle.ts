@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 
-export function useDocumentTitle(title: string) {
+// A non-empty title gets " - BeCoMe" appended unless `suffix` is false;
+// an empty title always gives "BeCoMe".
+export function useDocumentTitle(title: string, { suffix = true }: { suffix?: boolean } = {}) {
   useEffect(() => {
-    document.title = title ? `${title} - BeCoMe` : "BeCoMe";
-  }, [title]);
+    if (!title) {
+      document.title = "BeCoMe";
+    } else {
+      document.title = suffix ? `${title} - BeCoMe` : title;
+    }
+  }, [title, suffix]);
 }
