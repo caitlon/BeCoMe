@@ -1392,7 +1392,7 @@ describe('ProjectDetail - Header Result Export', () => {
   });
 });
 
-describe('ProjectDetail - assistant history of a left project', () => {
+describe('ProjectDetail - assistant history of a left or lost project', () => {
   const OWN = `${STORAGE_PREFIX}:user-1:project-1`;
   const OTHER_PROJECT = `${STORAGE_PREFIX}:user-1:project-2`;
   const GENERAL = `${STORAGE_PREFIX}:user-1:general`;
@@ -1524,6 +1524,95 @@ describe('ProjectDetail - assistant history of a left project', () => {
       await deleteProject(user);
 
       await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
+    });
+  });
+
+  describe('losing access', () => {
+    const mount = async () => {
+      renderWithPanel();
+      await waitFor(() => expect(mockApi.getProject).toHaveBeenCalled());
+    };
+
+    it('removes that project\'s history when the project answers 404', async () => {
+      mockApi.getProject.mockRejectedValue(new HttpError('Not found', 404));
+
+      await mount();
+
+      await waitFor(() => expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]));
+    });
+
+    it('makes the panel forget the project it was opened for', async () => {
+      const user = userEvent.setup();
+      let rejectProject: (error: Error) => void = () => {};
+      mockApi.getProject.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectProject = reject;
+        })
+      );
+
+      renderWithPanel();
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-1');
+      rejectProject(new HttpError('Not found', 404));
+
+      await waitFor(() => expect(screen.getByLabelText('panel project')).toHaveTextContent('none'));
+    });
+
+    it('forgets once per failure, so a conversation started afterwards is kept', async () => {
+      const user = userEvent.setup();
+      mockApi.getProject.mockRejectedValue(new HttpError('Not found', 404));
+
+      renderWithPanel();
+      await waitFor(() => expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]));
+      window.sessionStorage.setItem(OWN, '[]');
+      // Opening the panel changes the forget callback the page holds.
+      await user.click(await screen.findByRole('button', { name: /open panel/i }));
+
+      expect(screen.getByLabelText('panel project')).toHaveTextContent('project-1');
+      expect(storedKeys()).toContain(OWN);
+    });
+
+    it.each([500, 401, 403])('keeps the history when the project answers %i', async (status) => {
+      mockApi.getProject.mockRejectedValue(new HttpError('Failed', status));
+
+      await mount();
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('keeps the history when the request fails without a status', async () => {
+      mockApi.getProject.mockRejectedValue(new TypeError('Failed to fetch'));
+
+      await mount();
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/projects'));
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('keeps the history while the project loads and after it loaded', async () => {
+      mockApi.getProject.mockResolvedValue(
+        createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' })
+      );
+
+      renderWithPanel();
+
+      await screen.findByRole('button', { name: /^leave project$/i });
+      expect(storedKeys()).toEqual(ALL_KEYS);
+    });
+
+    it('removes the history when a refetch of the open page fails with 404', async () => {
+      mockApi.getProject
+        .mockResolvedValueOnce(createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' }))
+        .mockRejectedValue(new HttpError('Not found', 404));
+      // A failed leave refetches the project, which is how the page learns the access is gone.
+      mockApi.leaveProject.mockRejectedValue(new HttpError('Bad request', 400));
+
+      renderWithPanel();
+      await leave(userEvent.setup());
+
+      await waitFor(() => expect(storedKeys()).toEqual([OTHER_PROJECT, GENERAL, OTHER_USER]));
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 });

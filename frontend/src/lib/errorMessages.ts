@@ -56,6 +56,18 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
 };
 
 /**
+ * The part of i18next's `t` that this app calls: a key, optionally with
+ * interpolation options. Written as two overloads because i18next 27's
+ * `TFunction` is only assignable to a signature with an optional `options`
+ * parameter when that signature is spelled out this way. A plain
+ * `(key, options?) => string` is rejected for every namespace.
+ */
+export interface Translate {
+  (key: string): string;
+  (key: string, options: Record<string, unknown>): string;
+}
+
+/**
  * Turns any thrown value into a user-facing message.
  *
  * Network hiccups and 5xx responses get a generic "service unavailable"
@@ -77,7 +89,7 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
  */
 export function describeError(
   error: unknown,
-  t: (key: string, options?: Record<string, unknown>) => string,
+  t: Translate,
   fallback: string
 ): string {
   if (isServiceUnavailable(error)) {

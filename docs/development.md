@@ -60,7 +60,7 @@ pip install -e ".[dev,viz,notebook]"
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
 | `docs` | mkdocs, mkdocs-material | Building the documentation site |
-| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The assistant (`ASSISTANT_ENABLED=true`; on a developer machine and on the Railway dev, test and prod services), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
+| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The assistant (`ASSISTANT_ENABLED=true`; on a developer machine and on the Railway dev and prod services), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
 
 The API test directories, `tests/unit/api/` and `tests/integration/api/`, import the assistant's
 packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`.
@@ -120,6 +120,8 @@ uv run uvicorn api.main:app --reload
 # Frontend on http://localhost:8080
 cd frontend && npm install && npm run dev
 ```
+
+The frontend dev server listens on `localhost` only. On macOS that is `[::1]`, so nothing answers on `http://127.0.0.1:8080`. No other host on the network reaches the local API through its proxy. To view the pages from another device for one run, start it with `npx vite --host` in `frontend/`. That run opens the proxy, and the local API behind it, to the whole network. Signing in from there still fails, because the session cookies are `Secure` and plain HTTP on a LAN address is not a secure context.
 
 Run one case study without the web app:
 

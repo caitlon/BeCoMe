@@ -27,7 +27,10 @@ export function generationOf(key: string): number {
   return keyGenerations.get(key) ?? 0;
 }
 
-/** Removes one project's conversation of one user, for leaving or deleting the project. */
+/**
+ * Removes one project's conversation of one user, for leaving, deleting or losing access to
+ * the project (a 404 from the project page or the assistant feed).
+ */
 export function removeAssistantProjectHistory(userId: string, projectId: string): void {
   const key = storageKeyFor(userId, projectId);
   keyGenerations.set(key, generationOf(key) + 1);

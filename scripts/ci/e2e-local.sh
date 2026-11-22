@@ -55,8 +55,10 @@ if docker ps -aq -f name="$CONTAINER_NAME" 2>/dev/null | grep -q .; then
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
 
+# Loopback only: the login is a known one, so on a shared network a port published on
+# every interface is an open database. docker/docker-compose.yml binds the same way.
 docker run -d --name "$CONTAINER_NAME" \
-  -p "$DB_PORT":5432 \
+  -p "127.0.0.1:$DB_PORT":5432 \
   -e POSTGRES_USER="$DB_USER" \
   -e POSTGRES_PASSWORD="$DB_PASS" \
   -e POSTGRES_DB="$DB_NAME" \
@@ -88,6 +90,9 @@ export MX_CHECK_ENABLED="false"
 # without this every E2E signup would attempt a real send to a made-up address. The
 # console sender is also what makes the activation link readable below.
 export EMAIL_PROVIDER="console"
+# Forced off for the same reason: a developer's .env may switch the assistant on, and its
+# routes call the vector database and the model endpoints, which an E2E run must not touch.
+export ASSISTANT_ENABLED="false"
 # Activation links are built from this, so they point at the app Playwright drives.
 export FRONTEND_BASE_URL="http://localhost:8080"
 # The Playwright helper reads each activation link back out of the API's stdout, which
@@ -113,10 +118,20 @@ if [ "$MODE" = "docs" ]; then
   }
 fi
 
+# uvicorn below binds 127.0.0.1 only, so a process already listening on *:$API_PORT or
+# [::1]:$API_PORT would not stop it from starting, and the localhost health check could
+# then answer from that other process. curl exit 7 is "connection refused", i.e. free.
+port_rc=0
+curl -s -o /dev/null --noproxy "*" --max-time 2 "http://localhost:$API_PORT/" || port_rc=$?
+if [ "$port_rc" -ne 7 ]; then
+  echo "  ERROR: port $API_PORT is already in use; stop that process first"
+  exit 1
+fi
+
 CORS_ORIGINS='["http://localhost:8080"]' \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \
-    --host 0.0.0.0 --port "$API_PORT" \
+    --host 127.0.0.1 --port "$API_PORT" \
     --log-level warning > "$E2E_API_LOG" 2>&1 &
 API_PID=$!
 

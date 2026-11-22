@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, test, prod]
+    branches: [dev, prod]
   pull_request:
-    branches: [dev, test, prod]
+    branches: [dev, prod]
 
 # Least-privilege default for GITHUB_TOKEN; every job here only reads the repo.
 permissions:
@@ -137,7 +137,7 @@ jobs:
         working-directory: frontend
         run: npx tsc -p tsconfig.app.json --noEmit
 
-  # `Code Quality Checks` is a required status check on dev, test and prod, and
+  # `Code Quality Checks` is a required status check on dev and prod, and
   # every other job gates on this one, so the split keeps a job under both the name and
   # the id. It only reports the two halves.
   lint:
@@ -580,7 +580,7 @@ jobs:
           path: /tmp/become-e2e-api.log
           retention-days: 7
 
-  # `E2E Tests (Playwright)` is a required status check on dev, test and prod, so
+  # `E2E Tests (Playwright)` is a required status check on dev and prod, so
   # the split has to keep a job under exactly that name or every pull request into them
   # would wait forever for a check that no longer runs. This one only reports the shards.
   e2e:
@@ -603,10 +603,10 @@ jobs:
   # old code count as new, which is what failed the gate on the promotion in #326 over CSS
   # introduced by a different pull request. Keeping `prod` current fixes that at the root.
   #
-  # `dev` and `test` are deliberately not analysed: branch analysis for anything but the
+  # `dev` is deliberately not analysed: branch analysis for anything but the
   # main branch is a paid SonarCloud feature, and this organization is on the free plan (its API
   # answers "Organization is not allowed to access data from non main branches"). Pushing an
-  # analysis for them would burn a CI job on a result nothing can read.
+  # analysis for it would burn a CI job on a result nothing can read.
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-24.04

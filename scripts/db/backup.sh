@@ -6,7 +6,7 @@
 # and ALWAYS removes the proxy again (even on error). Run it before risky changes and
 # periodically, and store the dumps somewhere safe, because they contain user data.
 #
-#   Usage:  ./scripts/db/backup.sh [prod|test|dev]      (default: prod)
+#   Usage:  ./scripts/db/backup.sh [prod|dev]  (default: prod)
 #   Output: backups/<env>-<UTC-timestamp>.dump  (custom format)
 #   Restore: pg_restore --no-owner --no-privileges -d <target-url> <dump>
 #
@@ -19,9 +19,8 @@ set -uo pipefail
 ENV_ARG="${1:-prod}"
 case "$ENV_ARG" in
   prod) RW_ENV="prod"; DB_SVC="prod-db" ;;
-  test) RW_ENV="test"; DB_SVC="test-db" ;;
   dev)  RW_ENV="dev";  DB_SVC="dev-db" ;;
-  *) echo "usage: $0 [prod|test|dev]"; exit 1 ;;
+  *) echo "usage: $0 [prod|dev]"; exit 1 ;;
 esac
 
 # Project id from the linked Railway project; override with RAILWAY_PROJECT_ID.

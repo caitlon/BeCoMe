@@ -2,7 +2,7 @@ name: PR Size
 
 # Puts one size label on every pull request into `dev`, so an oversized one is visible in
 # the list without opening it. Labels only: this workflow never fails a pull request over its
-# size. Promotion pull requests (`dev` into `test`, `test` into `prod`) carry commits that
+# size. Promotion pull requests (`dev` into `prod`) carry commits that
 # were already reviewed on their way into `dev`, so they get no label.
 #
 # Why pull_request_target. A label can only be written with a write token, and the token of a

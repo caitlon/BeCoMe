@@ -1239,7 +1239,7 @@ _VECTOR_URL = (
 
 
 class TestAssistantSettings:
-    """The assistant runs on a laptop and on dev, test and prod with hosted roles."""
+    """The assistant runs on a laptop and on dev and prod with hosted roles."""
 
     def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
         """
@@ -1355,19 +1355,17 @@ class TestAssistantSettings:
         ("profile", "railway_name"),
         [
             ("dev", "dev"),
-            ("test", "test"),
             ("prod", "prod"),
             ("prod", None),
             ("prod", "dev"),
             ("dev", "prod"),
             ("test", "prod"),
             ("dev", " Dev "),
-            ("test", "TEST"),
             ("dev", "PROD"),
             ("dev", " prod "),
         ],
     )
-    def test_allows_the_assistant_on_the_dev_test_and_prod_services(
+    def test_allows_the_assistant_on_the_dev_and_prod_services(
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
@@ -1397,8 +1395,13 @@ class TestAssistantSettings:
             ("dev", "pr-123"),
             ("dev", "prod-eu"),
             ("dev", ""),
+            ("dev", "test"),
+            ("dev", " Test "),
             ("prod", "production"),
             ("prod", "staging"),
+            ("prod", "test"),
+            ("test", "test"),
+            ("test", "TEST"),
             ("test", "pr-123"),
         ],
     )
@@ -1406,8 +1409,8 @@ class TestAssistantSettings:
         self, monkeypatch, tmp_path, profile, railway_name
     ):
         """
-        GIVEN a fully configured service whose Railway environment is none of dev, test and
-            prod (a retired or preview name, or an empty one), under any profile
+        GIVEN a fully configured service whose Railway environment is none of dev and prod
+            (a retired or preview name, including test, or an empty one), under any profile
         WHEN Settings is constructed with assistant_enabled=true
         THEN validation fails, naming the field and the allowed environments
         """
@@ -1418,7 +1421,7 @@ class TestAssistantSettings:
 
         # WHEN/THEN
         with pytest.raises(
-            ValidationError, match=r"assistant_enabled must stay false.*dev, test and prod"
+            ValidationError, match=r"assistant_enabled must stay false.*dev and prod"
         ):
             Settings()
 
@@ -1456,7 +1459,7 @@ class TestAssistantSettings:
             with the assistant on and one deploy rule broken: a local model role, an empty
             corpus database URL, a zero message limit or a non-EU LangSmith endpoint
         WHEN Settings is constructed
-        THEN validation fails with that rule's message, as it does on dev and test
+        THEN validation fails with that rule's message, as it does on dev
         """
         # GIVEN
         self._configure_deployed_assistant(
@@ -1470,12 +1473,13 @@ class TestAssistantSettings:
             Settings()
 
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
-    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "test")])
+    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "prod")])
     def test_rejects_a_local_role_on_a_deployed_service(
         self, monkeypatch, tmp_path, profile, railway_name, provider, url
     ):
         """
-        GIVEN a deployed dev or test service with one model role left local
+        GIVEN a deployed service (the dev profile on Railway dev, or the test profile on
+        Railway prod) with one model role left local
         WHEN Settings is constructed with assistant_enabled=true
         THEN validation fails, naming that role's provider setting
         """
@@ -1610,7 +1614,7 @@ class TestAssistantSettings:
         ("profile", "railway_name", "testing", "endpoint"),
         [
             ("dev", "dev", False, "https://eu.api.smith.langchain.com"),
-            ("test", "test", False, "https://eu.api.smith.langchain.com"),
+            ("test", "prod", False, "https://eu.api.smith.langchain.com"),
             ("dev", "dev", True, "https://eu.api.smith.langchain.com"),
             ("dev", "dev", False, " HTTPS://EU.API.SMITH.LANGCHAIN.COM/ "),
         ],
@@ -1619,8 +1623,9 @@ class TestAssistantSettings:
         self, monkeypatch, tmp_path, profile, railway_name, testing, endpoint
     ):
         """
-        GIVEN a deployed dev or test service with every role hosted and LangSmith tracing on
-            with a key, a project and the EU endpoint (however it is capitalised or ends)
+        GIVEN a deployed service (the dev profile on Railway dev, or the test profile on Railway
+            prod) with every role hosted and LangSmith tracing on with a key, a project and
+            the EU endpoint (however it is capitalised or ends)
         WHEN Settings is constructed
         THEN validation passes and the endpoint is kept without spaces or a trailing slash
         """
@@ -1807,7 +1812,7 @@ class TestAssistantSettings:
         ("profile", "railway_name", "testing"),
         [
             ("dev", "dev", False),
-            ("test", "test", False),
+            ("test", "prod", False),
             ("test", None, False),
             ("dev", "dev", True),
         ],
@@ -2240,7 +2245,7 @@ class TestAssistantSettings:
 
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),
-        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+        [("dev", "dev", False), ("test", "prod", False), ("dev", "dev", True)],
     )
     @pytest.mark.parametrize(
         "setting", ["assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"]
@@ -2249,8 +2254,9 @@ class TestAssistantSettings:
         self, monkeypatch, tmp_path, profile, railway_name, testing, setting
     ):
         """
-        GIVEN a deployed dev or test service, TESTING=1 included, with the assistant on and
-            the per-user or the global message limit set to zero, which would mean no limit
+        GIVEN a deployed service (dev profile on Railway dev, test profile on Railway prod),
+            TESTING=1 included, with the assistant on and the per-user or the global
+            message limit set to zero, which would mean no limit
         WHEN Settings is constructed
         THEN validation fails naming that setting
         """

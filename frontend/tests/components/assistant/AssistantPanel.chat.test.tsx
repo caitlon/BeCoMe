@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { AssistantPanel } from '@/components/assistant/AssistantPanel';
+import { STORAGE_PREFIX } from '@/components/assistant/history-storage';
 import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 import { HttpError } from '@/lib/errors';
 import type { AssistantChatResponse } from '@/types/api';
@@ -31,11 +32,11 @@ const RESPONSE: AssistantChatResponse = {
   timing: { ttft_ms: 1, total_ms: 2 },
 };
 
-function renderPanel(onOpenChange = vi.fn()) {
+function renderPanel(onOpenChange = vi.fn(), projectId: string | null = null) {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <AssistantPanel open onOpenChange={onOpenChange} projectId={null} userId="u1" mode="workflow" />
+        <AssistantPanel open onOpenChange={onOpenChange} projectId={projectId} userId="u1" mode="workflow" />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -100,6 +101,43 @@ describe('AssistantPanel with the chat hook', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
     await waitFor(() => expect(screen.getByText('Stopped')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+});
+
+describe('a project that answers 404 in the panel', () => {
+  const OWN = `${STORAGE_PREFIX}:u1:p1`;
+  const OTHER = `${STORAGE_PREFIX}:u1:p2`;
+
+  beforeEach(() => {
+    mockStream.mockReset();
+    mockRead.mockReset();
+    window.sessionStorage.clear();
+    mockStream.mockResolvedValue({ body: {} } as Response);
+    mockRead.mockImplementation(async function* () {
+      yield { type: 'done', response: RESPONSE };
+    });
+  });
+
+  it('forgets the stored conversation of that project only, and does not store the next turn again', async () => {
+    window.sessionStorage.setItem(OTHER, '[]');
+    renderPanel(vi.fn(), 'p1');
+    await userEvent.type(box(), 'First?{Enter}');
+    await waitFor(() => expect(screen.getByText(RESPONSE.answer)).toBeInTheDocument());
+    expect(window.sessionStorage.getItem(OWN)).not.toBeNull();
+
+    mockStream.mockRejectedValueOnce(new HttpError('Not found', 404));
+    await userEvent.type(box(), 'Second?{Enter}');
+
+    await waitFor(() => expect(window.sessionStorage.getItem(OWN)).toBeNull());
+    expect(window.sessionStorage.getItem(OTHER)).toBe('[]');
+
+    // The 404 put the question back into the box, so this turn sends it with the new text; the
+    // assertions do not depend on the text.
+    await userEvent.type(box(), 'Third?{Enter}');
+    await waitFor(() => expect(mockStream).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getAllByText(RESPONSE.answer)).toHaveLength(2));
+    expect(window.sessionStorage.getItem(OWN)).toBeNull();
+    expect(window.sessionStorage.getItem(OTHER)).toBe('[]');
   });
 });
 

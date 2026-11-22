@@ -30,7 +30,7 @@ ingest uses. `migrations/env.py` also reads `ALEMBIC_DATABASE_URL`, which
 overrides `MIGRATION_DATABASE_URL` ([`environments.md`](environments.md)), so keep it unset
 on deployed services. The "Verify" column says how to check a value without printing it.
 A check with `curl` reads the key from a file, as the rotation rules below describe.
-`<env>` stands for `dev`, `test` or `prod`.
+`<env>` stands for `dev` or `prod`.
 
 | Variable | What it protects | Source | Verify |
 |----------|------------------|--------|--------|
@@ -201,7 +201,7 @@ working. If `LOG_HASH_KEY` is unset, email tags in logs change too.
 
 The variable and the Transform Rule on the environment's API host must hold the same value.
 The rule runs in the `http_request_late_transform` phase and sets `X-Origin-Verify`. The API
-hosts under `becomify.app` are `api` (prod), `api-atelier` (dev) and `api-harbor` (test).
+hosts under `becomify.app` are `api` (prod) and `api-atelier` (dev).
 
 The backend refuses with `403` a request whose `X-Origin-Verify` matches neither
 `CLOUDFLARE_ORIGIN_SECRET` nor `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, so a rotation keeps the old
@@ -490,7 +490,7 @@ This covers `EMAIL_API_KEY`, `TURNSTILE_SECRET_KEY`, `ASSISTANT_API_KEY_OVH` and
 1. Create the new key at the provider.
 2. Find every environment that holds the old key. Run
    `railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$<VARIABLE>" | sha256sum'`
-   once for each of `dev`, `test` and `prod`, with `<VARIABLE>` replaced by the bare variable
+   once for each of `dev` and `prod`, with `<VARIABLE>` replaced by the bare variable
    name, for example `EMAIL_API_KEY`, so the command reads `"$EMAIL_API_KEY"`. Equal hashes
    mean a shared key, unless both are `e3b0c442...`, the hash of an unset or empty variable.
    The prod run needs the owner's go like any prod step. Do not revoke the old key until the

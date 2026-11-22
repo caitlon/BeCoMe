@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -141,6 +141,24 @@ const ProjectDetail = () => {
     resultQuery.isLoadingError ||
     membersQuery.isLoadingError ||
     invitationsQuery.isLoadingError;
+
+  // A 404 on the project means it was deleted or the user is no longer a member (the API
+  // answers both the same way), on the first load or on a refetch of a page already open. A
+  // 403 does not mean lost access here: this route needs membership only, no admin level, so a
+  // 403 comes only from the origin lock. Once per failure: a later change of the forget
+  // callback must not clear a conversation started since.
+  const projectError = projectQuery.error;
+  const forgottenError = useRef<unknown>(null);
+  useEffect(() => {
+    if (
+      projectError instanceof HttpError &&
+      projectError.status === 404 &&
+      forgottenError.current !== projectError
+    ) {
+      forgottenError.current = projectError;
+      forgetAssistantProject(projectId);
+    }
+  }, [projectError, projectId, forgetAssistantProject]);
 
   useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
 

@@ -21,7 +21,7 @@ machine is in the
 - [How the answer is written](#how-the-answer-is-written)
 - [How citations and numbers are checked](#how-citations-and-numbers-are-checked)
 - [How the answer streams](#how-the-answer-streams)
-- [Sources on production and on the test environments](#sources-on-production-and-on-the-test-environments)
+- [Sources on production and on the dev environment](#sources-on-production-and-on-the-dev-environment)
 - [How the panel displays an answer](#how-the-panel-displays-an-answer)
 - [Limits on use](#limits-on-use)
 - [The model provider](#the-model-provider)
@@ -234,9 +234,9 @@ The site sits behind Cloudflare, which closes a connection that stays silent for
 server therefore sends a keep-alive comment every 15 seconds. The work before the stream opens,
 the search and the project data, must finish within 90 seconds, and the whole answer within 180.
 
-## Sources on production and on the test environments
+## Sources on production and on the dev environment
 
-On the development and test environments, the answer shows its sources. With sources on, each `[n]`
+On the development environment, the answer shows its sources. With sources on, each `[n]`
 becomes a link to a list under the answer, where every source shows its document title and section
 and opens a short excerpt. A source from the local layer is marked as a local copy. No source links
 to its original document yet. A `[n]` that points at no source is shown struck through.

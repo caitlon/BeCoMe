@@ -74,7 +74,7 @@ cd .. && SECRET_KEY=dev-secret uv run uvicorn api.main:app --reload
 - `VITE_API_URL`: base URL of the API. Falls back to `/api/v1` when unset, which the dev
   server proxies. The Dockerfile also copies its origin into the Content-Security-Policy.
 - `VITE_SENTRY_DSN`: DSN for browser error tracking. Tracking stays off when it is absent.
-- `VITE_APP_ENV`: the `dev`, `test`, or `prod` tag on Sentry events.
+- `VITE_APP_ENV`: the `dev` or `prod` tag on Sentry events.
 - `VITE_TURNSTILE_SITE_KEY`: Cloudflare Turnstile site key. When it is empty, the forms draw
   no widget and submit without a token.
 - `VITE_ASSISTANT_ENABLED`: build flag for the assistant panel. Only the exact string `true`
@@ -173,7 +173,7 @@ VITE_ASSISTANT_ENABLED=true npm run build
 ```
 
 The feature lives in `src/components/assistant/`. Its backend half needs `ASSISTANT_ENABLED`
-on the API and runs on a developer machine and on the dev, test and prod services (`api/assistant/README.md`).
+on the API and runs on a developer machine and on the dev and prod services (`api/assistant/README.md`).
 
 `e2e/assistant-panel.spec.ts` needs no backend: it answers every API request with a route.
 It is skipped unless the flag is in the environment when Playwright starts its dev server:

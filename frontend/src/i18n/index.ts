@@ -84,8 +84,8 @@ i18n
     // the exact-match pass itself accept a regional tag whose language part is
     // supported, so "cs-CZ" matches (and its resources load) without waiting for
     // a plainer candidate to win by being listed with no region at all. Verified
-    // against the installed i18next 26.3.6 + i18next-browser-languagedetector
-    // 8.2.1: even with this on, i18next can still resolve i18n.language itself to
+    // against the installed i18next 27.0.1 + i18next-browser-languagedetector
+    // 8.3.0: even with this on, i18next can still resolve i18n.language itself to
     // the untrimmed regional tag rather than the bare language, so toSupportedLanguage
     // below is what turns whatever it lands on into the exact literal the backend
     // contract requires; this option is what keeps Czech from being discarded

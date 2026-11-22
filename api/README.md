@@ -102,7 +102,7 @@ api/
 The sections below cover the routes of a deployed service. The assistant's three routes,
 `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
 `POST /api/v1/assistant/chat/stream`, are not listed here. They exist
-only when `ASSISTANT_ENABLED=true`. Any Railway environment other than `dev`, `test` and `prod` refuses to start with that setting
+only when `ASSISTANT_ENABLED=true`. Any Railway environment other than `dev` and `prod` refuses to start with that setting
 on, and a deployed service needs all three model roles set to `api`. A service that leaves
 it off answers 404 for the whole `/api/v1/assistant` prefix. All three routes need a signed-in
 session and answer 401 without one. Their behavior is in the
@@ -313,7 +313,7 @@ Environment variables (a `.env` file works too):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [Environments](https://docs.becomify.app/environments/). |
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `prod`, or `test` (the profile the test suite runs under). Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [Environments](https://docs.becomify.app/environments/). |
 | `DATABASE_URL` | `sqlite:///./become.db` (fallback; local development uses the Docker PostgreSQL) | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
 | `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
@@ -349,7 +349,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
-| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` on a Railway environment other than `dev`, `test` and `prod`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
+| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` on a Railway environment other than `dev` and `prod`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is
@@ -414,5 +414,5 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 
 - [Main README](https://docs.becomify.app/): project overview
 - [docs/security.md](https://github.com/caitlon/BeCoMe/blob/prod/docs/security.md): application and database security posture
-- [Environments](https://docs.becomify.app/environments/): the dev, test, and prod profiles, Railway
+- [Environments](https://docs.becomify.app/environments/): the dev, prod, and test-suite profiles, Railway
   deployment, and database topology
