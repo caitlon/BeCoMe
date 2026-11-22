@@ -19,13 +19,16 @@ const https = process.env.E2E_HTTPS
 
 export default defineConfig({
   server: {
-    // The e2e run binds loopback only: its proxy leads to a test API with rate limiting
-    // off and a fixed SECRET_KEY, which no other host on the network should reach.
+    // Loopback only, for every run: the proxy below leads to the local API, which runs
+    // with the developer's real .env (under e2e, a test API with rate limiting off and a
+    // fixed SECRET_KEY), and no other host on the network should reach it.
+    // `npx vite --host` exposes it for one run, to view the pages from another device;
+    // signing in there fails, because the session cookies are Secure and a LAN address
+    // over plain HTTP is not a secure context.
     // "localhost" rather than a fixed address: Vite binds the first loopback address it
     // resolves to (::1 on macOS), and the browsers and Playwright's readiness probe of
     // https://localhost:8080 fall back across both families until one answers.
-    // Everyday `npm run dev` keeps every interface, so the app opens from other devices.
-    host: process.env.E2E_HTTPS ? "localhost" : "::",
+    host: "localhost",
     port: 8080,
     https,
     proxy: {
