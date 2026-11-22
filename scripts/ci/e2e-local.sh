@@ -118,6 +118,16 @@ if [ "$MODE" = "docs" ]; then
   }
 fi
 
+# uvicorn below binds 127.0.0.1 only, so a process already listening on *:$API_PORT or
+# [::1]:$API_PORT would not stop it from starting, and the localhost health check could
+# then answer from that other process. curl exit 7 is "connection refused", i.e. free.
+port_rc=0
+curl -s -o /dev/null --noproxy "*" --max-time 2 "http://localhost:$API_PORT/" || port_rc=$?
+if [ "$port_rc" -ne 7 ]; then
+  echo "  ERROR: port $API_PORT is already in use; stop that process first"
+  exit 1
+fi
+
 CORS_ORIGINS='["http://localhost:8080"]' \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \
