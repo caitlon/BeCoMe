@@ -169,6 +169,25 @@ class TestNginxContentSecurityPolicy:
             for source in scripts:
                 assert _csp_hash(source) in script_src.split()
 
+    def test_script_src_carries_no_stale_hash(self):
+        """
+        GIVEN the inline scripts in frontend/index.html
+        WHEN the sha256 sources in each copy of script-src are counted
+        THEN there are exactly as many as there are inline scripts
+
+        Editing the script adds the new hash; a hash left behind from the old text would
+        keep allowing a script that no longer exists in the page.
+        """
+        expected = len(_inline_script_sources())
+
+        for csp in _csp_headers():
+            hashes = [
+                source
+                for source in _directive(csp, "script-src").split()
+                if source.startswith("'sha256-")
+            ]
+            assert len(hashes) == expected
+
     def test_script_src_does_not_allow_unsafe_inline(self):
         """
         GIVEN every Content-Security-Policy declared in nginx.conf

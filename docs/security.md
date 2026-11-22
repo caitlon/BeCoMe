@@ -1006,7 +1006,8 @@ outage it was meant to cover.
 never reads it, since it uses the `HttpOnly` cookie, but programmatic clients can only
 obtain the token this way, and `POST /auth/refresh` accepts it in the request body for
 exactly that reason. Reading the body value requires script execution on the origin, which
-the CSP (`script-src` allows this origin and Cloudflare's Turnstile host, nothing else), the
+the CSP (`script-src` allows this origin, Cloudflare's Turnstile host and one inline script
+by its sha256 hash, the pre-paint script in `frontend/index.html`, nothing else), the
 explicit CORS allow-list, and `SameSite=Strict` between them prevent. Rotation with reuse
 detection then caps the value of a token that does leak.
 

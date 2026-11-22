@@ -18,6 +18,9 @@ interface Browser {
   readonly language?: string | null;
   readonly darkOs?: boolean;
   readonly navigatorLanguages?: readonly string[];
+  readonly navigatorLanguage?: string;
+  readonly noLanguagesList?: boolean;
+  readonly noMatchMedia?: boolean;
   readonly storageThrows?: boolean;
 }
 
@@ -26,18 +29,28 @@ function run({
   language = null,
   darkOs = false,
   navigatorLanguages = ["en-US"],
+  navigatorLanguage = navigatorLanguages[0],
+  noLanguagesList = false,
+  noMatchMedia = false,
   storageThrows = false,
 }: Browser): string[] {
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => {
       if (storageThrows) throw new DOMException("denied", "SecurityError");
-      return key === "become-theme" ? theme : language;
+      if (key === "become-theme") return theme;
+      if (key === "become-language") return language;
+      return null;
     },
   });
-  vi.stubGlobal("matchMedia", () => ({ matches: darkOs }));
+  vi.stubGlobal(
+    "matchMedia",
+    noMatchMedia
+      ? undefined
+      : (query: string) => ({ matches: query === "(prefers-color-scheme: dark)" && darkOs }),
+  );
   vi.stubGlobal("navigator", {
-    languages: navigatorLanguages,
-    language: navigatorLanguages[0],
+    languages: noLanguagesList ? undefined : navigatorLanguages,
+    language: navigatorLanguage,
   });
 
   new Function(script)();
@@ -72,6 +85,27 @@ describe("pre-paint script in index.html", () => {
 
   it("treats an unknown stored theme as system", () => {
     expect(run({ theme: "purple", darkOs: true })).toContain("dark");
+  });
+
+  it("falls back to light when matchMedia is missing and nothing is stored", () => {
+    const classes = run({ noMatchMedia: true });
+
+    expect(classes).toContain("light");
+    expect(classes).not.toContain("dark");
+  });
+
+  it("marks a stored regional Czech language as pending", () => {
+    expect(run({ language: "cs-CZ" })).toContain("lang-pending");
+  });
+
+  it("does not mark stored regional English even when the browser prefers Czech", () => {
+    expect(run({ language: "en-US", navigatorLanguages: ["cs"] })).not.toContain("lang-pending");
+  });
+
+  it("falls back to navigator.language when navigator.languages is missing", () => {
+    const classes = run({ noLanguagesList: true, navigatorLanguage: "cs-CZ" });
+
+    expect(classes).toContain("lang-pending");
   });
 
   it("marks a stored Czech language as pending", () => {

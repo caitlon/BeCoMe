@@ -364,8 +364,8 @@
   }
 
   /* The pre-paint script in index.html sets lang-pending for Czech visitors, so they
-     do not see English markup before React renders Czech. main.tsx removes the class
-     after the first commit. The animation is the safety net: if the bundle never
+     do not see English markup before React renders Czech. RevealOnCommit (mounted in
+     main.tsx) removes the class after the first commit. The animation is the safety net: if the bundle never
      loads, the page shows itself after three seconds instead of staying blank. */
   html.lang-pending #root {
     visibility: hidden;
