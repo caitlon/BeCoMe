@@ -17,6 +17,7 @@ variables of each environment are in [`environments.md`](environments.md).
     - [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret)
     - [Database and Redis credentials](#database-and-redis-credentials)
     - [Provider-issued keys](#provider-issued-keys)
+    - [Access service token](#access-service-token)
     - [Bucket credentials](#bucket-credentials)
     - [GitHub Actions secrets](#github-actions-secrets)
 
@@ -64,6 +65,12 @@ the server only (`api/config.py`). Like any DSN it can only send events. Nothing
 either on a schedule. To rotate the backend one, create a new client key in the Sentry
 project, set `SENTRY_DSN` with `--stdin --skip-deploys`, redeploy the backend once, then
 disable the old key.
+
+One credential is not a Railway variable: the service token `betterstack-dev-health`, which lets
+the Better Stack monitor of the dev API pass Cloudflare Access
+([`security.md`](security.md#network-and-edge)). Its values live in the monitor's request headers
+in Better Stack and nowhere else once the procedure's temporary files are deleted, see
+[Access service token](#access-service-token).
 
 ## CI secrets
 
@@ -510,6 +517,42 @@ Per provider:
   so the old secret still works while services switch, and it needs no revoking in step 6. The
   site key `VITE_TURNSTILE_SITE_KEY` stays.
 - **LangSmith.** The key matters only where tracing is on.
+
+### Access service token
+
+The token was created on 2026-11-23 with a one-year duration and expires on 2027-11-23. This
+account has two Cloudflare notification policies for Access service tokens, both enabled and
+sent by email: "Expiring Service Token Alert" warns 7 days before a token expires, and "Leaked
+Service Token Alert" warns when one is reported as leaked. An expired, revoked, disabled or
+misconfigured token shows as a 302 incident on the dev API monitor.
+
+The zone token in `.env` cannot manage service tokens. Use the Zero Trust dashboard (Access,
+Service credentials) or the Cloudflare API with an account-scoped OAuth session.
+
+**Expiry.** Refresh the token (Refresh, or
+`POST /accounts/{account_id}/access/service_tokens/{service_token_id}/refresh`). Refresh sets the
+expiry to the refresh date plus the configured duration and keeps the client id and secret, so
+Better Stack needs no change. Update the expiry date at the top of this section, then confirm
+that the monitor stays up.
+
+**Leak or planned secret change.** Rotation keeps the client id and issues a new secret. After a
+leak, rotate without a grace period and expect the monitor to go red until step 6. For a planned
+change, set a grace period so the old secret keeps working meanwhile.
+
+1. Start with `umask 077; S="$(mktemp -d)"` as in the rotation rules. Never print a value.
+2. Rotate the secret: Rotate in the dashboard, or `.../{service_token_id}/rotate` with the API
+   response written to a file in `"$S"`, since it carries the new secret.
+3. Write two header-format files for `curl`: `"$S/id.header"` holding
+   `CF-Access-Client-Id: <client id>` and `"$S/secret.header"` holding
+   `CF-Access-Client-Secret: <new secret>`. Better Stack's header fields take the bare values.
+4. A token reported as leaked is disabled, and rotation does not enable it again. Enable it in
+   the dashboard after the rotation.
+5. Check the new secret:
+   `curl -s -o /dev/null -w '%{http_code}\n' -H @"$S/id.header" -H @"$S/secret.header" https://api-atelier.becomify.app/api/v1/health`
+   answers `200`, and the same without the two headers answers `302`.
+6. Put the new secret in the monitor's `CF-Access-Client-Secret` header in Better Stack, then wait
+   for a check that ran after the save and is green.
+7. Finish with `rm -rf "$S"`.
 
 ### Bucket credentials
 

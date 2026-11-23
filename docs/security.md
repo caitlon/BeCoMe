@@ -41,7 +41,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Bot check on the unauthenticated auth endpoints | Implemented | `api/auth/turnstile.py`, `api/services/turnstile_service.py` |
 | Input validation | Implemented | `api/schemas/` |
 | Configuration invariants per profile | Implemented | `api/config.py` |
-| Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
+| Network and edge: Cloudflare, Access on dev, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
 | Dependencies and code scanning | Implemented | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
@@ -620,6 +620,32 @@ The lock was checked from outside on 2 November 2026, on dev, test and prod, the
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
 covers those three API hosts.
 
+The dev environment also sits behind Cloudflare Access on both hosts. One Access application,
+"BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the
+API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
+policy of type Service Auth admits one Access service token, which only the Better Stack monitor
+of the dev API uses. The policy belongs to the same application, so that token passes Access on
+every path of both dev hosts, not only the health route, and its blast radius is the dev
+environment. Any other request without an Access session gets a 302 to the Access login on every
+path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
+(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+applies behind Access. Checked from outside on 23 November 2026.
+
+The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
+through every hostname of the application and sets its session cookie on each, so the SPA's
+credentialed `fetch` calls to the API host carry an Access cookie without a top-level visit to
+it. A browser whose Access session predates this setup keeps a valid cookie for the frontend
+only, so a reload logs nobody in and API calls fail with a CORS error until the user logs out of
+Access (`https://atelier.becomify.app/cdn-cgi/access/logout`) and logs in again. When the 24-hour
+session expires, a reload sends the user through the login, which sets the cookie on both hosts
+again. `options_preflight_bypass` is on as well: browsers send no cookies on a CORS preflight, so
+Access cannot authenticate one, and it lets OPTIONS requests through to the origin, where
+`CORSMiddleware` answers them. A service token in the browser is no option, because its secret
+would ship in the JavaScript that every signed-in user of the frontend downloads, as a credential
+tied to no person. A policy keyed on the Origin or Referer header would not protect anything
+either, since any client outside a browser sets those headers freely (and Access has no such
+selector).
+
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
 `--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
@@ -764,8 +790,11 @@ Better Stack watches the deployed services from outside and from the logs. Besid
 monitor on `https://www.becomify.app/`, two uptime monitors call `/api/v1/health` through
 Cloudflare on each API host: `api.becomify.app` (prod) and
 `api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
-redirects, and opens an incident and emails the team on any status other than 200. The API
-monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
+redirects, and opens an incident and emails the team on any status other than 200. The dev API
+monitor passes Access with a service token held in its request headers in Better Stack. A 302
+there means the token expired or was revoked, the Service Auth policy changed, or the monitor's
+headers are wrong, see [secrets](secrets.md#access-service-token). The API monitors
+exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
 Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
 monitor alone would stay green. The origin lock lets the health route through without the secret
 only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
