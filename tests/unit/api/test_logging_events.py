@@ -588,7 +588,7 @@ class TestRouteRefusalLogging:
     )
     def test_refresh_refusal_is_debug(self, token, reason):
         """
-        GIVEN a refresh request with no token, or with one the store rejects
+        GIVEN a refresh request with no token, or with one that fails to decode
         WHEN the route refuses it
         THEN a refresh_rejected record at DEBUG names which of the two it was
 
@@ -601,11 +601,13 @@ class TestRouteRefusalLogging:
         with (
             patch("api.routes.auth.logger") as mock_logger,
             patch("api.routes.auth.decode_refresh_token", side_effect=auth_route.TokenError),
-            pytest.raises(HTTPException),
+            pytest.raises(HTTPException) as refused,
         ):
             auth_route.refresh_token(_request(), Response(), MagicMock(), data, None)
 
         # THEN
+        assert refused.value.status_code == 401
+        mock_logger.debug.assert_called_once()
         extra = _extras(mock_logger.debug.call_args)
         assert extra == {"event": "refresh_rejected", "reason": reason}
         mock_logger.warning.assert_not_called()
