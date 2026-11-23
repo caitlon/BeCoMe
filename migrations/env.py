@@ -35,7 +35,7 @@ def _database_url() -> str:
     :return: A direct ``ALEMBIC_DATABASE_URL`` override when set, otherwise the
         privileged ``migration_database_url`` or the runtime ``database_url``.
     """
-    # The one deliberate env read outside api/config.py: the ad-hoc override above.
+    # The one deliberate env read outside api/config.py: the override the docstring names.
     override = os.environ.get("ALEMBIC_DATABASE_URL")  # noqa: TID251
     if override:
         return override
