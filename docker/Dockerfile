@@ -118,13 +118,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Railway: 1 is the intended value (scale horizontally via Railway replicas, not
 # in-container workers). Each extra worker is a full interpreter holding a copy of
 # the app; Redis-backed auth state (throttle/revocation) is shared, so 1 is safe.
-# Local/self-hosted may override to 4 or more.
+# More workers need REDIS_URL: without it the session store is per process
+# (docker/docker-compose.yml runs one worker for that reason).
 ENV UVICORN_WORKERS=1
 
 # Expose port
 EXPOSE 8000
 
-# Health check (start_period matches docker-compose.yml)
+# Health check (docker/docker-compose.yml inherits it)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
