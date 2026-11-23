@@ -637,6 +637,23 @@ environments then in service. One `GET /api/v1/health` without the secret, sent 
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
 covers those three API hosts.
 
+Two Better Stack chart alerts watch for refused requests in the logs, one per backend log source,
+because one alert cannot read both. "Prod: requests refused at the origin" sits on the dashboard
+"BeCoMe backend alerts" (source `become-backend-prod`), and "Dev: requests refused at the origin"
+on "BeCoMe dev backend alerts" (source `become-backend`). Each counts the records with
+`event="origin_refused"`, which `api/middleware/origin_lock.py` writes with
+`ip="unverified-origin"` and a `reason` of `missing_header` or `secret_mismatch`, through the
+`event` label the sources already extract. An incident opens at 3 or more in 5 minutes held for
+10 minutes, emails the team, and resolves after 10 quiet minutes. The count over the previous 30
+days was zero on both sources, and a stray direct hit or a short scanner burst does not hold for
+10 minutes. A broken or missing Transform Rule refuses every request, so any steady traffic keeps
+the count above the threshold, and with little traffic the API uptime monitor below still catches
+the same failure as a 403. The refusal record comes from the origin lock itself, so a refused
+health check writes one even though the health route adds no access log line. On
+23 November 2026, a lowered test threshold and three direct requests to the dev origin without the
+header produced three records and an incident within about two minutes, and the threshold was then
+restored.
+
 The dev environment also sits behind Cloudflare Access on both hosts. One Access application,
 "BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
@@ -820,7 +837,9 @@ lets the health route through without the secret
 only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
 addressed to an API host passes the origin check like any other request. A crashed backend is
 caught the same way. The health route is in
-`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
+`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines. The two
+origin-refusal alerts above complement these uptime monitors: they read the refusals themselves,
+not the status a visitor sees.
 
 The two backend log sources (`become-backend`, `become-backend-prod`)
 extract four values from every record: the `event` field; `req_kind`, which sorts a request-log

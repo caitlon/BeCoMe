@@ -239,8 +239,10 @@ these four steps in order, before any rotation:
    `curl -s -o /dev/null -w '%{http_code}' https://www.becomify.app/` through Cloudflare must
    print `200`, and this is the check that catches a rule that misses the frontend host. On dev,
    Access answers before the origin, so an anonymous request proves nothing. Send the request
-   with the Access service token headers of the dev monitor, using the header files of
-   [Access service token](#access-service-token):
+   with the Access service token headers of the dev monitor. Copy its two header values from the
+   monitor's request headers in Better Stack into header-format files `"$S/id.header"` and
+   `"$S/secret.header"`, never printing them, or use a browser with an Access session and confirm
+   the page loads. With the files:
    `curl -s -o /dev/null -w '%{http_code}' -H @"$S/id.header" -H @"$S/secret.header" https://atelier.becomify.app/`
    must print `200`. Then send a request that skips Cloudflare to the host's CNAME target
    (`dig +short <target> @1.1.1.1` for the address, then
@@ -330,6 +332,7 @@ each one to a file in `"$S"` with `-o`, never to the terminal.
 
    ```sh
    railway redeploy -y -s <env>-backend -e <env>
+   # wait until the newest row of railway deployment list -s <env>-backend -e <env> shows SUCCESS
    railway redeploy -y -s <env>-frontend -e <env>
    ```
 
@@ -351,7 +354,10 @@ each one to a file in `"$S"` with `-o`, never to the terminal.
    ```
 
    It must print `true` and `[]`. If it does not, the rule still sends the old value, which both
-   services still accept, so fix the cause and run the block again.
+   services still accept, so fix the cause and run the block again. The Better Stack alerts
+   "requests refused at the origin" (see [security](security.md#network-and-edge)) fire when the
+   rule and the services disagree, so such an incident in the minutes after this step means stop
+   and compare the hashes of step 5.
 5. Compare the hashes, and all of them must match. The zone holds one rule per environment,
    covering its API and frontend hosts, in the `http_request_late_transform` entrypoint
    ruleset. The listing contains the secret, so `-o` writes it to a file instead of the
