@@ -643,16 +643,24 @@ because one alert cannot read both. "Prod: requests refused at the origin" sits 
 on "BeCoMe dev backend alerts" (source `become-backend`). Each counts the records with
 `event="origin_refused"`, which `api/middleware/origin_lock.py` writes with
 `ip="unverified-origin"` and a `reason` of `missing_header` or `secret_mismatch`, through the
-`event` label the sources already extract. An incident opens at 3 or more in 5 minutes held for
-10 minutes, emails the team, and resolves after 10 quiet minutes. The count over the previous 30
-days was zero on both sources, and a stray direct hit or a short scanner burst does not hold for
-10 minutes. A broken or missing Transform Rule refuses every request, so any steady traffic keeps
-the count above the threshold, and with little traffic the API uptime monitor below still catches
-the same failure as a 403. The refusal record comes from the origin lock itself, so a refused
-health check writes one even though the health route adds no access log line. On
-23 November 2026, a lowered test threshold and three direct requests to the dev origin without the
-header produced three records and an incident within about two minutes, and the threshold was then
-restored.
+`event` label the sources already extract. The label exists since the extraction was set up on
+10 November 2026, and from then to 23 November the count was zero on both sources (Better Stack
+keeps the raw records for 3 days, so that is the longest window a count can cover). An incident
+opens when 3 or more refusals fall in a 5-minute window and that stays true for 10 minutes, so it
+comes at least 10 minutes after the failure starts, and only when refusals keep coming at roughly
+one every two minutes or faster. It emails the team and resolves once the 5-minute count stays
+under 3 for 10 minutes. A stray direct hit or a short scanner burst does not hold for 10 minutes.
+A broken or missing Transform Rule refuses every request, so traffic of that rate or more keeps
+the count above the threshold. Below that rate, the API uptime monitor described further down
+still catches the same failure as a 403. The refusal record comes from the origin lock itself, so a refused health check
+writes one even though the health route adds no access log line. A `reason` of `secret_mismatch`
+points at the rule and the variables disagreeing, and `missing_header` at traffic that skipped
+Cloudflare or a rule that no longer covers the host, with `path` showing what was asked for. These
+alerts read the backend logs only: a refusal by the frontend's nginx is not in Better Stack, and
+on prod the `www.becomify.app` uptime monitor catches a frontend host the rule misses. Tested on
+23 November 2026 on dev: with the threshold lowered to one record in one minute and no hold, three
+direct requests without the header opened an incident in about two minutes, and the production
+settings were then restored. The prod alert has the same settings and was not fired.
 
 The dev environment also sits behind Cloudflare Access on both hosts. One Access application,
 "BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the
@@ -837,9 +845,10 @@ lets the health route through without the secret
 only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
 addressed to an API host passes the origin check like any other request. A crashed backend is
 caught the same way. The health route is in
-`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines. The two
-origin-refusal alerts above complement these uptime monitors: they read the refusals themselves,
-not the status a visitor sees.
+`_SKIP_PATHS` of `api/middleware/request_logging.py`, so a check that passes adds no log line,
+while a refused one is still recorded as `origin_refused`. The two origin-refusal alerts above
+complement these uptime monitors: they read the refusals themselves, not the status a visitor
+sees.
 
 The two backend log sources (`become-backend`, `become-backend-prod`)
 extract four values from every record: the `event` field; `req_kind`, which sorts a request-log
@@ -847,7 +856,7 @@ completion line into `heavy` (`POST /api/v1/calculate`, opinion writes, which re
 result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status_class` (`2xx` to
 `5xx`); and `duration_ms` as a histogram. The extraction applies only to records ingested after it
 was created. The dashboard "BeCoMe backend alerts" charts these values, and the alert rules read
-them. The rules exist on prod only and notify the team by email.
+them. The abuse, 5xx and latency rules exist on prod only and notify the team by email.
 
 Two rules watch for abuse and errors. The first counts `login_failure` and `access_denied` events
 apart and opens an incident of its own for either one that reaches 10 within five minutes.
@@ -862,8 +871,9 @@ fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
 `duration_ms`, the time of the work itself and not of the request.
 
 The minimum counts are there because at current traffic a p95 over two or three requests is
-noise. Dev has the same extraction and dashboard but no rules: its traffic is probes
-and testing, not users.
+noise. Dev has the same extraction and dashboard but only the origin-refusal alert, on its own
+dashboard "BeCoMe dev backend alerts", and none of the rules above: its traffic is probes and
+testing, not users.
 
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
 receive, so that trigger stays unwatched until it is decided where metrics live.
