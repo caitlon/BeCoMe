@@ -1367,6 +1367,31 @@ describe('ProjectDetail - Result request failure', () => {
     expect(screen.queryByText('Results could not be loaded.')).not.toBeInTheDocument();
   });
 
+  it('keeps the page and the error in place while a retry is in flight', async () => {
+    const user = userEvent.setup();
+    let resolveRetry: (value: ReturnType<typeof createCalculationResult>) => void = () => {};
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'other' })]);
+    mockApi.getResult.mockRejectedValueOnce(new HttpError('Server error', 500));
+    mockApi.getResult.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRetry = resolve;
+      })
+    );
+
+    render(<ProjectDetail />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(mockApi.getResult).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByText('Test Project')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/results will appear once experts submit/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Results could not be loaded.')).toBeInTheDocument();
+
+    resolveRetry(createCalculationResult());
+    expect(await screen.findByText('Best Compromise')).toBeInTheDocument();
+  });
+
   it('still shows the empty state when the API answers with no result yet', async () => {
     // defaultSetup() resolves getResult to null, the API's 200 with a null body.
     render(<ProjectDetail />);

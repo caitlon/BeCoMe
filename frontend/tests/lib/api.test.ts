@@ -1816,7 +1816,6 @@ describe('ApiClient', () => {
       const headers = options.headers as Record<string, string>;
       expect(headers['X-Request-ID']).toBeTruthy();
     });
-
   });
 
   describe('getProjects pagination params', () => {

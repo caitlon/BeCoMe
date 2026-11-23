@@ -127,10 +127,14 @@ const ProjectDetail = () => {
   const result = resultQuery.data ?? null;
   const members = membersQuery.data ?? [];
   const pendingInvitations = isAdmin ? (invitationsQuery.data ?? []) : [];
+  // The result query counts toward the page spinner on its first load only: a retry
+  // from the error state puts it back to pending, and that must not hide the page.
+  // The same retry keeps the error on screen (loadFailed below) instead of the empty card.
+  const resultFirstLoad = resultQuery.isPending && resultQuery.errorUpdatedAt === 0;
   const isLoading =
     projectQuery.isPending ||
     opinionsQuery.isPending ||
-    resultQuery.isPending ||
+    resultFirstLoad ||
     membersQuery.isPending ||
     (isAdmin && invitationsQuery.isPending);
   // isLoadingError only: a failed background refetch keeps cached data on
@@ -354,7 +358,7 @@ const ProjectDetail = () => {
         showIndividual={showIndividual}
         setShowIndividual={setShowIndividual}
         opinions={opinions}
-        loadFailed={resultQuery.isError}
+        loadFailed={resultQuery.isError || (resultQuery.isPending && resultQuery.errorUpdatedAt > 0)}
         onRetry={() => void resultQuery.refetch()}
       />
     </ErrorBoundary>
