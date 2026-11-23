@@ -173,7 +173,48 @@ class TestEvaluateQuery:
         # THEN
         assert round(row["ndcg_at_5"], 4) == 0.4693
         assert row["hit_at_1"] is True
+        assert row["hit_at_3"] is True
+        assert row["hit_at_5"] is True
         assert row["reciprocal_rank"] == 1.0
+
+    def test_two_titles_of_one_gold_source_are_credited_once(self):
+        """
+        GIVEN two gold sources and two chunks with different titles that map to the
+            same gold path, followed by three chunks from a non-gold path
+        WHEN _evaluate_query scores it
+        THEN only the first chunk counts: nDCG@5 is 1 / (1 + 1/log2(3)) = 0.6131,
+            hit@1 is True and reciprocal_rank is 1.0
+        """
+        # GIVEN
+        title_to_path = {"A1": "docs/a.md", "A2": "docs/a.md", "X": "docs/x.md"}
+        chunks = [_chunk("A1"), _chunk("A2"), _chunk("X"), _chunk("X"), _chunk("X")]
+        gold_paths = frozenset({"docs/a.md", "docs/b.md"})
+
+        # WHEN
+        row = ev._evaluate_query(chunks, gold_paths, title_to_path)
+
+        # THEN
+        assert round(row["ndcg_at_5"], 4) == 0.6131
+        assert row["hit_at_1"] is True
+        assert row["reciprocal_rank"] == 1.0
+
+    def test_a_gold_source_below_rank_five_does_not_count(self):
+        """
+        GIVEN one gold source retrieved only at rank 6, after five non-gold chunks
+        WHEN _evaluate_query scores it
+        THEN nDCG@5 is 0.0 and hit@5 is False
+        """
+        # GIVEN
+        title_to_path = {f"X{i}": f"docs/x{i}.md" for i in range(5)} | {"A": "docs/a.md"}
+        chunks = [_chunk(f"X{i}") for i in range(5)] + [_chunk("A")]
+        gold_paths = frozenset({"docs/a.md"})
+
+        # WHEN
+        row = ev._evaluate_query(chunks, gold_paths, title_to_path)
+
+        # THEN
+        assert row["ndcg_at_5"] == 0.0
+        assert row["hit_at_5"] is False
 
     def test_a_second_gold_source_never_lowers_the_score(self):
         """
