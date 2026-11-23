@@ -6,7 +6,8 @@ to the drain's index, a refusal raised as ``HTTPException`` reaches FastAPI's ow
 which logs nothing, and a setting missing from the example env files is invisible to
 whoever deploys. A reviewer cannot be relied on to notice an absence, so these tests do.
 
-Allowlists are keyed by a stable id and carry the reason; a stale entry fails too.
+The raise rule covers ``api/routes/`` and the log rule covers literal ``logger.<level>(...)``
+calls. A setting's allowlist entry carries the reason; a stale entry fails too.
 """
 
 import ast
@@ -26,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[3]
 API_ROOT = ROOT / "api"
 LOG_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "critical", "log"})
 MIN_LOG_CALLS = 100
+MIN_HTTP_RAISES = 10
+MIN_SETTINGS = 50
 
 # Settings with no example line, with why none belongs there: an example line invites
 # setting the variable, which is wrong or moot for each of these.
@@ -44,14 +47,6 @@ UNDOCUMENTED_SETTINGS: dict[str, str] = {
             "LANGCHAIN_RUNS_ENDPOINTS",
         ),
         "The LangSmith library's own switch, read only so a deployed service can refuse it.",
-    ),
-}
-
-# Functions raising HTTPException without a log of their own, keyed ``<file>:<function>``.
-UNLOGGED_RAISES_BY_DESIGN: dict[str, str] = {
-    "api/routes/users.py:upload_photo": (
-        "The 503 for StorageUploadError follows the storage layer's own s3_upload_failed "
-        "ERROR record, which names the user and the key."
     ),
 }
 
@@ -121,6 +116,9 @@ def _http_raises(
 ) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.Raise, list[ast.stmt]]]:
     """Yield each ``raise HTTPException(...)`` with its function and the statements before it.
 
+    Known limits: a log in an earlier branch of the same block counts as logged, and
+    ``raise exc`` of a pre-built exception is not seen.
+
     :param node: Node to walk.
     :param func: The function enclosing ``node``, if any.
     :return: Iterator of ``(innermost function, raise, earlier statements of the same block)``.
@@ -133,13 +131,16 @@ def _http_raises(
                 continue
             if isinstance(child, ast.Raise) and func is not None:
                 exc = child.exc
-                if isinstance(exc, ast.Call) and getattr(exc.func, "id", None) == "HTTPException":
+                if isinstance(exc, ast.Call) and (
+                    getattr(exc.func, "id", None) == "HTTPException"
+                    or getattr(exc.func, "attr", None) == "HTTPException"
+                ):
                     yield func, child, value[:i]
             inner = child if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) else func
             yield from _http_raises(child, inner)
 
 
-def _unlogged_raises() -> dict[str, list[int]]:
+def _unlogged_raises() -> tuple[int, dict[str, list[int]]]:
     """Find route raises of ``HTTPException`` with no log call before them in their block.
 
     A raise counts as logged when an earlier statement of the same block (the branch or
@@ -147,10 +148,12 @@ def _unlogged_raises() -> dict[str, list[int]]:
     to a module-level function of the same module that contains one (``users.py`` logs
     through such helpers). A log in another branch does not cover the raise.
 
-    :return: ``<file>:<function>`` mapped to the line numbers of its unlogged raises.
+    :return: The number of raises seen, and ``<file>:<function>`` mapped to the line numbers of
+        its unlogged raises.
     """
+    total = 0
     found: dict[str, list[int]] = {}
-    for path in sorted((API_ROOT / "routes").glob("*.py")):
+    for path in sorted((API_ROOT / "routes").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         helpers = {
             fn.name
@@ -158,6 +161,7 @@ def _unlogged_raises() -> dict[str, list[int]]:
             if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) and any(_logger_calls(fn))
         }
         for func, raised, before in _http_raises(tree):
+            total += 1
             logged = any(
                 any(_logger_calls(stmt))
                 or any(
@@ -168,7 +172,7 @@ def _unlogged_raises() -> dict[str, list[int]]:
             )
             if not logged:
                 found.setdefault(f"{_relative(path)}:{func.name}", []).append(raised.lineno)
-    return found
+    return total, found
 
 
 def _settings_env_names() -> set[str]:
@@ -254,21 +258,10 @@ class TestRoutesThatRaiseHttpExceptionLog:
         FastAPI's own handler logs nothing, so without this a refusal leaves no trace.
         Raise a ``BeCoMeAPIError`` subclass instead, or log before raising.
         """
-        unlogged = {
-            k: v for k, v in _unlogged_raises().items() if k not in UNLOGGED_RAISES_BY_DESIGN
-        }
+        total, unlogged = _unlogged_raises()
 
+        assert total >= MIN_HTTP_RAISES, f"only {total} HTTPException raises found, walker broken"
         assert not unlogged, f"HTTPException raised with no log before it: {unlogged}"
-
-    def test_the_exemption_list_has_no_stale_entries(self):
-        """
-        GIVEN the exemptions declared above
-        WHEN they are matched against the raises that lack a log
-        THEN each one still names such a function
-        """
-        stale = sorted(UNLOGGED_RAISES_BY_DESIGN.keys() - _unlogged_raises().keys())
-
-        assert not stale, f"exemptions naming functions that now log or no longer raise: {stale}"
 
 
 class TestEverySettingIsDocumented:
@@ -280,9 +273,11 @@ class TestEverySettingIsDocumented:
         WHEN its variable is looked up in the example env files
         THEN it has a ``NAME=`` line there or an entry in UNDOCUMENTED_SETTINGS
         """
-        known = _documented_env_names() | UNDOCUMENTED_SETTINGS.keys()
-        missing = sorted(_settings_env_names() - known)
+        settings, documented = _settings_env_names(), _documented_env_names()
+        missing = sorted(settings - documented - UNDOCUMENTED_SETTINGS.keys())
 
+        assert len(settings) > MIN_SETTINGS, f"only {len(settings)} Settings fields found"
+        assert len(documented) > MIN_SETTINGS, f"only {len(documented)} names in the examples"
         assert not missing, f"settings absent from the example env files: {missing}"
 
     def test_the_exemption_list_has_no_stale_entries(self):

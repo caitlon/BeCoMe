@@ -61,7 +61,7 @@ Unit tests (2611) cover models, calculators, interpreters, utilities, and API co
 
 To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 
-Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises. Several of those tests assert on what is *absent*. A CSRF record must not carry the token it just compared, and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier. The rule in `docs/security.md` therefore does not depend on a reviewer noticing it.
+Logging has its own guard in three parts. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises. Several of those tests assert on what is *absent*. A CSRF record must not carry the token it just compared, and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier. The rule in `docs/security.md` therefore does not depend on a reviewer noticing it. `tests/unit/api/test_api_invariants.py` adds the check that every logger call under `api/` passes an `event`, and that a route raising `HTTPException` logs before it does.
 
 ## Mutation testing
 

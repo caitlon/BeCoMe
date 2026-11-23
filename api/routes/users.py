@@ -55,7 +55,6 @@ from api.services.storage.base import StorageService
 from api.services.storage.exceptions import (
     StorageDeleteError,
     StorageError,
-    StorageUploadError,
 )
 from api.services.user_service import UserService
 from api.utils.photo_links import photo_version
@@ -450,13 +449,7 @@ async def upload_photo(
             storage_service.delete(current_user.photo_url)
 
     # Upload the new photo and store its object key
-    try:
-        photo_key = storage_service.upload(content, content_type, str(current_user.id))
-    except StorageUploadError as err:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to upload photo",
-        ) from err
+    photo_key = storage_service.upload(content, content_type, str(current_user.id))
 
     updated_user = user_service.update_photo_url(current_user, photo_key)
     logger.info(

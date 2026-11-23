@@ -18,7 +18,7 @@ from uuid import uuid4
 import httpx
 import pytest
 import redis
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response
 from fastapi import Request as FastAPIRequest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
@@ -27,6 +27,7 @@ from api.auth import cookies, email_throttle, login_throttle, revocation_store
 from api.auth import jwt as jwt_module
 from api.middleware.body_size import BodySizeLimitMiddleware
 from api.middleware.csrf import CSRFMiddleware
+from api.routes import auth as auth_route
 from api.routes import invitations as invitations_route
 from api.routes import users as users_route
 from api.services import project_query_service, registration_service
@@ -581,3 +582,30 @@ class TestRouteRefusalLogging:
         extra = _extras(mock_logger.debug.call_args)
         assert extra["event"] == "photo_not_found"
         assert extra["reason"] == "object_missing"
+
+    @pytest.mark.parametrize(
+        ("token", "reason"), [(None, "missing_token"), ("stale", "invalid_token")]
+    )
+    def test_refresh_refusal_is_debug(self, token, reason):
+        """
+        GIVEN a refresh request with no token, or with one the store rejects
+        WHEN the route refuses it
+        THEN a refresh_rejected record at DEBUG names which of the two it was
+
+        A signed-out SPA asks before it knows it has no session, so this is routine traffic.
+        """
+        # GIVEN
+        data = MagicMock(refresh_token=token) if token else None
+
+        # WHEN
+        with (
+            patch("api.routes.auth.logger") as mock_logger,
+            patch("api.routes.auth.decode_refresh_token", side_effect=auth_route.TokenError),
+            pytest.raises(HTTPException),
+        ):
+            auth_route.refresh_token(_request(), Response(), MagicMock(), data, None)
+
+        # THEN
+        extra = _extras(mock_logger.debug.call_args)
+        assert extra == {"event": "refresh_rejected", "reason": reason}
+        mock_logger.warning.assert_not_called()

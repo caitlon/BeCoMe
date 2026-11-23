@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -728,8 +729,9 @@ class TestExceptionLogging:
             become_api_error_handler(request, exc)
 
         # THEN
-        mock_logger.warning.assert_called_once()
-        extra = mock_logger.warning.call_args[1]["extra"]
+        mock_logger.log.assert_called_once()
+        assert mock_logger.log.call_args[0][0] == logging.WARNING
+        extra = mock_logger.log.call_args[1]["extra"]
         assert extra["event"] == "api_error_response"
         assert extra["status_code"] == status.HTTP_404_NOT_FOUND
         assert extra["request_id"] == "rid-1"

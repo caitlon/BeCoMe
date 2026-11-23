@@ -369,8 +369,11 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     status_code, detail = _get_status_and_detail(exc)
 
     # Server faults are logged as errors, client faults as warnings.
-    log = logger.error if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logger.warning
-    log(
+    level = (
+        logging.ERROR if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logging.WARNING
+    )
+    logger.log(
+        level,
         "%s -> %d",
         type(exc).__name__,
         status_code,
