@@ -90,6 +90,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 request.method,
                 path,
                 extra={
+                    "event": "request_received",
                     "request_id": request_id,
                     "method": request.method,
                     "path": path,
@@ -110,6 +111,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 response.status_code,
                 duration_ms,
                 extra={
+                    "event": "request_completed",
                     "request_id": request_id,
                     "status_code": response.status_code,
                     "duration_ms": round(duration_ms, 1),

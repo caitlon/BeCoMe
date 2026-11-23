@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -49,6 +50,7 @@ from api.middleware.exception_handlers import (
     request_validation_error_handler,
     unhandled_exception_handler,
 )
+from api.services.storage.exceptions import StorageUploadError
 
 
 class TestGetStatusAndDetail:
@@ -728,12 +730,32 @@ class TestExceptionLogging:
             become_api_error_handler(request, exc)
 
         # THEN
-        mock_logger.warning.assert_called_once()
-        extra = mock_logger.warning.call_args[1]["extra"]
+        mock_logger.log.assert_called_once()
+        assert mock_logger.log.call_args[0][0] == logging.WARNING
+        extra = mock_logger.log.call_args[1]["extra"]
+        assert extra["event"] == "api_error_response"
         assert extra["status_code"] == status.HTTP_404_NOT_FOUND
         assert extra["request_id"] == "rid-1"
         assert extra["path"] == "/projects/123"
         assert extra["exception_type"] == "ProjectNotFoundError"
+
+    def test_logs_server_error_as_error(self):
+        """
+        GIVEN a 5xx BeCoMeAPIError
+        WHEN become_api_error_handler runs
+        THEN it logs at ERROR
+        """
+        # GIVEN
+        exc = StorageUploadError("upload failed")
+
+        # WHEN
+        with patch("api.middleware.exception_handlers.logger") as mock_logger:
+            become_api_error_handler(MagicMock(), exc)
+
+        # THEN
+        mock_logger.log.assert_called_once()
+        assert mock_logger.log.call_args[0][0] == logging.ERROR
+        assert mock_logger.log.call_args[1]["extra"]["status_code"] == 503
 
 
 class TestRequestValidationErrorHandler:
