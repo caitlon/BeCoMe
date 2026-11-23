@@ -535,23 +535,24 @@ expiry to the refresh date plus the configured duration and keeps the client id 
 Better Stack needs no change. Update the expiry date at the top of this section, then confirm
 that the monitor stays up.
 
-**Leak or planned secret change.** Rotate the secret (Rotate, or
-`.../{service_token_id}/rotate`). Rotation keeps the client id and issues a new secret. After a
-leak, rotate without a grace period and expect the monitor to go red until step 4. For a planned
+**Leak or planned secret change.** Rotation keeps the client id and issues a new secret. After a
+leak, rotate without a grace period and expect the monitor to go red until step 6. For a planned
 change, set a grace period so the old secret keeps working meanwhile.
 
 1. Start with `umask 077; S="$(mktemp -d)"` as in the rotation rules. Never print a value.
-2. Write two header-format files for `curl`: `"$S/id.header"` holding
+2. Rotate the secret: Rotate in the dashboard, or `.../{service_token_id}/rotate` with the API
+   response written to a file in `"$S"`, since it carries the new secret.
+3. Write two header-format files for `curl`: `"$S/id.header"` holding
    `CF-Access-Client-Id: <client id>` and `"$S/secret.header"` holding
    `CF-Access-Client-Secret: <new secret>`. Better Stack's header fields take the bare values.
-3. A token reported as leaked is disabled, and rotation does not enable it again. Enable it in
+4. A token reported as leaked is disabled, and rotation does not enable it again. Enable it in
    the dashboard after the rotation.
-4. Check the new secret:
+5. Check the new secret:
    `curl -s -o /dev/null -w '%{http_code}\n' -H @"$S/id.header" -H @"$S/secret.header" https://api-atelier.becomify.app/api/v1/health`
    answers `200`, and the same without the two headers answers `302`.
-5. Put the new secret in the monitor's `CF-Access-Client-Secret` header in Better Stack, then wait
+6. Put the new secret in the monitor's `CF-Access-Client-Secret` header in Better Stack, then wait
    for a check that ran after the save and is green.
-6. Finish with `rm -rf "$S"`.
+7. Finish with `rm -rf "$S"`.
 
 ### Bucket credentials
 
