@@ -7,16 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StepHeader } from "./StepHeader";
 
+const parseOrFallback = (value: string, fallback: number) => {
+  const parsed = Number.parseFloat(value);
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+
 export function StepEnterOpinion() {
   const { t } = useTranslation("onboarding");
   const [lower, setLower] = useState("30");
   const [peak, setPeak] = useState("50");
   const [upper, setUpper] = useState("70");
 
-  // Fallback values form a valid triangle (0, 50, 100) when inputs are empty or invalid
-  const lowerNum = Number.parseFloat(lower) || 0;
-  const peakNum = Number.parseFloat(peak) || 50;
-  const upperNum = Number.parseFloat(upper) || 100;
+  // Fallback values form a valid triangle (0, 50, 100) when inputs are empty or not numeric
+  const lowerNum = parseOrFallback(lower, 0);
+  const peakNum = parseOrFallback(peak, 50);
+  const upperNum = parseOrFallback(upper, 100);
 
   const isValid = lowerNum <= peakNum && peakNum <= upperNum;
 
