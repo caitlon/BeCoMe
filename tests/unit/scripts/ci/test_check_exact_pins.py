@@ -161,6 +161,29 @@ class TestPythonPins:
             pytest.param(
                 "requires-python = '>=3.13'\ndependencies = ['a==1.0.0']\n", [], 1, id="python"
             ),
+            pytest.param(
+                "dependencies = ['a==1.0.0']\n[tool.uv.sources]\na = { git = 'https://x.test/a' }\n"
+                "b = { path = '../b' }\nc = [{ url = 'https://x.test/c', marker = 'os_name == \"nt\"' }]\n",
+                [
+                    'tool.uv.sources: a: {"git": "https://x.test/a"}',
+                    'tool.uv.sources: b: {"path": "../b"}',
+                    'tool.uv.sources: c: [{"url": "https://x.test/c", "marker": "os_name == \\"nt\\""}]',
+                ],
+                4,
+                id="uv-sources-git-path-list",
+            ),
+            pytest.param(
+                "[tool.uv.sources]\na = 'a==1.0.0'\n",
+                ['tool.uv.sources: a: "a==1.0.0"'],
+                1,
+                id="uv-source-that-looks-like-a-pin",
+            ),
+            pytest.param(
+                "dependencies = ['a==1.0.0']\n[tool.uv]\ndev-dependencies = ['b==2.0.0']\n",
+                [],
+                2,
+                id="uv-without-sources",
+            ),
         ],
     )
     def test_structure(self, tmp_path, body, offenders, checked):
@@ -169,10 +192,17 @@ class TestPythonPins:
         assert found == [f"pyproject.toml: {line}" for line in offenders]
         assert count == checked
 
-    def test_dependency_list_that_is_not_a_list_reports_instead_of_raising(self, tmp_path):
-        found, count = _run(tmp_path, "pyproject.toml", _toml("dependencies = 1\n"))
+    @pytest.mark.parametrize(
+        ("body", "reason"),
+        [
+            ("dependencies = 1\n", "project.dependencies is not a list"),
+            ("[tool.uv]\nsources = 1\n", "tool.uv.sources is not a table"),
+        ],
+    )
+    def test_malformed_table_reports_instead_of_raising(self, tmp_path, body, reason):
+        found, count = _run(tmp_path, "pyproject.toml", _toml(body))
 
-        assert found == ["pyproject.toml: could not read: project.dependencies is not a list"]
+        assert found == [f"pyproject.toml: could not read: {reason}"]
         assert count == 0
 
 

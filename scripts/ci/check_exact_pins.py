@@ -10,7 +10,9 @@ Checked in ``pyproject.toml``: ``[project].dependencies``, every list of
 ``[project.optional-dependencies]``, every list of ``[dependency-groups]`` and the
 ``dev-dependencies``, ``override-dependencies`` and ``constraint-dependencies`` lists of
 ``[tool.uv]``. Only a ``{include-group = ...}`` table inside ``[dependency-groups]`` is skipped,
-because it names no package; any other table or non-string entry is an offender.
+because it names no package; any other table or non-string entry is an offender. Every key of
+``[tool.uv.sources]`` is an offender whatever its value, because a source can point an exact
+pin at another origin.
 ``[build-system].requires`` is not checked: it names the build backend, not a project
 dependency, and ``requires-python`` is an interpreter constraint, not a package.
 
@@ -53,6 +55,8 @@ NPM_PIN = re.compile(
 
 UV_DEPENDENCY_LISTS = ("dev-dependencies", "override-dependencies", "constraint-dependencies")
 
+UV_SOURCES = "tool.uv.sources"
+
 NPM_DEPENDENCY_SECTIONS = (
     "dependencies",
     "devDependencies",
@@ -78,7 +82,7 @@ def pyproject_entries(data: dict[str, Any]) -> Iterator[Entry]:
 
     :param data: The parsed TOML document
     :return: ``(section, name, spec)`` for each requirement entry
-    :raises TypeError: When a dependency list is not a list
+    :raises TypeError: When a dependency list is not a list or ``tool.uv.sources`` is not a table
     """
     project = data.get("project", {})
     uv = data.get("tool", {}).get("uv", {})
@@ -103,6 +107,11 @@ def pyproject_entries(data: dict[str, Any]) -> Iterator[Entry]:
                 continue
             name = _python_name(spec) if isinstance(spec, str) else str(spec)
             yield section, name, spec
+    sources = uv.get("sources", {})
+    if not isinstance(sources, dict):
+        raise TypeError("tool.uv.sources is not a table")
+    for name, source in sources.items():
+        yield UV_SOURCES, name, source
 
 
 def _override_entries(value: Any, trail: tuple[str, ...]) -> Iterator[Entry]:
@@ -172,7 +181,7 @@ def check_file(path: Path, label: str) -> tuple[list[str], int]:
     offenders = [
         f"{label}: {section}: {name}: {json.dumps(spec, default=str)}"
         for section, name, spec in entries
-        if not is_exact(spec)
+        if section == UV_SOURCES or not is_exact(spec)
     ]
     return offenders, len(entries)
 
