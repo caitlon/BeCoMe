@@ -74,6 +74,12 @@ NPM_LOOSE = [
 ]
 
 
+# One lost double-space separator would merge two specs into a single case without a failure.
+assert (len(PYTHON_EXACT), len(PYTHON_LOOSE), len(NPM_EXACT), len(NPM_LOOSE)) == (15, 18, 9, 31), (
+    "a double-space separator was lost"
+)
+
+
 class TestPythonPins:
     """Requirement strings in `pyproject.toml`."""
 

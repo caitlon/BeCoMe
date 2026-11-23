@@ -48,10 +48,13 @@ def _notebook(*cells: tuple[str, str]) -> str:
 
 
 def _assert_messages(messages: list[str], prefixes: list[str]) -> None:
-    """Assert one message per prefix, each starting with it."""
+    """Assert one message per entry: equal to it, or starting with it when it ends open."""
     assert len(messages) == len(prefixes), messages
     for message, prefix in zip(messages, prefixes, strict=True):
-        assert message.startswith(prefix), message
+        if prefix.endswith((":", HIT)):
+            assert message.startswith(prefix), message
+        else:
+            assert message == prefix, message
 
 
 class TestPythonSource:
@@ -122,6 +125,13 @@ class TestPythonSource:
 
         assert check.main([str(good), str(bad)]) == 1
         assert capsys.readouterr().out.splitlines() == [f"{bad}:1: {HIT} {ARROW}"]
+
+    def test_untokenizable_file_fails_the_whole_run(self, tmp_path, capsys):
+        good = _write(tmp_path, "good.py", "x = 1\n")
+        broken = _write(tmp_path, "broken.py", "x = (1,\n")
+
+        assert check.main([str(good), str(broken)]) == 1
+        assert f"{broken}: could not tokenize:" in capsys.readouterr().out
 
 
 class TestNotebook:
