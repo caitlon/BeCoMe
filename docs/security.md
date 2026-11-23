@@ -853,13 +853,14 @@ rotation steps, is in [`secrets.md`](secrets.md).
 ## Dependencies and code scanning
 
 What watches the dependencies and the code, as read from `.github/` and the GitHub API on 11
-November 2026. Some of it blocks a merge and some only reports, so the last column says which.
+November 2026, with the exact-pins row added on 23 November 2026. Some of it blocks a merge and
+some only reports, so the last column says which.
 
 | Check | What it covers | Where it runs | Blocks a merge |
 |-------|----------------|---------------|----------------|
 | Bandit | `src` and `api`, medium severity and above | `Lint (Python)` in `ci.yml` | Yes |
 | detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
-| Exact pins | The dependency arrays of `pyproject.toml` (project, optional, dependency groups and the `[tool.uv]` lists, not the build backend in `[build-system]`) and the two `package.json` files must each name one exact version, with no range, tag or URL, so a refresh cannot widen what is installed | `Lint (Python)` in `ci.yml` | Yes |
+| Exact pins | The dependency arrays of `pyproject.toml` (project, optional, dependency groups and the `[tool.uv]` lists, not the build backend in `[build-system]`; any `[tool.uv.sources]` entry is refused) and the two `package.json` files must each name one exact version, with no range, tag or URL, so a refresh cannot widen what is installed | `Lint (Python)` in `ci.yml` | Yes |
 | pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
 | Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
