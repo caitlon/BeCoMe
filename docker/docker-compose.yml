@@ -9,7 +9,7 @@
 #   docker compose up --build
 #
 # Environment variables:
-#   APP_ENV          - Deployment profile: dev | prod (default: dev; test is the pytest runner's profile)
+#   APP_ENV          - Deployment profile (default: dev). The stack runs the dev profile only; prod does not start here
 #   SECRET_KEY       - REQUIRED. Generate with: openssl rand -hex 32
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB - Database credentials (default: become)
 #   UVICORN_WORKERS  - Number of API workers (default: 1; more need a Redis, which this stack does not run)
