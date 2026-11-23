@@ -600,8 +600,8 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
 environment has its own host under it: `api.becomify.app` (production)
 and `api-atelier.becomify.app` (dev). A Cloudflare
-Transform Rule per host injects a shared secret header the origin then checks
-(`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
+Transform Rule per environment injects a shared secret header into the API and frontend hosts,
+and the origin then checks it (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
 
 A deployed backend refuses with a 403 any request that does not carry the secret
@@ -616,15 +616,18 @@ host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `local
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
 The frontend containers apply the same rule. Their nginx answers 403 to a request without the
-`X-Origin-Verify` header (`frontend/nginx.conf`), and accepts the previous value during a
+`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a
 rotation. The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`,
-the same names the API uses; on Railway each frontend service references the values of the
+the same names the API uses, and on Railway each frontend service references the values of the
 backend service of its environment. An entrypoint script
 (`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them when the container starts, so the
-secret is never part of the image, and it stops the container on a value that cannot go into
-a quoted nginx string. The one exemption is `GET /` addressed to `healthcheck.railway.app`,
-Railway's probe of a new deploy. With `CLOUDFLARE_ORIGIN_SECRET` unset or empty the check is off,
-which is how local development, the compose stack and CI run the image.
+secret is never part of the image. A value is 32 to 128 URL-safe characters (`A-Z`, `a-z`,
+`0-9`, `_` and `-`) and is compared exactly, letter case included. The script stops the
+container on any other value. The one exemption is `GET /` addressed to
+`healthcheck.railway.app`, Railway's probe of a new deploy. The check is off only outside
+Railway, which is how local development, the compose stack and CI run the image. A Railway
+deploy without the secret, or with a previous value and no current one, refuses to start, as
+the API does.
 
 The lock was checked from outside on 2 November 2026, on dev, test and prod, the three environments then in service. One
 `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
@@ -805,9 +808,12 @@ redirects, and opens an incident and emails the team on any status other than 20
 monitor passes Access with a service token held in its request headers in Better Stack. A 302
 there means the token expired or was revoked, the Service Auth policy changed, or the monitor's
 headers are wrong, see [secrets](secrets.md#access-service-token). The API monitors
-exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
-Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
-monitor alone would stay green. The origin lock lets the health route through without the secret
+exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` on the backend every
+API request answers 403 while the frontend stays up. There is one rule per environment and it
+covers the frontend host too, so a broken Transform Rule takes the frontend down as well, since
+its nginx checks the same header, and the monitor on `https://www.becomify.app/` catches that.
+The origin lock
+lets the health route through without the secret
 only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
 addressed to an API host passes the origin check like any other request. A crashed backend is
 caught the same way. The health route is in

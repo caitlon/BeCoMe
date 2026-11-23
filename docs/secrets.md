@@ -36,7 +36,7 @@ A check with `curl` reads the key from a file, as the rotation rules below descr
 | Variable | What it protects | Source | Verify |
 |----------|------------------|--------|--------|
 | `SECRET_KEY` | Signs session JWTs (`api/auth/jwt.py`) and keys the CSRF token (`api/auth/cookies.py`). While `LOG_HASH_KEY` is unset it also keys the email hashes in logs. A deployed service refuses to start with fewer than 32 characters | Created by us | Hash in the container, see [SECRET_KEY](#secret_key) |
-| `CLOUDFLARE_ORIGIN_SECRET` | Proves a request came through Cloudflare. The backend refuses a request without it (`api/middleware/origin_lock.py`) and trusts `CF-Connecting-IP` only for a request that carries it (`api/utils/client_ip.py`). `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` holds the value being replaced and exists only during a rotation | Created by us | Hash in the container against the hash of the rule value, see [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret) |
+| `CLOUDFLARE_ORIGIN_SECRET` | Proves a request came through Cloudflare. The backend refuses a request without it (`api/middleware/origin_lock.py`), the frontend's nginx does the same (`frontend/docker-entrypoint.d/40-origin-lock.sh`), and the backend trusts `CF-Connecting-IP` only for a request that carries it (`api/utils/client_ip.py`). `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` holds the value being replaced and exists only during a rotation | Created by us | Hash in the container against the hash of the rule value, see [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret) |
 | `DATABASE_URL` | Password of the `become_app` role | Railway Postgres of the environment | In-container connection with the backend's own `DATABASE_URL` |
 | `MIGRATION_DATABASE_URL` | Password of the owner role, used by Alembic only | Railway Postgres of the environment | In-container connection with the backend's own `MIGRATION_DATABASE_URL` |
 | `REDIS_URL` | Access to the revocation and rate-limit store | Reference to the Railway Redis of the environment | In-container `PING` with the backend's own `REDIS_URL` |
@@ -206,9 +206,13 @@ working. If `LOG_HASH_KEY` is unset, email tags in logs change too.
 
 ### CLOUDFLARE_ORIGIN_SECRET
 
-The variable and the Transform Rule on the environment's API host must hold the same value.
-The rule runs in the `http_request_late_transform` phase and sets `X-Origin-Verify`. The API
-hosts under `becomify.app` are `api` (prod) and `api-atelier` (dev).
+The variable and the Transform Rule of the environment must hold the same value. The rule
+covers the API host and the frontend host, because the frontend's nginx checks the same header.
+It runs in the `http_request_late_transform` phase and sets `X-Origin-Verify`. The hosts under
+`becomify.app` are `api.becomify.app` and `www.becomify.app` (prod), and `api-atelier.becomify.app`
+and `atelier.becomify.app` (dev). The frontend service `<env>-frontend` references the two variables
+of `<env>-backend`, and a referenced value reaches the frontend only when it is redeployed, so
+every redeploy of the backend below is followed by one of `<env>-frontend`.
 
 The backend refuses with `403` a request whose `X-Origin-Verify` matches neither
 `CLOUDFLARE_ORIGIN_SECRET` nor `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, so a rotation keeps the old
@@ -280,7 +284,8 @@ to a file in `"$S"` with `-o`, never to the terminal.
    railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"
    ```
 3. Redeploy the backend once, and wait until the newest row of
-   `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. If it shows `FAILED`,
+   `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. Then redeploy
+   `<env>-frontend` the same way, so that it reads the new variables. If it shows `FAILED`,
    the old container still runs and accepts the old value, and so does the next deploy, because
    the variable still holds it as the previous one. Fix the cause, redeploy, and continue with
    step 4.
@@ -297,7 +302,7 @@ to a file in `"$S"` with `-o`, never to the terminal.
 
    It must print `true` and `[]`. If it does not, the rule still sends the old value, which the
    backend still accepts, so fix the cause and run the block again.
-5. Compare three hashes, and all three must match. The zone holds one rule per API host in
+5. Compare three hashes, and all three must match. The zone holds one rule per environment, covering its API and frontend hosts, in
    the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
 
@@ -322,8 +327,9 @@ to a file in `"$S"` with `-o`, never to the terminal.
    no value was found for that host: a short label or another name that matches no rule, a
    missing rule, a failed listing, or an empty rule value. The `rm -f` makes sure a failed
    listing leaves no file, so an older listing cannot pass for the current one.
-6. Only after the three hashes match, remove the old value and redeploy once more. The order
-   matters: removing it before the rule holds the new value refuses every request.
+6. Only after the three hashes match, remove the old value and redeploy once more, the backend
+   and then the frontend. The order matters: removing it before the rule holds the new value
+   refuses every request.
 
    ```sh
    railway variable delete CLOUDFLARE_ORIGIN_SECRET_PREVIOUS -s <env>-backend -e <env>
