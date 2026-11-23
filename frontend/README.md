@@ -108,6 +108,8 @@ cd ../docker
 SECRET_KEY=$(openssl rand -hex 32) docker compose up --build
 ```
 
+The stack serves the app on http://localhost:3000 and the API on http://localhost:8000. Sign in with Chrome or Firefox: the session cookies are always Secure, and Safari does not store a Secure cookie set over plain HTTP on localhost.
+
 ## Internationalisation
 
 The interface is in English (`en`) and Czech (`cs`). The strings live in

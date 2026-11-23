@@ -41,9 +41,10 @@ COPY . .
 RUN npm run build
 
 # Bake the API origin into the SPA's Content-Security-Policy. VITE_API_URL is
-# cross-origin on the deploys (https://api.<domain>/api/v1) and a relative path
-# locally, in which case the placeholder collapses to nothing and connect-src
-# stays at 'self'. Done here rather than at runtime so the served policy is fixed
+# cross-origin on the deploys (https://api.<domain>/api/v1) and in
+# docker/docker-compose.yml (http://localhost:8000/api/v1); an image built without the
+# arg falls back to the relative path, the placeholder collapses to nothing and
+# connect-src stays at 'self'. Done here rather than at runtime so the served policy is fixed
 # in the image and cannot drift with the container environment.
 # The origin is cut with grep -oE and no backslash: Semgrep's Dockerfile parser
 # stops where a `#` sits next to a backslash escape inside a quoted command
