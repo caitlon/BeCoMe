@@ -211,5 +211,17 @@ filterwarnings = [
 data_file = ".cache/coverage/.coverage"
 
 [tool.mutmut]
-paths_to_mutate = "src/"
-runner = "python -m pytest -x -q --assert=plain -c /dev/null tests/unit/models tests/unit/calculators tests/unit/interpreters tests/integration/test_excel_reference.py tests/integration/test_data_loading.py"
+source_paths = ["src/"]
+also_copy = ["examples/"]
+# Same test selection the old mutmut 2 runner used: the core library tests only.
+pytest_add_cli_args_test_selection = [
+    "tests/unit/models",
+    "tests/unit/calculators",
+    "tests/unit/interpreters",
+    "tests/integration/test_excel_reference.py",
+    "tests/integration/test_data_loading.py",
+]
+# mutmut drives pytest in-process from a copy of the project in mutants/, so the
+# global addopts must not apply there: xdist workers would hide the stats mutmut
+# collects, and coverage would only slow every mutant run down.
+pytest_add_cli_args = ["-o", "addopts=", "-p", "tests.mutmut_support"]

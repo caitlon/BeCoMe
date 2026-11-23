@@ -1,75 +1,104 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run mutation testing on src/ module with mutmut.
+# Run mutation testing on src/ with mutmut 3.
+#
+# mutmut 3 keeps its state in the mutants/ directory (a mutated copy of the source
+# plus per-file results), which is git-ignored. Configuration is [tool.mutmut] in
+# pyproject.toml.
 #
 # Usage:
-#   ./scripts/ci/mutmut-run.sh          # full mutation run + results
-#   ./scripts/ci/mutmut-run.sh results  # show results from cache
-#   ./scripts/ci/mutmut-run.sh detail   # show surviving mutants by file
+#   ./scripts/ci/mutmut-run.sh                 # full mutation run + summary
+#   ./scripts/ci/mutmut-run.sh results         # summary from the existing mutants/ output
+#   ./scripts/ci/mutmut-run.sh detail          # surviving mutants grouped by module
+#   ./scripts/ci/mutmut-run.sh detail <name>   # diff of one mutant (name from "detail")
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-CACHE=".mutmut-cache"
+MUTANTS_DIR="mutants"
+
+require_results() {
+  if [ ! -d "$MUTANTS_DIR" ]; then
+    echo "No mutation results found. Run './scripts/ci/mutmut-run.sh' first."
+    exit 1
+  fi
+}
+
+# Every mutant with its status, one "<name>: <status>" line each. This is mutmut's
+# own CLI output, so the script does not depend on the layout of mutants/.
+all_mutants() {
+  uv run mutmut results --all true | sed 's/^ *//'
+}
 
 show_results() {
-  if [ ! -f "$CACHE" ]; then
-    echo "No mutation cache found. Run './scripts/ci/mutmut-run.sh' first."
+  require_results
+
+  local mutants
+  mutants="$(all_mutants)"
+  if [ -z "$mutants" ]; then
+    echo "No mutants recorded. Run './scripts/ci/mutmut-run.sh' first."
     exit 1
   fi
 
   echo "=== Mutation Testing Results ==="
   echo ""
-  sqlite3 "$CACHE" "
-    SELECT
-      COALESCE(SUM(CASE WHEN status='ok_killed' THEN 1 END), 0) AS killed,
-      COALESCE(SUM(CASE WHEN status='bad_survived' THEN 1 END), 0) AS survived,
-      COALESCE(SUM(CASE WHEN status='bad_timeout' THEN 1 END), 0) AS timeout,
-      COUNT(*) AS total
-    FROM Mutant;
-  " -header -column
-  echo ""
-
-  local killed survived total
-  killed=$(sqlite3 "$CACHE" "SELECT COUNT(*) FROM Mutant WHERE status='ok_killed';")
-  survived=$(sqlite3 "$CACHE" "SELECT COUNT(*) FROM Mutant WHERE status='bad_survived';")
-  total=$((killed + survived))
-
-  if [ "$total" -gt 0 ]; then
-    echo "Mutation score: $killed / $total = $(echo "scale=1; $killed * 100 / $total" | bc)%"
-  fi
+  # The status is the text after the last ": ". The score is killed divided by the
+  # mutants that were actually tried (killed, survived, timeout, suspicious,
+  # segfault); "no tests", "skipped" and "caught by type check" stay out of it.
+  echo "$mutants" | awk '
+    BEGIN {
+      n = split("killed|survived|timeout|suspicious|segfault|no tests|skipped|caught by type check|not checked|check was interrupted by user", order, "|")
+    }
+    {
+      i = match($0, /: [^:]*$/)
+      if (!i) next
+      count[substr($0, i + 2)]++
+      total++
+    }
+    END {
+      for (k = 1; k <= n; k++) {
+        printf "%-30s %d\n", order[k], count[order[k]] + 0
+        known[order[k]] = 1
+      }
+      for (s in count) {
+        if (!(s in known)) printf "%-30s %d\n", s, count[s]
+      }
+      printf "%-30s %d\n", "total", total
+      tried = count["killed"] + count["survived"] + count["timeout"] + count["suspicious"] + count["segfault"]
+      if (tried > 0) {
+        printf "\nMutation score: %d / %d = %.1f%%\n", count["killed"], tried, count["killed"] * 100 / tried
+      }
+    }'
 }
 
 show_detail() {
-  if [ ! -f "$CACHE" ]; then
-    echo "No mutation cache found. Run './scripts/ci/mutmut-run.sh' first."
+  require_results
+
+  local mutants survivors
+  mutants="$(all_mutants)"
+  if [ -z "$mutants" ]; then
+    echo "No mutation results found. Run './scripts/ci/mutmut-run.sh' first."
     exit 1
   fi
+  survivors="$(echo "$mutants" | sed -n 's/: survived$//p')"
+  if [ -z "$survivors" ]; then
+    echo "No surviving mutants."
+    return
+  fi
 
-  echo "=== Surviving Mutants by File ==="
+  echo "=== Surviving Mutants by Module ==="
   echo ""
-  sqlite3 "$CACHE" "
-    SELECT sf.filename, COUNT(*) as survived
-    FROM Mutant m
-    JOIN Line l ON m.line = l.id
-    JOIN SourceFile sf ON l.sourcefile = sf.id
-    WHERE m.status = 'bad_survived'
-    GROUP BY sf.filename
-    ORDER BY survived DESC;
-  " -header -column
+  # The module is everything before the last dot of the mutant name.
+  echo "$survivors" | sed 's/\.[^.]*$//' | sort | uniq -c | sort -rn \
+    | awk '{ printf "%5d  %s\n", $1, $2 }'
   echo ""
 
-  echo "=== Surviving Mutant Lines ==="
+  echo "=== Surviving Mutants ==="
   echo ""
-  sqlite3 "$CACHE" "
-    SELECT sf.filename || ':' || l.line_number AS location, SUBSTR(l.line, 1, 80) AS code
-    FROM Mutant m
-    JOIN Line l ON m.line = l.id
-    JOIN SourceFile sf ON l.sourcefile = sf.id
-    WHERE m.status = 'bad_survived'
-    ORDER BY sf.filename, l.line_number;
-  " -header -column
+  echo "$survivors" | sort
+  echo ""
+  echo "Show one: ./scripts/ci/mutmut-run.sh detail <name>"
 }
 
 case "${1:-run}" in
@@ -77,7 +106,9 @@ case "${1:-run}" in
     echo "=== Mutation Testing (src/) ==="
     echo "This may take several minutes..."
     echo ""
-    uv run mutmut run --no-progress || true
+    # mutmut run exits 0 when mutants survive. A non-zero exit is a real failure
+    # (the unmutated tests fail, pytest cannot start), so set -e stops here.
+    uv run mutmut run
     echo ""
     show_results
     ;;
@@ -85,10 +116,15 @@ case "${1:-run}" in
     show_results
     ;;
   detail)
-    show_detail
+    if [ -n "${2:-}" ]; then
+      require_results
+      uv run mutmut show "$2"
+    else
+      show_detail
+    fi
     ;;
   *)
-    echo "Usage: $0 {run|results|detail}"
+    echo "Usage: $0 {run|results|detail [mutant-name]}"
     exit 1
     ;;
 esac

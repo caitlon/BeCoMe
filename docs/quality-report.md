@@ -65,63 +65,71 @@ Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asse
 
 ## Mutation testing
 
-Run date: 2026-02-22. The commit it ran against no longer resolves in this repository's history, so the figures below are a point-in-time measurement rather than something you can reproduce exactly. Rerun the commands to refresh them.
+Run date: 2026-11-23, against commit `c17652cc`.
 
 Mutation testing measures test suite quality. mutmut introduces small code changes called mutants, replacing `+` with `-` and `<=` with `<`, and swapping constants. It then checks whether the existing tests detect each change. A "killed" mutant means the tests caught the defect. A "survived" mutant means they did not.
 
 | Metric | Value |
 |--------|-------|
-| Tool | mutmut 2.5.1, the version `uv.lock` resolved on the run date; `pyproject.toml` pins a newer one now |
+| Tool | mutmut 3.8.1 |
 | Target | `src/` (core library) |
-| Total mutants | 170 |
-| Killed | 120 |
-| Survived | 50 |
+| Tests run against each mutant | `tests/unit/models`, `tests/unit/calculators`, `tests/unit/interpreters`, `tests/integration/test_excel_reference.py`, `tests/integration/test_data_loading.py` |
+| Total mutants | 237 |
+| Killed | 204 |
+| Survived | 33 |
 | Timeout | 0 |
-| **Raw mutation score** | **70.6%** |
+| **Raw mutation score** | **86.1%** |
 
-Raw mutation score = killed / (killed + survived).
+Raw mutation score = killed / (killed + survived + timeout + suspicious + segfault). Only killed and survived mutants occurred in this run.
 
 ### Results by module
 
-| File | Total | Killed | Survived | Kill rate |
-|------|-------|--------|----------|-----------|
-| base_calculator.py | 4 | 4 | 0 | 100% |
-| median_strategies.py | 9 | 9 | 0 | 100% |
-| become_calculator.py | 18 | 14 | 4 | 78% |
-| fuzzy_number.py | 39 | 28 | 11 | 72% |
-| expert_opinion.py | 19 | 14 | 5 | 74% |
-| likert_interpreter.py | 41 | 34 | 7 | 83% |
-| become_result.py | 40 | 17 | 23 | 43% |
+| Module | Total | Killed | Survived | Kill rate |
+|--------|-------|--------|----------|-----------|
+| `models.fuzzy_number` | 58 | 56 | 2 | 97% |
+| `models.become_result` | 28 | 26 | 2 | 93% |
+| `models.expert_opinion` | 23 | 22 | 1 | 96% |
+| `calculators.become_calculator` | 52 | 43 | 9 | 83% |
+| `interpreters.likert_interpreter` | 76 | 57 | 19 | 75% |
 
-Modules with core computational logic (`base_calculator`, `median_strategies`) have a 100% kill rate: the test suite detects every arithmetic and sorting mutation.
+Only the modules that mutmut generated mutants for are listed. The arithmetic of the calculator and the model classes is covered well: every survivor in `become_calculator` and `fuzzy_number` sits in the operation name of an error message, an error message or a hash function, none in a calculation.
 
 ### Surviving mutants
 
-50 surviving mutants by category:
+Each of the 33 survivors was read with `mutmut show` and sorted by what the change does:
 
-| Category | Count | Example | Equivalent? |
+| Category | Count | Example | Excluded from the effective score? |
 |----------|-------|---------|-------------|
-| Pydantic `Field(description=...)` strings | 23 | `description="Best compromise (ΓΩMean)..."` | Yes |
-| `__repr__` / `__str__` format strings | 10 | `f"FuzzyTriangleNumber(lower_bound=..."` | Yes |
-| Error message strings | 7 | `f"Cannot calculate {operation}..."` | Yes |
-| Likert decision map text values | 6 | `"Policy is recommended with minor adjustments"` | Yes |
-| Class metadata (`__slots__`, decorators) | 4 | `__slots__ = (...)`, `@staticmethod` | No |
+| Likert recommendation text values | 15 | `"Policy is recommended with minor adjustments"` becomes upper case, lower case or wrapped in `XX` | Yes |
+| Operation name in the empty-opinions error message | 9 | `"arithmetic mean"` becomes `None`, upper case or wrapped in `XX` | Yes |
+| `__str__` text of `BeCoMeResult` | 2 | `'even'` and `'odd'` wrapped in `XX` | Yes |
+| Error message of `FuzzyTriangleNumber.average` | 1 | `"Cannot average empty list of fuzzy numbers"` | Yes |
+| Fallback text for a Likert value outside the decision map | 4 | `f"Unknown ({likert_value})"` becomes `None` | No |
+| `__hash__` of `ExpertOpinion` and `FuzzyTriangleNumber` | 2 | `hash((...))` becomes `hash(None)` | No |
 
-46 of 50 survivors are equivalent mutants: changes to string literals in error messages, OpenAPI descriptions, and `repr()` output that do not alter what the code computes. Writing tests to assert exact error message text would add maintenance cost without improving defect detection. The remaining 4 mutants modify class metadata (`__slots__` tuples, `@staticmethod` decorators). Those are structurally harmless but not strictly equivalent.
+27 of 33 survivors are excluded from the effective score. They change a string literal that only appears in a recommendation, an error message or a `__str__` output, and no computed result changes. The 15 recommendation strings are returned by the API, but no test asserts the exact wording (the interpreter test checks one keyword, ignoring case) and the UI shows its own translated copy instead. Writing tests that assert the exact wording would add maintenance cost without improving defect detection.
 
-**Effective mutation score** (excluding 46 equivalent string mutants): 120 / (170 − 46) = **96.8%**.
+The other 6 change what the code does, and the tests do not check it:
+
+- The two fallback branches in `LikertDecisionInterpreter` (`_get_decision_text` and `_get_recommendation`) are reached only when a custom Likert scale contains a value that is not in the built-in map. The mutants make them return `None` instead of a string. No test uses such a scale.
+- The two `__hash__` mutants make every instance hash to the same value. Equal objects still hash equally, so sets and dictionaries stay correct, but they would degrade to linear lookups. No test compares a hash with the hash of the field tuple.
+
+**Effective mutation score** (excluding the 27 string mutants): 204 / (237 − 27) = 204 / 210 = **97.1%**.
 
 ### Running
 
 ```bash
-./scripts/ci/mutmut-run.sh          # full mutation run
-./scripts/ci/mutmut-run.sh results  # view summary from cache
-./scripts/ci/mutmut-run.sh detail   # list surviving mutants by file
+./scripts/ci/mutmut-run.sh                # full mutation run, then the summary
+./scripts/ci/mutmut-run.sh results        # summary from the existing mutants/ output
+./scripts/ci/mutmut-run.sh detail         # surviving mutants, grouped by module
+./scripts/ci/mutmut-run.sh detail <name>  # the diff of one surviving mutant
 ```
+
+The summary lists the mutants by status (killed, survived, timeout and the rest) and the mutation score. mutmut keeps its state in the git-ignored `mutants/` directory, and the settings are in `[tool.mutmut]` in `pyproject.toml`. The same modes are available through `./scripts/ci/ci-local.sh mutmut`. `mutmut run` reuses the results in `mutants/`, so after changing tests delete it with `rm -rf mutants/` for a fresh measurement, or rerun one mutant with `uv run mutmut run <name>`.
 
 ## Performance testing
 
-Run date: 2026-02-22, on the same unresolvable commit as the mutation run above.
+Run date: 2026-02-22. The commit it ran against no longer resolves in this repository's history, so the figures below are a point-in-time measurement rather than something you can reproduce exactly.
 
 | Endpoint | Experts | Avg (ms) | Median (ms) | P95 (ms) | P99 (ms) | RPS |
 |----------|---------|----------|-------------|----------|----------|-----|
