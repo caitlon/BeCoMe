@@ -9,21 +9,31 @@ const nginxConf = readFileSync(path.join(frontendDir, 'nginx.conf'), 'utf8');
 
 // nginx answers 200 for a path only when the build prerendered it or this allowlist names it, and
 // 404 otherwise. A route added to src/App.tsx and to neither would ship as a 404 in production.
-const ALLOWLIST_LOCATION = /^\s*location\s+~\s+(\^\/\(([^)]+)\)\/\?\$)\s*\{/m;
+const ALLOWLIST_LOCATION = /^\s*location\s+~\s+(\^\/\(([^)]+)\)\/\?\\z)\s*\{/m;
+// Every regex location, the asset one included, with its pattern.
+const REGEX_LOCATIONS = /^\s*location\s+~\*?\s+(\S+)\s*\{/gm;
+
+// nginx ends its patterns in \z, the absolute end of the subject, because PCRE's `$` also matches
+// before a trailing newline (and nginx matches the decoded URI, so /login%0A would match). JS has no
+// \z, and a JS `$` without the m flag matches only at the very end, which is what \z means, so the
+// pattern is translated for the test.
+function toJsPattern(nginxPattern: string): RegExp {
+  return new RegExp(nginxPattern.replace(/\\z$/, '$'));
+}
 
 function appRoutes(source: string): string[] {
   return [...source.matchAll(/<Route\s+path="([^"]+)"/g)].map((match) => match[1]).filter((route) => route !== '*');
 }
 
-// A route as nginx's pattern writes it: a parameter matches one path segment.
+// A route as nginx's pattern writes it: a parameter matches one path segment without whitespace.
 function asRegexSource(route: string): string {
-  return route.replace(/:\w+/g, '[^/]+');
+  return route.replace(/:\w+/g, '[^/\\s]+');
 }
 
 function routeProblems(source: string, conf: string, publicPaths: readonly string[]): string[] {
   const location = ALLOWLIST_LOCATION.exec(conf);
   if (!location) return ['nginx.conf has no allowlist location'];
-  const pattern = new RegExp(location[1]);
+  const pattern = toJsPattern(location[1]);
   const alternatives = location[2].split('|');
   const routes = appRoutes(source);
   const problems: string[] = [];
@@ -61,7 +71,7 @@ describe('the routes of App.tsx, the prerendered pages and the nginx allowlist',
   it.each(['/about', '/case-study/', '/loginx', '/projects/a/b', '/projects//', '/assets/app.js', '/spa.html'])(
     'does not allowlist %s',
     (candidate) => {
-      const pattern = new RegExp(ALLOWLIST_LOCATION.exec(nginxConf)?.[1] ?? '$^');
+      const pattern = toJsPattern(ALLOWLIST_LOCATION.exec(nginxConf)?.[1] ?? '$^');
       expect(pattern.test(candidate)).toBe(false);
     },
   );
@@ -69,10 +79,34 @@ describe('the routes of App.tsx, the prerendered pages and the nginx allowlist',
   it.each(['/login', '/login/', '/projects', '/projects/', '/projects/123', '/projects/123/', '/profile/'])(
     'allowlists %s',
     (candidate) => {
-      const pattern = new RegExp(ALLOWLIST_LOCATION.exec(nginxConf)?.[1] ?? '$^');
+      const pattern = toJsPattern(ALLOWLIST_LOCATION.exec(nginxConf)?.[1] ?? '$^');
       expect(pattern.test(candidate)).toBe(true);
     },
   );
+
+  it('ends every regex location in \\z, never $, so a trailing newline does not match', () => {
+    const patterns = [...nginxConf.matchAll(REGEX_LOCATIONS)].map((match) => match[1]);
+
+    expect(patterns).toHaveLength(2);
+    for (const pattern of patterns) {
+      expect(pattern.endsWith('\\z'), `${pattern} must end in \\z`).toBe(true);
+    }
+  });
+
+  it('does not match an allowlisted route followed by a newline (/login%0A decodes to /login\\n)', () => {
+    const location = ALLOWLIST_LOCATION.exec(nginxConf);
+    if (!location) throw new Error('nginx.conf has no allowlist location');
+    const pattern = toJsPattern(location[1]);
+    const samples = location[2].split('|').map((alternative) => alternative.replace('[^/\\s]+', 'sample-1'));
+
+    expect(samples).toContain('login');
+    expect(samples).toContain('projects/sample-1');
+    for (const alternative of samples) {
+      expect(pattern.test(`/${alternative}`), `/${alternative} matches`).toBe(true);
+      expect(pattern.test(`/${alternative}\n`), `/${alternative}\\n must not match`).toBe(false);
+      expect(pattern.test(`/${alternative}/\n`), `/${alternative}/\\n must not match`).toBe(false);
+    }
+  });
 
   it('fails for a route added to App.tsx alone', () => {
     const added = appSource.replace('<Route path="*"', '<Route path="/billing" element={<div />} />\n<Route path="*"');

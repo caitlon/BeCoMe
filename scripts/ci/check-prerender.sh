@@ -24,8 +24,10 @@ set -euo pipefail
 # route of the nginx allowlist (/login, /register, /forgot-password, /reset-password, /verify-email,
 # /projects, /projects/<id>, /profile, /profile/, /onboarding), a real 404 with the not-found page
 # for an unknown path and an unknown case study, and a plain 404 with the security headers for a
-# missing asset, also one under an allowlisted prefix (/projects/x.js). The container and the
-# image are removed afterwards.
+# missing asset, also one under an allowlisted prefix (/projects/x.js), and a real 404 for an
+# allowlisted route, a project id, a prerendered page and an asset path followed by a newline
+# (/login%0A, /projects%0A, /projects/abc%0A, /privacy%0A, /assets/missing.js%0A). The container
+# and the image are removed afterwards.
 #
 # Usage (after `cd frontend && npm run build`):
 #   ./scripts/ci/check-prerender.sh
@@ -241,6 +243,20 @@ if [ "$DOCKER" = true ]; then
         pass "GET $request: 404, the not-found page"
       else
         fail "GET $request: expected the not-found page (title \"$NOT_FOUND_TITLE\", noindex)"
+      fi
+    fi
+  done
+
+  # A trailing newline (%0A decodes to \n) must not turn an unknown path into a known one: PCRE's
+  # `$` would match before it, which is why the locations end in \z, and a project id holds no
+  # whitespace. Covers the allowlist, a prerendered page and the asset location.
+  for request in /login%0A /projects%0A /projects/abc%0A /privacy%0A /assets/missing.js%0A; do
+    fetch "$request"
+    if check_response "GET $request" 404; then
+      if grep -qF "<title>$NOT_FOUND_TITLE</title>" "$WORK/body" && ! has_empty_root "$WORK/body"; then
+        pass "GET $request: 404, the not-found page"
+      else
+        fail "GET $request: expected the not-found page (title \"$NOT_FOUND_TITLE\"), not the app shell"
       fi
     fi
   done
