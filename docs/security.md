@@ -598,10 +598,11 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 ## Network and edge
 
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
-environment has its own host under it: `api.becomify.app` (production)
-and `api-atelier.becomify.app` (dev). A Cloudflare
-Transform Rule per environment injects a shared secret header into the API and frontend hosts,
-and the origin then checks it (`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
+environment has its own API host under it: `api.becomify.app` (production)
+and `api-atelier.becomify.app` (dev), and its own frontend host, `www.becomify.app` and
+`atelier.becomify.app`. A Cloudflare Transform Rule per environment injects a shared secret
+header into the API and frontend hosts, and the origin then checks it (`cloudflare_origin_secret`,
+a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
 
 A deployed backend refuses with a 403 any request that does not carry the secret
@@ -627,10 +628,12 @@ container on any other value. The one exemption is `GET /` addressed to
 `healthcheck.railway.app`, Railway's probe of a new deploy. The check is off only outside
 Railway, which is how local development, the compose stack and CI run the image. A Railway
 deploy without the secret, or with a previous value and no current one, refuses to start, as
-the API does.
+the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as
+the API keys its deploy check on the Railway environment, so a deploy outside Railway must set
+the secret or the frontend runs unlocked.
 
-The lock was checked from outside on 2 November 2026, on dev, test and prod, the three environments then in service. One
-`GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
+The API lock was checked from outside on 2 November 2026, on dev, test and prod, the three
+environments then in service. One `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
 covers those three API hosts.
 

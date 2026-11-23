@@ -7,11 +7,12 @@ is 0, and frontend/docker-entrypoint.d/40-origin-lock.sh writes the maps that se
 container's environment at start, so the secret is never part of the image.
 
 The static tests read the two files the way test_frontend_csp.py does. The behavioural tests
-run the generator script with a temporary output path and read what it wrote. The last two
+run the generator script with a temporary output path and read what it wrote. The last three
 tests have nginx itself read the generated file and answer real requests, and are skipped
 without a Docker daemon.
 """
 
+import contextlib
 import http.client
 import os
 import re
@@ -21,6 +22,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -427,8 +429,9 @@ class TestOriginLockInNginx:
     def test_nginx_answers_by_the_secret_and_the_probe(self, tmp_path, docker, secret, previous):
         """
         GIVEN nginx running with the generated maps and the repository's nginx.conf
-        WHEN requests carry the current secret, the previous one, none, or the secret in the
-            wrong case, and when the probe host asks for / and for another path
+        WHEN requests carry the current secret, the previous one, none, a wrong-case, longer or
+            shorter secret, and when the probe host asks for /, for another path, for / with a
+            query string, and for / by POST
         THEN the two secrets and the probe of / get 200, and everything else gets 403
 
         The second pair starts with "-" and "_", which nginx must read as part of a key.
@@ -436,50 +439,75 @@ class TestOriginLockInNginx:
         _, conf = _run_script(
             tmp_path, CLOUDFLARE_ORIGIN_SECRET=secret, CLOUDFLARE_ORIGIN_SECRET_PREVIOUS=previous
         )
-        html = tmp_path / "html"
-        html.mkdir()
-        (html / "index.html").write_text("<!doctype html><title>ok</title>", encoding="utf-8")
-        site = tmp_path / "default.conf"
-        # The Dockerfile's sed fills this placeholder at build time. It only affects headers.
-        site.write_text(
-            _NGINX_CONF.read_text(encoding="utf-8").replace("__API_ORIGIN__", ""), encoding="utf-8"
-        )
-        for path in (conf, site):
-            path.chmod(0o644)  # the nginx user in the container is not the file's owner
-        html.chmod(0o755)
-        (html / "index.html").chmod(0o644)
-        port = _free_port()
-        container = subprocess.run(  # noqa: S603
-            [
-                docker,
-                "run",
-                "-d",
-                "--rm",
-                "-p",
-                f"127.0.0.1:{port}:8080",
-                "-v",
-                f"{conf}:/etc/nginx/conf.d/00-origin-lock.conf:ro",
-                "-v",
-                f"{site}:/etc/nginx/conf.d/default.conf:ro",
-                "-v",
-                f"{html}:/usr/share/nginx/html:ro",
-                _NGINX_IMAGE,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
         probe = {"Host": "healthcheck.railway.app"}
-        try:
-            _wait_until_serving(port, probe)
+        with _serving_nginx(docker, tmp_path, conf) as port:
             assert _status(port, "/", {"X-Origin-Verify": secret}) == 200
             assert _status(port, "/", {"X-Origin-Verify": previous}) == 200
             assert _status(port, "/") == 403
             assert _status(port, "/", {"X-Origin-Verify": secret.swapcase()}) == 403
+            assert _status(port, "/", {"X-Origin-Verify": secret + "x"}) == 403
+            assert _status(port, "/", {"X-Origin-Verify": secret[:-1]}) == 403
             assert _status(port, "/", probe) == 200
             assert _status(port, "/login", probe) == 403
-        finally:
-            subprocess.run([docker, "rm", "-f", container], capture_output=True, check=False)  # noqa: S603
+            assert _status(port, "/?x=1", probe) == 403
+            assert _status(port, "/", probe, method="POST") == 403
+
+    def test_nginx_without_a_secret_serves_every_request(self, tmp_path, docker):
+        """
+        GIVEN nginx running with the maps generated for an unset secret
+        WHEN a request carries no X-Origin-Verify header
+        THEN it gets 200, which is the unlocked mode of local development and CI
+        """
+        _, conf = _run_script(tmp_path)
+        with _serving_nginx(docker, tmp_path, conf) as port:
+            assert _status(port, "/") == 200
+
+
+@contextlib.contextmanager
+def _serving_nginx(docker: str, tmp_path: Path, conf: Path) -> Iterator[int]:
+    """Run nginx with the generated maps and the repository's config, yield its port."""
+    html = tmp_path / "html"
+    html.mkdir()
+    (html / "index.html").write_text("<!doctype html><title>ok</title>", encoding="utf-8")
+    site = tmp_path / "default.conf"
+    # The Dockerfile's sed fills this placeholder at build time. It only affects headers.
+    site.write_text(
+        _NGINX_CONF.read_text(encoding="utf-8").replace("__API_ORIGIN__", ""), encoding="utf-8"
+    )
+    for path in (conf, site):
+        path.chmod(0o644)  # the nginx user in the container is not the file's owner
+    html.chmod(0o755)
+    (html / "index.html").chmod(0o644)
+    port = _free_port()
+    container = subprocess.run(  # noqa: S603
+        [
+            docker,
+            "run",
+            "-d",
+            "--rm",
+            "-p",
+            f"127.0.0.1:{port}:8080",
+            "-v",
+            f"{conf}:/etc/nginx/conf.d/00-origin-lock.conf:ro",
+            "-v",
+            f"{site}:/etc/nginx/conf.d/default.conf:ro",
+            "-v",
+            f"{html}:/usr/share/nginx/html:ro",
+            _NGINX_IMAGE,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    try:
+        if not _is_serving(port, {"Host": "healthcheck.railway.app"}):
+            logs = subprocess.run(  # noqa: S603
+                [docker, "logs", container], capture_output=True, text=True, check=False
+            )
+            pytest.fail(f"nginx did not answer on port {port}:\n{logs.stdout}{logs.stderr}")
+        yield port
+    finally:
+        subprocess.run([docker, "rm", "-f", container], capture_output=True, check=False)  # noqa: S603
 
 
 def _free_port() -> int:
@@ -489,11 +517,15 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _status(port: int, path: str, headers: dict[str, str] | None = None) -> int:
-    """Return the HTTP status of a GET to the local nginx, error statuses included."""
+def _status(
+    port: int, path: str, headers: dict[str, str] | None = None, method: str = "GET"
+) -> int:
+    """Return the HTTP status of a request to the local nginx, error statuses included."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
         headers={"User-Agent": "origin-lock-test", **(headers or {})},
+        data=b"" if method == "POST" else None,
+        method=method,
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
@@ -502,8 +534,8 @@ def _status(port: int, path: str, headers: dict[str, str] | None = None) -> int:
         return error.code
 
 
-def _wait_until_serving(port: int, headers: dict[str, str], timeout: float = 30.0) -> None:
-    """Block until nginx answers a request, or fail the test after ``timeout`` seconds."""
+def _is_serving(port: int, headers: dict[str, str], timeout: float = 30.0) -> bool:
+    """Return True once nginx answers a request, False after ``timeout`` seconds."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -511,5 +543,5 @@ def _wait_until_serving(port: int, headers: dict[str, str], timeout: float = 30.
         except (OSError, http.client.HTTPException):
             time.sleep(0.2)
         else:
-            return
-    pytest.fail(f"nginx did not answer on port {port} within {timeout:.0f} seconds")
+            return True
+    return False
