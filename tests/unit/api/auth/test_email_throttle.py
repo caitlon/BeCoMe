@@ -20,8 +20,9 @@ class _DroppingClient:
     """A Redis client whose connection drops at a chosen point of the daily-counter update.
 
     ``incr`` applies and then drops, which is the gap the old INCR-then-EXPIRE pair left
-    open. A pipeline applies its commands first when ``apply_pipeline`` is set (the reply
-    is lost) and drops before reaching the server otherwise.
+    open. A pipeline carrying INCR applies its commands first when ``apply_pipeline`` is
+    set (the reply is lost) and drops before reaching the server otherwise; other
+    pipelines (the read in ``allow``) run normally.
     """
 
     def __init__(self, inner: fakeredis.FakeStrictRedis, *, apply_pipeline: bool) -> None:
@@ -40,10 +41,21 @@ class _DroppingClient:
         apply_pipeline = self._apply_pipeline
 
         class _Dropping:
+            carries_incr = False
+
             def __getattr__(self, name: str):
                 return getattr(real, name)
 
+            def incr(self, *args, **kwargs):
+                self.carries_incr = True
+                return real.incr(*args, **kwargs)
+
             def execute(self):
+                if not self.carries_incr:
+                    return real.execute()
+                # A pipeline outside a transaction would not be atomic, so the drop tests
+                # must fail for one.
+                assert transaction is True
                 if apply_pipeline:
                     real.execute()
                 raise redis.ConnectionError("dropped around EXEC")
@@ -257,6 +269,8 @@ class TestRedisEmailSendThrottle:
         assert int(fake.get(key)) == 4
         assert 0 < fake.ttl(key) <= 3600
 
+    # apply_pipeline=False: the drop comes before EXEC, so no key exists and only the
+    # fail-open result is asserted; True: the key exists and must carry a TTL.
     @pytest.mark.parametrize("apply_pipeline", [False, True])
     @pytest.mark.parametrize("method", ["allow", "record"])
     def test_a_drop_during_the_daily_update_never_leaves_a_counter_without_expiry(
@@ -301,6 +315,49 @@ class TestRedisEmailSendThrottle:
         getattr(inner, method)("user@example.com")
 
         assert fake.ttl(key) > 0
+
+    def test_allow_heals_a_legacy_counter_stuck_at_the_cap(self):
+        """A capped counter with no expiry is the bug's harm: it must get a window."""
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_cap=3, daily_window_seconds=3600
+        )
+        throttle.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.set(key, 3)
+        fake.delete(*fake.keys("reset:cooldown:*"))
+
+        assert throttle.allow("user@example.com") is False
+
+        assert int(fake.get(key)) == 3
+        assert 0 < fake.ttl(key) <= 3600
+
+    def test_a_failed_heal_of_a_capped_counter_fails_open_and_the_next_allow_heals(self):
+        fake = fakeredis.FakeStrictRedis()
+        healthy = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_cap=3, daily_window_seconds=3600
+        )
+        healthy.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.set(key, 3)
+        broken = RedisEmailSendThrottle(
+            _ExpireFails(fake),
+            key_prefix=RESET_KEY_PREFIX,
+            daily_cap=3,
+            daily_window_seconds=3600,
+        )
+        fake.delete(*fake.keys("reset:cooldown:*"))
+
+        # The store error is swallowed as everywhere else: the send goes ahead.
+        assert broken.allow("user@example.com") is True
+        assert fake.ttl(key) == -1
+        assert int(fake.get(key)) == 3
+
+        fake.delete(*fake.keys("reset:cooldown:*"))
+        assert healthy.allow("user@example.com") is False
+
+        assert int(fake.get(key)) == 3
+        assert 0 < fake.ttl(key) <= 3600
 
     def test_fails_open_when_store_is_unavailable(self):
         class Boom:

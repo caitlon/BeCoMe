@@ -204,14 +204,14 @@ class RedisEmailSendThrottle:
         self._daily_window = daily_window_seconds
 
     def _bump_daily(self, daily_key: str) -> None:
-        """Count one send under the daily key, making sure the key carries an expiry.
+        """Count one send under the daily key, giving a counter without an expiry one.
 
-        SET NX with ``EX`` gives a new counter its expiry in the same transaction as the
-        increment, so a connection that drops mid-way cannot leave a count that never
-        expires and, once it reaches the cap, refuses the address on every later day. A
-        counter an older version left without an expiry (TTL ``-1``) gets one here; if
-        that call fails too, the next send heals it again. ``EXPIRE NX`` is avoided because
-        it needs Redis 7.
+        ``SET NX EX``, ``INCR`` and ``TTL`` go out in one transaction, so a new counter gets
+        its expiry together with its first increment and a dropped connection cannot leave
+        it without one. A counter that already exists with no expiry (TTL ``-1``), left by
+        an older version, gets the window from a separate ``EXPIRE``. If that call fails,
+        the counter keeps no expiry until the next ``allow`` or ``record`` for the address
+        repeats it. ``EXPIRE NX`` is avoided because it needs Redis 7.
 
         :param daily_key: Redis key of the address's daily counter.
         :raises redis.RedisError: When the store fails; the caller fails open.
@@ -234,7 +234,14 @@ class RedisEmailSendThrottle:
             if not self._client.set(cooldown_key, "1", nx=True, ex=self._cooldown):
                 _log_denied("cooldown", backend="redis", key_prefix=self._key_prefix)
                 return False
-            raw = self._client.get(daily_key)
+            pipe = self._client.pipeline(transaction=True)
+            pipe.get(daily_key)
+            pipe.ttl(daily_key)
+            raw, ttl = pipe.execute()
+            if ttl == -1:
+                # A counter an older version left without an expiry: give it the window
+                # before the cap check, or a counter at the cap would refuse for good.
+                self._client.expire(daily_key, self._daily_window)
             sent_today = int(raw) if isinstance(raw, bytes | str | int) else 0
             if sent_today >= self._daily_cap:
                 _log_denied("daily_cap", backend="redis", key_prefix=self._key_prefix)
