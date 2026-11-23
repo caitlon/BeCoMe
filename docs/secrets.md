@@ -17,6 +17,7 @@ variables of each environment are in [`environments.md`](environments.md).
     - [CLOUDFLARE_ORIGIN_SECRET](#cloudflare_origin_secret)
     - [Database and Redis credentials](#database-and-redis-credentials)
     - [Provider-issued keys](#provider-issued-keys)
+    - [Access service token](#access-service-token)
     - [Bucket credentials](#bucket-credentials)
     - [GitHub Actions secrets](#github-actions-secrets)
 
@@ -64,6 +65,14 @@ the server only (`api/config.py`). Like any DSN it can only send events. Nothing
 either on a schedule. To rotate the backend one, create a new client key in the Sentry
 project, set `SENTRY_DSN` with `--stdin --skip-deploys`, redeploy the backend once, then
 disable the old key.
+
+One credential is not a Railway variable. The Better Stack monitor of the dev API passes
+Cloudflare Access with a service token named `betterstack-dev-health`, admitted by the Service
+Auth policy of the Access application "BeCoMe dev" ([`security.md`](security.md#network-and-edge)).
+Its client id and secret live in the monitor's request headers in Better Stack, as
+`CF-Access-Client-Id` and `CF-Access-Client-Secret`, and nowhere else. The token is valid for one
+year and expires on 2027-11-23. Cloudflare does not warn before that, so rotate it before then, see
+[Access service token](#access-service-token).
 
 ## CI secrets
 
@@ -510,6 +519,22 @@ Per provider:
   so the old secret still works while services switch, and it needs no revoking in step 6. The
   site key `VITE_TURNSTILE_SITE_KEY` stays.
 - **LangSmith.** The key matters only where tracing is on.
+
+### Access service token
+
+An expired or revoked token shows as a 302 incident on the dev API monitor, because the monitor
+follows no redirects. Replace it before 2027-11-23.
+
+1. Create a new service token in Cloudflare Zero Trust, under Access, Service credentials. The
+   zone token in `.env` cannot create one. The Cloudflare API does it with an account-scoped
+   OAuth session. Write the client id and secret to files in `"$S"` and never print them.
+2. Add the new token to the Service Auth policy of "BeCoMe dev" next to the old one.
+3. Put the new client id and secret into the monitor's request headers in Better Stack,
+   `CF-Access-Client-Id` and `CF-Access-Client-Secret`, and wait for one green check.
+4. Remove the old token from the policy and delete it.
+5. Verify. The monitor stays up. A `curl` to `https://api-atelier.becomify.app/api/v1/health`
+   with the two headers, each read from a file with `-H @file`, answers `200`, and without them
+   it answers `302`.
 
 ### Bucket credentials
 
