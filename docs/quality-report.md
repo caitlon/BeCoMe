@@ -92,13 +92,13 @@ Raw mutation score = killed / (killed + survived + timeout + suspicious + segfau
 | `calculators.become_calculator` | 52 | 43 | 9 | 83% |
 | `interpreters.likert_interpreter` | 76 | 57 | 19 | 75% |
 
-Only the modules that mutmut generated mutants for are listed. The arithmetic of the calculator and the model classes is covered well: every survivor in `become_calculator` and `fuzzy_number` sits in an error message, a default value or a hash function, none in a calculation.
+Only the modules that mutmut generated mutants for are listed. The arithmetic of the calculator and the model classes is covered well: every survivor in `become_calculator` and `fuzzy_number` sits in the operation name of an error message, an error message or a hash function, none in a calculation.
 
 ### Surviving mutants
 
 Each of the 33 survivors was read with `mutmut show` and sorted by what the change does:
 
-| Category | Count | Example | Equivalent? |
+| Category | Count | Example | Excluded from the effective score? |
 |----------|-------|---------|-------------|
 | Likert recommendation text values | 15 | `"Policy is recommended with minor adjustments"` becomes upper case, lower case or wrapped in `XX` | Yes |
 | Operation name in the empty-opinions error message | 9 | `"arithmetic mean"` becomes `None`, upper case or wrapped in `XX` | Yes |
@@ -107,14 +107,14 @@ Each of the 33 survivors was read with `mutmut show` and sorted by what the chan
 | Fallback text for a Likert value outside the decision map | 4 | `f"Unknown ({likert_value})"` becomes `None` | No |
 | `__hash__` of `ExpertOpinion` and `FuzzyTriangleNumber` | 2 | `hash((...))` becomes `hash(None)` | No |
 
-27 of 33 survivors are equivalent mutants. They change a string literal that only appears in a recommendation, an error message or a `__str__` output, and no computed result changes. Writing tests that assert the exact wording would add maintenance cost without improving defect detection.
+27 of 33 survivors are excluded from the effective score. They change a string literal that only appears in a recommendation, an error message or a `__str__` output, and no computed result changes. The 15 recommendation strings are returned by the API, but no test asserts them and the UI shows its own translated copy instead. Writing tests that assert the exact wording would add maintenance cost without improving defect detection.
 
 The other 6 change what the code does, and the tests do not check it:
 
 - The two fallback branches in `LikertDecisionInterpreter` (`_get_decision_text` and `_get_recommendation`) are reached only when a custom Likert scale contains a value that is not in the built-in map. The mutants make them return `None` instead of a string. No test uses such a scale.
 - The two `__hash__` mutants make every instance hash to the same value. Equal objects still hash equally, so sets and dictionaries stay correct, but they would degrade to linear lookups. No test compares a hash with the hash of the field tuple.
 
-**Effective mutation score** (excluding the 27 equivalent string mutants): 204 / (237 − 27) = 204 / 210 = **97.1%**.
+**Effective mutation score** (excluding the 27 string mutants): 204 / (237 − 27) = 204 / 210 = **97.1%**.
 
 ### Running
 
@@ -125,7 +125,7 @@ The other 6 change what the code does, and the tests do not check it:
 ./scripts/ci/mutmut-run.sh detail <name>  # the diff of one surviving mutant
 ```
 
-The summary lists the mutants by status (killed, survived, timeout and the rest) and the mutation score. mutmut keeps its state in the git-ignored `mutants/` directory, and the settings are in `[tool.mutmut]` in `pyproject.toml`. The same modes are available through `./scripts/ci/ci-local.sh mutmut`.
+The summary lists the mutants by status (killed, survived, timeout and the rest) and the mutation score. mutmut keeps its state in the git-ignored `mutants/` directory, and the settings are in `[tool.mutmut]` in `pyproject.toml`. The same modes are available through `./scripts/ci/ci-local.sh mutmut`. `mutmut run` reuses the results in `mutants/`, so after changing tests delete it with `rm -rf mutants/` for a fresh measurement, or rerun one mutant with `uv run mutmut run <name>`.
 
 ## Performance testing
 
