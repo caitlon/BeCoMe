@@ -10,7 +10,7 @@ set -euo pipefail
 # Usage:
 #   ./scripts/ci/mutmut-run.sh                 # full mutation run + summary
 #   ./scripts/ci/mutmut-run.sh results         # summary from the existing mutants/ output
-#   ./scripts/ci/mutmut-run.sh detail          # surviving mutants grouped by file
+#   ./scripts/ci/mutmut-run.sh detail          # surviving mutants grouped by module
 #   ./scripts/ci/mutmut-run.sh detail <name>   # diff of one mutant (name from "detail")
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -52,12 +52,17 @@ show_results() {
     }
     {
       i = match($0, /: [^:]*$/)
+      if (!i) next
       count[substr($0, i + 2)]++
       total++
     }
     END {
       for (k = 1; k <= n; k++) {
         printf "%-30s %d\n", order[k], count[order[k]] + 0
+        known[order[k]] = 1
+      }
+      for (s in count) {
+        if (!(s in known)) printf "%-30s %d\n", s, count[s]
       }
       printf "%-30s %d\n", "total", total
       tried = count["killed"] + count["survived"] + count["timeout"] + count["suspicious"] + count["segfault"]
@@ -70,8 +75,13 @@ show_results() {
 show_detail() {
   require_results
 
-  local survivors
-  survivors="$(all_mutants | sed -n 's/: survived$//p')"
+  local mutants survivors
+  mutants="$(all_mutants)"
+  if [ -z "$mutants" ]; then
+    echo "No mutation results found. Run './scripts/ci/mutmut-run.sh' first."
+    exit 1
+  fi
+  survivors="$(echo "$mutants" | sed -n 's/: survived$//p')"
   if [ -z "$survivors" ]; then
     echo "No surviving mutants."
     return
