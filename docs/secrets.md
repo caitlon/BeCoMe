@@ -210,9 +210,30 @@ The variable and the Transform Rule of the environment must hold the same value.
 covers the API host and the frontend host, because the frontend's nginx checks the same header.
 It runs in the `http_request_late_transform` phase and sets `X-Origin-Verify`. The hosts under
 `becomify.app` are `api.becomify.app` and `www.becomify.app` (prod), and `api-atelier.becomify.app`
-and `atelier.becomify.app` (dev). The frontend service `<env>-frontend` references the two variables
-of `<env>-backend`, and a referenced value reaches the frontend only when it is redeployed, so
-every redeploy of the backend below is followed by one of `<env>-frontend`.
+and `atelier.becomify.app` (dev). The frontend service `<env>-frontend` holds one reference
+permanently, `CLOUDFLARE_ORIGIN_SECRET=${{<env>-backend.CLOUDFLARE_ORIGIN_SECRET}}`. It holds
+`CLOUDFLARE_ORIGIN_SECRET_PREVIOUS=${{<env>-backend.CLOUDFLARE_ORIGIN_SECRET_PREVIOUS}}` only
+during a rotation. A reference to a variable the backend does not have is not proven to resolve
+empty, and the frontend refuses a literal `${{...}}` and stops. A referenced value reaches the
+frontend only when it is redeployed, so every redeploy of the backend below is followed by one of
+`<env>-frontend`.
+
+**Rollout to an environment.** The first time the frontend check ships to an environment, do
+these four steps in order, before any rotation:
+
+1. Make sure the environment's Transform Rule covers the frontend host (`atelier.becomify.app`
+   on dev, `www.becomify.app` on prod).
+2. Set the reference on the frontend, without a deploy:
+   `railway variable set 'CLOUDFLARE_ORIGIN_SECRET=${{<env>-backend.CLOUDFLARE_ORIGIN_SECRET}}' --skip-deploys -s <env>-frontend -e <env>`.
+3. Deploy the frontend, with `railway redeploy -y -s <env>-frontend -e <env>`.
+4. Check through Cloudflare that the frontend host answers normally, and that the frontend's
+   Railway domain answers `403` to a request without the header.
+   `curl -s -o /dev/null -w '%{http_code}' https://www.becomify.app/` prints `200` on prod, and
+   on dev the same request to `atelier.becomify.app` is a `302` to the Access login.
+
+Railway's healthcheck is exempt from the lock, so a deploy goes green even when the rule does not
+cover the host, and every visitor then gets `403`. Only the last check above catches that. A
+Railway deploy without the variable fails, and the old container keeps serving.
 
 The backend refuses with `403` a request whose `X-Origin-Verify` matches neither
 `CLOUDFLARE_ORIGIN_SECRET` nor `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, so a rotation keeps the old
@@ -277,18 +298,29 @@ to a file in `"$S"` with `-o`, never to the terminal.
    The last line must print `true`, `[]` and `true`. The third value proves the dry run
    stored nothing, since a real update returns the whole ruleset in `.result`, so never print
    `.result` itself. On a rejected body `.errors` says why.
-2. Set both variables from the files:
+2. Set both backend variables from the files, and the frontend's reference to the previous
+   one. The reference is not a secret, so it is a plain argument:
 
    ```sh
    railway variable set CLOUDFLARE_ORIGIN_SECRET_PREVIOUS --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.previous"
    railway variable set CLOUDFLARE_ORIGIN_SECRET --stdin --skip-deploys -s <env>-backend -e <env> < "$S/origin.secret"
+   railway variable set 'CLOUDFLARE_ORIGIN_SECRET_PREVIOUS=${{<env>-backend.CLOUDFLARE_ORIGIN_SECRET_PREVIOUS}}' --skip-deploys -s <env>-frontend -e <env>
    ```
 3. Redeploy the backend once, and wait until the newest row of
-   `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. Then redeploy
-   `<env>-frontend` the same way, so that it reads the new variables. If it shows `FAILED`,
-   the old container still runs and accepts the old value, and so does the next deploy, because
-   the variable still holds it as the previous one. Fix the cause, redeploy, and continue with
-   step 4.
+   `railway deployment list -s <env>-backend -e <env>` shows `SUCCESS`. Then redeploy the
+   frontend, so that it reads the new variables, and wait for `SUCCESS` in
+   `railway deployment list -s <env>-frontend -e <env>` as well:
+
+   ```sh
+   railway redeploy -y -s <env>-frontend -e <env>
+   ```
+
+   Do not start step 4 until the newest rows of both `<env>-backend` and `<env>-frontend` show
+   `SUCCESS`. A failed frontend deploy leaves the old frontend container, which knows only the
+   old value, so switching the rule would answer `403` to every visitor. If a deploy shows
+   `FAILED`, the old container still runs and accepts the old value, and so does the next deploy,
+   because the variable still holds it as the previous one. Fix the cause, redeploy, and continue
+   with step 4.
 4. Send the validated body for real, in the same shell, so `U` still holds the address the dry
    run checked. Until this succeeds the rule sends the old value, which the backend still
    accepts:
@@ -302,8 +334,8 @@ to a file in `"$S"` with `-o`, never to the terminal.
 
    It must print `true` and `[]`. If it does not, the rule still sends the old value, which the
    backend still accepts, so fix the cause and run the block again.
-5. Compare three hashes, and all three must match. The zone holds one rule per environment, covering its API and frontend hosts, in
-   the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
+5. Compare four hashes, and all four must match. The zone holds one rule per environment,
+   covering its API and frontend hosts, in the `http_request_late_transform` entrypoint ruleset. The listing contains the secret, so
    `-o` writes it to a file instead of the terminal:
 
    ```sh
@@ -316,40 +348,48 @@ to a file in `"$S"` with `-o`, never to the terminal.
 
    ```sh
    railway ssh -e <env> -s <env>-backend -- sh -c 'printf %s "$CLOUDFLARE_ORIGIN_SECRET" | sha256sum'
+   railway ssh -e <env> -s <env>-frontend -- sh -c 'printf %s "$CLOUDFLARE_ORIGIN_SECRET" | sha256sum'
    shasum -a 256 < "$S/origin.secret"
    jq -j '.result.rules[] | select(.expression | contains("\"<host>\"")) | .action_parameters.headers["X-Origin-Verify"].value' "$S/rule.json" | shasum -a 256
    ```
 
-   The first line hashes the value in the container, the second the value file, the third
-   the value in the rule of that host. `-j` matters, because it keeps `jq` from appending a
-   newline that would change the hash. `<host>` is the full host name, for example
-   `api-atelier.becomify.app`. The empty-string hash `e3b0c442...` from the third line means
-   no value was found for that host: a short label or another name that matches no rule, a
-   missing rule, a failed listing, or an empty rule value. The `rm -f` makes sure a failed
-   listing leaves no file, so an older listing cannot pass for the current one.
-6. Only after the three hashes match, remove the old value and redeploy once more, the backend
+   The first two lines hash the value in the backend and the frontend container, the third the
+   value file, the fourth the value in the rule that covers the host. `-j` matters, because it
+   keeps `jq` from appending a newline that would change the hash. `<host>` is the full name of
+   either host of the environment, for example `api-atelier.becomify.app`, since one rule covers
+   both. The empty-string hash `e3b0c442...` from the fourth line means no value was found for
+   that host: a short label or another name that matches no rule, a rule that does not cover the
+   host, a failed listing, or an empty rule value. The `rm -f` makes sure a failed listing
+   leaves no file, so an older listing cannot pass for the current one.
+6. Only after the four hashes match, remove the old value and redeploy once more, the backend
    and then the frontend. The order matters: removing it before the rule holds the new value
-   refuses every request.
+   refuses every request. Delete the frontend's reference first and the backend's variable
+   second, so that no reference points at a variable that is gone:
 
    ```sh
+   railway variable delete CLOUDFLARE_ORIGIN_SECRET_PREVIOUS -s <env>-frontend -e <env>
    railway variable delete CLOUDFLARE_ORIGIN_SECRET_PREVIOUS -s <env>-backend -e <env>
    ```
 
    The delete command has no `--skip-deploys` option, so Railway may start a deploy on its
-   own. Read `railway deployment list -s <env>-backend -e <env>` after it. If no new row
-   appeared, run `railway redeploy -y -s <env>-backend -e <env>`. Wait for `SUCCESS` as in
-   step 3. Then check that the variable is gone by listing names
-   only, never values. The listing goes into `jq`, not onto the terminal, and
-   `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` must be absent from the output:
+   own. Read `railway deployment list -s <env>-backend -e <env>` and the same listing for
+   `<env>-frontend` after it. If a service shows no new row, run
+   `railway redeploy -y -s <env>-backend -e <env>` or
+   `railway redeploy -y -s <env>-frontend -e <env>` for it. Wait for `SUCCESS` on both as in
+   step 3. Then check that the variable is gone from both services by listing names
+   only, never values. The listings go into `jq`, not onto the terminal, and
+   `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` must be absent from both outputs:
 
    ```sh
    railway variable list --json -s <env>-backend -e <env> | jq -r 'keys[]'
+   railway variable list --json -s <env>-frontend -e <env> | jq -r 'keys[]'
    ```
 
 A request that carries neither value gets `403`, recorded as `origin_refused` with the reason
 `secret_mismatch`, so a mismatch stops the whole site. Only the platform health probe, a
 `GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
-secret.
+secret. The frontend answers `403` the same way, and its only exemption is `GET /` addressed to
+`healthcheck.railway.app`.
 
 ### Database and Redis credentials
 

@@ -7,14 +7,20 @@ is 0, and frontend/docker-entrypoint.d/40-origin-lock.sh writes the maps that se
 container's environment at start, so the secret is never part of the image.
 
 The static tests read the two files the way test_frontend_csp.py does. The behavioural tests
-run the generator script with a temporary output path and read what it wrote. One more test
-has nginx itself read the generated file, and is skipped without a Docker daemon.
+run the generator script with a temporary output path and read what it wrote. The last two
+tests have nginx itself read the generated file and answer real requests, and are skipped
+without a Docker daemon.
 """
 
+import http.client
 import os
 import re
 import shutil
+import socket
 import subprocess
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -27,6 +33,9 @@ _SCRIPT = _PROJECT_ROOT / "frontend" / "docker-entrypoint.d" / "40-origin-lock.s
 _SECRET = "Current-Secret_0123456789-abcdefghij"  # pragma: allowlist secret
 _PREVIOUS = "Previous-Secret_9876543210-ABCDEFGHIJ"  # pragma: allowlist secret
 _NGINX_IMAGE = "nginxinc/nginx-unprivileged:alpine"
+# Secrets that start with "-" and "_", the two non-alphanumeric characters a value may hold.
+_DASH_SECRET = "-aB3" * 10  # pragma: allowlist secret
+_UNDERSCORE_SECRET = "_cD4" * 10  # pragma: allowlist secret
 
 # A secret map key: an anchored regex in quotes, followed by the value 1.
 _SECRET_KEY = re.compile(r'^"~\^([^"]*)\$"\s+1;$', re.MULTILINE)
@@ -216,6 +225,40 @@ class TestOriginLockGenerator:
         ]
         assert _map_lines(conf, "$origin_allowed") == ["default 1;", '"00" 0;']
 
+    def test_the_maps_are_declared_over_the_right_inputs(self, tmp_path):
+        """
+        GIVEN a secret
+        WHEN the generated file is read
+        THEN the three maps are keyed on the header, the request line and the two results
+
+        The map bodies are checked above, but a body is only as good as the variable its map
+        reads, so a swapped input would pass them and open or close the whole site.
+        """
+        _, out = _run_script(tmp_path, CLOUDFLARE_ORIGIN_SECRET=_SECRET)
+
+        lines = out.read_text(encoding="utf-8").splitlines()
+        assert "map $http_x_origin_verify $origin_secret_ok {" in lines
+        assert 'map "$request_method $host$request_uri" $origin_probe {' in lines
+        assert 'map "$origin_secret_ok$origin_probe" $origin_allowed {' in lines
+
+    @pytest.mark.parametrize("value", [_DASH_SECRET, _UNDERSCORE_SECRET])
+    def test_a_value_may_start_with_a_dash_or_an_underscore(self, tmp_path, value):
+        """
+        GIVEN a secret that starts with "-" or "_", in either variable
+        WHEN the script runs
+        THEN it succeeds and both values are keys
+        """
+        other = _UNDERSCORE_SECRET if value == _DASH_SECRET else _DASH_SECRET
+
+        result, out = _run_script(
+            tmp_path,
+            CLOUDFLARE_ORIGIN_SECRET=value,
+            CLOUDFLARE_ORIGIN_SECRET_PREVIOUS=other,
+        )
+
+        assert result.returncode == 0
+        assert _secret_keys(out.read_text(encoding="utf-8")) == [value, other]
+
     @pytest.mark.parametrize("length", [32, 128])
     def test_the_length_limits_are_inclusive(self, tmp_path, length):
         """
@@ -375,3 +418,98 @@ class TestOriginLockInNginx:
         )
 
         assert result.returncode == 0, result.stderr
+
+    @pytest.mark.parametrize(
+        ("secret", "previous"),
+        [(_SECRET, _PREVIOUS), (_DASH_SECRET, _UNDERSCORE_SECRET)],
+        ids=["plain", "dash-and-underscore"],
+    )
+    def test_nginx_answers_by_the_secret_and_the_probe(self, tmp_path, docker, secret, previous):
+        """
+        GIVEN nginx running with the generated maps and the repository's nginx.conf
+        WHEN requests carry the current secret, the previous one, none, or the secret in the
+            wrong case, and when the probe host asks for / and for another path
+        THEN the two secrets and the probe of / get 200, and everything else gets 403
+
+        The second pair starts with "-" and "_", which nginx must read as part of a key.
+        """
+        _, conf = _run_script(
+            tmp_path, CLOUDFLARE_ORIGIN_SECRET=secret, CLOUDFLARE_ORIGIN_SECRET_PREVIOUS=previous
+        )
+        html = tmp_path / "html"
+        html.mkdir()
+        (html / "index.html").write_text("<!doctype html><title>ok</title>", encoding="utf-8")
+        site = tmp_path / "default.conf"
+        # The Dockerfile's sed fills this placeholder at build time. It only affects headers.
+        site.write_text(
+            _NGINX_CONF.read_text(encoding="utf-8").replace("__API_ORIGIN__", ""), encoding="utf-8"
+        )
+        for path in (conf, site):
+            path.chmod(0o644)  # the nginx user in the container is not the file's owner
+        html.chmod(0o755)
+        (html / "index.html").chmod(0o644)
+        port = _free_port()
+        container = subprocess.run(  # noqa: S603
+            [
+                docker,
+                "run",
+                "-d",
+                "--rm",
+                "-p",
+                f"127.0.0.1:{port}:8080",
+                "-v",
+                f"{conf}:/etc/nginx/conf.d/00-origin-lock.conf:ro",
+                "-v",
+                f"{site}:/etc/nginx/conf.d/default.conf:ro",
+                "-v",
+                f"{html}:/usr/share/nginx/html:ro",
+                _NGINX_IMAGE,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        probe = {"Host": "healthcheck.railway.app"}
+        try:
+            _wait_until_serving(port, probe)
+            assert _status(port, "/", {"X-Origin-Verify": secret}) == 200
+            assert _status(port, "/", {"X-Origin-Verify": previous}) == 200
+            assert _status(port, "/") == 403
+            assert _status(port, "/", {"X-Origin-Verify": secret.swapcase()}) == 403
+            assert _status(port, "/", probe) == 200
+            assert _status(port, "/login", probe) == 403
+        finally:
+            subprocess.run([docker, "rm", "-f", container], capture_output=True, check=False)  # noqa: S603
+
+
+def _free_port() -> int:
+    """Return a TCP port on the loopback interface that nothing is listening on."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _status(port: int, path: str, headers: dict[str, str] | None = None) -> int:
+    """Return the HTTP status of a GET to the local nginx, error statuses included."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        headers={"User-Agent": "origin-lock-test", **(headers or {})},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+
+def _wait_until_serving(port: int, headers: dict[str, str], timeout: float = 30.0) -> None:
+    """Block until nginx answers a request, or fail the test after ``timeout`` seconds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            _status(port, "/", headers)
+        except (OSError, http.client.HTTPException):
+            time.sleep(0.2)
+        else:
+            return
+    pytest.fail(f"nginx did not answer on port {port} within {timeout:.0f} seconds")
