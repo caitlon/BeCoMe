@@ -134,6 +134,8 @@ select = [
     "S",      # flake8-bandit (security)
     "SIM",    # flake8-simplify
     "RUF",    # ruff-specific rules
+    "TID251", # banned APIs (see banned-api below)
+    "TID252", # relative imports
 ]
 ignore = [
     "E501",     # line too long (handled by formatter)
@@ -143,9 +145,22 @@ ignore = [
     "B008",     # function call in default argument (FastAPI Depends pattern)
 ]
 
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# The environment is read in api/config.py and nowhere else, so every value passes the
+# Settings validators and per-profile defaults. A raise of fastapi.HTTPException in a
+# route is not banned here: the rule is that such a refusal logs for itself, which a
+# per-file ban cannot express, so a unit test over the route modules checks it.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv".msg = "Read the environment through Settings in api/config.py."
+"os.environ".msg = "Read the environment through Settings in api/config.py."
+
 [tool.ruff.lint.per-file-ignores]
-# Tests intentionally use assert, hardcoded test credentials, and non-crypto randomness.
-"tests/**" = ["S101", "S105", "S106", "S311"]
+"api/config.py" = ["TID251"]
+# Tests intentionally use assert, hardcoded test credentials, and non-crypto randomness,
+# and set the environment before Settings loads.
+"tests/**" = ["S101", "S105", "S106", "S311", "TID251"]
 
 [tool.ruff.format]
 quote-style = "double"

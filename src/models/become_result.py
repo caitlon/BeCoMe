@@ -4,7 +4,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from .fuzzy_number import FuzzyTriangleNumber
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 class BeCoMeResult(BaseModel):

@@ -5,19 +5,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from examples.utils.formatting import display_centroid, print_section
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
-from .formatting import display_centroid, print_section
-
 if TYPE_CHECKING:
+    from examples.utils.labels import DisplayLabels
     from src.calculators.become_calculator import BeCoMeCalculator
     from src.models.expert_opinion import ExpertOpinion
 
-    from .labels import DisplayLabels
-
 
 def _default_display_labels() -> DisplayLabels:
-    from .locales import EN_DISPLAY
+    from examples.utils.locales import EN_DISPLAY
 
     return EN_DISPLAY
 

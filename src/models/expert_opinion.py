@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .fuzzy_number import FuzzyTriangleNumber
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 class ExpertOpinion:
