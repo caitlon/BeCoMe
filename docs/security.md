@@ -641,9 +641,10 @@ session expires, a reload sends the user through the login, which sets the cooki
 again. `options_preflight_bypass` is on as well: browsers send no cookies on a CORS preflight, so
 Access cannot authenticate one, and it lets OPTIONS requests through to the origin, where
 `CORSMiddleware` answers them. A service token in the browser is no option, because its secret
-would ship in the JavaScript every visitor of the frontend downloads. A policy keyed on the Origin
-or Referer header would not protect anything either, since any client outside a browser sets those
-headers freely (and Access has no such selector).
+would ship in the JavaScript that every signed-in user of the frontend downloads, as a credential
+tied to no person. A policy keyed on the Origin or Referer header would not protect anything
+either, since any client outside a browser sets those headers freely (and Access has no such
+selector).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
