@@ -1664,15 +1664,32 @@ describe('ApiClient', () => {
       expect(data).toEqual(result);
     });
 
-    it('getResult returns null on error', async () => {
+    it('getResult resolves to null when the API answers 200 with a null body', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: () => Promise.resolve({ detail: 'Not enough opinions' }),
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(null),
       });
 
-      const data = await api.getResult('proj-1');
-      expect(data).toBeNull();
+      await expect(api.getResult('proj-1')).resolves.toBeNull();
+    });
+
+    it('getResult rejects with a ServerError on a 5xx instead of returning null', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: () => Promise.resolve({ detail: 'Unavailable' }),
+      });
+
+      const { ServerError } = await import('@/lib/errors');
+      await expect(api.getResult('proj-1')).rejects.toBeInstanceOf(ServerError);
+    });
+
+    it('getResult rejects with a NetworkError when the request cannot be sent', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const { NetworkError } = await import('@/lib/errors');
+      await expect(api.getResult('proj-1')).rejects.toBeInstanceOf(NetworkError);
     });
   });
 
@@ -1798,20 +1815,6 @@ describe('ApiClient', () => {
       const options = mockFetch.mock.calls[0][1] as RequestInit;
       const headers = options.headers as Record<string, string>;
       expect(headers['X-Request-ID']).toBeTruthy();
-    });
-
-    it('logs a warning when getResult fails', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: () => Promise.resolve({ detail: 'Not enough opinions' }),
-      });
-
-      const data = await api.getResult('proj-1');
-
-      expect(data).toBeNull();
-      expect(warnSpy).toHaveBeenCalled();
     });
   });
 

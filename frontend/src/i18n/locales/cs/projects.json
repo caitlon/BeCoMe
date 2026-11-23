@@ -103,6 +103,7 @@
     "teamMembers_other": "Tým ({{count}} členů)",
     "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
     "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
+    "resultsLoadFailed": "Výsledky se nepodařilo načíst.",
     "bestCompromise": "Nejlepší kompromis",
     "resultBadge": "Výsledek",
     "resultValue": "Výsledná hodnota",
