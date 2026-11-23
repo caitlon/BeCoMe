@@ -643,12 +643,12 @@ because one alert cannot read both. "Prod: requests refused at the origin" sits 
 on "BeCoMe dev backend alerts" (source `become-backend`). Each counts the records with
 `event="origin_refused"`, which `api/middleware/origin_lock.py` writes with
 `ip="unverified-origin"` and a `reason` of `missing_header` or `secret_mismatch`, through the
-`event` label the sources already extract. The label exists since the extraction was set up on
-10 November 2026, and from then to 23 November the count was zero on both sources (Better Stack
-keeps the raw records for 3 days, so that is the longest window a count can cover). An incident
-opens when 3 or more refusals fall in a 5-minute window and that stays true for 10 minutes, so it
-comes at least 10 minutes after the failure starts, and only when refusals keep coming at roughly
-one every two minutes or faster. It emails the team and resolves once the 5-minute count stays
+`event` label the sources already extract. The label has existed since the extraction was set up
+on 10 November 2026. The counts it feeds outlive the raw records, which Better Stack keeps for
+3 days, and from 10 to 23 November they were zero on both sources. An incident opens when 3 or
+more refusals fall in a 5-minute window and that stays true for 10 minutes, so it comes at least
+10 minutes after the failure starts, and only when there are at least 3 refusals in every 5
+minutes, about one every 100 seconds. It emails the team and resolves once the 5-minute count stays
 under 3 for 10 minutes. A stray direct hit or a short scanner burst does not hold for 10 minutes.
 A broken or missing Transform Rule refuses every request, so traffic of that rate or more keeps
 the count above the threshold. Below that rate, the API uptime monitor described further down
@@ -659,8 +659,8 @@ Cloudflare or a rule that no longer covers the host, with `path` showing what wa
 alerts read the backend logs only: a refusal by the frontend's nginx is not in Better Stack, and
 on prod the `www.becomify.app` uptime monitor catches a frontend host the rule misses. Tested on
 23 November 2026 on dev: with the threshold lowered to one record in one minute and no hold, three
-direct requests without the header opened an incident in about two minutes, and the production
-settings were then restored. The prod alert has the same settings and was not fired.
+direct requests without the header opened an incident in about two minutes, and the alert's
+usual settings were then restored. The prod alert has the same settings and was not fired.
 
 The dev environment also sits behind Cloudflare Access on both hosts. One Access application,
 "BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the

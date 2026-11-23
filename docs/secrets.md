@@ -423,12 +423,13 @@ each one to a file in `"$S"` with `-o`, never to the terminal.
    ```
 
    If a "Prod: requests refused at the origin" or "Dev: requests refused at the origin" incident
-   opens in the 15 minutes after the services redeployed (see
+   opens in the 30 minutes after the services redeployed (see
    [security](security.md#network-and-edge)), a container still runs without the new value or the
-   rule disagrees. Compare the hashes of step 5 again and put the previous value back while you
-   look.
+   rule disagrees. Compare the hashes of step 5 again, then make every container hold the value the
+   rule sends: redeploy the service that lags, or, if one cannot take the new value, set the old
+   value back as `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` (step 2) and redeploy both while you look.
 
-A request that carries neither value gets `403`, recorded as `origin_refused`: with the reason
+A request that carries neither value gets `403`, recorded as `origin_refused`, with the reason
 `missing_header` when it has no header at all, and `secret_mismatch` when the value is wrong, so
 a mismatch stops the whole site. Only the platform health probe, a
 `GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
