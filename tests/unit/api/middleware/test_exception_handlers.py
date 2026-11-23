@@ -730,6 +730,7 @@ class TestExceptionLogging:
         # THEN
         mock_logger.warning.assert_called_once()
         extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "api_error_response"
         assert extra["status_code"] == status.HTTP_404_NOT_FOUND
         assert extra["request_id"] == "rid-1"
         assert extra["path"] == "/projects/123"

@@ -375,6 +375,7 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
         type(exc).__name__,
         status_code,
         extra={
+            "event": "api_error_response",
             "request_id": getattr(request.state, "request_id", None),
             "status_code": status_code,
             "path": request.url.path,
@@ -421,6 +422,7 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
         "Unhandled exception",
         exc_info=exc,
         extra={
+            "event": "unhandled_exception",
             "request_id": getattr(request.state, "request_id", None),
             "path": request.url.path,
             "exception_type": type(exc).__name__,
@@ -447,6 +449,7 @@ def revocation_store_unavailable_handler(request: Request, exc: Exception) -> JS
         "Revocation store unavailable",
         exc_info=exc,
         extra={
+            "event": "revocation_store_request_failed",
             "request_id": getattr(request.state, "request_id", None),
             "path": request.url.path,
             "exception_type": type(exc).__name__,
