@@ -1052,8 +1052,10 @@ out of the file: they live in Railway variables.
 (`sslmode=require`), tags each connection with an `application_name`, and repeats the
 per-session statement and idle-in-transaction timeouts client-side through libpq `options`,
 so a single runaway query cannot monopolize the database. A laptop run outside tests,
-whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
-because the local Docker database has no TLS.
+whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead, so a
+local server without TLS still connects. The PostgreSQL in `docker/docker-compose.yml` has
+TLS on with the Debian image's self-signed certificate, because the compose `api` service
+reaches it as `db` and therefore requires TLS.
 
 It stops at `require` and does not use `verify-full`. The databases run Railway's
 `postgres-ssl` image, whose `init-ssl.sh` signs the server certificate with a root CA that it

@@ -27,9 +27,22 @@ services:
   # PostgreSQL Database
   # ============================================
   db:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: become-db
     restart: unless-stopped
+    # TLS on, with the self-signed "snakeoil" certificate the Debian image ships (the
+    # Alpine image has none). The api container reaches this database as "db", which
+    # api/db/engine.py treats as remote and connects to with sslmode=require. The key
+    # is not secret (every copy of the image has it): this only gives the local stack
+    # the same TLS requirement the deploys have.
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - -c
+      - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
     # WARNING: Default credentials for LOCAL DEVELOPMENT ONLY
     # For production: use environment variables or secrets management
     environment:
@@ -53,7 +66,7 @@ services:
   # BeCoMe API (Production)
   # ============================================
   api:
-    build:
+    build: &api-build
       context: ..
       dockerfile: docker/Dockerfile
       args:
@@ -62,7 +75,7 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment:
+    environment: &api-env
       APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
       # SECRET_KEY is REQUIRED - generate with: openssl rand -hex 32
@@ -75,6 +88,8 @@ services:
       db:
         condition: service_healthy
         restart: true
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 30s
@@ -83,12 +98,31 @@ services:
       start_period: 15s
 
   # ============================================
+  # Schema migrations (one-shot)
+  # ============================================
+  # Runs `alembic upgrade head` in the API image and exits; the api service waits for it.
+  # The API never creates the PostgreSQL schema itself, and the deploys run the same
+  # command as their pre-deploy step, so without this service a fresh stack has no tables.
+  migrate:
+    build: *api-build
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ============================================
   # BeCoMe Frontend
   # ============================================
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        # nginx serves only the built SPA, so the bundle calls the API on its own port.
+        # frontend/Dockerfile also adds this origin to the CSP connect-src.
+        VITE_API_URL: http://localhost:8000/api/v1
     container_name: become-frontend
     restart: unless-stopped
     ports:

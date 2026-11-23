@@ -63,11 +63,11 @@ def _requires_tls(settings: Settings) -> bool:
 
     A deployed service or any process on Railway always requires it, even with
     ``TESTING`` set. A test run otherwise only prefers it: CI service containers
-    and the compose end-to-end stack reach a database without TLS under names
-    like ``db``. Any other process requires it unless the database is local, so a
-    laptop whose ``DATABASE_URL`` points at a deployed database keeps the
-    encrypted connection while the docker-compose PostgreSQL, which has SSL off,
-    still connects.
+    reach a database without TLS under names like ``postgres``. Any other process
+    requires it unless the database is local, so a laptop whose ``DATABASE_URL``
+    points at a deployed database keeps the encrypted connection, while a server
+    on a loopback host that offers no TLS still connects. The docker-compose
+    PostgreSQL has TLS on, because the compose api service reaches it as ``db``.
 
     Two limits follow from judging by the URL alone: a deployed database reached
     through a local port-forward or tunnel counts as local and gets ``prefer``,
