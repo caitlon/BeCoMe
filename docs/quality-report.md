@@ -107,7 +107,7 @@ Each of the 33 survivors was read with `mutmut show` and sorted by what the chan
 | Fallback text for a Likert value outside the decision map | 4 | `f"Unknown ({likert_value})"` becomes `None` | No |
 | `__hash__` of `ExpertOpinion` and `FuzzyTriangleNumber` | 2 | `hash((...))` becomes `hash(None)` | No |
 
-27 of 33 survivors are excluded from the effective score. They change a string literal that only appears in a recommendation, an error message or a `__str__` output, and no computed result changes. The 15 recommendation strings are returned by the API, but no test asserts them and the UI shows its own translated copy instead. Writing tests that assert the exact wording would add maintenance cost without improving defect detection.
+27 of 33 survivors are excluded from the effective score. They change a string literal that only appears in a recommendation, an error message or a `__str__` output, and no computed result changes. The 15 recommendation strings are returned by the API, but no test asserts the exact wording (the interpreter test checks one keyword, ignoring case) and the UI shows its own translated copy instead. Writing tests that assert the exact wording would add maintenance cost without improving defect detection.
 
 The other 6 change what the code does, and the tests do not check it:
 
