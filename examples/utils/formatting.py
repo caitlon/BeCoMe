@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 if TYPE_CHECKING:
+    from examples.utils.labels import FormattingLabels
     from src.models.expert_opinion import ExpertOpinion
-
-    from .labels import FormattingLabels
 
 
 def print_header(title: str, width: int = 60) -> None:
@@ -53,7 +52,7 @@ def display_case_header(
     :param labels: Locale-specific labels. Defaults to English.
     """
     if labels is None:
-        from .locales import EN_FORMATTING
+        from examples.utils.locales import EN_FORMATTING
 
         labels = EN_FORMATTING
 
@@ -79,7 +78,7 @@ def display_centroid(
     :param labels: Locale-specific labels. Defaults to English.
     """
     if labels is None:
-        from .locales import EN_FORMATTING
+        from examples.utils.locales import EN_FORMATTING
 
         labels = EN_FORMATTING
     if name is None:

@@ -195,12 +195,11 @@ from src.calculators.become_calculator import BeCoMeCalculator
 from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 from src.exceptions import BeCoMeError, EmptyOpinionsError
 
-# Incorrect (relative imports from outside package)
+# Incorrect (absolute import without the src. prefix)
 from models.fuzzy_number import FuzzyTriangleNumber  # Will fail
 ```
 
-Relative imports inside `src/` are acceptable, for example `expert_opinion.py` importing from
-`.fuzzy_number`.
+Relative imports are not used anywhere, `src/` included: ruff's `TID252` rule refuses them.
 
 ## Dependencies
 
