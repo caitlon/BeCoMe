@@ -122,7 +122,7 @@ class TestThreeExpertsMedian:
         assert result["num_experts"] == 3
 
         # Median (odd count) should be the middle opinion sorted by centroid
-        # Centroids: 30, 40, 60 → median is the opinion with centroid 40: (20, 40, 60)
+        # Centroids: 30, 40, 60 -> median is the opinion with centroid 40: (20, 40, 60)
         median = result["median"]
         assert abs(median["lower"] - 20.0) < 0.01
         assert abs(median["peak"] - 40.0) < 0.01
