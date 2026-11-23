@@ -173,6 +173,12 @@ class TestPythonPins:
                 id="uv-sources-git-path-list",
             ),
             pytest.param(
+                "[tool.uv.sources]\na = 'a==1.0.0'\n",
+                ['tool.uv.sources: a: "a==1.0.0"'],
+                1,
+                id="uv-source-that-looks-like-a-pin",
+            ),
+            pytest.param(
                 "dependencies = ['a==1.0.0']\n[tool.uv]\ndev-dependencies = ['b==2.0.0']\n",
                 [],
                 2,
