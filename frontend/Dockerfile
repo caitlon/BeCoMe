@@ -73,6 +73,9 @@ COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 # (nginx user must be able to read it at startup)
 COPY --from=builder --chown=nginx:nginx /app/nginx.conf /etc/nginx/conf.d/default.conf
 
+# The base image runs this before nginx starts: the Cloudflare origin check, see 40-origin-lock.sh.
+COPY --chmod=0755 docker-entrypoint.d/40-origin-lock.sh /docker-entrypoint.d/40-origin-lock.sh
+
 # Expose port 8080 (non-root nginx cannot bind privileged port 80)
 EXPOSE 8080
 
