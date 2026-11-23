@@ -24,17 +24,22 @@ function getSystemTheme(): ResolvedTheme {
     : "light"
 }
 
+function isTheme(value: unknown): value is Theme {
+  return value === "light" || value === "dark" || value === "system"
+}
+
 /**
- * The stored choice, or null when there is none or storage cannot be read. A
- * server has no window, and newer Node versions expose a localStorage global
- * that, depending on the version, warns, returns undefined or throws when
- * accessed without --localstorage-file, so the check is for the window, not
- * for the global.
+ * The stored choice, or null when there is none, it is not "light", "dark" or
+ * "system", or storage cannot be read. A server has no window, and newer Node
+ * versions expose a localStorage global that, depending on the version, warns,
+ * returns undefined or throws when accessed without --localstorage-file, so the
+ * check is for the window, not for the global.
  */
 function readStoredTheme(storageKey: string): Theme | null {
   if (typeof window === "undefined") return null
   try {
-    return window.localStorage.getItem(storageKey) as Theme | null
+    const stored = window.localStorage.getItem(storageKey)
+    return isTheme(stored) ? stored : null
   } catch {
     return null
   }
@@ -126,8 +131,12 @@ export function ThemeProvider({
   }, [theme, hydrating])
 
   const handleSetTheme = useCallback((newTheme: Theme) => {
-    localStorage.setItem(storageKey, newTheme)
     setTheme(newTheme)
+    try {
+      window.localStorage.setItem(storageKey, newTheme)
+    } catch {
+      // Storage blocked or full: the choice lasts for this page only.
+    }
   }, [storageKey])
 
   const value = useMemo(() => ({
