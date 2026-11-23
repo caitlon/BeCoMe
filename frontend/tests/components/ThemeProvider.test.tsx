@@ -270,12 +270,13 @@ describe('ThemeProvider', () => {
 
   it('still changes the theme when localStorage cannot be written', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('localStorage', {
-      getItem: () => null,
-      setItem: () => {
-        throw new DOMException('QuotaExceededError');
-      },
+    const setItem = vi.fn(() => {
+      throw new DOMException('QuotaExceededError');
     });
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem });
+    // A throw that escapes the click handler reaches the window as an "error" event.
+    const onError = vi.fn();
+    window.addEventListener('error', onError);
 
     render(
       <ThemeProvider defaultTheme="light">
@@ -284,7 +285,10 @@ describe('ThemeProvider', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Set Dark' }));
+    window.removeEventListener('error', onError);
 
+    expect(setItem).toHaveBeenCalledWith('vite-ui-theme', 'dark');
+    expect(onError).not.toHaveBeenCalled();
     expect(screen.getByTestId('theme')).toHaveTextContent('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
