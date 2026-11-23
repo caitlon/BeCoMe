@@ -43,6 +43,7 @@ describe('ThemeProvider', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('falls back to defaultTheme when localStorage is empty', () => {
@@ -267,6 +268,40 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('theme')).toHaveTextContent('light');
   });
 
+  it('still changes the theme when localStorage cannot be written', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException('QuotaExceededError');
+      },
+    });
+
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
+
+    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('ignores a stored value that is not a theme', () => {
+    localStorage.setItem('vite-ui-theme', 'foo');
+
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ThemeConsumer />
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+    expect(document.documentElement.classList.contains('foo')).toBe(false);
+  });
+
   describe('while hydrating prerendered HTML', () => {
     // Records what each render saw, since the first one is what has to match the server.
     function renderRecording(defaultTheme: 'system' | 'light') {
@@ -308,6 +343,16 @@ describe('ThemeProvider', () => {
 
       expect(seen[0]).toBe('system/light');
       await waitFor(() => expect(seen[seen.length - 1]).toBe('system/dark'));
+    });
+
+    it('ignores a stored value that is not a theme', async () => {
+      localStorage.setItem('vite-ui-theme', 'foo');
+
+      const seen = renderRecording('light');
+
+      await waitFor(() => expect(document.documentElement.classList.contains('light')).toBe(true));
+      expect(seen[seen.length - 1]).toBe('light/light');
+      expect(document.documentElement.classList.contains('foo')).toBe(false);
     });
 
     it('keeps the default when the stored choice is the default', async () => {
