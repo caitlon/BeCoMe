@@ -615,6 +615,17 @@ One request needs no secret. It is `GET /api/v1/health` addressed to a platform 
 host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
+The frontend containers apply the same rule. Their nginx answers 403 to a request without the
+`X-Origin-Verify` header (`frontend/nginx.conf`), and accepts the previous value during a
+rotation. The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`,
+the same names the API uses; on Railway each frontend service references the values of the
+backend service of its environment. An entrypoint script
+(`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them when the container starts, so the
+secret is never part of the image, and it stops the container on a value that cannot go into
+a quoted nginx string. The one exemption is `GET /` addressed to `healthcheck.railway.app`,
+Railway's probe of a new deploy. With `CLOUDFLARE_ORIGIN_SECRET` unset or empty the check is off,
+which is how local development, the compose stack and CI run the image.
+
 The lock was checked from outside on 2 November 2026, on dev, test and prod, the three environments then in service. One
 `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check

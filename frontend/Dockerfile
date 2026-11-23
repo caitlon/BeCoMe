@@ -73,6 +73,13 @@ COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 # (nginx user must be able to read it at startup)
 COPY --from=builder --chown=nginx:nginx /app/nginx.conf /etc/nginx/conf.d/default.conf
 
+# The base image runs this before nginx starts. It turns CLOUDFLARE_ORIGIN_SECRET and
+# CLOUDFLARE_ORIGIN_SECRET_PREVIOUS into the maps nginx.conf checks, so the secret is
+# read from the runtime environment and never lands in an image layer. Without the
+# variable the check is off. It is not the image's envsubst template step, which would
+# replace default.conf and mangle its $uri.
+COPY --chmod=0755 docker-entrypoint.d/40-origin-lock.sh /docker-entrypoint.d/40-origin-lock.sh
+
 # Expose port 8080 (non-root nginx cannot bind privileged port 80)
 EXPOSE 8080
 
