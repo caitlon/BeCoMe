@@ -40,37 +40,53 @@ def _chunk(title: str) -> RetrievedChunk:
 class TestNdcgAt5:
     """nDCG@5 with binary relevance, verified against hand-computed values."""
 
-    def test_all_relevant_is_perfect(self):
+    def test_all_gold_sources_at_the_top_is_perfect(self):
         """
-        GIVEN five relevant results
+        GIVEN five gold sources, each retrieved at its own rank 1-5
         WHEN nDCG@5 scores them
         THEN it is exactly 1.0
         """
-        assert ev._ndcg_at_5([1, 1, 1, 1, 1]) == 1.0
+        assert ev._ndcg_at_5([1, 1, 1, 1, 1], 5) == 1.0
 
     def test_none_relevant_is_zero(self):
         """
         GIVEN no relevant results
         WHEN nDCG@5 scores them
+        THEN it is exactly 0.0
+        """
+        assert ev._ndcg_at_5([0, 0, 0, 0, 0], 2) == 0.0
+
+    def test_no_gold_sources_is_zero(self):
+        """
+        GIVEN a query with no gold sources
+        WHEN nDCG@5 scores it
         THEN it is exactly 0.0 (avoids dividing by zero)
         """
-        assert ev._ndcg_at_5([0, 0, 0, 0, 0]) == 0.0
+        assert ev._ndcg_at_5([0, 0, 0, 0, 0], 0) == 0.0
 
-    def test_hit_at_the_top_is_perfect_regardless_of_the_rest(self):
+    def test_single_gold_source_at_the_top_is_perfect(self):
         """
-        GIVEN the only relevant result at rank 1
-        WHEN nDCG@5 scores them
+        GIVEN the only gold source retrieved at rank 1
+        WHEN nDCG@5 scores it
         THEN it is exactly 1.0 - rank 1 is where a single hit belongs
         """
-        assert ev._ndcg_at_5([1, 0, 0, 0, 0]) == 1.0
+        assert ev._ndcg_at_5([1, 0, 0, 0, 0], 1) == 1.0
 
     def test_hits_out_of_ideal_order_score_between_zero_and_one(self):
         """
-        GIVEN hits at ranks 2 and 4 (0-indexed: 1 and 3)
+        GIVEN two gold sources retrieved at ranks 2 and 4
         WHEN nDCG@5 scores them
-        THEN it matches the hand-computed value for this exact relevance pattern
+        THEN it matches the hand-computed (1/log2(3) + 1/log2(5)) / (1 + 1/log2(3))
         """
-        assert round(ev._ndcg_at_5([0, 1, 0, 1, 0]), 4) == 0.6509
+        assert round(ev._ndcg_at_5([0, 1, 0, 1, 0], 2), 4) == 0.6509
+
+    def test_ideal_is_capped_at_five_results(self):
+        """
+        GIVEN seven gold sources and five of them retrieved at ranks 1-5
+        WHEN nDCG@5 scores them
+        THEN it is 1.0, because only five results fit in the top five
+        """
+        assert ev._ndcg_at_5([1, 1, 1, 1, 1], 7) == 1.0
 
 
 class TestEvaluateQuery:
@@ -117,6 +133,70 @@ class TestEvaluateQuery:
         assert row["hit_at_5"] is False
         assert row["reciprocal_rank"] == 0.0
         assert row["ndcg_at_5"] == 0.0
+
+    def test_one_of_two_gold_sources_at_rank_one_is_not_perfect(self):
+        """
+        GIVEN a query with two gold sources of which only one is retrieved, at rank 1
+        WHEN _evaluate_query scores it
+        THEN nDCG@5 is 1 / (1 + 1/log2(3)) = 0.6131, not 1.0
+        """
+        # GIVEN
+        title_to_path = {"A": "docs/a.md", "B": "docs/b.md", "Other": "docs/other.md"}
+        chunks = [_chunk("A"), _chunk("Other")]
+        gold_paths = frozenset({"docs/a.md", "docs/b.md"})
+
+        # WHEN
+        row = ev._evaluate_query(chunks, gold_paths, title_to_path)
+
+        # THEN
+        assert round(row["ndcg_at_5"], 4) == 0.6131
+
+    def test_repeated_chunks_of_one_gold_source_are_credited_once(self):
+        """
+        GIVEN three gold sources and five retrieved chunks that all come from one of them
+        WHEN _evaluate_query scores it
+        THEN nDCG@5 is 1 / (1 + 1/log2(3) + 1/log2(4)) = 0.4693, and hit@k and
+            reciprocal_rank are unchanged by the deduplication
+        """
+        # GIVEN
+        title_to_path = {
+            "A": "docs/a.md",
+            "B": "docs/b.md",
+            "C": "docs/c.md",
+        }
+        chunks = [_chunk("A")] * 5
+        gold_paths = frozenset({"docs/a.md", "docs/b.md", "docs/c.md"})
+
+        # WHEN
+        row = ev._evaluate_query(chunks, gold_paths, title_to_path)
+
+        # THEN
+        assert round(row["ndcg_at_5"], 4) == 0.4693
+        assert row["hit_at_1"] is True
+        assert row["reciprocal_rank"] == 1.0
+
+    def test_a_second_gold_source_never_lowers_the_score(self):
+        """
+        GIVEN two gold sources, one run retrieving only A at rank 1 and another
+            retrieving A at rank 1 and B at rank 3
+        WHEN _evaluate_query scores both
+        THEN the run that also finds B scores (1 + 1/log2(4)) / (1 + 1/log2(3)) = 0.9197,
+            above the single-hit run at 0.6131
+        """
+        # GIVEN
+        title_to_path = {"A": "docs/a.md", "B": "docs/b.md", "Other": "docs/other.md"}
+        gold_paths = frozenset({"docs/a.md", "docs/b.md"})
+        single = [_chunk("A"), _chunk("Other"), _chunk("Other")]
+        both = [_chunk("A"), _chunk("Other"), _chunk("B")]
+
+        # WHEN
+        single_row = ev._evaluate_query(single, gold_paths, title_to_path)
+        both_row = ev._evaluate_query(both, gold_paths, title_to_path)
+
+        # THEN
+        assert round(single_row["ndcg_at_5"], 4) == 0.6131
+        assert round(both_row["ndcg_at_5"], 4) == 0.9197
+        assert both_row["ndcg_at_5"] > single_row["ndcg_at_5"]
 
 
 class TestTitleToPath:
