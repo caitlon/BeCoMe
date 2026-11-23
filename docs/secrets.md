@@ -239,8 +239,11 @@ these four steps in order, before any rotation:
    `curl -s -o /dev/null -w '%{http_code}' https://www.becomify.app/` through Cloudflare must
    print `200`, and this is the check that catches a rule that misses the frontend host. On dev,
    Access answers before the origin, so an anonymous request proves nothing. Send the request
-   with the Access service token headers of the dev monitor, using the header files of
-   [Access service token](#access-service-token):
+   with the Access service token headers of the dev monitor. Copy its two header values from the
+   monitor's request headers in Better Stack into header-format files: `"$S/id.header"` holds the
+   line `CF-Access-Client-Id: <client id>` and `"$S/secret.header"` the line
+   `CF-Access-Client-Secret: <client secret>`, never printing them, or use a browser with an Access session and confirm
+   the page loads. With the files:
    `curl -s -o /dev/null -w '%{http_code}' -H @"$S/id.header" -H @"$S/secret.header" https://atelier.becomify.app/`
    must print `200`. Then send a request that skips Cloudflare to the host's CNAME target
    (`dig +short <target> @1.1.1.1` for the address, then
@@ -330,6 +333,12 @@ each one to a file in `"$S"` with `-o`, never to the terminal.
 
    ```sh
    railway redeploy -y -s <env>-backend -e <env>
+   ```
+
+   Wait until the newest row of `railway deployment list -s <env>-backend -e <env>` shows
+   `SUCCESS`, then run:
+
+   ```sh
    railway redeploy -y -s <env>-frontend -e <env>
    ```
 
@@ -413,8 +422,16 @@ each one to a file in `"$S"` with `-o`, never to the terminal.
    railway ssh -e <env> -s <env>-frontend -- sh -c 'printf %s "$CLOUDFLARE_ORIGIN_SECRET_PREVIOUS" | sha256sum'
    ```
 
-A request that carries neither value gets `403`, recorded as `origin_refused` with the reason
-`secret_mismatch`, so a mismatch stops the whole site. Only the platform health probe, a
+   If a "Prod: requests refused at the origin" or "Dev: requests refused at the origin" incident
+   opens in the 30 minutes after the services redeployed (see
+   [security](security.md#network-and-edge)), a container still runs without the new value or the
+   rule disagrees. Compare the hashes of step 5 again, then make every container hold the value the
+   rule sends: redeploy the service that lags, or, if one cannot take the new value, set the old
+   value back as `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS` (step 2) and redeploy both while you look.
+
+A request that carries neither value gets `403`, recorded as `origin_refused`, with the reason
+`missing_header` when it has no header at all, and `secret_mismatch` when the value is wrong, so
+a mismatch stops the whole site. Only the platform health probe, a
 `GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
 secret. The frontend answers `403` the same way, and its only exemption is `GET /` addressed to
 `healthcheck.railway.app`.
