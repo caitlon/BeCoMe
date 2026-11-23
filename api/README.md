@@ -97,6 +97,9 @@ api/
 └── main.py             # FastAPI application (+ setup_logging, Sentry init)
 ```
 
+The import rules between these layers are import-linter contracts in `pyproject.toml`, checked
+by `uv run lint-imports`.
+
 ## API endpoints
 
 The sections below cover the routes of a deployed service. The assistant's three routes,

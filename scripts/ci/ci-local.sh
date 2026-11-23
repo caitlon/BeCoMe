@@ -25,6 +25,7 @@ run_lint() {
   uv run ruff check .
   uv run python scripts/ci/check_ascii_comments.py
   uv run python scripts/ci/check_exact_pins.py
+  uv run lint-imports
   uv run bandit -c pyproject.toml -r src api --severity-level medium
   uv run mypy src/ api/
   uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')

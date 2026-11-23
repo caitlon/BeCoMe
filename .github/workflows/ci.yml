@@ -76,6 +76,9 @@ jobs:
       - name: Check dependency pins are exact
         run: uv run python scripts/ci/check_exact_pins.py
 
+      - name: Check import layers
+        run: uv run lint-imports
+
       - name: Run security linting (bandit)
         run: uv run bandit -c pyproject.toml -r src api --severity-level medium
 
