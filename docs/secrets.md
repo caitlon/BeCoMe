@@ -225,11 +225,16 @@ these four steps in order, before any rotation:
    on dev, `www.becomify.app` on prod).
 2. Set the reference on the frontend, without a deploy:
    `railway variable set 'CLOUDFLARE_ORIGIN_SECRET=${{<env>-backend.CLOUDFLARE_ORIGIN_SECRET}}' --skip-deploys -s <env>-frontend -e <env>`.
-3. Deploy the frontend, with `railway redeploy -y -s <env>-frontend -e <env>`.
-4. Check through Cloudflare that the frontend host answers normally, and that the frontend's
-   Railway domain answers `403` to a request without the header.
+3. Let the image that carries the check deploy: the merge into `dev` or the promotion to
+   `prod`. If the service already runs that image, redeploy it with
+   `railway redeploy -y -s <env>-frontend -e <env>`.
+4. Check through Cloudflare that the frontend host answers normally.
    `curl -s -o /dev/null -w '%{http_code}' https://www.becomify.app/` prints `200` on prod, and
-   on dev the same request to `atelier.becomify.app` is a `302` to the Access login.
+   on dev the same request to `atelier.becomify.app` is a `302` to the Access login. Then check
+   that the origin refuses a request that skips Cloudflare: send it to the host's CNAME target
+   (`dig +short <target> @1.1.1.1` for the address, then
+   `curl -sk -o /dev/null -w '%{http_code}' --resolve <host>:443:<address> https://<host>/`),
+   which must print `403`.
 
 Railway's healthcheck is exempt from the lock, so a deploy goes green even when the rule does not
 cover the host, and every visitor then gets `403`. Only the last check above catches that. A
