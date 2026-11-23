@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import fakeredis
+import pytest
 import redis
 
 from api.auth import email_throttle
@@ -13,6 +14,60 @@ from api.auth.email_throttle import (
     InMemoryEmailSendThrottle,
     RedisEmailSendThrottle,
 )
+
+
+class _DroppingClient:
+    """A Redis client whose connection drops at a chosen point of the daily-counter update.
+
+    ``incr`` applies and then drops, which is the gap the old INCR-then-EXPIRE pair left
+    open. A pipeline applies its commands first when ``apply_pipeline`` is set (the reply
+    is lost) and drops before reaching the server otherwise.
+    """
+
+    def __init__(self, inner: fakeredis.FakeStrictRedis, *, apply_pipeline: bool) -> None:
+        self._inner = inner
+        self._apply_pipeline = apply_pipeline
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def incr(self, name: str, amount: int = 1) -> int:
+        self._inner.incr(name, amount)
+        raise redis.ConnectionError("dropped after INCR")
+
+    def pipeline(self, transaction: bool = True):
+        real = self._inner.pipeline(transaction=transaction)
+        apply_pipeline = self._apply_pipeline
+
+        class _Dropping:
+            def __getattr__(self, name: str):
+                return getattr(real, name)
+
+            def execute(self):
+                if apply_pipeline:
+                    real.execute()
+                raise redis.ConnectionError("dropped around EXEC")
+
+        return _Dropping()
+
+
+class _ExpireFails:
+    """A Redis client whose EXPIRE always fails, as a drop right after the pipeline would."""
+
+    def __init__(self, inner: fakeredis.FakeStrictRedis) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def expire(self, *_args, **_kwargs):
+        raise redis.ConnectionError("dropped before EXPIRE")
+
+
+def _daily_key(fake: fakeredis.FakeStrictRedis, prefix: str) -> bytes:
+    """Return the one daily counter key a flow holds, as the throttle named it."""
+    (key,) = fake.keys(f"{prefix}:daily:*")
+    return key
 
 
 class TestInMemoryEmailSendThrottle:
@@ -130,6 +185,122 @@ class TestRedisEmailSendThrottle:
 
         digest = next(iter(fake.keys("reset:daily:*")))
         assert int(fake.get(digest)) == 2
+
+    def test_allow_gives_the_daily_counter_an_expiry(self):
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600
+        )
+
+        assert throttle.allow("user@example.com") is True
+
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        assert int(fake.get(key)) == 1
+        assert 0 < fake.ttl(key) <= 3600
+
+    def test_record_gives_the_daily_counter_an_expiry(self):
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600
+        )
+
+        throttle.record("user@example.com")
+
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        assert int(fake.get(key)) == 1
+        assert 0 < fake.ttl(key) <= 3600
+
+    def test_a_later_send_does_not_extend_the_daily_window(self):
+        """The window opens with the first send; a second one must not restart it."""
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600
+        )
+        throttle.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.expire(key, 100)
+
+        throttle.record("user@example.com")
+
+        assert int(fake.get(key)) == 2
+        assert 0 < fake.ttl(key) <= 100
+
+    def test_allow_heals_a_counter_left_without_an_expiry(self):
+        """An older version could leave a count with no TTL, which then refused for good."""
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_cap=5, daily_window_seconds=3600
+        )
+        throttle.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.set(key, 3)
+        assert fake.ttl(key) == -1
+        fake.delete(*fake.keys("reset:cooldown:*"))
+
+        assert throttle.allow("user@example.com") is True
+
+        assert int(fake.get(key)) == 4
+        assert 0 < fake.ttl(key) <= 3600
+
+    def test_record_heals_a_counter_left_without_an_expiry(self):
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600
+        )
+        throttle.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.set(key, 3)
+        assert fake.ttl(key) == -1
+
+        throttle.record("user@example.com")
+
+        assert int(fake.get(key)) == 4
+        assert 0 < fake.ttl(key) <= 3600
+
+    @pytest.mark.parametrize("apply_pipeline", [False, True])
+    @pytest.mark.parametrize("method", ["allow", "record"])
+    def test_a_drop_during_the_daily_update_never_leaves_a_counter_without_expiry(
+        self, method, apply_pipeline
+    ):
+        """The connection dropping mid-update must not leave a count that never expires.
+
+        Left alone, such a count reaches the cap and refuses the address on every later day.
+        The call still fails open: ``allow`` says yes and ``record`` raises nothing.
+        """
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            _DroppingClient(fake, apply_pipeline=apply_pipeline),
+            key_prefix=RESET_KEY_PREFIX,
+            daily_window_seconds=3600,
+        )
+
+        result = getattr(throttle, method)("user@example.com")
+
+        assert result is (True if method == "allow" else None)
+        for key in fake.keys("reset:daily:*"):
+            assert fake.ttl(key) > 0
+
+    @pytest.mark.parametrize("method", ["allow", "record"])
+    def test_a_failed_heal_fails_open_and_the_next_send_heals(self, method):
+        fake = fakeredis.FakeStrictRedis()
+        inner = RedisEmailSendThrottle(fake, key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600)
+        inner.record("user@example.com")
+        key = _daily_key(fake, RESET_KEY_PREFIX)
+        fake.set(key, 3)
+        broken = RedisEmailSendThrottle(
+            _ExpireFails(fake), key_prefix=RESET_KEY_PREFIX, daily_window_seconds=3600
+        )
+        fake.delete(*fake.keys("reset:cooldown:*"))
+
+        result = getattr(broken, method)("user@example.com")
+
+        assert result is (True if method == "allow" else None)
+        assert fake.ttl(key) == -1
+
+        fake.delete(*fake.keys("reset:cooldown:*"))
+        getattr(inner, method)("user@example.com")
+
+        assert fake.ttl(key) > 0
 
     def test_fails_open_when_store_is_unavailable(self):
         class Boom:

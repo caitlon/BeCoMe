@@ -203,6 +203,27 @@ class RedisEmailSendThrottle:
         self._daily_cap = daily_cap
         self._daily_window = daily_window_seconds
 
+    def _bump_daily(self, daily_key: str) -> None:
+        """Count one send under the daily key, making sure the key carries an expiry.
+
+        SET NX with ``EX`` gives a new counter its expiry in the same transaction as the
+        increment, so a connection that drops mid-way cannot leave a count that never
+        expires and, once it reaches the cap, refuses the address on every later day. A
+        counter an older version left without an expiry (TTL ``-1``) gets one here; if
+        that call fails too, the next send heals it again. ``EXPIRE NX`` is avoided because
+        it needs Redis 7.
+
+        :param daily_key: Redis key of the address's daily counter.
+        :raises redis.RedisError: When the store fails; the caller fails open.
+        """
+        pipe = self._client.pipeline(transaction=True)
+        pipe.set(daily_key, 0, ex=self._daily_window, nx=True)
+        pipe.incr(daily_key)
+        pipe.ttl(daily_key)
+        results = pipe.execute()
+        if results[2] == -1:
+            self._client.expire(daily_key, self._daily_window)
+
     def allow(self, identifier: str) -> bool:
         """Return whether an email may be sent now, recording it when allowed."""
         digest = _digest(identifier)
@@ -218,8 +239,7 @@ class RedisEmailSendThrottle:
             if sent_today >= self._daily_cap:
                 _log_denied("daily_cap", backend="redis", key_prefix=self._key_prefix)
                 return False
-            if self._client.incr(daily_key) == 1:
-                self._client.expire(daily_key, self._daily_window)
+            self._bump_daily(daily_key)
             return True
         except redis.RedisError as e:
             # Fail open: a store outage must never suppress a legitimate email.
@@ -233,9 +253,7 @@ class RedisEmailSendThrottle:
             # No NX: this send happens either way, so the cooldown window is restarted
             # rather than consulted.
             self._client.set(f"{self._key_prefix}:cooldown:{digest}", "1", ex=self._cooldown)
-            daily_key = f"{self._key_prefix}:daily:{digest}"
-            if self._client.incr(daily_key) == 1:
-                self._client.expire(daily_key, self._daily_window)
+            self._bump_daily(f"{self._key_prefix}:daily:{digest}")
         except redis.RedisError as e:
             # Fail open, as ``allow`` does: a store outage must not turn into an error
             # on a request whose email has already been decided.
