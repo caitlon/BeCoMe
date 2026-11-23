@@ -114,10 +114,13 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 ### Running
 
 ```bash
-./scripts/ci/mutmut-run.sh          # full mutation run
-./scripts/ci/mutmut-run.sh results  # view summary from cache
-./scripts/ci/mutmut-run.sh detail   # list surviving mutants by file
+./scripts/ci/mutmut-run.sh                # full mutation run, then the summary
+./scripts/ci/mutmut-run.sh results        # summary from the existing mutants/ output
+./scripts/ci/mutmut-run.sh detail         # surviving mutants, grouped by module
+./scripts/ci/mutmut-run.sh detail <name>  # the diff of one surviving mutant
 ```
+
+The summary lists the mutants by status (killed, survived, timeout and the rest) and the mutation score. mutmut keeps its state in the git-ignored `mutants/` directory, and the settings are in `[tool.mutmut]` in `pyproject.toml`. The same modes are available through `./scripts/ci/ci-local.sh mutmut`.
 
 ## Performance testing
 

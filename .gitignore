@@ -90,7 +90,7 @@ CLAUDE.md
 skills-lock.json
 
 # Mutation testing
-.mutmut-cache
+/mutants/
 
 # Performance test results
 results_*.csv
