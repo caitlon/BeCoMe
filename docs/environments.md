@@ -93,7 +93,7 @@ APP_ENV=prod uv run uvicorn api.main:app
 
 ## Docker
 
-The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
+Local Compose runs the dev profile. `APP_ENV=prod` does not start there, because the prod profile needs a Redis and a non-loopback `FRONTEND_BASE_URL`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
 
 The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. When it reads as true (`1`, `true`, `t`, `yes`, `y` or `on`, in any case, the same words pydantic accepts), the builder installs the `assistant` extra on top of `api`; otherwise the image is the lean one. The arg shares the name of the runtime setting so that Railway, which passes service variables as build args, builds and enables the assistant from one variable. Compose forwards it from your shell with `${ASSISTANT_ENABLED:-false}`, but only as a build arg: the `api` container does not receive it, so the assistant stays off in Compose unless you also add `ASSISTANT_ENABLED` and the other `ASSISTANT_*` settings to the service's `environment`.
 

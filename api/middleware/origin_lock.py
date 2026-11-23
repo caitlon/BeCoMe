@@ -33,7 +33,7 @@ _PROBE_PATH = "/api/v1/health"
 
 # Host names a platform probe addresses the route by. Railway sends
 # ``healthcheck.railway.app`` when it probes a deploy; ``localhost`` is the image's own
-# HEALTHCHECK (docker/Dockerfile, docker/docker-compose.yml).
+# HEALTHCHECK (docker/Dockerfile).
 _PROBE_HOSTS = frozenset({"healthcheck.railway.app", "localhost"})
 
 
