@@ -7,10 +7,12 @@ for npm. Ranges, carets, tildes, tags, URLs and aliases are refused, so a lock-f
 cannot widen what the project installs. A Dependabot bump keeps the pin exact and passes.
 
 Checked in ``pyproject.toml``: ``[project].dependencies``, every list of
-``[project.optional-dependencies]`` and every list of ``[dependency-groups]`` (tables such as
-``{include-group = ...}`` name no package and are skipped). ``[build-system].requires`` is not
-checked: it names the build backend, not a project dependency, and ``requires-python`` is an
-interpreter constraint, not a package.
+``[project.optional-dependencies]``, every list of ``[dependency-groups]`` and the
+``dev-dependencies``, ``override-dependencies`` and ``constraint-dependencies`` lists of
+``[tool.uv]``. Only a ``{include-group = ...}`` table inside ``[dependency-groups]`` is skipped,
+because it names no package; any other table or non-string entry is an offender.
+``[build-system].requires`` is not checked: it names the build backend, not a project
+dependency, and ``requires-python`` is an interpreter constraint, not a package.
 
 Checked in ``package.json``: ``dependencies``, ``devDependencies``, ``optionalDependencies``,
 ``peerDependencies`` and every string leaf of ``overrides``, nested objects included.
@@ -49,6 +51,8 @@ NPM_PIN = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"
 )
 
+UV_DEPENDENCY_LISTS = ("dev-dependencies", "override-dependencies", "constraint-dependencies")
+
 NPM_DEPENDENCY_SECTIONS = (
     "dependencies",
     "devDependencies",
@@ -73,25 +77,31 @@ def pyproject_entries(data: dict[str, Any]) -> Iterator[Entry]:
     """Yield every requirement string of a parsed ``pyproject.toml``.
 
     :param data: The parsed TOML document
-    :return: ``(section, name, spec)`` for each string requirement
+    :return: ``(section, name, spec)`` for each requirement entry
+    :raises TypeError: When a dependency list is not a list
     """
     project = data.get("project", {})
+    uv = data.get("tool", {}).get("uv", {})
     groups = [
-        ("project.dependencies", project.get("dependencies", [])),
+        ("project.dependencies", project.get("dependencies", []), False),
         *(
-            (f"project.optional-dependencies.{extra}", specs)
+            (f"project.optional-dependencies.{extra}", specs, False)
             for extra, specs in project.get("optional-dependencies", {}).items()
         ),
         *(
-            (f"dependency-groups.{group}", specs)
+            (f"dependency-groups.{group}", specs, True)
             for group, specs in data.get("dependency-groups", {}).items()
         ),
+        *((f"tool.uv.{key}", uv[key], False) for key in UV_DEPENDENCY_LISTS if key in uv),
     ]
-    for section, specs in groups:
+    for section, specs, allows_include in groups:
+        if not isinstance(specs, list):
+            raise TypeError(f"{section} is not a list")
         for spec in specs:
-            if isinstance(spec, dict):  # {include-group = "..."} names no package
+            # {include-group = "..."} names no package, and only a dependency group has it
+            if allows_include and isinstance(spec, dict) and spec.keys() == {"include-group"}:
                 continue
-            name = _python_name(spec) if isinstance(spec, str) else repr(spec)
+            name = _python_name(spec) if isinstance(spec, str) else str(spec)
             yield section, name, spec
 
 
@@ -128,7 +138,7 @@ def is_exact_python(spec: Any) -> bool:
     :param spec: The requirement as written
     :return: True when it pins one exact version
     """
-    return isinstance(spec, str) and PYTHON_PIN.match(spec) is not None
+    return isinstance(spec, str) and PYTHON_PIN.fullmatch(spec) is not None
 
 
 def is_exact_npm(spec: Any) -> bool:
@@ -137,7 +147,7 @@ def is_exact_npm(spec: Any) -> bool:
     :param spec: The version spec as written
     :return: True when it is ``MAJOR.MINOR.PATCH`` with an optional prerelease and build part
     """
-    return isinstance(spec, str) and NPM_PIN.match(spec) is not None
+    return isinstance(spec, str) and NPM_PIN.fullmatch(spec) is not None
 
 
 def check_file(path: Path, label: str) -> tuple[list[str], int]:
@@ -156,11 +166,11 @@ def check_file(path: Path, label: str) -> tuple[list[str], int]:
             is_exact = is_exact_npm
     except FileNotFoundError:
         return [f"{label}: file not found"], 0
-    except (OSError, UnicodeDecodeError, ValueError, AttributeError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, AttributeError, TypeError) as exc:
         return [f"{label}: could not read: {exc}"], 0
 
     offenders = [
-        f"{label}: {section}: {name}: {json.dumps(spec)}"
+        f"{label}: {section}: {name}: {json.dumps(spec, default=str)}"
         for section, name, spec in entries
         if not is_exact(spec)
     ]

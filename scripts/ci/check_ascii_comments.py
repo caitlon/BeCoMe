@@ -111,7 +111,7 @@ def check_file(path: Path, label: str) -> list[str]:
     if path.suffix == ".ipynb":
         try:
             cells = list(_notebook_cells(text))
-        except (ValueError, AttributeError) as exc:
+        except (ValueError, AttributeError, TypeError) as exc:
             return [f"{label}: could not read notebook: {exc}"]
         for number, source in cells:
             hits, error = scan_source(source)

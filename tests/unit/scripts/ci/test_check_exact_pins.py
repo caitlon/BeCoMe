@@ -119,6 +119,60 @@ class TestPythonPins:
 
         assert offenders == [f"pyproject.toml: project.dependencies: fastapi: {json.dumps(spec)}"]
 
+    def test_trailing_newline_fails(self, tmp_path):
+        offenders = _python_offenders(tmp_path, "fastapi==0.115.0\n")
+
+        assert offenders == ['pyproject.toml: project.dependencies: fastapi: "fastapi==0.115.0\\n"']
+
+    def test_dict_in_project_dependencies_fails_even_with_include_group(self, tmp_path):
+        body = "[project]\nname = 'x'\ndependencies = [{include-group = 'lint'}, {a = 'b'}]\n"
+
+        offenders, checked = check.check_file(_pyproject(tmp_path, body), "pyproject.toml")
+
+        assert len(offenders) == 2
+        assert checked == 2
+
+    def test_dict_other_than_include_group_in_a_group_fails(self, tmp_path):
+        body = (
+            "[project]\nname = 'x'\n"
+            "[dependency-groups]\n"
+            "dev = [{include-group = 'lint'}, {include-group = 'a', extra = 1}, {a = 'b'}]\n"
+        )
+
+        offenders, checked = check.check_file(_pyproject(tmp_path, body), "pyproject.toml")
+
+        assert [line.split(": ", 2)[1] for line in offenders] == ["dependency-groups.dev"] * 2
+        assert checked == 2  # the plain include-group names no package and is not counted
+
+    def test_non_string_entry_reports_without_raising(self, tmp_path):
+        body = "[project]\nname = 'x'\ndependencies = [1979-05-27, 3]\n"
+
+        offenders, _ = check.check_file(_pyproject(tmp_path, body), "pyproject.toml")
+
+        assert offenders == [
+            'pyproject.toml: project.dependencies: 1979-05-27: "1979-05-27"',
+            "pyproject.toml: project.dependencies: 3: 3",
+        ]
+
+    def test_dependency_list_that_is_not_a_list_reports_instead_of_raising(self, tmp_path):
+        body = "[project]\nname = 'x'\ndependencies = 1\n"
+
+        offenders, checked = check.check_file(_pyproject(tmp_path, body), "pyproject.toml")
+
+        assert offenders == ["pyproject.toml: could not read: project.dependencies is not a list"]
+        assert checked == 0
+
+    @pytest.mark.parametrize(
+        "key", ["dev-dependencies", "override-dependencies", "constraint-dependencies"]
+    )
+    def test_uv_lists_are_checked(self, tmp_path, key):
+        body = f"[project]\nname = 'x'\n[tool.uv]\n{key} = ['a==1.0.0', 'b>=2.0.0']\n"
+
+        offenders, checked = check.check_file(_pyproject(tmp_path, body), "pyproject.toml")
+
+        assert offenders == [f'pyproject.toml: tool.uv.{key}: b: "b>=2.0.0"']
+        assert checked == 2
+
     def test_only_the_loose_entry_is_reported(self, tmp_path):
         offenders = _python_offenders(tmp_path, "a==1.0.0", "b>=2.0.0", "c==3.0.0")
 
@@ -275,6 +329,13 @@ class TestNpmPins:
 
         assert offenders == ['package.json: overrides: a > .: "^1.0.0"']
 
+    def test_trailing_newline_fails(self, tmp_path):
+        path = _package_json(tmp_path, {"dependencies": {"a": "1.2.3\n"}})
+
+        offenders, _ = check.check_file(path, "package.json")
+
+        assert offenders == ['package.json: dependencies: a: "1.2.3\\n"']
+
     def test_non_string_spec_fails(self, tmp_path):
         path = _package_json(tmp_path, {"dependencies": {"a": 1, "b": None}})
 
@@ -356,5 +417,9 @@ class TestRepository:
         # GIVEN the three manifests named by default
         status = check.main([])
 
-        # THEN every dependency in them is pinned exactly
-        assert status == 0, capsys.readouterr().out
+        # THEN every dependency in them is pinned exactly, and the report names all three
+        out = capsys.readouterr().out
+        assert status == 0, out
+        assert out.startswith("OK:")
+        for name in check.DEFAULT_FILES:
+            assert f"{name} " in out

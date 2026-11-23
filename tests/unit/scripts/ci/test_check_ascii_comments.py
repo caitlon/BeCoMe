@@ -117,21 +117,21 @@ class TestPythonSource:
         assert check.check_file(path, "mod.py") == []
 
     @pytest.mark.parametrize(
-        "source",
+        ("source", "line"),
         [
-            pytest.param(f"caf{E_ACUTE} = 1\n", id="identifier"),
-            pytest.param(f"def caf{E_ACUTE}():\n    return 1\n", id="function-name"),
-            pytest.param(f"x = 1 {ARROW} 2\n", id="stray-symbol"),
-            pytest.param(f'x = f"{{caf{E_ACUTE}}}"\n', id="f-string-field-expression"),
+            pytest.param(f"caf{E_ACUTE} = 1\n", 1, id="identifier"),
+            pytest.param(f"x = 1\ndef caf{E_ACUTE}():\n    return 1\n", 2, id="function-name"),
+            pytest.param(f"x = 1 {ARROW} 2\n", 1, id="stray-symbol"),
+            pytest.param(f'x = 1\ny = f"{{caf{E_ACUTE}}}"\n', 2, id="f-string-field-expression"),
         ],
     )
-    def test_unicode_in_code_fails(self, tmp_path, source):
+    def test_unicode_in_code_fails(self, tmp_path, source, line):
         path = _write(tmp_path, "mod.py", source)
 
         messages = check.check_file(path, "mod.py")
 
         assert len(messages) == 1
-        assert messages[0].startswith("mod.py:") and "non-ASCII" in messages[0]
+        assert messages[0].startswith(f"mod.py:{line}: non-ASCII in code or comment:")
 
     def test_untokenizable_file_fails_instead_of_being_skipped(self, tmp_path, capsys):
         path = _write(tmp_path, "broken.py", "x = (1,\n")
@@ -171,7 +171,9 @@ class TestPythonSource:
         status = check.main([str(good), str(bad)])
 
         assert status == 1
-        assert capsys.readouterr().out.count("\n") == 1
+        assert capsys.readouterr().out.splitlines() == [
+            f"{bad}:1: non-ASCII in code or comment: {ARROW}"
+        ]
 
 
 class TestNotebook:
@@ -219,8 +221,16 @@ class TestNotebook:
             f"nb.ipynb:cell 1:line 1: non-ASCII in code or comment: {ARROW}"
         ]
 
-    def test_invalid_json_fails(self, tmp_path):
-        path = _write(tmp_path, "nb.ipynb", "{not json")
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param("{not json", id="invalid-json"),
+            pytest.param('{"cells": null}', id="cells-null"),
+            pytest.param('{"cells": [{"cell_type": "code", "source": null}]}', id="source-null"),
+        ],
+    )
+    def test_unreadable_notebook_reports_instead_of_raising(self, tmp_path, text):
+        path = _write(tmp_path, "nb.ipynb", text)
 
         messages = check.check_file(path, "nb.ipynb")
 
@@ -237,3 +247,8 @@ class TestRepository:
 
         # THEN none holds non-ASCII code or comments
         assert status == 0, capsys.readouterr().out
+
+    def test_default_scan_includes_the_tracked_notebook(self):
+        tracked = check.tracked_files()
+
+        assert ROOT / "examples" / "visualizations" / "visualize_become.ipynb" in tracked
