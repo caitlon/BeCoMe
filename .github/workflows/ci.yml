@@ -68,6 +68,14 @@ jobs:
       - name: Run linting
         run: uv run ruff check .
 
+      # These two rules were enforced only by local editor hooks, which bind neither
+      # outside contributors nor Dependabot.
+      - name: Check comments and code are ASCII
+        run: uv run python scripts/ci/check_ascii_comments.py
+
+      - name: Check dependency pins are exact
+        run: uv run python scripts/ci/check_exact_pins.py
+
       - name: Run security linting (bandit)
         run: uv run bandit -c pyproject.toml -r src api --severity-level medium
 
