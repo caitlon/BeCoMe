@@ -87,15 +87,19 @@ def _dcg(relevances: list[int]) -> float:
     return sum(rel / math.log2(rank + 2) for rank, rel in enumerate(relevances))
 
 
-def _ndcg_at_5(relevances: list[int]) -> float:
-    """Normalized DCG at 5: DCG divided by the best possible DCG for this many hits.
+def _ndcg_at_5(relevances: list[int], gold_count: int) -> float:
+    """Normalized DCG at 5: DCG divided by the best DCG the gold sources allow.
 
-    :param relevances: 1 where a result is relevant, 0 otherwise, in rank order.
-    :return: 0.0 if there are no relevant results at all (no ideal DCG to divide by).
+    The ideal ranking holds min(gold_count, 5) relevant results at the top, so a
+    query with several gold sources is not scored as perfect after finding only one.
+
+    :param relevances: 1 where a result is the first retrieved chunk of a gold source,
+        0 otherwise, in rank order.
+    :param gold_count: How many distinct gold sources the query has.
+    :return: 0.0 if gold_count is 0 (no ideal DCG to divide by).
     """
-    top5 = relevances[:5]
-    ideal = _dcg(sorted(top5, reverse=True))
-    return _dcg(top5) / ideal if ideal > 0 else 0.0
+    ideal = _dcg([1] * min(gold_count, 5))
+    return _dcg(relevances[:5]) / ideal if ideal > 0 else 0.0
 
 
 def _evaluate_query(
@@ -103,23 +107,33 @@ def _evaluate_query(
 ) -> dict[str, bool | float]:
     """Score one query's retrieved chunks against its gold sources.
 
-    A chunk counts as relevant when the path its title resolves to is one of the
-    query's gold sources - section-level precision is for a human reading the golden
-    set, not a criterion this scoring enforces.
+    A chunk is relevant when the path its title resolves to is one of the query's gold
+    sources and no earlier chunk came from that source: each gold source is credited
+    once, at its best rank, so repeated chunks of one document cannot inflate nDCG@5.
+    Section-level precision is for a human reading the golden set, not a criterion this
+    scoring enforces.
 
     :param chunks: DocsRetriever.search()'s result, most relevant first.
     :param gold_paths: The repo-relative paths this query should have retrieved.
     :param title_to_path: _title_to_path()'s mapping, for resolving chunk.title.
     :return: hit_at_1/3/5 (bool), reciprocal_rank and ndcg_at_5 (float).
     """
-    relevances = [1 if title_to_path.get(chunk.title) in gold_paths else 0 for chunk in chunks]
+    seen: set[str] = set()
+    relevances = []
+    for chunk in chunks:
+        path = title_to_path.get(chunk.title)
+        if path in gold_paths and path not in seen:
+            seen.add(path)
+            relevances.append(1)
+        else:
+            relevances.append(0)
     first_hit_rank = next((rank + 1 for rank, rel in enumerate(relevances) if rel), None)
     return {
         "hit_at_1": bool(relevances[:1] and relevances[0]),
         "hit_at_3": any(relevances[:3]),
         "hit_at_5": any(relevances[:5]),
         "reciprocal_rank": 1.0 / first_hit_rank if first_hit_rank else 0.0,
-        "ndcg_at_5": _ndcg_at_5(relevances),
+        "ndcg_at_5": _ndcg_at_5(relevances, len(gold_paths)),
     }
 
 

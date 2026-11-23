@@ -74,7 +74,9 @@ How the pipeline is built and why, from the corpus to the streamed answer, is ex
    `supplementary/assistant-eval/<collection>-<timestamp>.json`. Under
    `--query-transform translate_en`, English questions that the check recognises are searched as written and only
    non-English ones are translated, so reports for English questions are not directly
-   comparable with reports made before this change.
+   comparable with reports made before this change. nDCG@5 credits each gold source once and
+   takes its ideal from the number of gold sources, so its values are not comparable with
+   reports made before 2026-11-23 either.
 6. Seed the data for questions about "my project": `uv run python
    scripts/assistant/seed_eval_fixtures.py --output supplementary/assistant-eval/fixtures.json`
    creates in the configured local database one activated user, `eval-owner@example.test`,
