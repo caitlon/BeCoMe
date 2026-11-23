@@ -68,6 +68,36 @@ describe('StepEnterOpinion', () => {
     expect(polygon).toBeInTheDocument();
   });
 
+  it('keeps a typed 0 in lower, peak and upper instead of falling back', async () => {
+    const user = userEvent.setup();
+    render(<StepEnterOpinion />);
+
+    for (const label of [/lower|dolní/i, /peak|vrchol/i, /upper|horní/i]) {
+      const input = screen.getByLabelText(label);
+      await user.clear(input);
+      await user.type(input, '0');
+    }
+
+    const svg = screen.getByLabelText(/triangle preview/i);
+    const values = [...svg.querySelectorAll('text[font-weight="bold"]')].map(
+      (el) => el.textContent
+    );
+    expect(values).toEqual(['0', '0', '0']);
+  });
+
+  it('falls back to 50 for an empty peak', async () => {
+    const user = userEvent.setup();
+    render(<StepEnterOpinion />);
+
+    await user.clear(screen.getByLabelText(/peak|vrchol/i));
+
+    const svg = screen.getByLabelText(/triangle preview/i);
+    const values = [...svg.querySelectorAll('text[font-weight="bold"]')].map(
+      (el) => el.textContent
+    );
+    expect(values).toEqual(['30', '50', '70']);
+  });
+
   it('updates upper input value on change', async () => {
     const user = userEvent.setup();
     render(<StepEnterOpinion />);
