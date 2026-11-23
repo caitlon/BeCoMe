@@ -134,11 +134,11 @@ const ProjectDetail = () => {
     membersQuery.isPending ||
     (isAdmin && invitationsQuery.isPending);
   // isLoadingError only: a failed background refetch keeps cached data on
-  // screen and must not eject the user from the page.
+  // screen and must not eject the user from the page. The result query is left
+  // out on purpose: its failure is shown inside the results section, with a retry.
   const hasLoadError =
     projectQuery.isLoadingError ||
     opinionsQuery.isLoadingError ||
-    resultQuery.isLoadingError ||
     membersQuery.isLoadingError ||
     invitationsQuery.isLoadingError;
 
@@ -354,6 +354,8 @@ const ProjectDetail = () => {
         showIndividual={showIndividual}
         setShowIndividual={setShowIndividual}
         opinions={opinions}
+        loadFailed={resultQuery.isError}
+        onRetry={() => void resultQuery.refetch()}
       />
     </ErrorBoundary>
   );

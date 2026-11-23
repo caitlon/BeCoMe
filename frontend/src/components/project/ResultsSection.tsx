@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,9 @@ export interface ResultsSectionProps {
   showIndividual: boolean;
   setShowIndividual: (v: boolean) => void;
   opinions: Opinion[];
+  /** The result request failed; shown instead of the empty state while there is no result. */
+  loadFailed?: boolean;
+  onRetry?: () => void;
 }
 
 export const ResultsSection = ({
@@ -34,11 +38,26 @@ export const ResultsSection = ({
   showIndividual,
   setShowIndividual,
   opinions,
+  loadFailed = false,
+  onRetry,
 }: ResultsSectionProps) => {
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
   const showIndividualId = useId();
   const likertHeadingId = useId();
+
+  if (!result && loadFailed) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+          <span>{t("detail.resultsLoadFailed")}</span>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            {tFuzzy("errors.retry")}
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (!result || opinions.length === 0) {
     return (

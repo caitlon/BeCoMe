@@ -1333,6 +1333,49 @@ describe('ProjectDetail - Responsive single layout', () => {
   });
 });
 
+describe('ProjectDetail - Result request failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('shows an inline error in the results section and keeps the page, without a toast or redirect', async () => {
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'other' })]);
+    mockApi.getResult.mockRejectedValue(new HttpError('Server error', 500));
+
+    render(<ProjectDetail />);
+
+    expect(await screen.findByText('Test Project')).toBeInTheDocument();
+    expect(await screen.findByText('Results could not be loaded.')).toBeInTheDocument();
+    expect(screen.queryByText(/results will appear once experts submit/i)).not.toBeInTheDocument();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('requests the result again and shows it once Retry succeeds', async () => {
+    const user = userEvent.setup();
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'other' })]);
+    mockApi.getResult.mockRejectedValueOnce(new HttpError('Server error', 500));
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+
+    render(<ProjectDetail />);
+
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Best Compromise')).toBeInTheDocument();
+    expect(mockApi.getResult).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Results could not be loaded.')).not.toBeInTheDocument();
+  });
+
+  it('still shows the empty state when the API answers with no result yet', async () => {
+    // defaultSetup() resolves getResult to null, the API's 200 with a null body.
+    render(<ProjectDetail />);
+
+    expect(await screen.findByText(/results will appear once experts submit/i)).toBeInTheDocument();
+    expect(screen.queryByText('Results could not be loaded.')).not.toBeInTheDocument();
+  });
+});
+
 describe('ProjectDetail - Header Result Export', () => {
   beforeEach(() => {
     vi.clearAllMocks();

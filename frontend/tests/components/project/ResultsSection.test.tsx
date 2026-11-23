@@ -30,6 +30,48 @@ describe('ResultsSection - Empty State', () => {
 
     expect(screen.getByText(/results will appear once experts submit/i)).toBeInTheDocument();
   });
+
+  it('shows an error with a retry, not the empty state, when the result request failed', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const { project, opinions } = setup();
+
+    render(
+      <ResultsSection
+        result={null}
+        project={project}
+        showIndividual={false}
+        setShowIndividual={vi.fn()}
+        opinions={opinions}
+        loadFailed
+        onRetry={onRetry}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Results could not be loaded.');
+    expect(screen.queryByText(/results will appear once experts submit/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps showing the result when a refetch failed but a result is cached', () => {
+    const { project, opinions } = setup();
+
+    render(
+      <ResultsSection
+        result={createCalculationResult()}
+        project={project}
+        showIndividual={false}
+        setShowIndividual={vi.fn()}
+        opinions={opinions}
+        loadFailed
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Best Compromise')).toBeInTheDocument();
+  });
 });
 
 describe('ResultsSection - Likert verdict', () => {

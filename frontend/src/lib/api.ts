@@ -696,16 +696,10 @@ class ApiClient {
   }
 
   // Results
+  // The API answers 200 with a null body while there is no result yet; any
+  // failure propagates so the caller can tell "no result" from "request failed".
   async getResult(projectId: string): Promise<CalculationResult | null> {
-    try {
-      return await this.request<CalculationResult>(`/projects/${projectId}/result`);
-    } catch (error) {
-      logger.warn('Failed to fetch calculation result', {
-        projectId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
+    return this.request<CalculationResult | null>(`/projects/${projectId}/result`);
   }
 
   // Downloads a project's BeCoMe result as a PDF or CSV file. Bearer auth means
