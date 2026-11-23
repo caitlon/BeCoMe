@@ -148,15 +148,17 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-# The environment is read in api/config.py and nowhere else, so every value passes the
-# Settings validators and per-profile defaults. fastapi.HTTPException stays allowed:
+# The environment is read in api/config.py and, apart from one marked override in
+# migrations/env.py, nowhere else, so every value passes the Settings validators and
+# per-profile defaults. fastapi.HTTPException stays allowed:
 # a route that raises it must log for itself, which a ban cannot express.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.getenv".msg = "Read the environment through Settings in api/config.py."
 "os.environ".msg = "Read the environment through Settings in api/config.py."
 "os.environb".msg = "Read the environment through Settings in api/config.py."
 "os.getenvb".msg = "Read the environment through Settings in api/config.py."
-"os.putenv".msg = "Set the environment through Settings in api/config.py."
+"os.putenv".msg = "Do not change the process environment; Settings in api/config.py reads it."
+"os.unsetenv".msg = "Do not change the process environment; Settings in api/config.py reads it."
 
 [tool.ruff.lint.per-file-ignores]
 "api/config.py" = ["TID251"]
