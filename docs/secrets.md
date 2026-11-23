@@ -66,13 +66,10 @@ either on a schedule. To rotate the backend one, create a new client key in the 
 project, set `SENTRY_DSN` with `--stdin --skip-deploys`, redeploy the backend once, then
 disable the old key.
 
-One credential is not a Railway variable. The Better Stack monitor of the dev API passes
-Cloudflare Access with a service token named `betterstack-dev-health`, admitted by the Service
-Auth policy of the Access application "BeCoMe dev" ([`security.md`](security.md#network-and-edge)).
-Its client id and secret live in the monitor's request headers in Better Stack, as
-`CF-Access-Client-Id` and `CF-Access-Client-Secret`, and nowhere else. The token is valid for one
-year and expires on 2027-11-23. Cloudflare does not warn before that, so rotate it before then, see
-[Access service token](#access-service-token).
+One credential is not a Railway variable: the service token `betterstack-dev-health`, which lets
+the Better Stack monitor of the dev API pass Cloudflare Access ([`security.md`](security.md#network-and-edge)).
+Its values live in the monitor's request headers in Better Stack and nowhere else once the
+procedure's temporary files are deleted, see [Access service token](#access-service-token).
 
 ## CI secrets
 
@@ -522,19 +519,32 @@ Per provider:
 
 ### Access service token
 
-An expired or revoked token shows as a 302 incident on the dev API monitor, because the monitor
-follows no redirects. Replace it before 2027-11-23.
+The token was created on 2026-11-23 with a one-year duration and expires on 2027-11-23. The
+account's Cloudflare notification "Expiring Service Token Alert" (enabled, email) warns 7 days
+before any Access service token expires, and "Leaked Service Token Alert" warns when one is
+detected as leaked. An expired or revoked token shows as a 302 incident on the dev API monitor.
 
-1. Create a new service token in Cloudflare Zero Trust, under Access, Service credentials. The
-   zone token in `.env` cannot create one. The Cloudflare API does it with an account-scoped
-   OAuth session. Write the client id and secret to files in `"$S"` and never print them.
-2. Add the new token to the Service Auth policy of "BeCoMe dev" next to the old one.
-3. Put the new client id and secret into the monitor's request headers in Better Stack,
-   `CF-Access-Client-Id` and `CF-Access-Client-Secret`, and wait for one green check.
-4. Remove the old token from the policy and delete it.
-5. Verify. The monitor stays up. A `curl` to `https://api-atelier.becomify.app/api/v1/health`
-   with the two headers, each read from a file with `-H @file`, answers `200`, and without them
-   it answers `302`.
+- **Expiry.** Refresh the token (Zero Trust, Access, Service credentials, Refresh; API
+  `POST /accounts/{account_id}/access/service_tokens/{service_token_id}/refresh`). Refresh extends
+  the expiry by the configured duration and keeps the client id and secret, so Better Stack needs
+  no change. Then update the expiry date above.
+- **Leak or suspected leak.** Rotate the secret (Rotate; API `.../{service_token_id}/rotate`),
+  which keeps the client id and issues a new secret, then put the new secret in the monitor's
+  `CF-Access-Client-Secret` header. Keep no grace period after a leak.
+
+Handle the values without printing them. Start with `umask 077; S="$(mktemp -d)"` as in the
+rotation rules. For the `curl` check write header-format files, `CF-Access-Client-Id: <id>` and
+`CF-Access-Client-Secret: <secret>`, while Better Stack's header fields take the bare values. The
+zone token in `.env` cannot manage service tokens, the API needs an account-scoped OAuth session.
+
+1. Refresh or rotate the token.
+2. After a rotation, verify the new secret with `curl` as in step 4 before saving it in Better
+   Stack. A refresh skips this step and the next.
+3. Save it in the monitor's headers, then wait for a check that ran after the save.
+4. Verify. `curl -s -o /dev/null -w '%{http_code}\n' -H @"$S/id.header" -H @"$S/secret.header"
+   https://api-atelier.becomify.app/api/v1/health` answers `200`, and the same without the two
+   headers answers `302`. The monitor stays up.
+5. Finish with `rm -rf "$S"`.
 
 ### Bucket credentials
 

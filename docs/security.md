@@ -624,20 +624,26 @@ The dev environment also sits behind Cloudflare Access on both hosts. One Access
 "BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
 policy of type Service Auth admits one Access service token, which only the Better Stack monitor
-of the dev API uses. Anyone else gets a 302 to the Access login on every path of both hosts,
-`/api/v1/health` included. `api.becomify.app` and `www.becomify.app` stay public, and the origin
-lock still applies behind Access. Checked from outside on 23 November 2026.
+of the dev API uses. The policy belongs to the same application, so that token passes Access on
+every path of both dev hosts, not only the health route, and its blast radius is the dev
+environment. Any other request without an Access session gets a 302 to the Access login on every
+path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
+(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+applies behind Access. Checked from outside on 23 November 2026.
 
 The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
 through every hostname of the application and sets its session cookie on each, so the SPA's
 credentialed `fetch` calls to the API host carry an Access cookie without a top-level visit to
-it. A browser whose Access session predates this setup, or whose 24-hour session has expired,
-gets a CORS error on API calls until the user reloads the page and logs in again.
-`options_preflight_bypass` is on as well: browsers send no cookies on a CORS preflight, so Access
-cannot authenticate one, and it lets OPTIONS requests through to the origin, where
+it. A browser whose Access session predates this setup keeps a valid cookie for the frontend
+only, so a reload logs nobody in and API calls fail with a CORS error until the user logs out of
+Access (`https://atelier.becomify.app/cdn-cgi/access/logout`) and logs in again. When the 24-hour
+session expires, a reload sends the user through the login, which sets the cookie on both hosts
+again. `options_preflight_bypass` is on as well: browsers send no cookies on a CORS preflight, so
+Access cannot authenticate one, and it lets OPTIONS requests through to the origin, where
 `CORSMiddleware` answers them. A service token in the browser is no option, because its secret
-would ship in the public bundle, and Access policies have no selector for the Origin or Referer
-header.
+would ship in the JavaScript every visitor of the frontend downloads. A policy keyed on the Origin
+or Referer header would not protect anything either, since any client outside a browser sets those
+headers freely (and Access has no such selector).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
@@ -784,10 +790,9 @@ monitor on `https://www.becomify.app/`, two uptime monitors call `/api/v1/health
 Cloudflare on each API host: `api.becomify.app` (prod) and
 `api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
 redirects, and opens an incident and emails the team on any status other than 200. The dev API
-sits behind Cloudflare Access, so its monitor sends the Access service token as the
-`CF-Access-Client-Id` and `CF-Access-Client-Secret` request headers. They live in the
-monitor's request headers in Better Stack and nowhere else. A 302 on that monitor means the token
-expired or someone revoked it, see [secrets](secrets.md#access-service-token). The API monitors
+monitor passes Access with a service token held in its request headers in Better Stack. A 302
+there means the token expired or was revoked, the Service Auth policy changed, or the monitor's
+headers are wrong, see [secrets](secrets.md#access-service-token). The API monitors
 exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
 Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
 monitor alone would stay green. The origin lock lets the health route through without the secret
