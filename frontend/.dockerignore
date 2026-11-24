@@ -23,3 +23,6 @@ playwright-report
 
 # Server-render bundle, built to prerender the public pages and never shipped
 dist-ssr
+
+# The throwaway TLS key and certificate of the local E2E setup
+.certs
