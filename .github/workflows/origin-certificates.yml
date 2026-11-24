@@ -64,7 +64,12 @@ jobs:
 
             if ! out=$(timeout 20 openssl s_client -connect "$target:443" -servername "$host" \
               -verify_hostname "$host" -verify_return_error < /dev/null 2>&1); then
+              # The verify code names the reason without the target. A handshake the server
+              # aborts before any certificate reports code 0, so say that instead.
               reason=$(printf '%s\n' "$out" | grep -m1 'Verify return code:' || true)
+              if [ -z "$reason" ] || [ "${reason#*code: 0 }" != "$reason" ]; then
+                reason="no certificate received"
+              fi
               echo "::error::$host: the TLS handshake or the chain and host name verification failed${reason:+ ($reason)}"
               failed=1
               continue
