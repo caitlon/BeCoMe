@@ -667,11 +667,14 @@ The dev environment also sits behind Cloudflare Access on both hosts. One Access
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
 policy of type Service Auth admits one Access service token, which only the Better Stack monitor
 of the dev API uses. The policy belongs to the same application, so that token passes Access on
-every path of both dev hosts, not only the health route, and its blast radius is the dev
-environment. Any other request without an Access session gets a 302 to the Access login on every
-path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
-(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
-applies behind Access. Checked from outside on 23 November 2026.
+both dev hosts, not only on the health route, and its blast radius is the dev environment. The
+ACME challenge path described below needs no token, because its own application lets everyone
+through. Any other request without an Access
+session gets a 302 to the Access login on every path of both hosts, `/api/v1/health` included,
+except CORS preflights, which pass to the origin (next paragraph) and the ACME challenge path
+described below. `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+applies behind Access. Checked from outside on 23 November 2026, and the ACME challenge
+exception on 24 November 2026.
 
 The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
 through every hostname of the application and sets its session cookie on each, so the SPA's
@@ -687,6 +690,24 @@ would ship in the JavaScript that every signed-in user of the frontend downloads
 tied to no person. A policy keyed on the Origin or Referer header would not protect anything
 either, since any client outside a browser sets those headers freely (and Access has no such
 selector).
+
+Cloudflare runs SSL mode Full (strict) for the whole zone, so it verifies the certificate each
+Railway origin presents and answers 526 when one is expired or does not match the host. Railway
+issues and renews those certificates (Let's Encrypt, about 90 days) through HTTP-01 challenges
+that arrive through Cloudflare. Access would answer a challenge on a dev host with a 302 to its
+login, and the certificate would expire unrenewed (the `atelier.becomify.app` one did on 29
+October 2026). A second Access application, "BeCoMe dev ACME challenge", therefore covers
+`/.well-known/acme-challenge/` on both dev hosts with one Bypass policy for everyone. The more
+specific path wins over "BeCoMe dev", so only that path is open and the rest of dev stays behind
+Access.
+
+The weekly workflow `.github/workflows/origin-certificates.yml` connects to each origin with the
+public host name as SNI, verifies the chain and the host name, and fails when that check fails or
+fewer than 21 days of validity are left, so a failed renewal shows up before Cloudflare starts
+answering 526. It reads the list of public hosts and their Railway targets from the repository
+secret `ORIGIN_CERT_TARGETS`. The list is secret because a target reaches the origin without
+passing Cloudflare, and the workflow masks it and prints only the host, the days left, the
+issuer and, on a failure, the OpenSSL verify code ([secrets](secrets.md#ci-secrets)).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
