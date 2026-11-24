@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
+from sqlalchemy.exc import DBAPIError
 from sqlmodel import Session
 
 from api.config import Environment, Settings
@@ -73,6 +74,31 @@ class TestDatabaseEngine:
 
             # THEN: engine URL should be SQLite
             assert "sqlite" in str(test_engine.url)
+        finally:
+            _dispose_and_clear_engine()
+
+    @patch("api.db.engine.get_settings")
+    def test_failing_statement_keeps_bound_values_out_of_exception_text(
+        self, mock_get_settings: MagicMock
+    ) -> None:
+        """A statement error on the real engine does not carry the bound parameter values."""
+        # GIVEN: the engine the module builds, and a bound value that must not be echoed
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
+        mock_get_settings.return_value.debug = False
+        sentinel_value = "bound-value-sentinel"
+        get_engine.cache_clear()
+
+        try:
+            # WHEN: a statement against a missing table fails with that value bound
+            with pytest.raises(DBAPIError) as exc_info, get_engine().connect() as connection:
+                connection.execute(
+                    text("INSERT INTO no_such_table (value) VALUES (:value)"),
+                    {"value": sentinel_value},
+                )
+
+            # THEN: the statement is reported, the bound value is not
+            assert "no_such_table" in str(exc_info.value)
+            assert sentinel_value not in str(exc_info.value)
         finally:
             _dispose_and_clear_engine()
 
