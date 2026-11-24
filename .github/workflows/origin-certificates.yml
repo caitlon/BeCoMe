@@ -64,7 +64,8 @@ jobs:
 
             if ! out=$(timeout 20 openssl s_client -connect "$target:443" -servername "$host" \
               -verify_hostname "$host" -verify_return_error < /dev/null 2>&1); then
-              echo "::error::$host: the TLS handshake or the chain and host name verification failed"
+              reason=$(printf '%s\n' "$out" | grep -m1 'Verify return code:' || true)
+              echo "::error::$host: the TLS handshake or the chain and host name verification failed${reason:+ ($reason)}"
               failed=1
               continue
             fi
@@ -73,8 +74,9 @@ jobs:
               failed=1
               continue
             fi
-            not_after=$(printf '%s\n' "$cert" | openssl x509 -noout -enddate | cut -d= -f2)
-            issuer=$(printf '%s\n' "$cert" | openssl x509 -noout -issuer | sed -n 's/.*CN *= *//p' | cut -d, -f1)
+            info=$(printf '%s\n' "$cert" | openssl x509 -noout -enddate -issuer)
+            not_after=$(printf '%s\n' "$info" | sed -n 's/^notAfter=//p')
+            issuer=$(printf '%s\n' "$info" | sed -n 's/^issuer=.*CN *= *//p' | cut -d, -f1)
             end=$(date -ud "$not_after" +%s)
             days=$(((end - now) / 86400))
             echo "$host: $days days left, issuer ${issuer:-unknown}"

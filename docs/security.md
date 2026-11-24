@@ -667,10 +667,11 @@ The dev environment also sits behind Cloudflare Access on both hosts. One Access
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
 policy of type Service Auth admits one Access service token, which only the Better Stack monitor
 of the dev API uses. The policy belongs to the same application, so that token passes Access on
-every path of both dev hosts, not only the health route, and its blast radius is the dev
-environment. Any other request without an Access session gets a 302 to the Access login on every
-path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
-(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+every path of both dev hosts except the ACME challenge path described below, not only the
+health route, and its blast radius is the dev environment. Any other request without an Access
+session gets a 302 to the Access login on every path of both hosts, `/api/v1/health` included,
+except CORS preflights, which pass to the origin (next paragraph) and the ACME challenge path
+described below. `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
 applies behind Access. Checked from outside on 23 November 2026.
 
 The application has `eager_redirect_cookie_setting` on. At login Access walks the browser

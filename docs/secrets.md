@@ -89,7 +89,9 @@ from `secrets.*` in `.github/workflows/`.
 target host>`, where the target is the content of the host's proxied CNAME record in the
 Cloudflare zone. It is kept secret only to hide the targets, which reach the origin without
 passing Cloudflare. Update it when a custom domain is added, removed or given a new target,
-reading the targets from the Cloudflare DNS records, and replace the whole value:
+reading the targets from the Cloudflare DNS records, and replace the whole value. Keep the public
+host first and the Railway target second on each line, because the workflow masks only the second
+field and prints the first:
 
 ```bash
 gh secret set ORIGIN_CERT_TARGETS < lines.txt
