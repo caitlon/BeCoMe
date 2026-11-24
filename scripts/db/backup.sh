@@ -16,8 +16,8 @@
 # Requires: a Railway CLI with `connect --tunnel-only` (5.71 or newer) that is logged in, an
 # SSH key registered with `railway ssh keys add`, a linked repo (`railway link`) or
 # RAILWAY_PROJECT_ID, jq, openssl, python3, and a local pg_dump at least as new as the server
-# (`brew install libpq`). A docker container cannot reach the tunnel, which listens on the
-# host's loopback only, so there is no docker fallback.
+# (`brew install libpq`). The script runs no pg_dump in a container: the tunnel listens on the
+# host's loopback, and a container on Docker Desktop could not reach it in a 2026-11-24 test.
 set -uo pipefail
 
 ENV_ARG="${1:-prod}"
@@ -53,7 +53,7 @@ DBN=$(railway variables -p "$DB_TUNNEL_PROJECT_ID" -e "$RW_ENV" -s "$DB_SVC" --j
 # host `localhost` is what the certificate's name allows (see lib-tunnel.sh).
 URL="postgresql://postgres@localhost:$DB_TUNNEL_PORT/$DBN?sslmode=verify-full&sslrootcert=$DB_TUNNEL_ROOT_CERT&connect_timeout=10"
 
-# The dump holds user data, so neither it nor the folder is readable by other local users.
+# The dump holds user data, so the file (and a backups/ folder this run creates) is owner-only.
 umask 077
 mkdir -p backups
 OUT="backups/${ENV_ARG}-$(date -u +%Y%m%dT%H%M%SZ).dump"

@@ -55,8 +55,7 @@ db_tunnel_open() {  # $1 = dev|prod, $2 = service name ("<env>-db", "<env>-vecto
   DB_TUNNEL_PROJECT_ID="${RAILWAY_PROJECT_ID:-$(railway status --json 2>/dev/null | jq -r '.id // empty')}"
   [ -n "$DB_TUNNEL_PROJECT_ID" ] || { echo "db tunnel: set RAILWAY_PROJECT_ID, or run 'railway link' in this repo first" >&2; return 1; }
 
-  help="${TMPDIR:-/tmp}"
-  DB_TUNNEL_DIR=$(mktemp -d "${help%/}/db-tunnel.XXXXXX") || return 1
+  DB_TUNNEL_DIR=$(mktemp -d "${TMPDIR:-/tmp}/db-tunnel.XXXXXX") || return 1
   chmod 700 "$DB_TUNNEL_DIR"
   root="$DB_TUNNEL_DIR/root.crt"
 

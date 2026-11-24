@@ -16,6 +16,8 @@
 #
 # The tunnel lands on the container's loopback, where Postgres trusts every connection:
 # while it is open, any process on this machine can connect as any role, with no password.
+# The exported PG* variables also point every libpq client the command starts at this
+# database, so a URL without a host inside the command reaches it too.
 # No public TCP proxy is involved, and the tunnel closes when the command ends or on Ctrl+C.
 #
 # Requires: a Railway CLI with `connect --tunnel-only` (5.71 or newer), an SSH key registered
