@@ -921,8 +921,11 @@ scrubber does not catch this, because it matches local *names* against a denylis
 leaking local goes by `data`. As a second layer, the credential fields in
 `api/schemas/auth.py` carry `repr=False`, so those values stay out of any `repr()`
 regardless of who calls it.
-The database engine is created with `hide_parameters=True` (`api/db/engine.py`), so a failing
-statement raises an exception whose message holds the SQL text but not the bound values.
+The database engine is created with `hide_parameters=True` (`api/db/engine.py`), so
+SQLAlchemy leaves the bound values out of the parameter block of its exception messages and of
+the SQL echo. PostgreSQL's own error text is not affected: a constraint or type error can quote
+a value in its message or its `DETAIL` line. The one constraint on personal data, the unique
+email, is caught where it can fire (registration), so that text does not reach the tracker.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
