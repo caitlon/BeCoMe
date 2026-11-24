@@ -53,7 +53,10 @@ export default defineRailway((ctx) => {
       rootDirectory: "/frontend",
     }),
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
-    healthcheck: "/",
+    // The image's health path is /healthz. prod keeps "/" until it runs an
+    // image that serves /healthz (the next promotion); then this becomes
+    // "/healthz" everywhere.
+    healthcheck: env === "prod" ? "/" : "/healthz",
     healthcheckTimeout: 30,
     replicas: { "europe-west4-drams3a": 1 },
     deploy,
