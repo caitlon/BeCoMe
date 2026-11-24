@@ -54,16 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install documentation dependencies
-        run: uv sync --locked --extra docs
+          extras: docs
 
       # Strict here too. The same build already passed on the pull request, but a
       # promotion merges several of them at once, and a link can break between two
