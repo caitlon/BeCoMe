@@ -29,6 +29,7 @@ on:
       - pyproject.toml
       - uv.lock
       - .github/workflows/docs.yml
+      - .github/actions/setup-python-uv/**
 
 # A production deploy is never cancelled, so runs queue instead of replacing each
 # other. Cancelling looks harmless and is not: the run reads "cancelled" rather
