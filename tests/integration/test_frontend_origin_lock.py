@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -223,8 +224,8 @@ class TestOriginLockGenerator:
         conf = out.read_text(encoding="utf-8")
         assert _map_lines(conf, "$origin_probe") == [
             "default 0;",
-            '"GET healthcheck.railway.app/" 1;',
-            '"GET healthcheck.railway.app/healthz" 1;',
+            '"~^GET healthcheck\\.railway\\.app/$" 1;',
+            '"~^GET healthcheck\\.railway\\.app/healthz$" 1;',
         ]
         assert _map_lines(conf, "$origin_allowed") == ["default 1;", '"00" 0;']
 
@@ -465,18 +466,19 @@ class TestOriginLockInNginx:
         _, conf = _run_script(tmp_path, CLOUDFLARE_ORIGIN_SECRET=_SECRET)
         probe = {"Host": "healthcheck.railway.app"}
         with _serving_nginx(docker, tmp_path, conf) as port:
-            assert _response(port, "/healthz", probe) == (200, b"")
-            assert _response(port, "/healthz", {"X-Origin-Verify": _SECRET}) == (200, b"")
+            assert _response(port, "/healthz", probe)[:2] == (200, b"")
+            assert _response(port, "/healthz", {"X-Origin-Verify": _SECRET})[:2] == (200, b"")
             assert _status(port, "/healthz") == 403
             assert _status(port, "/healthz", {"Host": "example.com"}) == 403
             assert _status(port, "/healthz", {"X-Origin-Verify": _SECRET.swapcase()}) == 403
             assert _status(port, "/healthz", probe, method="POST") == 403
             assert _status(port, "/", probe) == 200
             assert _status(port, "/healthz/", probe) == 403
-            request = urllib.request.Request(f"http://127.0.0.1:{port}/healthz", headers=probe)
-            with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
-                assert len(response.headers.get_all("Content-Security-Policy")) == 1
-                assert len(response.headers.get_all("X-Frame-Options")) == 1
+            assert _status(port, "/HEALTHZ", probe) == 403
+            assert _status(port, "/Healthz", probe) == 403
+            headers = _response(port, "/healthz", probe)[2]
+            assert len(headers.get_all("Content-Security-Policy")) == 1
+            assert len(headers.get_all("X-Frame-Options")) == 1
 
     def test_nginx_without_a_secret_serves_every_request(self, tmp_path, docker):
         """
@@ -543,10 +545,10 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _status(
+def _response(
     port: int, path: str, headers: dict[str, str] | None = None, method: str = "GET"
-) -> int:
-    """Return the HTTP status of a request to the local nginx, error statuses included."""
+) -> tuple[int, bytes, Message]:
+    """Return the status, body and headers of a request to the local nginx, errors included."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
         headers={"User-Agent": "origin-lock-test", **(headers or {})},
@@ -555,22 +557,16 @@ def _status(
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
-            return response.status
+            return response.status, response.read(), response.headers
     except urllib.error.HTTPError as error:
-        return error.code
+        return error.code, error.read(), error.headers
 
 
-def _response(port: int, path: str, headers: dict[str, str] | None = None) -> tuple[int, bytes]:
-    """Return the status and body of a GET to the local nginx, error statuses included."""
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}{path}",
-        headers={"User-Agent": "origin-lock-test", **(headers or {})},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
-            return response.status, response.read()
-    except urllib.error.HTTPError as error:
-        return error.code, error.read()
+def _status(
+    port: int, path: str, headers: dict[str, str] | None = None, method: str = "GET"
+) -> int:
+    """Return the HTTP status of a request to the local nginx, error statuses included."""
+    return _response(port, path, headers, method)[0]
 
 
 def _is_serving(port: int, headers: dict[str, str], timeout: float = 30.0) -> bool:

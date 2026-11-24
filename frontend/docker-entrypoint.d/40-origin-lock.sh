@@ -17,7 +17,8 @@
 # a previous value with no current one. Two requests need no secret, both only when addressed
 # to healthcheck.railway.app, which is how Railway probes a new deploy: GET /healthz, the
 # health path, and, until Railway's healthcheck moves to it, GET /. The secret is never
-# printed.
+# printed. The two probe keys are anchored, case-sensitive regexes for the same reason as the
+# secret keys: a plain key would also match /HEALTHZ.
 #
 # ORIGIN_LOCK_CONF exists only so that a test can write somewhere else.
 
@@ -76,8 +77,8 @@ umask 077
     echo "}"
     echo 'map "$request_method $host$request_uri" $origin_probe {'
     echo "    default 0;"
-    echo '    "GET healthcheck.railway.app/" 1;'
-    echo '    "GET healthcheck.railway.app/healthz" 1;'
+    echo '    "~^GET healthcheck\.railway\.app/$" 1;'
+    echo '    "~^GET healthcheck\.railway\.app/healthz$" 1;'
     echo "}"
     echo 'map "$origin_secret_ok$origin_probe" $origin_allowed {'
     echo "    default 1;"
