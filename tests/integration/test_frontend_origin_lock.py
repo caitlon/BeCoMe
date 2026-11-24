@@ -473,6 +473,7 @@ class TestOriginLockInNginx:
             assert _status(port, "/healthz", probe, method="POST") == 403
             assert _status(port, "/", probe) == 403
             assert _status(port, "/healthz/", probe) == 403
+            assert _status(port, "/healthz?x=1", probe) == 403
             assert _status(port, "/HEALTHZ", probe) == 403
             assert _status(port, "/Healthz", probe) == 403
             headers = _response(port, "/healthz", probe)[2]
