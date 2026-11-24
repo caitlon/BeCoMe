@@ -667,12 +667,14 @@ The dev environment also sits behind Cloudflare Access on both hosts. One Access
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
 policy of type Service Auth admits one Access service token, which only the Better Stack monitor
 of the dev API uses. The policy belongs to the same application, so that token passes Access on
-every path of both dev hosts except the ACME challenge path described below, not only the
-health route, and its blast radius is the dev environment. Any other request without an Access
+both dev hosts, not only on the health route, and its blast radius is the dev environment. The
+ACME challenge path described below needs no token, because its own application lets everyone
+through. Any other request without an Access
 session gets a 302 to the Access login on every path of both hosts, `/api/v1/health` included,
 except CORS preflights, which pass to the origin (next paragraph) and the ACME challenge path
 described below. `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
-applies behind Access. Checked from outside on 23 November 2026.
+applies behind Access. Checked from outside on 23 November 2026, and the ACME challenge
+exception on 24 November 2026.
 
 The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
 through every hostname of the application and sets its session cookie on each, so the SPA's
@@ -704,8 +706,8 @@ public host name as SNI, verifies the chain and the host name, and fails when th
 fewer than 21 days of validity are left, so a failed renewal shows up before Cloudflare starts
 answering 526. It reads the list of public hosts and their Railway targets from the repository
 secret `ORIGIN_CERT_TARGETS`. The list is secret because a target reaches the origin without
-passing Cloudflare, and the workflow masks it and prints only the host, the days left and the
-issuer ([secrets](secrets.md#ci-secrets)).
+passing Cloudflare, and the workflow masks it and prints only the host, the days left, the
+issuer and, on a failure, the OpenSSL verify code ([secrets](secrets.md#ci-secrets)).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
