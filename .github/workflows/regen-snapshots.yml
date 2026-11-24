@@ -46,6 +46,7 @@ jobs:
   regen:
     name: Regenerate snapshots (amd64)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     # The same environment as the e2e-shard job in ci.yml, whose comments explain each
     # value: the tests register users and read the activation link from the API log.
     env:

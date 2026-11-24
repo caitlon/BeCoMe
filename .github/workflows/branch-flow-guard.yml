@@ -17,7 +17,8 @@ permissions:
 jobs:
   enforce-flow:
     name: Enforce promotion chain
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Check base/head branch pair
         env:
@@ -25,12 +26,8 @@ jobs:
           HEAD: ${{ github.head_ref }}
         run: |
           echo "PR: $HEAD -> $BASE"
-          case "$BASE" in
-            prod)
-              if [ "$HEAD" != "dev" ]; then
-                echo "::error::PRs into 'prod' (production) must come from 'dev'. Got '$HEAD'. Allowed flow: dev -> prod."
-                exit 1
-              fi
-              ;;
-          esac
+          if [ "$HEAD" != dev ]; then
+            echo "::error::PRs into 'prod' (production) must come from 'dev'. Got '$HEAD'. Allowed flow: dev -> prod."
+            exit 1
+          fi
           echo "Promotion chain respected."

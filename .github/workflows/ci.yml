@@ -34,9 +34,14 @@ jobs:
   # 71 seconds, of which the linters themselves were 2. Ruff is under a second and
   # mypy reports zero off its cache; the rest was setup and the frontend checks.
   # Split, the two run side by side and the gate is as long as the slower one.
+  #
+  # Every job carries timeout-minutes, at least three times its longest run over the
+  # last 27 runs (Python Tests 6.3 min, the rest under 4), so a stalled step fails in
+  # minutes instead of holding the runner and the required Check for six hours.
   lint-python:
     name: Lint (Python)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -96,6 +101,7 @@ jobs:
   docs-build:
     name: Docs Site
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -125,6 +131,7 @@ jobs:
   lint-frontend:
     name: Lint (frontend)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -155,6 +162,7 @@ jobs:
     name: Code Quality Checks
     runs-on: ubuntu-24.04
     needs: [lint-python, lint-frontend]
+    timeout-minutes: 5
     steps:
       - name: Report lint results
         env:
@@ -172,6 +180,7 @@ jobs:
     name: Dependency Audit
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
     # Network-bound audits (pip-audit -> pypi.org, npm audit -> npm registry) live here,
     # not in the required "Code Quality Checks" job, so a transient registry timeout cannot
     # fail the required lint check or skip the test jobs that depend on it. Retries absorb
@@ -226,6 +235,7 @@ jobs:
     name: Python Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 20
     env:
       APP_ENV: "test"
       SECRET_KEY: test-secret-key-for-ci
@@ -288,7 +298,7 @@ jobs:
       # Set one point under the 99% the suite currently reaches, which locks in the level
       # without breaking on a single added line.
       - name: Run Python tests with coverage
-        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage XML
         if: always()
@@ -298,18 +308,11 @@ jobs:
           path: coverage.xml
           retention-days: 30
 
-      - name: Upload Python coverage HTML
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: python-coverage-report
-          path: htmlcov/
-          retention-days: 30
-
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -373,6 +376,7 @@ jobs:
     name: Backend E2E Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
     env:
       APP_ENV: "test"
       TESTING: "1"
@@ -598,6 +602,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: e2e-shard
     if: always()
+    timeout-minutes: 5
     steps:
       - name: Report shard results
         env:
@@ -624,6 +629,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/prod'
+    timeout-minutes: 15
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
