@@ -433,8 +433,9 @@ A request that carries neither value gets `403`, recorded as `origin_refused`, w
 `missing_header` when it has no header at all, and `secret_mismatch` when the value is wrong, so
 a mismatch stops the whole site. Only the platform health probe, a
 `GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
-secret. The frontend answers `403` the same way, and its only exemption is `GET /` addressed to
-`healthcheck.railway.app`.
+secret. The frontend answers `403` the same way. Its only exemptions are `GET /healthz`, its
+health path, and `GET /`, which stays exempt until Railway's health check moves to `/healthz`,
+both addressed to `healthcheck.railway.app`.
 
 ### Database and Redis credentials
 
