@@ -8,6 +8,7 @@ from typing import Any
 import fakeredis
 import pytest
 import sentry_sdk
+import sentry_sdk.integrations as sentry_integrations
 from fastapi.testclient import TestClient
 from sentry_sdk.transport import Transport
 
@@ -79,14 +80,30 @@ class _FailingRegistration:
         raise RuntimeError("registration failed")
 
 
+def _forget_redis_integration() -> None:
+    """Make the next ``sentry_sdk.init`` treat the Redis integration as in a fresh process.
+
+    The SDK records installed integrations per process, and an integration installed by an
+    earlier ``init`` stays enabled even when a later ``init`` lists it in
+    ``disabled_integrations``. A deployed process calls ``init`` once; a test worker calls it
+    many times, so the Redis entry is dropped from the registry around each test. Its patch
+    stays in place but is inert for a client without the integration.
+    """
+    sentry_integrations._installed_integrations.discard("redis")
+
+
 @pytest.fixture
 def transport() -> Iterator[_KeepEnvelopes]:
-    """The capturing transport; the SDK client is reset afterwards."""
+    """The capturing transport; the SDK client and its scopes are reset around the test."""
+    _forget_redis_integration()
+    sentry_sdk.get_isolation_scope().clear()
+    sentry_sdk.get_current_scope().clear()
     keep = _KeepEnvelopes()
     try:
         yield keep
     finally:
         sentry_sdk.get_global_scope().set_client(None)
+        _forget_redis_integration()
 
 
 def _build_client(
