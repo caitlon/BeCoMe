@@ -214,7 +214,7 @@ class TestOriginLockGenerator:
         GIVEN a secret
         WHEN the probe map and the $origin_allowed map are read
         THEN a request is refused only when it fails the secret and is not the probe,
-            and the probe is GET on healthcheck.railway.app at / or /healthz and nothing else
+            and the probe is GET on healthcheck.railway.app at /healthz and nothing else
 
         The two maps are what the 403 in nginx.conf reads, so a flipped default or key
         would open or close the whole site.
@@ -224,7 +224,6 @@ class TestOriginLockGenerator:
         conf = out.read_text(encoding="utf-8")
         assert _map_lines(conf, "$origin_probe") == [
             "default 0;",
-            '"~^GET healthcheck\\.railway\\.app/$" 1;',
             '"~^GET healthcheck\\.railway\\.app/healthz$" 1;',
         ]
         assert _map_lines(conf, "$origin_allowed") == ["default 1;", '"00" 0;']
@@ -434,7 +433,7 @@ class TestOriginLockInNginx:
         WHEN requests carry the current secret, the previous one, none, a wrong-case, longer or
             shorter secret, and when the probe host asks for /, for another path, for / with a
             query string, and for / by POST
-        THEN the two secrets and the probe of / get 200, and everything else gets 403
+        THEN the two secrets get 200, and everything else gets 403, the probe host's / included
 
         The second pair starts with "-" and "_", which nginx must read as part of a key.
         """
@@ -449,7 +448,7 @@ class TestOriginLockInNginx:
             assert _status(port, "/", {"X-Origin-Verify": secret.swapcase()}) == 403
             assert _status(port, "/", {"X-Origin-Verify": secret + "x"}) == 403
             assert _status(port, "/", {"X-Origin-Verify": secret[:-1]}) == 403
-            assert _status(port, "/", probe) == 200
+            assert _status(port, "/", probe) == 403
             assert _status(port, "/login", probe) == 403
             assert _status(port, "/?x=1", probe) == 403
             assert _status(port, "/", probe, method="POST") == 403
@@ -460,7 +459,7 @@ class TestOriginLockInNginx:
         WHEN /healthz is requested by the probe host, with the secret, and by another host
             or with a wrong secret, and when the probe host asks for / and for another path
         THEN the probe host and the secret get 200 with an empty body, the others get 403,
-            / is still exempt for the probe host while any other path is not, and the answer
+            / is refused for the probe host like any other path, and the answer
             carries the server-level security headers once
         """
         _, conf = _run_script(tmp_path, CLOUDFLARE_ORIGIN_SECRET=_SECRET)
@@ -472,8 +471,9 @@ class TestOriginLockInNginx:
             assert _status(port, "/healthz", {"Host": "example.com"}) == 403
             assert _status(port, "/healthz", {"X-Origin-Verify": _SECRET.swapcase()}) == 403
             assert _status(port, "/healthz", probe, method="POST") == 403
-            assert _status(port, "/", probe) == 200
+            assert _status(port, "/", probe) == 403
             assert _status(port, "/healthz/", probe) == 403
+            assert _status(port, "/healthz?x=1", probe) == 403
             assert _status(port, "/HEALTHZ", probe) == 403
             assert _status(port, "/Healthz", probe) == 403
             headers = _response(port, "/healthz", probe)[2]
