@@ -95,7 +95,7 @@ to the same variable of the backend service, and outside Railway the origin chec
 is unset (`docker-entrypoint.d/40-origin-lock.sh`, rotation in `docs/secrets.md`).
 
 `GET /healthz` answers 200 with an empty body, as the health path for Railway's check on dev and
-prod. Like `/`, it needs no secret when the request is addressed to `healthcheck.railway.app`.
+prod. It needs no secret when the request is addressed to `healthcheck.railway.app`. No other path is exempt.
 
 ## Docker
 
