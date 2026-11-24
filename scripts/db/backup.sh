@@ -16,8 +16,7 @@
 # Requires: a Railway CLI with `connect --tunnel-only` (5.71 or newer) that is logged in, an
 # SSH key registered with `railway ssh keys add`, a linked repo (`railway link`) or
 # RAILWAY_PROJECT_ID, jq, openssl, python3, and a local pg_dump at least as new as the server
-# (`brew install libpq`). The script runs no pg_dump in a container: the tunnel listens on the
-# host's loopback, and a container on Docker Desktop could not reach it in a 2026-11-24 test.
+# (`brew install libpq`). pg_dump runs on this machine; the script has no container fallback.
 set -uo pipefail
 
 ENV_ARG="${1:-prod}"
@@ -36,6 +35,7 @@ cleanup() { db_tunnel_close; rm -f "$ERRFILE"; }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 PG_DUMP=/opt/homebrew/opt/libpq/bin/pg_dump
 command -v "$PG_DUMP" >/dev/null 2>&1 || PG_DUMP=pg_dump

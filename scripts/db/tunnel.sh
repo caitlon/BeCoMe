@@ -41,6 +41,7 @@ fi
 trap db_tunnel_close EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 db_tunnel_open "$ENV_ARG" "$SVC" || exit 1
 

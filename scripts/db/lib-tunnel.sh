@@ -91,17 +91,24 @@ db_tunnel_open() {  # $1 = dev|prod, $2 = service name ("<env>-db", "<env>-vecto
 
 db_tunnel_close() {  # idempotent; safe in an EXIT trap even when db_tunnel_open failed halfway
   local pid="${DB_TUNNEL_PID:-}"
-  # A second Ctrl+C while the tunnel shuts down must not abandon the close half way.
+  # A second signal (Ctrl+C, TERM, HUP) while the tunnel shuts down must not abandon the close.
   trap '' INT TERM HUP
   if [ -n "$pid" ]; then
     if kill -0 "$pid" 2>/dev/null; then
+      # `railway connect` forwards the port through a child `ssh -L`. Stop that child first:
+      # when the CLI exits before it, the ssh is orphaned and keeps the port open.
+      pkill -TERM -P "$pid" 2>/dev/null
       kill -INT "$pid" 2>/dev/null
       _tunnel_wait_exit "$pid" 15 || { kill -TERM "$pid" 2>/dev/null; _tunnel_wait_exit "$pid" 10; }
     fi
+    local i=0
+    while [ -n "${DB_TUNNEL_PORT:-}" ] && _tunnel_listening "$DB_TUNNEL_PORT" && [ "$i" -lt 10 ]; do
+      sleep 0.2; i=$((i + 1))
+    done
     if kill -0 "$pid" 2>/dev/null; then
       echo "db tunnel: WARNING: the tunnel process $pid is still running. Kill it by hand: kill -9 $pid" >&2
     elif [ -n "${DB_TUNNEL_PORT:-}" ] && _tunnel_listening "$DB_TUNNEL_PORT"; then
-      echo "db tunnel: WARNING: something still listens on 127.0.0.1:$DB_TUNNEL_PORT (tunnel pid was $pid)" >&2
+      echo "db tunnel: WARNING: something still listens on 127.0.0.1:$DB_TUNNEL_PORT; find it with: lsof -nP -iTCP:$DB_TUNNEL_PORT -sTCP:LISTEN" >&2
     else
       wait "$pid" 2>/dev/null
       echo "db tunnel: closed" >&2

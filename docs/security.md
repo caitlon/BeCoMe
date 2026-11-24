@@ -1233,8 +1233,8 @@ tunnel lands on the container's loopback, where Postgres trusts every connection
 up any local process can connect as any role without a password. The script closes the tunnel when
 it ends, fails or is stopped with Ctrl+C. Run it attended rather than from a cron, and if it
 ever exits abnormally, look for a leftover `railway connect` process and stop it. It needs a
-local `pg_dump` at least as new as the server (`brew install libpq`). It runs no `pg_dump` in a
-container: in a test on 2026-11-24 a container could not reach the tunnel.
+local `pg_dump` at least as new as the server (`brew install libpq`), run on the host rather than
+in a container.
 
 Restore into any database with:
 
