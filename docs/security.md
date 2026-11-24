@@ -1232,7 +1232,9 @@ internet, and the connection is encrypted and checked against the database's own
 tunnel lands on the container's loopback, where Postgres trusts every connection, so while it is
 up any local process can connect as any role without a password. The script closes the tunnel when
 it ends, fails or is stopped with Ctrl+C. Run it attended rather than from a cron, and if it
-ever exits abnormally, look for a leftover `railway connect` process and stop it. It needs a
+ever exits abnormally, find what still listens on the port it printed
+(`lsof -nP -iTCP:<port> -sTCP:LISTEN`, usually an `ssh` started by `railway connect`) and stop
+it. It needs a
 local `pg_dump` at least as new as the server (`brew install libpq`), run on the host rather than
 in a container.
 
