@@ -94,9 +94,8 @@ is no build arg and needs no `Dockerfile` or `vite-env.d.ts` entry. On Railway i
 to the same variable of the backend service, and outside Railway the origin check is off when it
 is unset (`docker-entrypoint.d/40-origin-lock.sh`, rotation in `docs/secrets.md`).
 
-`GET /healthz` answers 200 with an empty body, as the health path for Railway's check. Dev probes it already and prod still probes `/` until
-the next promotion. Like `/`, it needs no secret when the request is addressed to
-`healthcheck.railway.app`.
+`GET /healthz` answers 200 with an empty body, as the health path for Railway's check on dev and
+prod. Like `/`, it needs no secret when the request is addressed to `healthcheck.railway.app`.
 
 ## Docker
 
