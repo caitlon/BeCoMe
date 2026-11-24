@@ -122,7 +122,7 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend), the pre-deploy migration, one replica in `europe-west4` (Railway key `europe-west4-drams3a`), and a restart on failure up to three times. App Sleep is on for dev only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone.
+The build and deploy settings of the backend and frontend services live in `.railway/railway.ts`. For each service it pins the Dockerfile: `docker/Dockerfile` for the API, and `frontend/Dockerfile` through the root directory `/frontend` for the frontend. It also sets the health check (`/api/v1/health` for the API, `/` for the frontend, which also answers `/healthz`), the pre-deploy migration, one replica in `europe-west4` (Railway key `europe-west4-drams3a`), and a restart on failure up to three times. App Sleep is on for dev only. The service names and the deploy branch come from the environment name. The file owns only those two services per environment and leaves variables alone.
 
 To change the settings, you need Railway CLI 5.64.0 or newer. Run these steps from the repository root:
 

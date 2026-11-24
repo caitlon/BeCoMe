@@ -617,20 +617,20 @@ host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `local
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
 The frontend containers apply the same rule. Their nginx answers 403 to a request without the
-`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a
-rotation. The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`,
-the same names the API uses, and on Railway each frontend service references the values of the
-backend service of its environment. An entrypoint script
-(`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them when the container starts, so the
-secret is never part of the image. A value is 32 to 128 URL-safe characters (`A-Z`, `a-z`,
-`0-9`, `_` and `-`) and is compared exactly, letter case included. The script stops the
-container on any other value. The one exemption is `GET /` addressed to
-`healthcheck.railway.app`, Railway's probe of a new deploy. The check is off only outside
-Railway, which is how local development, the compose stack and CI run the image. A Railway
-deploy without the secret, or with a previous value and no current one, refuses to start, as
-the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as
-the API keys its deploy check on the Railway environment, so a deploy outside Railway must set
-the secret or the frontend runs unlocked.
+`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a rotation.
+The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, the same names
+the API uses, and on Railway each frontend service references the values of the backend service of
+its environment. An entrypoint script (`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them
+when the container starts, so the secret is never part of the image. A value is 32 to 128 URL-safe
+characters (`A-Z`, `a-z`, `0-9`, `_` and `-`) and is compared exactly, letter case included. The
+script stops the container on any other value. The exemptions are `GET /healthz`, the image's health
+path, and `GET /`, which stays exempt until Railway's health check moves to `/healthz`. Both apply
+only when addressed to `healthcheck.railway.app`, Railway's probe of a new deploy. The check is off
+only outside Railway, which is how local development, the compose stack and CI run the image. A
+Railway deploy without the secret, or with a previous value and no current one, refuses to start, as
+the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as the
+API keys its deploy check on the Railway environment, so a deploy outside Railway must set the
+secret or the frontend runs unlocked.
 
 The API lock was checked from outside on 2 November 2026, on dev, test and prod, the three
 environments then in service. One `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
