@@ -192,7 +192,7 @@ jobs:
 
       # The sync above installs the dev extra, which holds pip-audit. The audit reads an
       # export of every locked extra, which covers what CI and the image install as well as
-      # the notebook, viz and docs extras CI never installs; an extra added later is
+      # the notebook and viz extras CI never installs; an extra added later is
       # covered without editing this step.
       - name: Audit every locked extra (pip-audit)
         run: |

@@ -939,7 +939,7 @@ November 2026, with the exact-pins row added on 23 November 2026 and the pip-aud
 | Bandit | `src` and `api`, medium severity and above | `Lint (Python)` in `ci.yml` | Yes |
 | detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
 | Exact pins | The dependency arrays of `pyproject.toml` (project, optional, dependency groups and the `[tool.uv]` lists, not the build backend in `[build-system]`; any `[tool.uv.sources]` entry is refused) and the two `package.json` files must each name one exact version, with no range, tag or URL, so a refresh cannot widen what is installed | `Lint (Python)` in `ci.yml` | Yes |
-| pip-audit | An export of every locked extra, which includes the notebook, viz and docs extras that CI does not install | `Dependency Audit` in `ci.yml` | Yes |
+| pip-audit | An export of every locked extra, which includes the notebook and viz extras that CI does not install | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
 | Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
