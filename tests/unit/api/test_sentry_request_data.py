@@ -29,6 +29,7 @@ _SENTINEL_HEADERS = {
     "X-CSRF-Token": "sentinel-csrf-value",
     "Authorization": "Bearer sentinel-bearer-value",
     "X-Custom": "sentinel-custom-value",
+    "User-Agent": "sentinel-user-agent-value",
 }
 _SENTINEL_COOKIE = "sentinel-cookie-value"
 _SENTINEL_QUERY = "sentinel-query-value"
@@ -269,7 +270,7 @@ class TestRedisCommands:
     def test_a_throttle_call_leaves_no_key_in_the_envelopes(self, monkeypatch, tmp_path, transport):
         """
         GIVEN the real app with Sentry on and every request sampled
-        WHEN a login throttle works against Redis inside a transaction that then errors
+        WHEN a login throttle works against Redis inside a transaction that captures a message
         THEN no envelope holds the throttle's key prefix or the digest of the identifier
         """
         _build_client(monkeypatch, tmp_path, transport, traces=1.0)
@@ -293,6 +294,16 @@ class TestRedisCommands:
 
 class TestScrubRequestData:
     """The filter function itself."""
+
+    def test_allowlist_is_exactly_the_four_reviewed_headers(self):
+        """
+        GIVEN the set of request headers the tracker may receive
+        WHEN it is compared with the reviewed list
+        THEN the two are equal, so widening the set means changing this test
+        """
+        reviewed = frozenset({"host", "accept", "content-type", "content-length"})
+
+        assert reviewed == ALLOWED_REQUEST_HEADERS
 
     def test_keeps_allowlisted_headers_whatever_their_case(self):
         """
@@ -415,7 +426,7 @@ class TestScrubLogRecordFields:
             }
         }
 
-        result = scrub_request_data(event, {})
+        result: Any = scrub_request_data(event, {})
 
         assert result["breadcrumbs"]["values"] == [
             {"category": "api", "data": {"event": "request_received"}},

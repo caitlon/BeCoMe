@@ -921,6 +921,8 @@ scrubber does not catch this, because it matches local *names* against a denylis
 leaking local goes by `data`. As a second layer, the credential fields in
 `api/schemas/auth.py` carry `repr=False`, so those values stay out of any `repr()`
 regardless of who calls it.
+The database engine is created with `hide_parameters=True` (`api/db/engine.py`), so a failing
+statement raises an exception whose message holds the SQL text but not the bound values.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks

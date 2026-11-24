@@ -133,6 +133,8 @@ def _create_engine() -> Engine:
     return create_engine(
         settings.database_url,
         echo=settings.debug,
+        # Keep bound values out of exception messages and logs.
+        hide_parameters=True,
         connect_args=connect_args,
         **pool_kwargs,
     )
