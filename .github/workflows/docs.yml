@@ -43,6 +43,7 @@ jobs:
   deploy:
     name: Publish to Cloudflare Pages
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # Read only. This job holds a Cloudflare deploy token, so it gets the smallest
     # GitHub grant that still works. `deployments: write` would only be needed to
     # pass `gitHubToken` to the action and have it write a GitHub deployment record,
