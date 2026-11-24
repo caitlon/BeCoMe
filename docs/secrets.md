@@ -82,7 +82,24 @@ from `secrets.*` in `.github/workflows/`.
 | `SONAR_TOKEN` | The SonarCloud job in `ci.yml` | SonarCloud |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | The publish job in `docs.yml`, which deploys the site to Cloudflare Pages | Cloudflare |
 | `SEMGREP_APP_TOKEN` | `semgrep.yml`, which sends scan results to the Semgrep AppSec Platform | Semgrep AppSec Platform |
+| `ORIGIN_CERT_TARGETS` | `origin-certificates.yml`, the weekly check of the Railway origin certificates | Cloudflare DNS records, see below |
 | `GITHUB_TOKEN` | `pr-size.yml` | Issued by GitHub for each run, nothing to rotate |
+
+`ORIGIN_CERT_TARGETS` is not a credential. It holds one line per public host, `<public host> <Railway
+target host>`, where the target is the content of the host's proxied CNAME record in the
+Cloudflare zone. It is kept secret only to hide the targets, which reach the origin without
+passing Cloudflare. Update it when a custom domain is added, removed or given a new target,
+reading the targets from the Cloudflare DNS records, and replace the whole value. Keep the public
+host first and the Railway target second on each line, because the workflow masks only the second
+field and prints the first:
+
+```bash
+gh secret set ORIGIN_CERT_TARGETS < lines.txt
+```
+
+`lines.txt` is a temporary file with one line per host. Delete it afterwards, and keep the
+targets out of commits, PR text and chat. Run the workflow once by hand
+(`gh workflow run origin-certificates.yml`) to confirm that every host passes.
 
 ## Variables that are not secrets
 
@@ -433,8 +450,8 @@ A request that carries neither value gets `403`, recorded as `origin_refused`, w
 `missing_header` when it has no header at all, and `secret_mismatch` when the value is wrong, so
 a mismatch stops the whole site. Only the platform health probe, a
 `GET /api/v1/health` addressed to `healthcheck.railway.app` or `localhost`, passes without the
-secret. The frontend answers `403` the same way, and its only exemption is `GET /` addressed to
-`healthcheck.railway.app`.
+secret. The frontend answers `403` the same way. Its only exemption is `GET /healthz`, its
+health path, addressed to `healthcheck.railway.app`.
 
 ### Database and Redis credentials
 

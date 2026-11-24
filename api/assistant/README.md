@@ -594,8 +594,12 @@ The backend's `ASSISTANT_VECTOR_DB_URL` is then
 `service` query parameter, names the application database, or lacks a single
 `sslmode=require` (or `verify-ca`, `verify-full`).
 
-Ingest runs from a developer machine, as the owner, through a temporary TCP proxy on the
-database service. Remove the proxy afterwards.
+Ingest runs from a developer machine, as the owner, through an SSH tunnel to the database
+service, opened by `scripts/db/tunnel.sh`. The tunnel verifies the server certificate against
+the database's own root CA and needs no public TCP proxy. It lands on the container's loopback,
+where Postgres trusts every connection, so the URL below carries no password, and while the
+tunnel is open any local process can connect without one. The tunnel closes when the command
+ends.
 
 Ingest embeds the corpus through the embedding settings, which default to the local
 llama-server on `127.0.0.1:8082`. Point them at the provider for this run, so the corpus is
@@ -607,10 +611,17 @@ so does `ASSISTANT_CAPTIONS_FILE`, because `--context captions` stops without it
 ASSISTANT_EMBEDDING_PROVIDER=api \
 ASSISTANT_EMBEDDING_BASE_URL=https://oai.endpoints.kepler.ai.cloud.ovh.net/v1 \
 ASSISTANT_EMBEDDING_MODEL=bge-m3 \
-ASSISTANT_VECTOR_DB_URL='postgresql+psycopg://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require' \
-  uv run python scripts/assistant/ingest.py --name docs_markdown_headers_500_o10_captions_bge_m3 \
-  --strategy markdown_headers --size 500 --overlap-pct 10 --context captions
+  scripts/db/tunnel.sh dev dev-vector -- sh -c \
+  'ASSISTANT_VECTOR_DB_URL="postgresql+psycopg://<owner>@localhost:$DB_TUNNEL_PORT/<database>?sslmode=verify-full&sslrootcert=$DB_TUNNEL_ROOT_CERT" \
+   uv run python scripts/assistant/ingest.py --name docs_markdown_headers_500_o10_captions_bge_m3 \
+   --strategy markdown_headers --size 500 --overlap-pct 10 --context captions'
 ```
+
+Use `prod prod-vector` for the production corpus. The inner `sh -c` is what expands
+`$DB_TUNNEL_PORT` and `$DB_TUNNEL_ROOT_CERT`: the tunnel picks a free port at run time, so the
+URL cannot be written before it opens. The script needs the Railway CLI 5.71 or newer, an SSH key
+registered with `railway ssh keys add`, and a local checkout linked with `railway link`. Its header
+lists the rest.
 
 The private corpus layer goes in with the same command once `ASSISTANT_PRIVATE_CORPUS_MANIFEST`
 and `ASSISTANT_PRIVATE_CORPUS_DIRS` are set as described above.
@@ -669,14 +680,16 @@ there (`ASSISTANT_PRIVATE_CORPUS_DIRS` is a JSON list, `'["/abs/corpus"]'`).
    ingest builds them with only their title and prints "some chunks have no matching caption". If
    every chunk is missing, the ingest stops with an error and writes nothing.
 3. Reload the environment's corpus database with the ingest command above, as the owner, through
-   a temporary proxy. Then query the `assistant_collections` row of the deployed database as the
-   owner: `psql 'postgresql://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require'
+   the SSH tunnel. Then query the `assistant_collections` row of the deployed database as the
+   owner, through a tunnel of its own: `scripts/db/tunnel.sh <env> <env>-vector -- sh -c 'psql
+   "postgresql://<owner>@localhost:$DB_TUNNEL_PORT/<database>?sslmode=verify-full&sslrootcert=$DB_TUNNEL_ROOT_CERT"
    -c "SELECT name, created_at, chunk_count, corpus_hash, app_version, corpus_version FROM
-   assistant_collections"`. `created_at` is the time of the reload, and it is the proof of it.
+   assistant_collections"'`. `created_at` is the time of the reload, and it is the proof of it.
    `corpus_hash` is built from each source file's hash once per chunk, so it changes when a source
    text changes or the sources split into a different number of chunks, and not on a reload that
    only added captions. `app_version` and `corpus_version` name the two checkouts, so either
-   stays the same when only the other repository changed. Remove the proxy.
+   stays the same when only the other repository changed. Each tunnel closes when its command
+   ends.
 4. Restart that environment's backend service. A restart is enough; no rebuild. The retriever is
    built once per process, and it builds its BM25 index from the collection's documents on the
    first search that needs one (`hybrid`, the default mode, and `bm25`). The build and every BM25
