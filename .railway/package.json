@@ -2,6 +2,6 @@
   "name": "become-railway-iac",
   "private": true,
   "devDependencies": {
-    "railway": "3.16.0"
+    "railway": "3.17.0"
   }
 }
