@@ -31,6 +31,7 @@ dev = [
     "mutmut==3.8.1",
     "locust==2.47.0",
     "fakeredis==2.40.0",
+    "import-linter==2.17",
 ]
 viz = [
     "numpy==2.5.4",
@@ -133,6 +134,8 @@ select = [
     "S",      # flake8-bandit (security)
     "SIM",    # flake8-simplify
     "RUF",    # ruff-specific rules
+    "TID251", # banned APIs (see banned-api below)
+    "TID252", # relative imports
 ]
 ignore = [
     "E501",     # line too long (handled by formatter)
@@ -142,9 +145,26 @@ ignore = [
     "B008",     # function call in default argument (FastAPI Depends pattern)
 ]
 
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# The environment is read in api/config.py and, apart from one marked override in
+# migrations/env.py, nowhere else, so every value passes the Settings validators and
+# per-profile defaults. fastapi.HTTPException stays allowed:
+# a route that raises it must log for itself, which a ban cannot express.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv".msg = "Read the environment through Settings in api/config.py."
+"os.environ".msg = "Read the environment through Settings in api/config.py."
+"os.environb".msg = "Read the environment through Settings in api/config.py."
+"os.getenvb".msg = "Read the environment through Settings in api/config.py."
+"os.putenv".msg = "Do not change the process environment; Settings in api/config.py reads it."
+"os.unsetenv".msg = "Do not change the process environment; Settings in api/config.py reads it."
+
 [tool.ruff.lint.per-file-ignores]
-# Tests intentionally use assert, hardcoded test credentials, and non-crypto randomness.
-"tests/**" = ["S101", "S105", "S106", "S311"]
+"api/config.py" = ["TID251"]
+# Tests intentionally use assert, hardcoded test credentials, and non-crypto randomness,
+# and set the environment before Settings loads.
+"tests/**" = ["S101", "S105", "S106", "S311", "TID251"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -211,5 +231,54 @@ filterwarnings = [
 data_file = ".cache/coverage/.coverage"
 
 [tool.mutmut]
-paths_to_mutate = "src/"
-runner = "python -m pytest -x -q --assert=plain -c /dev/null tests/unit/models tests/unit/calculators tests/unit/interpreters tests/integration/test_excel_reference.py tests/integration/test_data_loading.py"
+source_paths = ["src/"]
+also_copy = ["examples/"]
+# Same test selection the old mutmut 2 runner used: the core library tests only.
+pytest_add_cli_args_test_selection = [
+    "tests/unit/models",
+    "tests/unit/calculators",
+    "tests/unit/interpreters",
+    "tests/integration/test_excel_reference.py",
+    "tests/integration/test_data_loading.py",
+]
+# mutmut drives pytest in-process from a copy of the project in mutants/, so the
+# global addopts must not apply there: xdist workers would hide the stats mutmut
+# collects, and coverage would only slow every mutant run down.
+pytest_add_cli_args = ["-o", "addopts=", "-p", "tests.mutmut_support"]
+
+# Layer boundaries of the backend, checked by `uv run lint-imports` in CI. The
+# ignore_imports list is the violations that exist today: a baseline to shrink over
+# time, not patterns to copy. A new violation fails the check, and so does a listed one
+# that has been fixed but not deleted from the list (unmatched ignores are errors).
+[tool.importlinter]
+root_packages = ["src", "api"]
+# Needed so a contract can name sqlmodel and sqlalchemy.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "The core library (src) does not depend on the web API (api)"
+type = "forbidden"
+source_modules = ["src"]
+forbidden_modules = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "Routes do not touch the database directly"
+type = "forbidden"
+source_modules = ["api.routes"]
+forbidden_modules = ["sqlmodel", "sqlalchemy", "api.db.engine", "api.db.session"]
+# Routes import api.db.models for type names, and the models import sqlmodel, so an
+# indirect chain exists by design. This contract forbids only the direct import.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Backend layers: routes, services, schemas, db, utils"
+type = "layers"
+# Order measured on the import graph: services import schemas, schemas import db models and
+# utils, and db imports neither; utils is lowest so generic helpers stay free of the app.
+layers = ["api.routes", "api.services", "api.schemas", "api.db", "api.utils"]
+# Existing upward imports, to be removed over time; not allowed patterns.
+ignore_imports = [
+    "api.schemas.calculation -> api.services.agreement_level",
+    "api.schemas.data_export -> api.services.likert_verdict",
+    "api.utils.streaming -> api.services.storage.stored_object",
+]

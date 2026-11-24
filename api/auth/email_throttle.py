@@ -203,6 +203,27 @@ class RedisEmailSendThrottle:
         self._daily_cap = daily_cap
         self._daily_window = daily_window_seconds
 
+    def _bump_daily(self, daily_key: str) -> None:
+        """Count one send under the daily key, giving a counter without an expiry one.
+
+        ``SET NX EX``, ``INCR`` and ``TTL`` go out in one transaction, so a new counter gets
+        its expiry together with its first increment and a dropped connection cannot leave
+        it without one. A counter that already exists with no expiry (TTL ``-1``), left by
+        an older version, gets the window from a separate ``EXPIRE``. If that call fails,
+        the counter keeps no expiry until the next ``allow`` or ``record`` for the address
+        repeats it. ``EXPIRE NX`` is avoided because it needs Redis 7.
+
+        :param daily_key: Redis key of the address's daily counter.
+        :raises redis.RedisError: When the store fails; the caller fails open.
+        """
+        pipe = self._client.pipeline(transaction=True)
+        pipe.set(daily_key, 0, ex=self._daily_window, nx=True)
+        pipe.incr(daily_key)
+        pipe.ttl(daily_key)
+        results = pipe.execute()
+        if results[2] == -1:
+            self._client.expire(daily_key, self._daily_window)
+
     def allow(self, identifier: str) -> bool:
         """Return whether an email may be sent now, recording it when allowed."""
         digest = _digest(identifier)
@@ -213,13 +234,19 @@ class RedisEmailSendThrottle:
             if not self._client.set(cooldown_key, "1", nx=True, ex=self._cooldown):
                 _log_denied("cooldown", backend="redis", key_prefix=self._key_prefix)
                 return False
-            raw = self._client.get(daily_key)
+            pipe = self._client.pipeline(transaction=True)
+            pipe.get(daily_key)
+            pipe.ttl(daily_key)
+            raw, ttl = pipe.execute()
+            if ttl == -1:
+                # A counter an older version left without an expiry: give it the window
+                # before the cap check, or a counter at the cap would refuse for good.
+                self._client.expire(daily_key, self._daily_window)
             sent_today = int(raw) if isinstance(raw, bytes | str | int) else 0
             if sent_today >= self._daily_cap:
                 _log_denied("daily_cap", backend="redis", key_prefix=self._key_prefix)
                 return False
-            if self._client.incr(daily_key) == 1:
-                self._client.expire(daily_key, self._daily_window)
+            self._bump_daily(daily_key)
             return True
         except redis.RedisError as e:
             # Fail open: a store outage must never suppress a legitimate email.
@@ -233,9 +260,7 @@ class RedisEmailSendThrottle:
             # No NX: this send happens either way, so the cooldown window is restarted
             # rather than consulted.
             self._client.set(f"{self._key_prefix}:cooldown:{digest}", "1", ex=self._cooldown)
-            daily_key = f"{self._key_prefix}:daily:{digest}"
-            if self._client.incr(daily_key) == 1:
-                self._client.expire(daily_key, self._daily_window)
+            self._bump_daily(f"{self._key_prefix}:daily:{digest}")
         except redis.RedisError as e:
             # Fail open, as ``allow`` does: a store outage must not turn into an error
             # on a request whose email has already been decided.

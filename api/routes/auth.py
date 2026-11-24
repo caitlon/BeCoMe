@@ -555,6 +555,12 @@ def refresh_token(
     # a body); programmatic clients still post it in the request body.
     refresh = refresh_cookie or (data.refresh_token if data else None)
     if refresh is None:
+        # DEBUG, like the routine rejections in api/auth/jwt.py: a signed-out SPA asks
+        # before it knows it has no session.
+        logger.debug(
+            "Refresh refused: no token presented",
+            extra={"event": "refresh_rejected", "reason": "missing_token"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_INVALID_REFRESH_DETAIL,
@@ -563,6 +569,11 @@ def refresh_token(
     try:
         payload = decode_refresh_token(refresh, store)
     except TokenError:
+        # The cause and its level were logged as token_rejected where the token was read.
+        logger.debug(
+            "Refresh refused: token rejected",
+            extra={"event": "refresh_rejected", "reason": "invalid_token"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_INVALID_REFRESH_DETAIL,

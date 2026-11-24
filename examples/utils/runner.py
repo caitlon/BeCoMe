@@ -5,22 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from src.calculators.become_calculator import BeCoMeCalculator
-from src.models.fuzzy_number import FuzzyTriangleNumber
-
-from .data_loading import load_data_from_txt
-from .display import (
+from examples.utils.data_loading import load_data_from_txt
+from examples.utils.display import (
     display_step_1_arithmetic_mean,
     display_step_2_median,
     display_step_3_best_compromise,
     display_step_4_max_error,
 )
-from .formatting import display_case_header
+from examples.utils.formatting import display_case_header
+from src.calculators.become_calculator import BeCoMeCalculator
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 if TYPE_CHECKING:
+    from examples.utils.labels import DisplayLabels, FormattingLabels
     from src.models.expert_opinion import ExpertOpinion
-
-    from .labels import DisplayLabels, FormattingLabels
 
 
 @dataclass(frozen=True)

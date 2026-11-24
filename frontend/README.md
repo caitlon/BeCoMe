@@ -89,6 +89,11 @@ three Railway services while the bundler tree-shook `Sentry.init` out of every d
 A new `VITE_*` variable means editing three places: `Dockerfile`, the Railway service, and the
 `ImportMetaEnv` interface in `src/vite-env.d.ts`.
 
+`CLOUDFLARE_ORIGIN_SECRET` is not a `VITE_*` variable: the container reads it at start, so it
+is no build arg and needs no `Dockerfile` or `vite-env.d.ts` entry. On Railway it is a reference
+to the same variable of the backend service, and outside Railway the origin check is off when it
+is unset (`docker-entrypoint.d/40-origin-lock.sh`, rotation in `docs/secrets.md`).
+
 ## Docker
 
 Build and run with Docker:
@@ -107,6 +112,8 @@ Or use Docker Compose from the `docker/` directory:
 cd ../docker
 SECRET_KEY=$(openssl rand -hex 32) docker compose up --build
 ```
+
+The stack serves the app on http://localhost:3000 and the API on http://localhost:8000. Sign in with Chrome or Firefox: the session cookies are always Secure, and Safari does not store a Secure cookie set over plain HTTP on localhost.
 
 ## Internationalisation
 

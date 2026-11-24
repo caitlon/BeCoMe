@@ -68,6 +68,17 @@ jobs:
       - name: Run linting
         run: uv run ruff check .
 
+      # These two rules were enforced only by local editor hooks, which bind neither
+      # outside contributors nor Dependabot.
+      - name: Check comments and code are ASCII
+        run: uv run python scripts/ci/check_ascii_comments.py
+
+      - name: Check dependency pins are exact
+        run: uv run python scripts/ci/check_exact_pins.py
+
+      - name: Check import layers
+        run: uv run lint-imports
+
       - name: Run security linting (bandit)
         run: uv run bandit -c pyproject.toml -r src api --severity-level medium
 
@@ -177,22 +188,12 @@ jobs:
         run: uv python install 3.13.7
 
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra assistant
+        run: uv sync --locked --extra dev
 
-      - name: Audit Python dependencies (pip-audit)
-        run: |
-          for attempt in 1 2 3; do
-            uv run pip-audit --timeout 30 && exit 0
-            echo "::warning::pip-audit attempt $attempt failed (network?); retrying in 15s"
-            sleep 15
-          done
-          echo "::error::pip-audit failed after 3 attempts"
-          exit 1
-
-      # The install above holds only what CI runs. The notebook, viz and docs extras are
-      # local tooling and never deployed, but they share uv.lock and run on developer
-      # machines. Auditing an export of every extra covers them without installing them,
-      # and an extra added later is covered without editing this step.
+      # The sync above installs the dev extra, which holds pip-audit. The audit reads an
+      # export of every locked extra, which covers what CI and the image install as well as
+      # the notebook and viz extras CI never installs; an extra added later is
+      # covered without editing this step.
       - name: Audit every locked extra (pip-audit)
         run: |
           uv export --locked --all-extras --no-emit-project -o "$RUNNER_TEMP/all-extras.txt"
@@ -208,13 +209,8 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
+      # npm audit reads only package.json and package-lock.json, so nothing is installed.
       - name: Audit npm dependencies
         working-directory: frontend
         run: |

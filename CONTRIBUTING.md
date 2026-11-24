@@ -37,8 +37,10 @@ promotion pull request from `dev` to `prod` is opened by the maintainer.
   lines should be split.
 - Write commit messages and titles as `<type>: <short description>`, with the types `feat`,
   `fix`, `refactor`, `test`, `docs`, `chore`, `ci` and `style`.
-- CI runs linting, type checking, secret scanning, the docs build, a dependency audit and
-  the backend, frontend and end-to-end tests, and fails the backend run below 98 percent
+- CI runs linting, a check that code and comments are ASCII, a check that every dependency
+  is pinned to an exact version, a check that the backend layers import only in the allowed
+  direction, type checking, secret scanning, the docs build, a dependency
+  audit and the backend, frontend and end-to-end tests, and fails the backend run below 98 percent
   coverage. The `Check` job collects all of them and must be green before a pull request is
   merged.
 

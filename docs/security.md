@@ -41,7 +41,7 @@ checked, is in [`data-location.md`](data-location.md).
 | Bot check on the unauthenticated auth endpoints | Implemented | `api/auth/turnstile.py`, `api/services/turnstile_service.py` |
 | Input validation | Implemented | `api/schemas/` |
 | Configuration invariants per profile | Implemented | `api/config.py` |
-| Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
+| Network and edge: Cloudflare, Access on dev, CORS, headers | Implemented | `api/main.py`, `api/middleware/origin_lock.py`, Cloudflare |
 | Logging, observability, and PII scrubbing | Implemented | `api/logging_config.py`, `api/logging_context.py` |
 | Secrets management and rotation | Implemented | Railway variables, [below](#secrets) |
 | Dependencies and code scanning | Implemented | `.github/dependabot.yml`, `.github/workflows/`, [below](#dependencies-and-code-scanning) |
@@ -598,10 +598,11 @@ so a service that leaves it off answers 404 for the whole `/api/v1/assistant` pr
 ## Network and edge
 
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
-environment has its own host under it: `api.becomify.app` (production)
-and `api-atelier.becomify.app` (dev). A Cloudflare
-Transform Rule per host injects a shared secret header the origin then checks
-(`cloudflare_origin_secret`, a different value per environment, demanded of every deploy by
+environment has its own API host under it: `api.becomify.app` (production)
+and `api-atelier.becomify.app` (dev), and its own frontend host, `www.becomify.app` and
+`atelier.becomify.app`. A Cloudflare Transform Rule per environment injects a shared secret
+header into the API and frontend hosts, and the origin then checks it (`cloudflare_origin_secret`,
+a different value per environment, demanded of every deploy by
 `Settings._validate_deploy_invariants`).
 
 A deployed backend refuses with a 403 any request that does not carry the secret
@@ -615,10 +616,77 @@ One request needs no secret. It is `GET /api/v1/health` addressed to a platform 
 host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `localhost` (the
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
-The lock was checked from outside on 2 November 2026, on dev, test and prod, the three environments then in service. One
-`GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
+The frontend containers apply the same rule. Their nginx answers 403 to a request without the
+`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a
+rotation. The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`,
+the same names the API uses, and on Railway each frontend service references the values of the
+backend service of its environment. An entrypoint script
+(`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them when the container starts, so the
+secret is never part of the image. A value is 32 to 128 URL-safe characters (`A-Z`, `a-z`,
+`0-9`, `_` and `-`) and is compared exactly, letter case included. The script stops the
+container on any other value. The one exemption is `GET /` addressed to
+`healthcheck.railway.app`, Railway's probe of a new deploy. The check is off only outside
+Railway, which is how local development, the compose stack and CI run the image. A Railway
+deploy without the secret, or with a previous value and no current one, refuses to start, as
+the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as
+the API keys its deploy check on the Railway environment, so a deploy outside Railway must set
+the secret or the frontend runs unlocked.
+
+The API lock was checked from outside on 2 November 2026, on dev, test and prod, the three
+environments then in service. One `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
 naming that host, got a 403 on each, and the same path through Cloudflare got a 200. The check
 covers those three API hosts.
+
+Two Better Stack chart alerts watch for refused requests in the logs, one per backend log source,
+because one alert cannot read both. "Prod: requests refused at the origin" sits on the dashboard
+"BeCoMe backend alerts" (source `become-backend-prod`), and "Dev: requests refused at the origin"
+on "BeCoMe dev backend alerts" (source `become-backend`). Each counts the records with
+`event="origin_refused"`, which `api/middleware/origin_lock.py` writes with
+`ip="unverified-origin"` and a `reason` of `missing_header` or `secret_mismatch`, through the
+`event` label the sources already extract. The label has existed since the extraction was set up
+on 10 November 2026. The counts it feeds outlive the raw records, which Better Stack keeps for
+3 days, and from 10 to 23 November they were zero on both sources. An incident opens when 3 or
+more refusals fall in a 5-minute window and that stays true for 10 minutes, so it comes at least
+10 minutes after the failure starts, and only when there are at least 3 refusals in every 5
+minutes, about one every 100 seconds. It emails the team and resolves once the 5-minute count stays
+under 3 for 10 minutes. A stray direct hit or a short scanner burst does not hold for 10 minutes.
+A broken or missing Transform Rule refuses every request, so traffic of that rate or more keeps
+the count above the threshold. Below that rate, the API uptime monitor described further down
+still catches the same failure as a 403. The refusal record comes from the origin lock itself, so a refused health check
+writes one even though the health route adds no access log line. A `reason` of `secret_mismatch`
+points at the rule and the variables disagreeing, and `missing_header` at traffic that skipped
+Cloudflare or a rule that no longer covers the host, with `path` showing what was asked for. These
+alerts read the backend logs only: a refusal by the frontend's nginx is not in Better Stack, and
+on prod the `www.becomify.app` uptime monitor catches a frontend host the rule misses. Tested on
+23 November 2026 on dev: with the threshold lowered to one record in one minute and no hold, three
+direct requests without the header opened an incident in about two minutes, and the alert's
+usual settings were then restored. The prod alert has the same settings and was not fired.
+
+The dev environment also sits behind Cloudflare Access on both hosts. One Access application,
+"BeCoMe dev", covers `atelier.becomify.app` (the frontend) and `api-atelier.becomify.app` (the
+API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
+policy of type Service Auth admits one Access service token, which only the Better Stack monitor
+of the dev API uses. The policy belongs to the same application, so that token passes Access on
+every path of both dev hosts, not only the health route, and its blast radius is the dev
+environment. Any other request without an Access session gets a 302 to the Access login on every
+path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
+(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+applies behind Access. Checked from outside on 23 November 2026.
+
+The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
+through every hostname of the application and sets its session cookie on each, so the SPA's
+credentialed `fetch` calls to the API host carry an Access cookie without a top-level visit to
+it. A browser whose Access session predates this setup keeps a valid cookie for the frontend
+only, so a reload logs nobody in and API calls fail with a CORS error until the user logs out of
+Access (`https://atelier.becomify.app/cdn-cgi/access/logout`) and logs in again. When the 24-hour
+session expires, a reload sends the user through the login, which sets the cookie on both hosts
+again. `options_preflight_bypass` is on as well: browsers send no cookies on a CORS preflight, so
+Access cannot authenticate one, and it lets OPTIONS requests through to the origin, where
+`CORSMiddleware` answers them. A service token in the browser is no option, because its secret
+would ship in the JavaScript that every signed-in user of the frontend downloads, as a credential
+tied to no person. A policy keyed on the Origin or Referer header would not protect anything
+either, since any client outside a browser sets those headers freely (and Access has no such
+selector).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
@@ -764,14 +832,23 @@ Better Stack watches the deployed services from outside and from the logs. Besid
 monitor on `https://www.becomify.app/`, two uptime monitors call `/api/v1/health` through
 Cloudflare on each API host: `api.becomify.app` (prod) and
 `api-atelier.becomify.app` (dev). Each runs every 3 minutes from four regions, follows no
-redirects, and opens an incident and emails the team on any status other than 200. The API
-monitors exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` or a broken
-Transform Rule every API request answers 403 while the static frontend stays up, so the frontend
-monitor alone would stay green. The origin lock lets the health route through without the secret
+redirects, and opens an incident and emails the team on any status other than 200. The dev API
+monitor passes Access with a service token held in its request headers in Better Stack. A 302
+there means the token expired or was revoked, the Service Auth policy changed, or the monitor's
+headers are wrong, see [secrets](secrets.md#access-service-token). The API monitors
+exist because of the origin check: with a wrong `CLOUDFLARE_ORIGIN_SECRET` on the backend every
+API request answers 403 while the frontend stays up. There is one rule per environment and it
+covers the frontend host too, so a broken Transform Rule takes the frontend down as well, since
+its nginx checks the same header, and the monitor on `https://www.becomify.app/` catches that.
+The origin lock
+lets the health route through without the secret
 only for the platform probe's host names (`healthcheck.railway.app` and `localhost`), so a check
 addressed to an API host passes the origin check like any other request. A crashed backend is
 caught the same way. The health route is in
-`_SKIP_PATHS` of `api/middleware/request_logging.py`, so the checks add no log lines.
+`_SKIP_PATHS` of `api/middleware/request_logging.py`, so a check that passes adds no log line,
+while a refused one is still recorded as `origin_refused`. The two origin-refusal alerts above
+complement these uptime monitors: they read the refusals themselves, not the status a visitor
+sees.
 
 The two backend log sources (`become-backend`, `become-backend-prod`)
 extract four values from every record: the `event` field; `req_kind`, which sorts a request-log
@@ -779,7 +856,7 @@ completion line into `heavy` (`POST /api/v1/calculate`, opinion writes, which re
 result export), `assistant`, `crud` (any other `/api/` path) or `other`; `status_class` (`2xx` to
 `5xx`); and `duration_ms` as a histogram. The extraction applies only to records ingested after it
 was created. The dashboard "BeCoMe backend alerts" charts these values, and the alert rules read
-them. The rules exist on prod only and notify the team by email.
+them. The abuse, 5xx and latency rules exist on prod only and notify the team by email.
 
 Two rules watch for abuse and errors. The first counts `login_failure` and `access_denied` events
 apart and opens an incident of its own for either one that reaches 10 within five minutes.
@@ -794,8 +871,9 @@ fall in that hour. Calculation p95 above 2 s over an hour fires when at least 5
 `duration_ms`, the time of the work itself and not of the request.
 
 The minimum counts are there because at current traffic a p95 over two or three requests is
-noise. Dev has the same extraction and dashboard but no rules: its traffic is probes
-and testing, not users.
+noise. Dev has the same extraction and dashboard but only the origin-refusal alert, on its own
+dashboard "BeCoMe dev backend alerts", and none of the rules above: its traffic is probes and
+testing, not users.
 
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
 receive, so that trigger stays unwatched until it is decided where metrics live.
@@ -853,13 +931,15 @@ rotation steps, is in [`secrets.md`](secrets.md).
 ## Dependencies and code scanning
 
 What watches the dependencies and the code, as read from `.github/` and the GitHub API on 11
-November 2026. Some of it blocks a merge and some only reports, so the last column says which.
+November 2026, with the exact-pins row added on 23 November 2026 and the pip-audit row updated on
+24 November 2026. Some of it blocks a merge and some only reports, so the last column says which.
 
 | Check | What it covers | Where it runs | Blocks a merge |
 |-------|----------------|---------------|----------------|
 | Bandit | `src` and `api`, medium severity and above | `Lint (Python)` in `ci.yml` | Yes |
 | detect-secrets | Tracked files against `.secrets.baseline`, except migrations, translation files and the two lock files | `Lint (Python)` in `ci.yml` | Yes |
-| pip-audit | The installed set, then an export of every locked extra | `Dependency Audit` in `ci.yml` | Yes |
+| Exact pins | The dependency arrays of `pyproject.toml` (project, optional, dependency groups and the `[tool.uv]` lists, not the build backend in `[build-system]`; any `[tool.uv.sources]` entry is refused) and the two `package.json` files must each name one exact version, with no range, tag or URL, so a refresh cannot widen what is installed | `Lint (Python)` in `ci.yml` | Yes |
+| pip-audit | An export of every locked extra, which includes the notebook and viz extras that CI does not install | `Dependency Audit` in `ci.yml` | Yes |
 | npm audit | The production dependencies of `frontend`, moderate severity and above | `Dependency Audit` in `ci.yml` | Yes |
 | Trivy | Fixable high and critical vulnerabilities in the operating system and language packages of the built API and web images, reported to code scanning | `image-scan.yml`, on pull requests into `dev` that change a Dockerfile, a lock file or the workflow, and weekly | No. A pull request shows the alerts it adds, and the weekly run fails while any is open |
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
@@ -1052,8 +1132,10 @@ out of the file: they live in Railway variables.
 (`sslmode=require`), tags each connection with an `application_name`, and repeats the
 per-session statement and idle-in-transaction timeouts client-side through libpq `options`,
 so a single runaway query cannot monopolize the database. A laptop run outside tests,
-whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
-because the local Docker database has no TLS.
+whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead, so a
+local server without TLS still connects. The PostgreSQL in `docker/docker-compose.yml` has
+TLS on with the Debian image's self-signed certificate, because the compose `api` service
+reaches it as `db` and therefore requires TLS.
 
 It stops at `require` and does not use `verify-full`. The databases run Railway's
 `postgres-ssl` image, whose `init-ssl.sh` signs the server certificate with a root CA that it

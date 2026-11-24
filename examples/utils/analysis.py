@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .labels import AnalysisLabels
+    from examples.utils.labels import AnalysisLabels
 
 
 def calculate_agreement_level(
@@ -29,7 +29,7 @@ def calculate_agreement_level(
     'low'
     """
     if labels is None:
-        from .locales import EN_ANALYSIS
+        from examples.utils.locales import EN_ANALYSIS
 
         labels = EN_ANALYSIS
 
