@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -213,7 +214,7 @@ class TestOriginLockGenerator:
         GIVEN a secret
         WHEN the probe map and the $origin_allowed map are read
         THEN a request is refused only when it fails the secret and is not the probe,
-            and the probe is GET on healthcheck.railway.app at / and nothing else
+            and the probe is GET on healthcheck.railway.app at /healthz and nothing else
 
         The two maps are what the 403 in nginx.conf reads, so a flipped default or key
         would open or close the whole site.
@@ -223,7 +224,7 @@ class TestOriginLockGenerator:
         conf = out.read_text(encoding="utf-8")
         assert _map_lines(conf, "$origin_probe") == [
             "default 0;",
-            '"GET healthcheck.railway.app/" 1;',
+            '"~^GET healthcheck\\.railway\\.app/healthz$" 1;',
         ]
         assert _map_lines(conf, "$origin_allowed") == ["default 1;", '"00" 0;']
 
@@ -432,7 +433,7 @@ class TestOriginLockInNginx:
         WHEN requests carry the current secret, the previous one, none, a wrong-case, longer or
             shorter secret, and when the probe host asks for /, for another path, for / with a
             query string, and for / by POST
-        THEN the two secrets and the probe of / get 200, and everything else gets 403
+        THEN the two secrets get 200, and everything else gets 403, the probe host's / included
 
         The second pair starts with "-" and "_", which nginx must read as part of a key.
         """
@@ -447,10 +448,37 @@ class TestOriginLockInNginx:
             assert _status(port, "/", {"X-Origin-Verify": secret.swapcase()}) == 403
             assert _status(port, "/", {"X-Origin-Verify": secret + "x"}) == 403
             assert _status(port, "/", {"X-Origin-Verify": secret[:-1]}) == 403
-            assert _status(port, "/", probe) == 200
+            assert _status(port, "/", probe) == 403
             assert _status(port, "/login", probe) == 403
             assert _status(port, "/?x=1", probe) == 403
             assert _status(port, "/", probe, method="POST") == 403
+
+    def test_nginx_serves_the_health_path_to_the_probe_and_the_secret(self, tmp_path, docker):
+        """
+        GIVEN nginx running with the lock on and the repository's nginx.conf
+        WHEN /healthz is requested by the probe host, with the secret, and by another host
+            or with a wrong secret, and when the probe host asks for / and for another path
+        THEN the probe host and the secret get 200 with an empty body, the others get 403,
+            / is refused for the probe host like any other path, and the answer
+            carries the server-level security headers once
+        """
+        _, conf = _run_script(tmp_path, CLOUDFLARE_ORIGIN_SECRET=_SECRET)
+        probe = {"Host": "healthcheck.railway.app"}
+        with _serving_nginx(docker, tmp_path, conf) as port:
+            assert _response(port, "/healthz", probe)[:2] == (200, b"")
+            assert _response(port, "/healthz", {"X-Origin-Verify": _SECRET})[:2] == (200, b"")
+            assert _status(port, "/healthz") == 403
+            assert _status(port, "/healthz", {"Host": "example.com"}) == 403
+            assert _status(port, "/healthz", {"X-Origin-Verify": _SECRET.swapcase()}) == 403
+            assert _status(port, "/healthz", probe, method="POST") == 403
+            assert _status(port, "/", probe) == 403
+            assert _status(port, "/healthz/", probe) == 403
+            assert _status(port, "/healthz?x=1", probe) == 403
+            assert _status(port, "/HEALTHZ", probe) == 403
+            assert _status(port, "/Healthz", probe) == 403
+            headers = _response(port, "/healthz", probe)[2]
+            assert len(headers.get_all("Content-Security-Policy")) == 1
+            assert len(headers.get_all("X-Frame-Options")) == 1
 
     def test_nginx_without_a_secret_serves_every_request(self, tmp_path, docker):
         """
@@ -517,10 +545,10 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _status(
+def _response(
     port: int, path: str, headers: dict[str, str] | None = None, method: str = "GET"
-) -> int:
-    """Return the HTTP status of a request to the local nginx, error statuses included."""
+) -> tuple[int, bytes, Message]:
+    """Return the status, body and headers of a request to the local nginx, errors included."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
         headers={"User-Agent": "origin-lock-test", **(headers or {})},
@@ -529,9 +557,16 @@ def _status(
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
-            return response.status
+            return response.status, response.read(), response.headers
     except urllib.error.HTTPError as error:
-        return error.code
+        return error.code, error.read(), error.headers
+
+
+def _status(
+    port: int, path: str, headers: dict[str, str] | None = None, method: str = "GET"
+) -> int:
+    """Return the HTTP status of a request to the local nginx, error statuses included."""
+    return _response(port, path, headers, method)[0]
 
 
 def _is_serving(port: int, headers: dict[str, str], timeout: float = 30.0) -> bool:
