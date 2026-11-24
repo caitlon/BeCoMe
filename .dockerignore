@@ -1,76 +1,23 @@
-# Git
-.git/
-.github/
-.gitignore
-
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-.claude/
-
-# Testing and linting cache
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-.cache/
-htmlcov/
-.tox/
-
-# Local databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Environment files
-.env
-# Docker attaches a bare pattern to the context root and does not recurse into
-# subdirectories the way .gitignore does, so `.env.*` stopped covering the templates
-# the moment they moved into env/. The `**/` form matches at any depth.
-**/.env.*
-!**/.env.example
-
-# Docker (don't copy Docker files into image)
-docker/
-Dockerfile*
-docker-compose*.yml
-
-# Documentation and supplementary files
-docs/
-supplementary/
-*.md
+# The API image (docker/Dockerfile) copies only these paths, so the build context
+# is an allowlist: everything else stays out, whatever lands in the tree later.
+*
+!pyproject.toml
+!uv.lock
 !README.md
+!alembic.ini
+!src
+!api
+!migrations
 
-# Tests (not needed in production image)
-tests/
+# Local leftovers inside the allowed directories. The `**/` form matches at any
+# depth; a bare pattern would match only at the context root.
+**/__pycache__
+**/*.py[cod]
+**/*.log
+**/.DS_Store
+**/.env*
 
-# Frontend (deployed separately to Railway)
-frontend/
-
-# Notebooks and examples
-notebooks/
-examples/
-*.ipynb
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Misc
-*.log
-.DS_Store
-Thumbs.db
+# The READMEs under api/ and src/ are documentation; only the root one is read
+# by the build (pyproject.toml names it as the package readme).
+**/*.md
+!README.md

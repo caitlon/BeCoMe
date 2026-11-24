@@ -1,0 +1,111 @@
+name: Origin certificates
+
+# Checks the TLS certificate each Railway origin presents, because Cloudflare runs SSL mode Full
+# (strict) and answers 526 for an expired or mismatched one. Railway renews the certificates
+# on its own; this run only warns while there is still time to act. A host fails the run when
+# the chain or the host name does not verify, when the connection fails, or when fewer than
+# MIN_DAYS days are left.
+#
+# The repository secret ORIGIN_CERT_TARGETS holds one line per host: `<public host> <Railway
+# target host>`. The target is where the proxied CNAME points. It is a secret because it
+# reaches the origin without Cloudflare, and the log never shows it: each target is masked
+# before use and the only output is the public host, the days left, the issuer and, on a
+# failure, the OpenSSL verify code. Updating the list: docs/secrets.md.
+#
+# The job needs no repository content and no token, so there is no checkout and no
+# third-party action. A failed scheduled run is the alert.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  MIN_DAYS: 21
+
+jobs:
+  check:
+    name: Check origin certificates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify each origin certificate and its remaining validity
+        env:
+          ORIGIN_CERT_TARGETS: ${{ secrets.ORIGIN_CERT_TARGETS }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ORIGIN_CERT_TARGETS//[[:space:]]/}" ]; then
+            echo "::error::The secret ORIGIN_CERT_TARGETS is empty or not set (see docs/secrets.md)"
+            exit 1
+          fi
+
+          now=$(date +%s)
+          checked=0
+          failed=0
+
+          while IFS= read -r line || [ -n "$line" ]; do
+            line=${line%$'\r'}
+            if [ -z "${line//[[:space:]]/}" ]; then
+              continue
+            fi
+            host=""
+            target=""
+            extra=""
+            read -r host target extra <<< "$line"
+            if [ -z "$host" ] || [ -z "$target" ] || [ -n "$extra" ]; then
+              echo "::error::A line of ORIGIN_CERT_TARGETS is not '<host> <target>' (see docs/secrets.md)"
+              failed=1
+              continue
+            fi
+            echo "::add-mask::$target"
+            checked=$((checked + 1))
+
+            if ! out=$(timeout 20 openssl s_client -connect "$target:443" -servername "$host" \
+              -verify_hostname "$host" -verify_return_error < /dev/null 2>&1); then
+              # The verify code names the reason without the target. A handshake that fails
+              # before any certificate arrives has no code or reports code 0, so say that
+              # instead.
+              reason=$(printf '%s\n' "$out" | grep -m1 '^ *Verify return code:' || true)
+              reason=${reason#"${reason%%[! ]*}"}
+              if [ -z "$reason" ] || [ "${reason#*code: 0 }" != "$reason" ]; then
+                reason="no certificate received or the connection failed"
+              fi
+              echo "::error::$host: the TLS handshake or the chain and host name verification failed ($reason)"
+              failed=1
+              continue
+            fi
+            if ! cert=$(printf '%s\n' "$out" | openssl x509 2> /dev/null); then
+              echo "::error::$host: no certificate in the handshake output"
+              failed=1
+              continue
+            fi
+            if ! info=$(printf '%s\n' "$cert" | openssl x509 -noout -enddate -issuer); then
+              echo "::error::$host: the certificate could not be read"
+              failed=1
+              continue
+            fi
+            not_after=$(printf '%s\n' "$info" | sed -n 's/^notAfter=//p')
+            issuer=$(printf '%s\n' "$info" | sed -n 's/^issuer=.*CN *= *//p' | cut -d, -f1)
+            if [ -z "$not_after" ] || ! end=$(date -ud "$not_after" +%s); then
+              echo "::error::$host: the certificate expiry date could not be parsed"
+              failed=1
+              continue
+            fi
+            days=$(((end - now) / 86400))
+            echo "$host: $days days left, issuer ${issuer:-unknown}"
+            if [ "$days" -lt "$MIN_DAYS" ]; then
+              echo "::error::$host: the origin certificate expires in $days days, below the $MIN_DAYS day limit"
+              failed=1
+            fi
+          done <<< "$ORIGIN_CERT_TARGETS"
+
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::ORIGIN_CERT_TARGETS holds no host"
+            exit 1
+          fi
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All $checked origin certificates are valid with at least $MIN_DAYS days left."
