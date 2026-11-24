@@ -46,16 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra assistant
+          extras: dev api assistant
 
       # mypy runs in strict mode over src/ + api/; caching .mypy_cache lets it
       # re-check only changed files instead of the whole tree every run.
@@ -106,16 +99,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install documentation dependencies
-        run: uv sync --locked --extra docs
+          extras: docs
 
       # Not the renamed-heading case: the strict build below already fails on that, and
       # was watched doing it. What it cannot see is a heading added with no entry, since
@@ -136,16 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Run ESLint
         working-directory: frontend
@@ -188,16 +165,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev
+          extras: dev
 
       # The sync above installs the dev extra, which holds pip-audit. The audit reads an
       # export of every locked extra, which covers what CI and the image install as well as
@@ -246,19 +216,12 @@ jobs:
       # its blame data, and it does its own checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
       # `docs` is here for one test file. `tests/unit/docs/test_toc.py` imports the
       # table-of-contents generator, which imports the slug function the site uses, and
       # without the extra the whole file would `importorskip` its way to green.
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra docs --extra assistant
+      - uses: ./.github/actions/setup-python-uv
+        with:
+          extras: dev api docs assistant
 
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
@@ -317,16 +280,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Run frontend tests with coverage
         working-directory: frontend
@@ -399,16 +353,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install dependencies
-        run: uv sync --locked --extra dev --extra api
+          extras: dev api
 
       - name: Start API server
         run: |
@@ -512,46 +459,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
+          extras: dev api
 
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Pull Playwright image
         timeout-minutes: 5
         run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
-        run: |
-          # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it the
-          # activation link sits in a 8 KiB buffer and the suite times out waiting.
-          PYTHONUNBUFFERED=1 uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 \
-            > "$E2E_API_LOG" 2>&1 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/api/v1/health && break
-            echo "Waiting for API... ($i/30)"
-            sleep 2
-          done
-          curl -sf http://localhost:8000/api/v1/health || {
-            echo "API failed to start"; tail -n 40 "$E2E_API_LOG"; exit 1;
-          }
+        run: scripts/ci/start-api.sh
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           # https: the e2e dev server runs on TLS so the browser will store the
