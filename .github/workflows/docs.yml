@@ -29,6 +29,7 @@ on:
       - pyproject.toml
       - uv.lock
       - .github/workflows/docs.yml
+      - .github/actions/setup-python-uv/**
 
 # A production deploy is never cancelled, so runs queue instead of replacing each
 # other. Cancelling looks harmless and is not: the run reads "cancelled" rather
@@ -43,6 +44,7 @@ jobs:
   deploy:
     name: Publish to Cloudflare Pages
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # Read only. This job holds a Cloudflare deploy token, so it gets the smallest
     # GitHub grant that still works. `deployments: write` would only be needed to
     # pass `gitHubToken` to the action and have it write a GitHub deployment record,
@@ -53,16 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install documentation dependencies
-        run: uv sync --locked --extra docs
+          extras: docs
 
       # Strict here too. The same build already passed on the pull request, but a
       # promotion merges several of them at once, and a link can break between two

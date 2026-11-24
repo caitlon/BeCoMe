@@ -34,23 +34,21 @@ jobs:
   # 71 seconds, of which the linters themselves were 2. Ruff is under a second and
   # mypy reports zero off its cache; the rest was setup and the frontend checks.
   # Split, the two run side by side and the gate is as long as the slower one.
+  #
+  # Every job carries timeout-minutes, at least three times its longest run over the
+  # last 27 runs (Python Tests 6.3 min, the rest under 4), so a stalled step fails in
+  # minutes instead of holding the runner and the required Check for six hours.
   lint-python:
     name: Lint (Python)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra assistant
+          extras: dev api assistant
 
       # mypy runs in strict mode over src/ + api/; caching .mypy_cache lets it
       # re-check only changed files instead of the whole tree every run.
@@ -96,20 +94,14 @@ jobs:
   docs-build:
     name: Docs Site
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install documentation dependencies
-        run: uv sync --locked --extra docs
+          extras: docs
 
       # Not the renamed-heading case: the strict build below already fails on that, and
       # was watched doing it. What it cannot see is a heading added with no entry, since
@@ -125,20 +117,12 @@ jobs:
   lint-frontend:
     name: Lint (frontend)
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Run ESLint
         working-directory: frontend
@@ -155,6 +139,7 @@ jobs:
     name: Code Quality Checks
     runs-on: ubuntu-24.04
     needs: [lint-python, lint-frontend]
+    timeout-minutes: 5
     steps:
       - name: Report lint results
         env:
@@ -172,6 +157,7 @@ jobs:
     name: Dependency Audit
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
     # Network-bound audits (pip-audit -> pypi.org, npm audit -> npm registry) live here,
     # not in the required "Code Quality Checks" job, so a transient registry timeout cannot
     # fail the required lint check or skip the test jobs that depend on it. Retries absorb
@@ -179,16 +165,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev
+          extras: dev
 
       # The sync above installs the dev extra, which holds pip-audit. The audit reads an
       # export of every locked extra, which covers what CI and the image install as well as
@@ -226,6 +205,7 @@ jobs:
     name: Python Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 20
     env:
       APP_ENV: "test"
       SECRET_KEY: test-secret-key-for-ci
@@ -236,19 +216,12 @@ jobs:
       # its blame data, and it does its own checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
       # `docs` is here for one test file. `tests/unit/docs/test_toc.py` imports the
       # table-of-contents generator, which imports the slug function the site uses, and
       # without the extra the whole file would `importorskip` its way to green.
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra docs --extra assistant
+      - uses: ./.github/actions/setup-python-uv
+        with:
+          extras: dev api docs assistant
 
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
@@ -288,7 +261,7 @@ jobs:
       # Set one point under the 99% the suite currently reaches, which locks in the level
       # without breaking on a single added line.
       - name: Run Python tests with coverage
-        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage XML
         if: always()
@@ -298,32 +271,16 @@ jobs:
           path: coverage.xml
           retention-days: 30
 
-      - name: Upload Python coverage HTML
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: python-coverage-report
-          path: htmlcov/
-          retention-days: 30
-
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Run frontend tests with coverage
         working-directory: frontend
@@ -373,6 +330,7 @@ jobs:
     name: Backend E2E Tests
     runs-on: ubuntu-24.04
     needs: lint
+    timeout-minutes: 15
     env:
       APP_ENV: "test"
       TESTING: "1"
@@ -395,16 +353,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install dependencies
-        run: uv sync --locked --extra dev --extra api
+          extras: dev api
 
       - name: Start API server
         run: |
@@ -508,46 +459,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: true
+          extras: dev api
 
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - uses: ./.github/actions/setup-node-ci
 
       - name: Pull Playwright image
         timeout-minutes: 5
         run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
-        run: |
-          # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it the
-          # activation link sits in a 8 KiB buffer and the suite times out waiting.
-          PYTHONUNBUFFERED=1 uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 \
-            > "$E2E_API_LOG" 2>&1 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/api/v1/health && break
-            echo "Waiting for API... ($i/30)"
-            sleep 2
-          done
-          curl -sf http://localhost:8000/api/v1/health || {
-            echo "API failed to start"; tail -n 40 "$E2E_API_LOG"; exit 1;
-          }
+        run: scripts/ci/start-api.sh
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           # https: the e2e dev server runs on TLS so the browser will store the
@@ -598,6 +521,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: e2e-shard
     if: always()
+    timeout-minutes: 5
     steps:
       - name: Report shard results
         env:
@@ -624,6 +548,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/prod'
+    timeout-minutes: 15
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 

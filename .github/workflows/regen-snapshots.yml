@@ -46,6 +46,7 @@ jobs:
   regen:
     name: Regenerate snapshots (amd64)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     # The same environment as the e2e-shard job in ci.yml, whose comments explain each
     # value: the tests register users and read the activation link from the API log.
     env:
@@ -74,43 +75,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # No dependency cache: this job builds the branch it is dispatched on.
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-python-uv
         with:
-          enable-cache: false
+          extras: dev api
+          enable-cache: 'false'
 
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+      - uses: ./.github/actions/setup-node-ci
         with:
-          node-version: '22'
-          package-manager-cache: false
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+          cache: 'false'
 
       - name: Pull Playwright image
         timeout-minutes: 5
         run: scripts/ci/playwright-image.sh pull
 
       - name: Start API server
-        run: |
-          PYTHONUNBUFFERED=1 uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 \
-            > "$E2E_API_LOG" 2>&1 &
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/api/v1/health && break
-            echo "Waiting for API... ($i/30)"
-            sleep 2
-          done
-          curl -sf http://localhost:8000/api/v1/health || {
-            echo "API failed to start"; tail -n 40 "$E2E_API_LOG"; exit 1;
-          }
+        run: scripts/ci/start-api.sh
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           CORS_ORIGINS: '["https://localhost:8080"]'

@@ -617,20 +617,20 @@ host name, `healthcheck.railway.app` (Railway's probe of a new deploy) or `local
 image's own `HEALTHCHECK`). That route returns only a status and the version.
 
 The frontend containers apply the same rule. Their nginx answers 403 to a request without the
-`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a
-rotation. The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`,
-the same names the API uses, and on Railway each frontend service references the values of the
-backend service of its environment. An entrypoint script
-(`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them when the container starts, so the
-secret is never part of the image. A value is 32 to 128 URL-safe characters (`A-Z`, `a-z`,
-`0-9`, `_` and `-`) and is compared exactly, letter case included. The script stops the
-container on any other value. The one exemption is `GET /` addressed to
-`healthcheck.railway.app`, Railway's probe of a new deploy. The check is off only outside
-Railway, which is how local development, the compose stack and CI run the image. A Railway
-deploy without the secret, or with a previous value and no current one, refuses to start, as
-the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as
-the API keys its deploy check on the Railway environment, so a deploy outside Railway must set
-the secret or the frontend runs unlocked.
+`X-Origin-Verify` header (`frontend/nginx.conf`) and accepts the previous value during a rotation.
+The variables are `CLOUDFLARE_ORIGIN_SECRET` and `CLOUDFLARE_ORIGIN_SECRET_PREVIOUS`, the same names
+the API uses, and on Railway each frontend service references the values of the backend service of
+its environment. An entrypoint script (`frontend/docker-entrypoint.d/40-origin-lock.sh`) reads them
+when the container starts, so the secret is never part of the image. A value is 32 to 128 URL-safe
+characters (`A-Z`, `a-z`, `0-9`, `_` and `-`) and is compared exactly, letter case included. The
+script stops the container on any other value. The exemptions are `GET /healthz`, the image's health
+path, and `GET /`, which stays exempt until the prod health check moves to `/healthz` too (dev already probes it).
+Both apply only when addressed to `healthcheck.railway.app`, Railway's probe of a new deploy. The check is off
+only outside Railway, which is how local development, the compose stack and CI run the image. A
+Railway deploy without the secret, or with a previous value and no current one, refuses to start, as
+the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as the
+API keys its deploy check on the Railway environment, so a deploy outside Railway must set the
+secret or the frontend runs unlocked.
 
 The API lock was checked from outside on 2 November 2026, on dev, test and prod, the three
 environments then in service. One `GET /api/v1/health` without the secret, sent to the Railway address behind the API host and
@@ -667,11 +667,14 @@ The dev environment also sits behind Cloudflare Access on both hosts. One Access
 API). Its "Owner only" policy allows the owner's email addresses through a one-time PIN. A second
 policy of type Service Auth admits one Access service token, which only the Better Stack monitor
 of the dev API uses. The policy belongs to the same application, so that token passes Access on
-every path of both dev hosts, not only the health route, and its blast radius is the dev
-environment. Any other request without an Access session gets a 302 to the Access login on every
-path of both hosts, `/api/v1/health` included, except CORS preflights, which pass to the origin
-(next paragraph). `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
-applies behind Access. Checked from outside on 23 November 2026.
+both dev hosts, not only on the health route, and its blast radius is the dev environment. The
+ACME challenge path described below needs no token, because its own application lets everyone
+through. Any other request without an Access
+session gets a 302 to the Access login on every path of both hosts, `/api/v1/health` included,
+except CORS preflights, which pass to the origin (next paragraph) and the ACME challenge path
+described below. `api.becomify.app` and `www.becomify.app` stay public, and the origin lock still
+applies behind Access. Checked from outside on 23 November 2026, and the ACME challenge
+exception on 24 November 2026.
 
 The application has `eager_redirect_cookie_setting` on. At login Access walks the browser
 through every hostname of the application and sets its session cookie on each, so the SPA's
@@ -687,6 +690,24 @@ would ship in the JavaScript that every signed-in user of the frontend downloads
 tied to no person. A policy keyed on the Origin or Referer header would not protect anything
 either, since any client outside a browser sets those headers freely (and Access has no such
 selector).
+
+Cloudflare runs SSL mode Full (strict) for the whole zone, so it verifies the certificate each
+Railway origin presents and answers 526 when one is expired or does not match the host. Railway
+issues and renews those certificates (Let's Encrypt, about 90 days) through HTTP-01 challenges
+that arrive through Cloudflare. Access would answer a challenge on a dev host with a 302 to its
+login, and the certificate would expire unrenewed (the `atelier.becomify.app` one did on 29
+October 2026). A second Access application, "BeCoMe dev ACME challenge", therefore covers
+`/.well-known/acme-challenge/` on both dev hosts with one Bypass policy for everyone. The more
+specific path wins over "BeCoMe dev", so only that path is open and the rest of dev stays behind
+Access.
+
+The weekly workflow `.github/workflows/origin-certificates.yml` connects to each origin with the
+public host name as SNI, verifies the chain and the host name, and fails when that check fails or
+fewer than 21 days of validity are left, so a failed renewal shows up before Cloudflare starts
+answering 526. It reads the list of public hosts and their Railway targets from the repository
+secret `ORIGIN_CERT_TARGETS`. The list is secret because a target reaches the origin without
+passing Cloudflare, and the workflow masks it and prints only the host, the days left, the
+issuer and, on a failure, the OpenSSL verify code ([secrets](secrets.md#ci-secrets)).
 
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
@@ -1145,18 +1166,25 @@ and after a backup restore. A pinned root (`sslrootcert` with `verify-full`) wou
 at the next regeneration, and the backend could no longer reach the application database or the
 assistant's corpus database. The backend reaches both by their private-network names (see Network
 exposure below), so for its connections the residual risk is an active man-in-the-middle inside
-the project's private network. The temporary public proxy that a dump or a corpus ingest opens
-uses the same unverified `require`, so for the length of such a run the risk extends to anyone on
-the path between the developer's machine and that proxy.
+the project's private network. This was weighed again on 2026-11-24, with the same result:
+verification for the backend moves to the next hosting.
+
+A dump and a corpus ingest do verify. They go through an SSH tunnel (`scripts/db/tunnel.sh`) and
+connect with `sslmode=verify-full` against the database's own root CA, which each run fetches
+fresh over `railway ssh`, so a regenerated root costs nothing. That works because the server
+certificate always carries `DNS:localhost`, and the tunnel is addressed by that name. No public
+proxy is opened. The residual risk is on the maintainer's machine: the tunnel lands on the
+container's loopback, where Postgres trusts every connection, so while it is open any process on
+that machine can connect without a password. It is open only for the run and closed on exit.
 
 ### Network exposure
 
 The production database answers only on Railway's private network
 (`*.railway.internal`). Its public TCP proxy is gone, so a leaked password is no longer
-the sole barrier between the internet and the data. The dev database is the one exception,
-and even there the proxy normally stays closed. Someone opens it in the Railway dashboard
-only for a specific hands-on operation and shut again afterwards. That toggle is the
-project's substitute for an IP allowlist, which Railway's platform does not offer.
+the sole barrier between the internet and the data. The same holds for dev: no database keeps
+or opens a public TCP proxy any more, and hands-on access goes through the SSH tunnel of
+`scripts/db/tunnel.sh`. The tunnel is authenticated by the maintainer's registered SSH key,
+which stands in for an IP allowlist that Railway's platform does not offer.
 
 Redis follows the same rule in both environments. The backends reach it through
 `REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
@@ -1189,8 +1217,8 @@ remains the workable substitute.
 ### Backups
 
 The Postgres volumes have no backup schedule on Railway, so nothing backs them up
-automatically. Take manual dumps with `scripts/db/backup.sh`, which opens a temporary proxy,
-runs `pg_dump`, and removes the proxy again:
+automatically. Take manual dumps with `scripts/db/backup.sh`, which opens an SSH tunnel,
+runs `pg_dump` through it with the server certificate verified, and closes the tunnel again:
 
 ```bash
 ./scripts/db/backup.sh prod      # writes backups/prod-<timestamp>.dump
@@ -1199,14 +1227,16 @@ runs `pg_dump`, and removes the proxy again:
 Run it before risky migrations and on a regular cadence. The dumps contain user data, so
 they stay out of the repo: `.gitignore` covers `backups/`.
 
-**That proxy is public while it is up.** Railway's TCP proxy exposes the database on an
-internet-reachable host and port, so for the length of the dump the only thing between the
-production database and the internet is the `postgres` superuser password. The
-private-network isolation described under "Network exposure" is not in force. The script
-removes the proxy on every exit path, including failure, but a killed terminal or a crashed
-shell can still leave one behind. Two habits follow: run it attended rather than from a
-cron, and if it ever exits abnormally, check the service's TCP proxies in the Railway
-dashboard and delete any that are still there.
+**The tunnel is not a public proxy, but it is open to this machine.** Nothing is exposed to the
+internet, and the connection is encrypted and checked against the database's own root CA. The
+tunnel lands on the container's loopback, where Postgres trusts every connection, so while it is
+up any local process can connect as any role without a password. The script closes the tunnel when
+it ends, fails or is stopped with Ctrl+C. Run it attended rather than from a cron, and if it
+ever exits abnormally, find what still listens on the port it printed
+(`lsof -nP -iTCP:<port> -sTCP:LISTEN`, usually an `ssh` started by `railway connect`) and stop
+it. It needs a
+local `pg_dump` at least as new as the server (`brew install libpq`), run on the host rather than
+in a container.
 
 Restore into any database with:
 

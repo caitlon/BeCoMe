@@ -6,8 +6,6 @@ updates:
       interval: "monthly"
     cooldown:
       default-days: 7
-    reviewers:
-      - "caitlon"
     assignees:
       - "caitlon"
     labels:
@@ -32,8 +30,6 @@ updates:
       interval: "monthly"
     cooldown:
       default-days: 7
-    reviewers:
-      - "caitlon"
     assignees:
       - "caitlon"
     labels:
@@ -63,8 +59,6 @@ updates:
       interval: "monthly"
     cooldown:
       default-days: 7
-    reviewers:
-      - "caitlon"
     assignees:
       - "caitlon"
     labels:
@@ -81,8 +75,6 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
-    reviewers:
-      - "caitlon"
     assignees:
       - "caitlon"
     labels:
@@ -93,13 +85,14 @@ updates:
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # The second entry reaches the actions pinned inside the local composite actions.
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "monthly"
     cooldown:
       default-days: 7
-    reviewers:
-      - "caitlon"
     assignees:
       - "caitlon"
     labels:
