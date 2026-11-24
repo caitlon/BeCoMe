@@ -688,6 +688,24 @@ tied to no person. A policy keyed on the Origin or Referer header would not prot
 either, since any client outside a browser sets those headers freely (and Access has no such
 selector).
 
+Cloudflare runs SSL mode Full (strict) for the whole zone, so it verifies the certificate each
+Railway origin presents and answers 526 when one is expired or does not match the host. Railway
+issues and renews those certificates (Let's Encrypt, about 90 days) through HTTP-01 challenges
+that arrive through Cloudflare. Access would answer a challenge on a dev host with a 302 to its
+login, and the certificate would expire unrenewed (the `atelier.becomify.app` one did on 29
+October 2026). A second Access application, "BeCoMe dev ACME challenge", therefore covers
+`/.well-known/acme-challenge/` on both dev hosts with one Bypass policy for everyone. The more
+specific path wins over "BeCoMe dev", so only that path is open and the rest of dev stays behind
+Access.
+
+The weekly workflow `.github/workflows/origin-certificates.yml` connects to each origin with the
+public host name as SNI, verifies the chain and the host name, and fails when that check fails or
+fewer than 21 days of validity are left, so a failed renewal shows up before Cloudflare starts
+answering 526. It reads the list of public hosts and their Railway targets from the repository
+secret `ORIGIN_CERT_TARGETS`. The list is secret because a target reaches the origin without
+passing Cloudflare, and the workflow masks it and prints only the host, the days left and the
+issuer ([secrets](secrets.md#ci-secrets)).
+
 For a verified request the client IP comes from `CF-Connecting-IP`
 (`api/utils/client_ip.py`). The transport peer is not trusted, because uvicorn runs with
 `--proxy-headers --forwarded-allow-ips='*'`, which makes `request.client.host` only as
