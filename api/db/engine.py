@@ -133,6 +133,9 @@ def _create_engine() -> Engine:
     return create_engine(
         settings.database_url,
         echo=settings.debug,
+        # Leaves bound values out of SQLAlchemy's exception messages and the SQL echo. The
+        # database's own error text (a constraint DETAIL line) is not affected.
+        hide_parameters=True,
         connect_args=connect_args,
         **pool_kwargs,
     )

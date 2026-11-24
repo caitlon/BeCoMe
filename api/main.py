@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager, suppress
 import sentry_sdk
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sentry_sdk.integrations.redis import RedisIntegration
 from slowapi.errors import RateLimitExceeded
 
 from api.config import Environment, Settings, get_settings
@@ -22,6 +23,7 @@ from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
+from api.sentry_filter import scrub_request_data
 from api.startup_checks import run_startup_checks
 
 logger = logging.getLogger("api.main")
@@ -74,7 +76,8 @@ def _init_sentry(settings: Settings) -> None:
     exception a route raises is reported by ``UnhandledErrorMiddleware``; one
     that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
     integration. A no-op when the DSN is unset, which keeps development and
-    tests offline.
+    tests offline. Request data is reduced to an allowlist by
+    :func:`api.sentry_filter.scrub_request_data`.
 
     :param settings: Application settings.
     """
@@ -83,13 +86,21 @@ def _init_sentry(settings: Settings) -> None:
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
             environment=settings.environment.value,
-            # Never attach PII (client IP, cookies, headers, request bodies) to events.
+            # Keeps the SDK's integrations from adding user data of their own. The request
+            # data that is attached anyway is cut down by the filter below.
             send_default_pii=False,
             # Frame locals are a separate switch that send_default_pii does not cover, and
             # they default to on. Auth handlers bind the parsed body to a local, so a fault
             # anywhere in the request would ship repr(ChangePasswordRequest) to the
             # tracker, meaning the plaintext passwords or a still-valid reset token.
             include_local_variables=False,
+            # The Redis integration records command keys, which hold token and session
+            # ids and a digest of the email address.
+            disabled_integrations=[RedisIntegration()],
+            # Request data is reduced to an allowlist (api/sentry_filter.py).
+            max_request_body_size="never",
+            before_send=scrub_request_data,
+            before_send_transaction=scrub_request_data,
         )
 
 

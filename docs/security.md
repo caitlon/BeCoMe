@@ -789,7 +789,8 @@ preflights writes it to its access record (`api/middleware/request_logging.py`),
 CSRF and rate-limit events carry it too.
 The value comes from `get_client_ip`, so a request without the origin secret logs the
 `unverified-origin` constant instead of an address. The privacy notice discloses this. The
-backend's Sentry events leave the address out (`send_default_pii=False`, below).
+backend's Sentry events leave the address out, including the `ip` field of the log records the
+SDK turns into breadcrumbs and event extras (`api/sentry_filter.py`, below).
 
 Retention depends on the provider, not on this code. Better Stack keeps log records for 3
 days, a setting on each of the two backend sources. The backend also writes those records to
@@ -898,8 +899,19 @@ testing, not users.
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
 receive, so that trigger stays unwatched until it is decided where metrics live.
 
-Two separate switches keep credentials out of Sentry, and the product needs both.
-`send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
+What Sentry receives of a request, and the frame locals of a traceback, are limited by
+separate settings, and the product needs both. The request is reduced to an allowlist on every
+error event and every sampled transaction: `before_send` and `before_send_transaction` both run
+`api/sentry_filter.py`, which keeps the headers `host`, `accept`, `content-type` and
+`content-length` only, and removes the cookies, the request body, the environment block, the
+query string, and the client address on the user. The same filter removes the `ip` field from
+the data of log breadcrumbs and from the extras of an error event, because the SDK copies the
+extra fields of a log record there. The Redis integration is disabled
+(`disabled_integrations`), since it records the first argument of each command, which for the
+throttles and the revocation store is a key built from a digest or an id.
+`max_request_body_size="never"` keeps the SDK from attaching a body in the first place.
+`send_default_pii=False` stays on as well; it keeps the SDK's integrations from adding user
+data, and does not by itself remove what the filter removes.
 `include_local_variables=False` drops the frame locals of every traceback frame, which
 `send_default_pii` does not cover and which default to on: the auth handlers bind the parsed
 request body to a local, so with locals enabled a fault anywhere under `register`,
@@ -909,6 +921,11 @@ scrubber does not catch this, because it matches local *names* against a denylis
 leaking local goes by `data`. As a second layer, the credential fields in
 `api/schemas/auth.py` carry `repr=False`, so those values stay out of any `repr()`
 regardless of who calls it.
+The database engine is created with `hide_parameters=True` (`api/db/engine.py`), so
+SQLAlchemy leaves the bound values out of the parameter block of its exception messages and of
+the SQL echo. PostgreSQL's own error text is not affected: a constraint or type error can quote
+a value in its message or its `DETAIL` line. The one constraint on personal data, the unique
+email, is caught where it can fire (registration), so that text does not reach the tracker.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks

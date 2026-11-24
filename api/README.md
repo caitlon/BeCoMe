@@ -94,6 +94,7 @@ api/
 ├── logging_context.py  # Request-scoped correlation (request_id/user_id) via contextvars
 ├── dependencies.py     # DI factories + authorization
 ├── exceptions.py       # API exception hierarchy
+├── sentry_filter.py    # Allowlist of request data sent to the error tracker
 └── main.py             # FastAPI application (+ setup_logging, Sentry init)
 ```
 
