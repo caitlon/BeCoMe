@@ -624,8 +624,8 @@ its environment. An entrypoint script (`frontend/docker-entrypoint.d/40-origin-l
 when the container starts, so the secret is never part of the image. A value is 32 to 128 URL-safe
 characters (`A-Z`, `a-z`, `0-9`, `_` and `-`) and is compared exactly, letter case included. The
 script stops the container on any other value. The exemptions are `GET /healthz`, the image's health
-path, and `GET /`, which stays exempt until Railway's health check moves to `/healthz`. Both apply
-only when addressed to `healthcheck.railway.app`, Railway's probe of a new deploy. The check is off
+path, and `GET /`, which stays exempt until the prod health check moves to `/healthz` too (dev already probes it).
+Both apply only when addressed to `healthcheck.railway.app`, Railway's probe of a new deploy. The check is off
 only outside Railway, which is how local development, the compose stack and CI run the image. A
 Railway deploy without the secret, or with a previous value and no current one, refuses to start, as
 the API does. The frontend keys its fail-closed rule on Railway's `RAILWAY_ENVIRONMENT_NAME`, as the
