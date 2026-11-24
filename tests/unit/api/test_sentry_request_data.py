@@ -154,7 +154,7 @@ class TestErrorEventRequestData:
         client = _build_client(monkeypatch, tmp_path, transport, traces=0.0)
         body = {
             "email": _SENTINEL_BODY_EMAIL,
-            "password": "Sentinel-Passw0rd-123",
+            "password": "Sentinel-Passw0rd-123",  # pragma: allowlist secret
             "first_name": _SENTINEL_BODY_NAME,
             "last_name": "Person",
         }
