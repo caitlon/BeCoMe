@@ -1230,11 +1230,11 @@ they stay out of the repo: `.gitignore` covers `backups/`.
 **The tunnel is not a public proxy, but it is open to this machine.** Nothing is exposed to the
 internet, and the connection is encrypted and checked against the database's own root CA. The
 tunnel lands on the container's loopback, where Postgres trusts every connection, so while it is
-up any local process can connect as any role without a password. The script closes the tunnel on
-every exit path, including failure and Ctrl+C. Run it attended rather than from a cron, and if it
+up any local process can connect as any role without a password. The script closes the tunnel when
+it ends, fails or is stopped with Ctrl+C. Run it attended rather than from a cron, and if it
 ever exits abnormally, look for a leftover `railway connect` process and stop it. It needs a
 local `pg_dump` at least as new as the server (`brew install libpq`). It runs no `pg_dump` in a
-container, because the tunnel listens on the host's loopback.
+container: in a test on 2026-11-24 a container could not reach the tunnel.
 
 Restore into any database with:
 

@@ -72,6 +72,7 @@ db_tunnel_open() {  # $1 = dev|prod, $2 = service name ("<env>-db", "<env>-vecto
   echo "db tunnel: root CA sha256 $(openssl x509 -in "$root" -noout -fingerprint -sha256 | sed 's/.*=//'), notAfter $(openssl x509 -in "$root" -noout -enddate | sed 's/.*=//')" >&2
 
   port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  case "$port" in ''|*[!0-9]*) _tunnel_fail "could not pick a free local port"; return 1 ;; esac
   DB_TUNNEL_PORT="$port"
   # The details it prints may include credentials, so they go to a file in the private dir.
   railway connect "$svc" -p "$DB_TUNNEL_PROJECT_ID" -e "$env" --tunnel-only --port "$port" > "$DB_TUNNEL_DIR/tunnel.log" 2>&1 &
@@ -90,6 +91,8 @@ db_tunnel_open() {  # $1 = dev|prod, $2 = service name ("<env>-db", "<env>-vecto
 
 db_tunnel_close() {  # idempotent; safe in an EXIT trap even when db_tunnel_open failed halfway
   local pid="${DB_TUNNEL_PID:-}"
+  # A second Ctrl+C while the tunnel shuts down must not abandon the close half way.
+  trap '' INT TERM HUP
   if [ -n "$pid" ]; then
     if kill -0 "$pid" 2>/dev/null; then
       kill -INT "$pid" 2>/dev/null
