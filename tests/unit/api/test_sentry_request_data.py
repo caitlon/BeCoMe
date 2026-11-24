@@ -73,6 +73,10 @@ class _KeepEnvelopes(Transport):
         )
 
 
+# Identifier of the SDK's Redis integration.
+_REDIS = "redis"
+
+
 class _FailingRegistration:
     """A registration service that fails the way an unexpected fault would."""
 
@@ -80,22 +84,24 @@ class _FailingRegistration:
         raise RuntimeError("registration failed")
 
 
-def _forget_redis_integration() -> None:
-    """Make the next ``sentry_sdk.init`` treat the Redis integration as in a fresh process.
-
-    The SDK records installed integrations per process, and an integration installed by an
-    earlier ``init`` stays enabled even when a later ``init`` lists it in
-    ``disabled_integrations``. A deployed process calls ``init`` once; a test worker calls it
-    many times, so the Redis entry is dropped from the registry around each test. Its patch
-    stays in place but is inert for a client without the integration.
-    """
-    sentry_integrations._installed_integrations.discard("redis")
-
-
 @pytest.fixture
 def transport() -> Iterator[_KeepEnvelopes]:
-    """The capturing transport; the SDK client and its scopes are reset around the test."""
-    _forget_redis_integration()
+    """The capturing transport, with the SDK set up as in a fresh process.
+
+    The SDK records set-up integrations per process: an integration set up by an earlier
+    ``init`` is kept by a later one, even when that ``init`` lists it in
+    ``disabled_integrations``. A deployed process calls ``init`` once; a test worker calls
+    it many times. So the Redis entry is taken out of both registries for the test, which
+    makes ``init`` decide about it afresh, and the earlier state is put back afterwards. The
+    client and the scopes are reset around the test too.
+    """
+    registries = (
+        sentry_integrations._processed_integrations,
+        sentry_integrations._installed_integrations,
+    )
+    earlier = [_REDIS in registry for registry in registries]
+    for registry in registries:
+        registry.discard(_REDIS)
     sentry_sdk.get_isolation_scope().clear()
     sentry_sdk.get_current_scope().clear()
     keep = _KeepEnvelopes()
@@ -103,7 +109,13 @@ def transport() -> Iterator[_KeepEnvelopes]:
         yield keep
     finally:
         sentry_sdk.get_global_scope().set_client(None)
-        _forget_redis_integration()
+        sentry_sdk.get_isolation_scope().clear()
+        sentry_sdk.get_current_scope().clear()
+        for registry, was_there in zip(registries, earlier, strict=True):
+            if was_there:
+                registry.add(_REDIS)
+            else:
+                registry.discard(_REDIS)
 
 
 def _build_client(
