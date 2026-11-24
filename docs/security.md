@@ -789,7 +789,7 @@ preflights writes it to its access record (`api/middleware/request_logging.py`),
 CSRF and rate-limit events carry it too.
 The value comes from `get_client_ip`, so a request without the origin secret logs the
 `unverified-origin` constant instead of an address. The privacy notice discloses this. The
-backend's Sentry events leave the address out (`send_default_pii=False`, below).
+backend's Sentry events leave the address out (`api/sentry_filter.py`, below).
 
 Retention depends on the provider, not on this code. Better Stack keeps log records for 3
 days, a setting on each of the two backend sources. The backend also writes those records to
@@ -898,8 +898,13 @@ testing, not users.
 Sustained CPU above 70 % is not alerted. CPU is a Railway metric that Better Stack does not
 receive, so that trigger stays unwatched until it is decided where metrics live.
 
-Two separate switches keep credentials out of Sentry, and the product needs both.
-`send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
+What Sentry receives of a request, and the frame locals of a traceback, are limited by
+separate settings, and the product needs both. The request is reduced to an allowlist on every
+error event and every sampled transaction: `before_send` and `before_send_transaction` both run
+`api/sentry_filter.py`, which keeps the headers `host`, `accept`, `content-type` and
+`content-length` only, and removes the cookies, the request body, the environment block, the
+query string, and the client address on the user. `max_request_body_size="never"` keeps the
+SDK from attaching a body in the first place. `send_default_pii=False` stays on as well.
 `include_local_variables=False` drops the frame locals of every traceback frame, which
 `send_default_pii` does not cover and which default to on: the auth handlers bind the parsed
 request body to a local, so with locals enabled a fault anywhere under `register`,

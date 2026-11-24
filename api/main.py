@@ -22,6 +22,7 @@ from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
+from api.sentry_filter import scrub_request_data
 from api.startup_checks import run_startup_checks
 
 logger = logging.getLogger("api.main")
@@ -74,7 +75,8 @@ def _init_sentry(settings: Settings) -> None:
     exception a route raises is reported by ``UnhandledErrorMiddleware``; one
     that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
     integration. A no-op when the DSN is unset, which keeps development and
-    tests offline.
+    tests offline. Request data is reduced to an allowlist by
+    :func:`api.sentry_filter.scrub_request_data`.
 
     :param settings: Application settings.
     """
@@ -90,6 +92,10 @@ def _init_sentry(settings: Settings) -> None:
             # anywhere in the request would ship repr(ChangePasswordRequest) to the
             # tracker, meaning the plaintext passwords or a still-valid reset token.
             include_local_variables=False,
+            # Request data is reduced to an allowlist (api/sentry_filter.py).
+            max_request_body_size="never",
+            before_send=scrub_request_data,
+            before_send_transaction=scrub_request_data,
         )
 
 

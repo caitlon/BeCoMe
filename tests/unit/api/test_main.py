@@ -407,6 +407,30 @@ class TestSentryInit:
         assert kwargs["include_local_variables"] is False
         assert kwargs["send_default_pii"] is False
 
+    def test_filters_request_data_and_attaches_no_body(self):
+        """
+        GIVEN a configured Sentry DSN
+        WHEN _init_sentry runs
+        THEN no request body is attached
+        AND events and transactions both pass through the request-data filter
+        """
+        # GIVEN
+        from api.config import Settings
+        from api.main import _init_sentry
+        from api.sentry_filter import scrub_request_data
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        kwargs = mock_init.call_args.kwargs
+        assert kwargs["max_request_body_size"] == "never"
+        assert kwargs["before_send"] is scrub_request_data
+        assert kwargs["before_send_transaction"] is scrub_request_data
+
 
 class TestBotCheckStartupRecord:
     """A deploy running with the bot check switched off says so at startup.
