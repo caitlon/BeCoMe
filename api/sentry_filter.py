@@ -1,6 +1,8 @@
 """Filter for the request data attached to error events and sampled transactions.
 
-Only the request data listed here reaches the error tracker.
+Only the request data listed here reaches the error tracker. Log records the SDK turns into
+breadcrumbs or event extras lose their ``ip`` field, which the access, auth, CSRF and
+rate-limit records carry.
 """
 
 from typing import TYPE_CHECKING
@@ -15,13 +17,38 @@ ALLOWED_REQUEST_HEADERS = frozenset({"host", "accept", "content-type", "content-
 # environment (which holds the client address) and the query string.
 _DROPPED_REQUEST_KEYS = ("cookies", "data", "env", "query_string")
 
+# Field of a log record's ``extra`` that holds the client address. The SDK copies the
+# extra fields of a log record into breadcrumb data and into the extra of an error event.
+_LOG_ADDRESS_FIELD = "ip"
+
+
+def _drop_log_address(fields: object) -> None:
+    """Remove the client address from a mapping of log record fields, if it is one."""
+    if isinstance(fields, dict):
+        fields.pop(_LOG_ADDRESS_FIELD, None)
+
+
+def _drop_breadcrumb_addresses(breadcrumbs: object) -> None:
+    """Remove the client address from the data of every breadcrumb.
+
+    The SDK stores breadcrumbs as ``{"values": [...]}``; a bare list is handled as well.
+    Any other shape is left alone.
+    """
+    if isinstance(breadcrumbs, dict):
+        breadcrumbs = breadcrumbs.get("values")
+    if isinstance(breadcrumbs, list):
+        for crumb in breadcrumbs:
+            if isinstance(crumb, dict):
+                _drop_log_address(crumb.get("data"))
+
 
 def scrub_request_data(event: "Event", hint: "Hint") -> "Event":
     """Reduce the request data of an event to what the error tracker may receive.
 
     Used as both ``before_send`` and ``before_send_transaction``. Keeps the request headers
     named in ``ALLOWED_REQUEST_HEADERS``, drops cookies, body, environment and query string,
-    and removes the client address from the user. An event without a request, or with fields
+    removes the client address from the user, and removes the ``ip`` field from the data of log
+    breadcrumbs and from the event extras. An event without a request, or with fields
     of an unexpected type, is passed through otherwise unchanged, so the filter never raises
     and never drops an event.
 
@@ -46,4 +73,6 @@ def scrub_request_data(event: "Event", hint: "Hint") -> "Event":
     user = event.get("user")
     if isinstance(user, dict):
         user.pop("ip_address", None)
+    _drop_breadcrumb_addresses(event.get("breadcrumbs"))
+    _drop_log_address(event.get("extra"))
     return event

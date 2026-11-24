@@ -407,6 +407,28 @@ class TestSentryInit:
         assert kwargs["include_local_variables"] is False
         assert kwargs["send_default_pii"] is False
 
+    def test_disables_the_redis_integration(self):
+        """
+        GIVEN a configured Sentry DSN
+        WHEN _init_sentry runs
+        THEN the Redis integration is disabled, because it records command keys
+        """
+        # GIVEN
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert [type(integration) for integration in disabled] == [RedisIntegration]
+
     def test_filters_request_data_and_attaches_no_body(self):
         """
         GIVEN a configured Sentry DSN

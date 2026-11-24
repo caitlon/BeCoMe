@@ -1,20 +1,26 @@
 """Tests for the request data that reaches the error tracker."""
 
+import hashlib
 import json
 from collections.abc import Iterator
 from typing import Any
 
+import fakeredis
 import pytest
 import sentry_sdk
 from fastapi.testclient import TestClient
 from sentry_sdk.transport import Transport
 
+from api.auth.login_throttle import LOGIN_KEY_PREFIX, RedisLoginThrottle
 from api.dependencies import get_email_address_policy, get_registration_service
 from api.sentry_filter import ALLOWED_REQUEST_HEADERS, scrub_request_data
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://public@o0.ingest.sentry.io/0"
 _ORIGIN = "https://app.example.com"
+# A placeholder for the origin-verify value that makes the app trust ``CF-Connecting-IP``.
+_FAKE_ORIGIN_VERIFY = "fake-origin-verify-value-0123456789abcdef"  # pragma: allowlist secret
+_CLIENT_ADDRESS = "203.0.113.77"
 
 # Obviously fake values for headers outside the allowlist, a cookie and a request body.
 _SENTINEL_HEADERS = {
@@ -83,9 +89,17 @@ def transport() -> Iterator[_KeepEnvelopes]:
 
 
 def _build_client(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, keep: _KeepEnvelopes, traces: float
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    keep: _KeepEnvelopes,
+    traces: float,
+    origin_verify: str = "",
 ) -> TestClient:
-    """Build the real app with Sentry on, sending to ``keep`` and sampling at ``traces``."""
+    """Build the real app with Sentry on, sending to ``keep`` and sampling at ``traces``.
+
+    A non-empty ``origin_verify`` is configured as the origin secret, so a request that
+    carries it is trusted to have a real client address.
+    """
     from api.config import get_settings
     from api.main import create_app
 
@@ -94,6 +108,8 @@ def _build_client(
     monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
     monkeypatch.setenv("CORS_ORIGINS", f'["{_ORIGIN}"]')
     monkeypatch.setenv("SENTRY_DSN", _FAKE_DSN)
+    if origin_verify:
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", origin_verify)
     get_settings.cache_clear()
     real_init = sentry_sdk.init
 
@@ -177,6 +193,48 @@ class TestErrorEventRequestData:
             assert sentinel not in serialized
 
 
+class TestLogRecordFields:
+    """The client address a log record carries stays out of breadcrumbs and extras."""
+
+    def test_trusted_client_address_is_absent_from_the_envelopes(
+        self, monkeypatch, tmp_path, transport
+    ):
+        """
+        GIVEN the real app with Sentry on and an origin secret configured
+        WHEN a request that carries the secret and a client address fails unhandled
+        THEN the request log record reaches the event as a breadcrumb without the address
+        AND the address appears nowhere in the envelopes
+        """
+        client = _build_client(
+            monkeypatch, tmp_path, transport, traces=0.0, origin_verify=_FAKE_ORIGIN_VERIFY
+        )
+        headers = {
+            "Origin": _ORIGIN,
+            "Content-Type": "application/json",
+            "X-Origin-Verify": _FAKE_ORIGIN_VERIFY,
+            "CF-Connecting-IP": _CLIENT_ADDRESS,
+        }
+
+        response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "person@example.com",
+                "password": "Sentinel-Passw0rd-123",  # pragma: allowlist secret
+                "first_name": "Given",
+                "last_name": "Person",
+            },
+            headers=headers,
+        )
+        sentry_sdk.flush()
+
+        assert response.status_code == 500
+        events = transport.items("event")
+        assert len(events) == 1
+        crumbs = events[0]["breadcrumbs"]["values"]
+        assert any(crumb.get("data", {}).get("event") == "request_received" for crumb in crumbs)
+        assert _CLIENT_ADDRESS not in transport.serialized()
+
+
 class TestTransactionRequestData:
     """A sampled transaction carries only the allowlisted request data."""
 
@@ -203,6 +261,34 @@ class TestTransactionRequestData:
         serialized = transport.serialized()
         for sentinel in _SENTINELS:
             assert sentinel not in serialized
+
+
+class TestRedisCommands:
+    """Redis commands, and the keys in them, stay out of breadcrumbs and spans."""
+
+    def test_a_throttle_call_leaves_no_key_in_the_envelopes(self, monkeypatch, tmp_path, transport):
+        """
+        GIVEN the real app with Sentry on and every request sampled
+        WHEN a login throttle works against Redis inside a transaction that then errors
+        THEN no envelope holds the throttle's key prefix or the digest of the identifier
+        """
+        _build_client(monkeypatch, tmp_path, transport, traces=1.0)
+        throttle = RedisLoginThrottle(
+            fakeredis.FakeStrictRedis(), key_prefix=LOGIN_KEY_PREFIX, max_failures=3
+        )
+        digest = hashlib.sha256(b"person@example.com").hexdigest()
+
+        with sentry_sdk.start_transaction(name="redis-probe"):
+            throttle.reserve("person@example.com")
+            throttle.confirm_failure("person@example.com")
+            sentry_sdk.capture_message("probe")
+        sentry_sdk.flush()
+
+        assert transport.items("event")
+        assert transport.items("transaction")
+        serialized = transport.serialized()
+        assert f"{LOGIN_KEY_PREFIX}:fail:" not in serialized
+        assert digest not in serialized
 
 
 class TestScrubRequestData:
@@ -308,3 +394,84 @@ class TestScrubRequestData:
         request = result.get("request")
         if isinstance(request, dict):
             assert not request.get("headers")
+
+
+class TestScrubLogRecordFields:
+    """The filter removes ``ip`` from breadcrumb data and event extras."""
+
+    def test_removes_the_address_from_breadcrumb_data_in_the_sdk_shape(self):
+        """
+        GIVEN an event whose breadcrumbs are the SDK's ``{"values": [...]}`` mapping
+        WHEN the filter runs
+        THEN every breadcrumb keeps its other fields and loses ``ip``
+        """
+        event: Any = {
+            "breadcrumbs": {
+                "values": [
+                    {"category": "api", "data": {"event": "request_received", "ip": "x"}},
+                    {"category": "api", "data": {"ip": "y", "path": "/p"}},
+                    {"category": "query", "message": "no data"},
+                ]
+            }
+        }
+
+        result = scrub_request_data(event, {})
+
+        assert result["breadcrumbs"]["values"] == [
+            {"category": "api", "data": {"event": "request_received"}},
+            {"category": "api", "data": {"path": "/p"}},
+            {"category": "query", "message": "no data"},
+        ]
+
+    def test_removes_the_address_from_a_bare_list_of_breadcrumbs(self):
+        """
+        GIVEN an event whose breadcrumbs are a plain list
+        WHEN the filter runs
+        THEN the address is removed from each breadcrumb's data
+        """
+        event: Any = {"breadcrumbs": [{"data": {"ip": "x", "event": "e"}}]}
+
+        result = scrub_request_data(event, {})
+
+        assert result["breadcrumbs"] == [{"data": {"event": "e"}}]
+
+    def test_removes_the_address_from_event_extra(self):
+        """
+        GIVEN an event whose extra holds the fields of an error log record
+        WHEN the filter runs
+        THEN ``ip`` is gone and the other fields stay
+        """
+        event: Any = {"extra": {"ip": "x", "event": "unhandled_exception", "request_id": "r"}}
+
+        result = scrub_request_data(event, {})
+
+        assert result["extra"] == {"event": "unhandled_exception", "request_id": "r"}
+
+    @pytest.mark.parametrize(
+        "event",
+        [
+            {"breadcrumbs": None, "extra": None},
+            {"breadcrumbs": "text", "extra": "text"},
+            {"breadcrumbs": {"values": None}},
+            {"breadcrumbs": {"values": "text"}},
+            {"breadcrumbs": {"values": [None, "text", 3, {"data": None}, {"data": "text"}]}},
+            {"breadcrumbs": [None, {"data": ["ip"]}], "extra": ["ip"]},
+            {"breadcrumbs": {"other": [{"data": {"ip": "x"}}]}},
+        ],
+        ids=[
+            "none",
+            "text",
+            "values-none",
+            "values-text",
+            "values-odd-items",
+            "list-odd-items",
+            "no-values-key",
+        ],
+    )
+    def test_never_raises_on_unexpected_shapes(self, event):
+        """
+        GIVEN an event whose breadcrumbs or extra have unexpected shapes
+        WHEN the filter runs
+        THEN it returns the event without raising
+        """
+        assert scrub_request_data(event, {}) is event
