@@ -1919,6 +1919,47 @@ class TestAddressCap:
         assert "testclient" not in fields
         assert "addr:" not in fields
 
+    def test_an_address_refusal_binds_no_user_though_the_request_carries_a_token(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cap of one message per address, spent, and the context filter on the logger that
+            writes the refusals, as the application's handlers carry it
+        WHEN the address posts again with a valid token
+        THEN the refusal record has no user_id, user, ip or address field, since the cap refuses
+            before authentication; and, with the address cap off and a budget of one message per
+            user, the user's own refusal record carries the user_id through the same filter
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-unbound@example.com")
+        _use_model(client, _scripted("one", "two"))
+        client.post(CHAT, json={"message": "a"}, headers=auth_header(token))
+        handlers_logger = logging.getLogger("api.assistant.exception_handlers")
+        context_filter = ContextFilter()
+        handlers_logger.addFilter(context_filter)
+
+        try:
+            # WHEN
+            with captured_log_records(handlers_logger.name) as address_records:
+                refused = client.post(CHAT, json={"message": "b"}, headers=auth_header(token))
+            configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="0", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+            _use_model(client, _scripted("one", "two"))
+            client.post(CHAT, json={"message": "c"}, headers=auth_header(token))
+            with captured_log_records(handlers_logger.name) as user_records:
+                over_budget = client.post(CHAT, json={"message": "d"}, headers=auth_header(token))
+        finally:
+            handlers_logger.removeFilter(context_filter)
+
+        # THEN
+        assert refused.status_code == 429
+        (record,) = [r for r in address_records if r.event == "assistant_address_cap_reached"]
+        for field in ("user_id", "user", "ip", "address"):
+            assert not hasattr(record, field)
+        assert over_budget.status_code == 429
+        (user_record,) = [r for r in user_records if r.event == "assistant_rate_limited"]
+        assert user_record.user_id
+
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_turn_refused_for_a_full_process_gives_the_address_slot_back(
         self, assistant_settings, client, configure, endpoint
