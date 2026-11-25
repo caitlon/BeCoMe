@@ -308,8 +308,9 @@ An invitation is not emailed. The invitee finds it in their list of pending invi
 
 **Pagination.** List endpoints (projects, opinions, members, invitations) accept optional
 `limit` and `offset` query parameters. `limit` tops out at 100 and defaults to the first page,
-so responses stay bounded. The GDPR export is the one exception: it always returns the full
-dataset.
+so responses stay bounded. `offset` must be at most 2147483647 (`MAX_OFFSET`); a larger value
+answers 422, while an oversized `limit` is clamped to the page maximum. The GDPR export is the
+one exception: it always returns the full dataset.
 
 ## Configuration
 
