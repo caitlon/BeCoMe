@@ -265,6 +265,7 @@ exhausting the service:
 |---|---|
 | Messages per user | 60 an hour |
 | Requests per address | 20 a minute |
+| Messages per address | 240 an hour, across both chat routes |
 | Messages across all users | 600 an hour |
 | Answers at the same time | 8 per server process, 2 per user |
 | Length of one message | 4,000 characters |

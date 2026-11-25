@@ -2148,7 +2148,7 @@ class TestAddressCap:
 
 
 class TestFailedPreparationGivesTheMessageBack:
-    """A turn that fails before the answer model is called gives back both messages it spent."""
+    """A turn that fails before the answer model is called gives back every message it spent."""
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_project_the_caller_cannot_see_spends_nothing(
@@ -2246,7 +2246,7 @@ class TestFailedPreparationGivesTheMessageBack:
             assert model.seen == []
             assert (user_refund.call_count, global_refund.call_count) == (1, 1)
 
-    def test_in_the_agent_mode_an_unknown_project_found_by_a_tool_keeps_both_messages(
+    def test_in_the_agent_mode_an_unknown_project_found_by_a_tool_keeps_every_message(
         self, assistant_settings, client, configure
     ):
         """
@@ -2289,7 +2289,7 @@ class TestFailedPreparationGivesTheMessageBack:
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     @pytest.mark.parametrize("mode", ["workflow", "agent"])
-    def test_a_failure_of_the_answer_model_keeps_both_messages(
+    def test_a_failure_of_the_answer_model_keeps_every_message(
         self, assistant_settings, client, configure, endpoint, mode
     ):
         """

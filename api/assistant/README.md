@@ -367,8 +367,9 @@ in the `hybrid` and `agent` modes, which yield no text.
 ### Streaming
 
 `POST /api/v1/assistant/chat/stream` takes the same body, session, CSRF header, message limit and
-per-address limit and cap as `/chat` and answers as `text/event-stream`, with `Cache-Control: no-cache` and
-`X-Accel-Buffering: no`. Each event is a name line, one `data:` line of JSON and a blank line:
+per-address limit and cap as `/chat` and answers as `text/event-stream`, with
+`Cache-Control: no-cache` and `X-Accel-Buffering: no`. Each event is a name line, one `data:`
+line of JSON and a blank line:
 
 ```
 event: token
@@ -418,22 +419,21 @@ watch for the disconnect itself fails, the turn runs on without it and
 
 ### Limits
 
-- **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
-  (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
-  after the address cap and the turn slot are taken and the request and the retriever are checked
-  (see "Order of the checks" below), and before the API client or any model is built, so a
-  message it refuses costs no model call. A refused message is given back: in memory it is never stored, and in
-  Redis its increment is given back by a guarded script (if that give-back fails with a store
-  error, `assistant_throttle_giveback_unavailable` is logged and the counter stays above the
-  budget until the window closes). A Redis error does not lift it: each process then counts in
-  its own memory with the same budget, and the record `assistant_throttle_unavailable` is logged
-  at ERROR. Set it to `0` to switch it off, for a
-  measurement run that sends many questions from one account; a deployed service refuses `0`.
-  A turn that fails while it is prepared, before the answer model is called (an unknown project,
-  a retrieval error, a timeout), gives back all its messages, the user's, the ceiling's and the
-  address's; in
-  the `agent` mode a project is looked up only when the model calls a tool, so an unknown project
-  there keeps them. A failure of the answer model, and a client that goes away, keep them.
+- **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour (default 60),
+  counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent after the address
+  cap and the turn slot are taken and the request and the retriever are checked (see "Order of the
+  checks" below), and before the API client or any model is built, so a message it refuses costs no
+  model call. A refused message is given back: in memory it is never stored, and in Redis its
+  increment is given back by a guarded script (if that give-back fails with a store error,
+  `assistant_throttle_giveback_unavailable` is logged and the counter stays above the budget until
+  the window closes). A Redis error does not lift it: each process then counts in its own memory
+  with the same budget, and the record `assistant_throttle_unavailable` is logged at ERROR. Set it
+  to `0` to switch it off, for a measurement run that sends many questions from one account; a
+  deployed service refuses `0`. A turn that fails while it is prepared, before the answer model is
+  called (an unknown project, a retrieval error, a timeout), gives back all its messages, the
+  user's, the ceiling's and the address's; in the `agent` mode a project is looked up only when the
+  model calls a tool, so an unknown project there keeps them. A failure of the answer model, and a
+  client that goes away, keep them.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
   set and in memory otherwise, with the same per-process fallback as the message limit. It is
@@ -459,16 +459,16 @@ watch for the disconnect itself fails, the turn runs on without it and
   fixed, so an address can spend up to twice the cap across a window edge. Set it to `0` to switch
   it off on a laptop; a deployed service refuses `0` and refuses a value that is not below the
   global ceiling. It is separate from the per-minute limit described under "Per-address limit".
-- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most
-  turns one process answers at once, and one user may run at most two of them, so a single account
-  cannot take every slot. A turn that finds no free slot is refused at once, not queued, with `503`,
-  the same body as an unreachable model server and `Retry-After: 5`; the record
+- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most turns
+  one process answers at once, and one user may run at most two of them, so a single account cannot
+  take every slot. A turn that finds no free slot is refused at once, not queued, with `503`, the
+  same body as an unreachable model server and `Retry-After: 5`; the record
   `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user, and a
   refusal writes just that one. The slot is taken after the per-address limit and the address cap
-  and before the message limit, so a turn refused for a full process spends no message of the hourly budget, and a message
-  the budget refuses gives its slot back at once. The slot is given back when the response is done,
-  so a streamed answer holds it until the stream ends. The count is per process: with several
-  processes the ceiling is the setting times their number.
+  and before the message limit, so a turn refused for a full process spends no message of the hourly
+  budget, and a message the budget refuses gives its slot back at once. The slot is given back when
+  the response is done, so a streamed answer holds it until the stream ends. The count is per
+  process: with several processes the ceiling is the setting times their number.
 - **Database session.** The chat routes look the caller up through their own dependency
   (`get_assistant_user` in `api/assistant/deps.py`), which closes its database session as soon as
   the caller is loaded. On a user-cache miss neither route therefore keeps a connection of the
@@ -491,20 +491,21 @@ watch for the disconnect itself fails, the turn runs on without it and
   then the turn slot, then the request check and the retriever, then the hourly budget (the
   user's, then the global ceiling), and only after that the API client and the models. A request
   refused by any step before the budget spends no message, and one refused after the address cap
-  has charged gives that charge back: that covers `422` for an invalid body or a message that is too long, and `503` for a
-  retriever that cannot be built (the vector database is down or not configured). The retriever
+  has charged gives that charge back: that covers `422` for an invalid body or a message that is
+  too long, and `503` for a retriever that cannot be built (the vector database is down or not
+  configured). The retriever
   is built once per process, so once it exists a request pays nothing for it. A failed build is
   not cached: on a process whose vector database is down, a caller over budget drives one
   retriever build attempt per request, bounded by the per-address limits and the turn slots, and
   gets `503`, not `429`.
 - **Per-address limit.** `LIMIT_ASSISTANT_CHAT` (`20/minute`, `api/middleware/rate_limit.py`)
-  applies to every address on top of the hourly caps. It is the first dependency of both routes, checked
-  before the turn slot, the session check and the message limit, so a message it refuses spends
-  no hourly message, takes no slot and builds nothing. A request refused later for another
-  reason, an unauthenticated one included, has already counted against it, and an anonymous
-  request over the limit is answered `429`, not `401`. Each route has its own counter, so
-  `/chat` and `/chat/stream` each allow `20/minute` per address, while the hourly message limit
-  is shared by both.
+  applies to every address on top of the hourly caps. It is the first dependency of both routes,
+  checked before the turn slot, the session check and the message limit, so a message it refuses
+  spends no hourly message, takes no slot and builds nothing. A request refused later for another
+  reason, an unauthenticated one included, has already counted against it, and an anonymous request
+  over the limit is answered `429`, not `401`. Each route has its own counter, so `/chat` and
+  `/chat/stream` each allow `20/minute` per address, while the hourly message limit is shared by
+  both.
 - **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
   generation together; a turn that outlives it is answered `503`.
 - **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90) bounds the work done

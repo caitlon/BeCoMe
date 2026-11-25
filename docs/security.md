@@ -432,12 +432,14 @@ Only those routes carry a limit of their own. The defaults do not count the heal
 docs and the OpenAPI schema (`/docs`, `/redoc`, `/openapi.json`, which prod hides), or a body
 FastAPI refuses as malformed before it runs any dependency (`422`). The count is per path, so a
 client that fetches many different photo URLs has a count for each, while one URL asked for in a
-loop reaches the burst limit. The three assistant caps (the hourly messages per
-account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
-applied through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs
-first, so a request it refuses takes no slot, spends no message and builds no API client; the
-`hold_turn_slot` dependency follows, so a request refused for a full process spends no message of
-the hourly budget, and the message limit comes last. It is no longer a route dependency:
+loop reaches the burst limit. The four assistant caps (the hourly messages per
+account, the hourly turns per client address, the global hourly ceiling counted for everyone, and
+the concurrent turns per process) are applied through dependencies, and the `20/minute` per-IP
+limit is one too. The per-IP limit runs first, so a request it refuses takes no slot, spends no
+message and builds no API client. The per-address cap (`charge_address_turn`) follows, so a turn
+it refuses takes no slot and spends no message of the hourly budget. The `hold_turn_slot`
+dependency comes next, so a request refused for a full process spends no message of the hourly
+budget, and the message limit comes last. It is no longer a route dependency:
 `open_chat_turn` calls `enforce_message_limit` after the request body check and the documentation
 retriever, so a message that is too long or an invalid body (`422`) and a retriever that cannot be
 built (`503`) are refused before a message is spent.
@@ -449,12 +451,14 @@ given back to the user's own budget, and a message a budget refuses is given bac
 memory it is never stored, and in Redis its increment is given back by a guarded script. If that
 give-back fails with a store error, the counter stays above its budget until the window closes.
 A turn that fails while it is prepared, before the answer model is called (an unknown project, a
-retrieval error, a timeout), gives back both its messages, the user's and the global ceiling's; in
-the `agent` mode a project is looked up only when the model calls a tool, so an unknown project
-there keeps them. A failure of the answer model, and a client that goes away, keep them.
+retrieval error, a timeout), gives back all three of its messages, the user's, the global
+ceiling's and the address's; in the `agent` mode a project is looked up only when the model
+calls a tool, so an unknown project there keeps them. A failure of the answer model, and a client
+that goes away, keep them.
 
 The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
-seconds: the time left in the limit's window, or until that user's hourly window closes.
+seconds: the time left in the limit's window, or until that user's or that address's hourly
+window closes.
 `CORSMiddleware` lists the header in `expose_headers`, so the SPA can read it and start its retry
 timer.
 

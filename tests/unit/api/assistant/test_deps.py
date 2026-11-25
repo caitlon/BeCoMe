@@ -337,13 +337,14 @@ class TestCloseAssistantResources:
     @staticmethod
     def _build_everything(
         engine: MagicMock, answer: MagicMock, query: MagicMock
-    ) -> tuple[MagicMock, MagicMock]:
-        """Build the models, the retriever and both Redis-backed throttles.
+    ) -> tuple[MagicMock, MagicMock, MagicMock]:
+        """Build the models, the retriever and the three Redis-backed throttles.
 
-        :return: The Redis clients of the per-user throttle and of the global one.
+        :return: The Redis clients of the per-user, the global and the per-address throttle.
         """
         user_client = MagicMock(name="user_redis_client")
         global_client = MagicMock(name="global_redis_client")
+        address_client = MagicMock(name="address_redis_client")
         settings = _settings(redis_url="redis://cache:6379/0")
         with (
             patch.object(deps, "get_settings", return_value=settings),
@@ -354,34 +355,41 @@ class TestCloseAssistantResources:
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "DocsRetriever", side_effect=lambda **_: MagicMock()),
             patch.object(rate_limit, "get_settings", return_value=settings),
-            patch.object(rate_limit.redis, "from_url", side_effect=[user_client, global_client]),
+            patch.object(
+                rate_limit.redis,
+                "from_url",
+                side_effect=[user_client, global_client, address_client],
+            ),
         ):
             deps.get_answer_model()
             deps.get_query_model()
             deps.get_docs_retriever()
             get_assistant_throttle()
             get_assistant_global_throttle()
-        return user_client, global_client
+            get_assistant_address_throttle()
+        return user_client, global_client, address_client
 
     @pytest.fixture(autouse=True)
     def _fresh_throttles(self):
         get_assistant_throttle.cache_clear()
         get_assistant_global_throttle.cache_clear()
+        get_assistant_address_throttle.cache_clear()
         yield
         get_assistant_throttle.cache_clear()
         get_assistant_global_throttle.cache_clear()
+        get_assistant_address_throttle.cache_clear()
 
     @pytest.mark.asyncio
     async def test_it_closes_every_resource_that_was_built(self):
         """
-        GIVEN both models, the retriever and both throttles built
+        GIVEN both models, the retriever and all three throttles built
         WHEN the resources are closed
         THEN the engine, each model's two clients and each throttle's Redis client are closed,
              and the caches are empty afterwards
         """
         # GIVEN
         engine, answer, query = _engine(), _chat_model(), _chat_model()
-        user_client, global_client = self._build_everything(engine, answer, query)
+        user_client, global_client, address_client = self._build_everything(engine, answer, query)
 
         # WHEN
         await deps.close_assistant_resources()
@@ -393,9 +401,11 @@ class TestCloseAssistantResources:
             model.root_client.close.assert_called_once_with()
         user_client.close.assert_called_once_with()
         global_client.close.assert_called_once_with()
+        address_client.close.assert_called_once_with()
         assert deps.get_answer_model.cache_info().currsize == 0
         assert get_assistant_throttle.cache_info().currsize == 0
         assert get_assistant_global_throttle.cache_info().currsize == 0
+        assert get_assistant_address_throttle.cache_info().currsize == 0
         assert deps._docs_resources is None
 
     @pytest.mark.parametrize("factory", [make_chat_model, make_answer_model])
@@ -446,7 +456,7 @@ class TestCloseAssistantResources:
         engine, answer, query = _engine(), _chat_model(), _chat_model()
         engine.close.side_effect = ConnectionError("down at secret-host")
         answer.root_async_client.close.side_effect = RuntimeError("secret-host")
-        user_client, global_client = self._build_everything(engine, answer, query)
+        user_client, global_client, address_client = self._build_everything(engine, answer, query)
 
         # WHEN
         with captured_log_records("api.assistant.deps") as records:
@@ -465,6 +475,7 @@ class TestCloseAssistantResources:
         query.root_client.close.assert_called_once_with()
         user_client.close.assert_called_once_with()
         global_client.close.assert_called_once_with()
+        address_client.close.assert_called_once_with()
 
 
 class TestGetAssistantService:
@@ -1484,7 +1495,7 @@ class TestOpenChatTurn:
         assert client.closed == 1
 
     @pytest.mark.asyncio
-    async def test_a_failure_after_preparation_finished_keeps_both_messages(self, fake_client):
+    async def test_a_failure_after_preparation_finished_keeps_every_message(self, fake_client):
         """
         GIVEN an opened turn whose context was marked prepared
         WHEN the block raises an ordinary error, as a failing answer model would
@@ -1513,7 +1524,7 @@ class TestOpenChatTurn:
         address.throttle.refund.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_a_turn_that_ends_without_an_error_keeps_both_messages(self, fake_client):
+    async def test_a_turn_that_ends_without_an_error_keeps_every_message(self, fake_client):
         """
         GIVEN an opened turn that is never marked prepared, as when the client goes away and
             the route returns without raising
@@ -1536,7 +1547,7 @@ class TestOpenChatTurn:
         address.throttle.refund.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_a_cancelled_turn_keeps_both_messages(self, fake_client):
+    async def test_a_cancelled_turn_keeps_every_message(self, fake_client):
         """
         GIVEN an opened turn that is not marked prepared
         WHEN the block is cancelled

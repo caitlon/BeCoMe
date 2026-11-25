@@ -646,15 +646,15 @@ async def hold_turn_slot(current_user: AssistantUser, slots: TurnSlotsDep) -> As
     """Hold one of the process's turn slots until the response is done, or refuse at once.
 
     A route dependency listed right after the per-address limit and the address cap on both
-    chat routes; the order of all the checks is in :func:`enforce_message_limit`. A turn refused for want of a slot
-    spends no message of the hourly budget, and a turn refused by a later step gives its slot
-    back when the dependency exits. A slot is taken without waiting, since a queue of requests
-    behind a slow model server would only hold workers: a turn is refused when the process is
-    answering its limit of turns, or when this user already has :data:`MAX_TURNS_PER_USER`
-    running. The code after ``yield`` runs once the response has been sent, so a streamed answer
-    holds its slot for the whole stream. The slot is given back whether the turn answered or
-    failed, and only when this call took it. It writes no record: the handler of
-    :class:`AssistantBusyError` writes the one.
+    chat routes; the order of all the checks is in :func:`enforce_message_limit`. A turn refused
+    for want of a slot spends no message of the hourly budget, and a turn refused by a later
+    step gives its slot back when the dependency exits. A slot is taken without waiting, since
+    a queue of requests behind a slow model server would only hold workers: a turn is refused
+    when the process is answering its limit of turns, or when this user already has
+    :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the response has been
+    sent, so a streamed answer holds its slot for the whole stream. The slot is given back
+    whether the turn answered or failed, and only when this call took it. It writes no record:
+    the handler of :class:`AssistantBusyError` writes the one.
 
     :param current_user: The authenticated caller.
     :param slots: The process-wide table from :func:`get_turn_slots`.
