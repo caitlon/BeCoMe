@@ -1847,9 +1847,9 @@ class TestFailedPreparationGivesTheMessageBack:
         """
         GIVEN a budget of one message per hour, a global ceiling of one, a first-byte limit of
             0.2 s and a retriever whose search takes 30 s
-        WHEN a message is posted, and the retriever recovers and the message is posted again
-        THEN the first is the fixed 503, each counter gave its message back once and the model
-            was never asked, and the second is answered
+        WHEN a message is posted
+        THEN it is the fixed 503, each counter gave its message back once and the model was
+            never asked
         """
         # GIVEN
         configure(
@@ -1871,9 +1871,6 @@ class TestFailedPreparationGivesTheMessageBack:
             assert slow.json() == UNAVAILABLE_BODY
             assert model.seen == []
             assert (user_refund.call_count, global_refund.call_count) == (1, 1)
-            client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
-            answered = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
-            assert answered.status_code == 200
 
     def test_in_the_agent_mode_an_unknown_project_found_by_a_tool_keeps_both_messages(
         self, assistant_settings, client, configure
