@@ -67,6 +67,20 @@ class TestChatErrorHierarchy:
         """
         assert issubclass(AssistantRateLimitedError, AssistantError)
 
+    def test_rate_limited_names_the_user_unless_told_it_was_the_address(self):
+        """
+        GIVEN AssistantRateLimitedError built with and without a reason
+        WHEN its attributes are inspected
+        THEN the reason is user by default and address when given, and the wait is kept
+        """
+        # WHEN
+        default = AssistantRateLimitedError("x", retry_after=7)
+        by_address = AssistantRateLimitedError("x", retry_after=9, reason="address")
+
+        # THEN
+        assert (default.reason, default.retry_after) == ("user", 7)
+        assert (by_address.reason, by_address.retry_after) == ("address", 9)
+
     def test_busy_is_an_assistant_error_and_carries_retry_after(self):
         """
         GIVEN AssistantBusyError built with a wait of 5 seconds and the process limit

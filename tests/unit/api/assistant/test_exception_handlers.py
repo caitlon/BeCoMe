@@ -44,6 +44,13 @@ class TestAssistantExceptionHandlers:
                 "assistant_rate_limited",
             ),
             (
+                assistant_rate_limited_handler,
+                AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=90, reason="address"),
+                429,
+                "Too many assistant messages. Please try again later.",
+                "assistant_address_cap_reached",
+            ),
+            (
                 assistant_busy_handler,
                 AssistantBusyError(_PRIVATE_TEXT, retry_after=5, reason="process"),
                 503,
@@ -65,7 +72,7 @@ class TestAssistantExceptionHandlers:
                 "assistant_upstream_error",
             ),
         ],
-        ids=["rate_limited", "busy", "unavailable", "upstream"],
+        ids=["rate_limited", "address_cap", "busy", "unavailable", "upstream"],
     )
     def test_answers_with_the_status_and_detail_body(
         self, caplog, handler, exc, status_code, detail, event
@@ -105,6 +112,40 @@ class TestAssistantExceptionHandlers:
         # THEN
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "1234"
+
+    def test_an_address_refusal_is_one_warning_with_no_user_address_or_reason_field(self, caplog):
+        """
+        GIVEN a rate-limited error raised by the per-address cap
+        WHEN its handler runs
+        THEN exactly one WARNING with the address event is written, the user's event is not, and
+             the record carries no field that could name a user or an address
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        exc = AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=90, reason="address")
+
+        # WHEN
+        response = assistant_rate_limited_handler(_request(), exc)
+
+        # THEN
+        assert response.headers["Retry-After"] == "90"
+        records = [r for r in caplog.records if getattr(r, "event", None) is not None]
+        (record,) = records
+        assert record.event == "assistant_address_cap_reached"
+        assert record.levelno == logging.WARNING
+        for forbidden in (
+            "user_id",
+            "user",
+            "ip",
+            "address",
+            "client_ip",
+            "key",
+            "reason",
+            "addr",
+            "ip_hash",
+            "address_key",
+        ):
+            assert not hasattr(record, forbidden)
 
     def test_the_busy_answer_carries_retry_after(self):
         """

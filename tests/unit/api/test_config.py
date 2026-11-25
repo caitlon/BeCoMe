@@ -1344,6 +1344,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "60")
+        monkeypatch.setenv("ASSISTANT_ADDRESS_TURNS_PER_HOUR", "240")
         monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "600")
         for name in [*_LANGSMITH_LIBRARY_SWITCHES, *_LANGSMITH_RUNS_ENDPOINTS]:
             monkeypatch.delenv(name, raising=False)
@@ -1437,8 +1438,20 @@ class TestAssistantSettings:
             ({"ASSISTANT_VECTOR_DB_URL": ""}, "assistant_vector_db_url must be set"),
             ({"ASSISTANT_RATE_LIMIT_PER_HOUR": "0"}, "assistant_rate_limit_per_hour must be above"),
             (
+                {"ASSISTANT_ADDRESS_TURNS_PER_HOUR": "0"},
+                "assistant_address_turns_per_hour must be above",
+            ),
+            (
                 {"ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0"},
                 "assistant_global_turns_per_hour must be above",
+            ),
+            (
+                {"ASSISTANT_ADDRESS_TURNS_PER_HOUR": "600"},
+                "assistant_address_turns_per_hour must be below",
+            ),
+            (
+                {"ASSISTANT_ADDRESS_TURNS_PER_HOUR": "700"},
+                "assistant_address_turns_per_hour must be below",
             ),
             (
                 {
@@ -2248,15 +2261,20 @@ class TestAssistantSettings:
         [("dev", "dev", False), ("test", "prod", False), ("dev", "dev", True)],
     )
     @pytest.mark.parametrize(
-        "setting", ["assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"]
+        "setting",
+        [
+            "assistant_rate_limit_per_hour",
+            "assistant_address_turns_per_hour",
+            "assistant_global_turns_per_hour",
+        ],
     )
     def test_rejects_a_zero_message_limit_on_a_deployed_service(
         self, monkeypatch, tmp_path, profile, railway_name, testing, setting
     ):
         """
         GIVEN a deployed service (dev profile on Railway dev, test profile on Railway prod),
-            TESTING=1 included, with the assistant on and the per-user or the global
-            message limit set to zero, which would mean no limit
+            TESTING=1 included, with the assistant on and the per-user, the per-address or the
+            global message limit set to zero, which would mean no limit
         WHEN Settings is constructed
         THEN validation fails naming that setting
         """
@@ -2283,12 +2301,14 @@ class TestAssistantSettings:
         self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
         monkeypatch.setenv("ASSISTANT_ENABLED", "false")
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+        monkeypatch.setenv("ASSISTANT_ADDRESS_TURNS_PER_HOUR", "0")
         monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "0")
 
         # WHEN/THEN
         settings = Settings()
         assert settings.assistant_enabled is False
         assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_address_turns_per_hour == 0
         assert settings.assistant_global_turns_per_hour == 0
 
         # GIVEN a laptop with the assistant on
@@ -2301,7 +2321,26 @@ class TestAssistantSettings:
         settings = Settings()
         assert settings.assistant_enabled is True
         assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_address_turns_per_hour == 0
         assert settings.assistant_global_turns_per_hour == 0
+
+    def test_allows_an_address_limit_above_the_global_one_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN a laptop with the assistant on and a per-address limit above the global one
+        WHEN Settings is constructed
+        THEN validation passes, since the ordering is held only on a deployed service
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_ADDRESS_TURNS_PER_HOUR", "700")
+        monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "600")
+
+        # WHEN/THEN
+        assert Settings().assistant_address_turns_per_hour == 700
 
     def test_prod_with_the_assistant_off_is_unaffected(self, monkeypatch, tmp_path):
         """

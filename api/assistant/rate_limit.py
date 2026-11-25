@@ -1,4 +1,4 @@
-"""Hourly caps on assistant chat messages: one per user and one across all users.
+"""Hourly caps on assistant chat messages: per user, per client address and across all users.
 
 Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
 keyed on a hash of the identifier so no raw id sits in the store, and counted per process
@@ -21,6 +21,17 @@ budget, so it bounds what all users together can spend in an hour. Both backends
 ``hit_key``, ``charge_key`` and ``retry_after_key``, so the fallback, the zero limit and the
 remaining window apply to the global key as well. Its Redis key is ``assistant:chat:all``, which
 no user digest can equal.
+
+The per-address cap is the same counter once more, under a key made by :func:`address_key`:
+``addr:`` and a keyed hash of the client address, so its Redis key,
+``assistant:chat:addr:<hash>``, equals neither a user digest nor the global key. Both chat routes
+count under that one key. An IPv6 address counts as its /64 network, because one subscriber
+usually holds a whole /64 and could otherwise take a fresh address for each message, and an
+IPv4-mapped IPv6 address counts as its IPv4 address. The hash is an HMAC under the server's
+log-hashing key, not a plain digest: the IPv4 space is small enough to enumerate, so an unkeyed
+hash of an address could be reversed from the store or from a log. Fixed windows allow up to
+twice the cap across a window edge (the cap's worth at the end of one window and again at the
+start of the next).
 
 A message can be given back: ``charge`` and ``charge_key`` return a :class:`Charge` that records
 what was counted and where, and ``refund`` undoes exactly that charge, on the backend that took it,
@@ -54,6 +65,8 @@ logs could hash a known id and confirm it appears.
 """
 
 import hashlib
+import hmac
+import ipaddress
 import logging
 import math
 import threading
@@ -76,6 +89,12 @@ KEY_PREFIX = "assistant:chat"
 # The one key every message is also counted under, for the global ceiling.
 GLOBAL_KEY = "all"
 
+# What an address key starts with; no user digest (hex only) or :data:`GLOBAL_KEY` contains it.
+ADDRESS_KEY_PREFIX = "addr:"
+
+# The prefix length an IPv6 address is cut to before it is counted.
+_IPV6_NETWORK_BITS = 64
+
 # Decrement a counter only while it exists and is above zero. Atomic, so an expired key is never
 # recreated by a refund or by the give-back of a refused charge; DECR on an existing key keeps
 # its TTL.
@@ -92,8 +111,8 @@ return 0
 class Charge:
     """One message counted against a key, with what a refund needs to undo exactly that.
 
-    :param key: What the message was counted under: a user's digest, or :data:`GLOBAL_KEY`.
-        Never log it.
+    :param key: What the message was counted under: a user's digest, :data:`GLOBAL_KEY` or an
+        :func:`address_key`. Never log it.
     :param allowed: Whether the message was within budget.
     :param in_store: True when Redis took the charge, False when an in-memory table did,
         including the Redis backend's own fallback while the store is down.
@@ -117,6 +136,45 @@ def _digest(user_id: UUID) -> str:
     :return: Hex digest, safe to use as a Redis key component.
     """
     return hashlib.sha256(str(user_id).encode()).hexdigest()
+
+
+def _address_network(address: str) -> str:
+    """Return the form a client address is counted in.
+
+    :param address: The client address as :func:`~api.utils.client_ip.get_client_ip` returns
+        it.
+    :return: The IPv4 address in its canonical form, an IPv4-mapped IPv6 address as its IPv4
+        address, any other IPv6 address as its /64 network, and a value that is not an address
+        (the unverified-origin sentinel, ``unknown``) as it is.
+    """
+    try:
+        parsed = ipaddress.ip_address(address.strip())
+    except ValueError:
+        return address
+    if isinstance(parsed, ipaddress.IPv4Address):
+        return str(parsed)
+    if parsed.ipv4_mapped is not None:
+        return str(parsed.ipv4_mapped)
+    return str(ipaddress.ip_network((parsed, _IPV6_NETWORK_BITS), strict=False))
+
+
+def address_key(address: str) -> str:
+    """Return the throttle key a client address is counted under.
+
+    The key is an HMAC-SHA-256 of the address's network form (see :func:`_address_network`),
+    under ``log_hash_key`` when it is set and ``secret_key`` otherwise, the key
+    :func:`~api.auth.logging.hash_email` uses, and with a domain prefix so that no other keyed
+    hash of the same text equals it. Rotating the fallback key starts every address on a fresh
+    count. Never log the result or the address behind it.
+
+    :param address: The client address as :func:`~api.utils.client_ip.get_client_ip` returns
+        it.
+    :return: ``addr:`` and the hex HMAC, safe to use as a Redis key component.
+    """
+    settings = get_settings()
+    key = (settings.log_hash_key or settings.secret_key).encode()
+    message = f"assistant-address:{_address_network(address)}".encode()
+    return f"{ADDRESS_KEY_PREFIX}{hmac.new(key, message, hashlib.sha256).hexdigest()}"
 
 
 def _log_store_unavailable(exc: redis.RedisError) -> None:
@@ -159,8 +217,8 @@ class InMemoryAssistantThrottle:
 
     Safe to call from a thread pool: one lock guards the table.
 
-    :param max_per_hour: Messages allowed per key (one user, or everyone for the global ceiling)
-        within one window; 0 means no limit.
+    :param max_per_hour: Messages allowed per key (one user, one address, or everyone for the
+        global ceiling) within one window; 0 means no limit.
     :param window_seconds: Length of the window, in seconds.
     """
 
@@ -183,8 +241,8 @@ class InMemoryAssistantThrottle:
     def hit_key(self, key: str) -> bool:
         """Record one message under a key and report whether it is still within budget.
 
-        :param key: What the message is counted under: a user's digest, or
-            :data:`GLOBAL_KEY`.
+        :param key: What the message is counted under: a user's digest,
+            :data:`GLOBAL_KEY` or an :func:`address_key`.
         :return: True when this message is allowed, False when this window's budget
             is already spent.
         """
@@ -204,8 +262,8 @@ class InMemoryAssistantThrottle:
         A refused message is not counted: the count stays as it was found, so a refusal never
         leaves the key more spent than the messages that were let through.
 
-        :param key: What the message is counted under: a user's digest, or
-            :data:`GLOBAL_KEY`.
+        :param key: What the message is counted under: a user's digest,
+            :data:`GLOBAL_KEY` or an :func:`address_key`.
         :return: The charge; ``allowed`` is False when this window's budget is already spent.
         """
         if self._max == 0:
@@ -281,8 +339,8 @@ class RedisAssistantThrottle:
     """Redis-backed throttle shared across processes; counts per process on a store outage.
 
     :param client: Redis client for the shared store.
-    :param max_per_hour: Messages allowed per key (one user, or everyone for the global ceiling)
-        within one window; 0 means no limit.
+    :param max_per_hour: Messages allowed per key (one user, one address, or everyone for the
+        global ceiling) within one window; 0 means no limit.
     :param window_seconds: Length of the window, in seconds.
     """
 
@@ -311,8 +369,8 @@ class RedisAssistantThrottle:
     def hit_key(self, key: str) -> bool:
         """Count one message under a key and report whether it is within budget.
 
-        :param key: What the message is counted under: a user's digest, or
-            :data:`GLOBAL_KEY`.
+        :param key: What the message is counted under: a user's digest,
+            :data:`GLOBAL_KEY` or an :func:`address_key`.
         :return: True when this message is allowed, False when the budget is spent. While
             the store is down, the answer comes from this process's own count.
         """
@@ -334,8 +392,8 @@ class RedisAssistantThrottle:
         a refund uses, so the key never creates itself or loses its TTL. When that give-back
         fails, the error is logged and not raised, and the message is still refused.
 
-        :param key: What the message is counted under: a user's digest, or
-            :data:`GLOBAL_KEY`.
+        :param key: What the message is counted under: a user's digest,
+            :data:`GLOBAL_KEY` or an :func:`address_key`.
         :return: The charge; ``allowed`` is False when the budget is spent. While the store is
             down, it comes from this process's own count.
         """
@@ -457,3 +515,14 @@ def get_assistant_global_throttle() -> AssistantThrottle:
     :return: The throttle backend.
     """
     return _build_throttle(get_settings().assistant_global_turns_per_hour)
+
+
+@lru_cache
+def get_assistant_address_throttle() -> AssistantThrottle:
+    """Return the process-wide per-address throttle, Redis-backed when configured.
+
+    Charge it under :func:`address_key`; its budget is ``assistant_address_turns_per_hour``.
+
+    :return: The throttle backend.
+    """
+    return _build_throttle(get_settings().assistant_address_turns_per_hour)

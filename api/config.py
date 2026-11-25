@@ -411,6 +411,10 @@ class Settings(BaseSettings):
     # Chat messages per fixed hour across all users together; 0 turns the ceiling off, on a
     # laptop only: a deployed service refuses 0.
     assistant_global_turns_per_hour: int = Field(default=600, ge=0)
+    # Chat messages per client address per fixed hour, both chat routes together; 0 turns the
+    # cap off, on a laptop only: a deployed service refuses 0. Above zero it must stay below
+    # the global ceiling on a deployed service, or one address could spend all of it.
+    assistant_address_turns_per_hour: int = Field(default=240, ge=0)
     # The most chat turns one process answers at once, and above zero: a turn that finds no
     # free slot is refused with a 503 instead of waiting. A streamed answer holds its slot
     # until the stream ends.
@@ -580,8 +584,10 @@ class Settings(BaseSettings):
         too and is held to every rule below. A deployed service has no
         llama-server to reach, so every model role there must be api; a laptop and a CI
         runner keep local roles. A zero message limit
-        switches that cap off, so a deployed service may set neither the per-user nor the
-        global limit to zero. LangSmith tracing
+        switches that cap off, so a deployed service may set none of the per-user, the
+        per-address and the global limit to zero, and the per-address limit must stay below the
+        global one, since an address that could spend the whole ceiling would not be capped by
+        it. Neither check applies to a laptop. LangSmith tracing
         sends the text of questions, tool replies and answers, which is project data read
         as the signed-in user, to a third-party endpoint, so a deployed service may trace
         only to the EU endpoint, into a named project other than the local default, and only
@@ -607,11 +613,12 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true on a Railway environment outside
             the allowlist, or on a deployed service while
-            assistant_rate_limit_per_hour or assistant_global_turns_per_hour is 0, a model
-            role is still local, assistant_langsmith_enabled is true with an endpoint other
-            than the EU one or a blank or local-default project, a library tracing switch is on, a
-            ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty, not a
-            ``postgresql+psycopg`` URL, without a database or a single host, carrying a
+            assistant_rate_limit_per_hour, assistant_address_turns_per_hour or
+            assistant_global_turns_per_hour is 0, the per-address limit is not below the global
+            one, a model role is still local, assistant_langsmith_enabled is true with an
+            endpoint other than the EU one or a blank or local-default project, a library tracing
+            switch is on, a ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty,
+            not a ``postgresql+psycopg`` URL, without a database or a single host, carrying a
             host, hostaddr, port, dbname or service override, naming the same database as
             database_url or migration_database_url, or without a single sslmode of require,
             verify-ca or verify-full.
@@ -627,12 +634,21 @@ class Settings(BaseSettings):
                 f"environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:
-            for limit_name in ("assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"):
+            for limit_name in (
+                "assistant_rate_limit_per_hour",
+                "assistant_address_turns_per_hour",
+                "assistant_global_turns_per_hour",
+            ):
                 if getattr(self, limit_name) == 0:
                     raise ValueError(
                         f"{limit_name} must be above zero on a deployed service; 0 switches "
                         "the limit off"
                     )
+            if self.assistant_address_turns_per_hour >= self.assistant_global_turns_per_hour:
+                raise ValueError(
+                    "assistant_address_turns_per_hour must be below "
+                    "assistant_global_turns_per_hour on a deployed service"
+                )
             local_roles = [
                 provider_name
                 for provider_name, _ in _ASSISTANT_PROVIDER_ROLES

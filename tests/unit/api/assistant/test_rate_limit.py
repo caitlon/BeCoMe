@@ -1,5 +1,7 @@
 """Tests for the per-user hourly assistant message cap."""
 
+import hashlib
+import hmac
 import logging
 import sys
 import threading
@@ -17,6 +19,7 @@ from api.assistant.rate_limit import (
     InMemoryAssistantThrottle,
     RedisAssistantThrottle,
 )
+from api.auth.logging import hash_email
 
 
 class TestInMemoryAssistantThrottle:
@@ -1209,9 +1212,11 @@ class TestGetAssistantThrottle:
         """Keep the process-wide caches from leaking between tests."""
         rate_limit.get_assistant_throttle.cache_clear()
         rate_limit.get_assistant_global_throttle.cache_clear()
+        rate_limit.get_assistant_address_throttle.cache_clear()
         yield
         rate_limit.get_assistant_throttle.cache_clear()
         rate_limit.get_assistant_global_throttle.cache_clear()
+        rate_limit.get_assistant_address_throttle.cache_clear()
 
     def test_uses_redis_when_configured(self):
         """
@@ -1284,3 +1289,237 @@ class TestGetAssistantThrottle:
         assert isinstance(local, InMemoryAssistantThrottle)
         assert local._max == 7
         assert again is local
+
+    def test_the_address_throttle_takes_its_own_budget_and_backend(self):
+        """
+        GIVEN per-user, global and per-address budgets that differ, with and without a redis_url
+        WHEN the address throttle is built
+        THEN it carries the address budget, on Redis when configured and in memory otherwise
+        """
+        # GIVEN
+        fields = {
+            "assistant_rate_limit_per_hour": 60,
+            "assistant_global_turns_per_hour": 600,
+            "assistant_address_turns_per_hour": 9,
+        }
+        with_redis = SimpleNamespace(redis_url="redis://cache:6379/0", **fields)
+        without = SimpleNamespace(redis_url="", **fields)
+
+        # WHEN
+        with (
+            patch.object(rate_limit, "get_settings", return_value=with_redis),
+            patch.object(rate_limit.redis, "from_url", return_value=MagicMock()),
+        ):
+            hosted = rate_limit.get_assistant_address_throttle()
+        rate_limit.get_assistant_address_throttle.cache_clear()
+        with patch.object(rate_limit, "get_settings", return_value=without):
+            local = rate_limit.get_assistant_address_throttle()
+            again = rate_limit.get_assistant_address_throttle()
+
+        # THEN
+        assert isinstance(hosted, RedisAssistantThrottle)
+        assert hosted._max == 9
+        assert isinstance(local, InMemoryAssistantThrottle)
+        assert local._max == 9
+        assert again is local
+
+
+def _keyed(log_hash_key: str | None = None, secret_key: str | None = None):
+    """Patch the module's settings with the two keys ``address_key`` may use."""
+    settings = SimpleNamespace(log_hash_key=log_hash_key, secret_key=secret_key or "secret-a")
+    return patch.object(rate_limit, "get_settings", return_value=settings)
+
+
+class TestAddressKey:
+    """A client address is counted under a keyed hash of its network, never under the address."""
+
+    def test_one_ipv4_address_always_maps_to_the_same_key_and_two_addresses_differ(self):
+        """
+        GIVEN two IPv4 addresses
+        WHEN each is keyed twice
+        THEN an address keeps its key, and the two keys differ
+        """
+        # WHEN
+        with _keyed():
+            first = rate_limit.address_key("203.0.113.5")
+            again = rate_limit.address_key("203.0.113.5")
+            other = rate_limit.address_key("203.0.113.6")
+
+        # THEN
+        assert first == again
+        assert first != other
+
+    def test_addresses_of_one_ipv6_network_share_a_key_and_other_networks_do_not(self):
+        """
+        GIVEN IPv6 addresses inside one /64, and one in the next /64
+        WHEN they are keyed
+        THEN the first two share a key, spelled out in full or compressed, and the third differs
+        """
+        # WHEN
+        with _keyed():
+            one = rate_limit.address_key("2001:db8:1:2::1")
+            same_network = rate_limit.address_key("2001:0db8:0001:0002:ffff:ffff:ffff:ffff")
+            next_network = rate_limit.address_key("2001:db8:1:3::1")
+
+        # THEN
+        assert one == same_network
+        assert one != next_network
+
+    def test_an_ipv4_mapped_ipv6_address_counts_as_its_ipv4_address(self):
+        """
+        GIVEN an IPv4 address and the same address written as IPv4-mapped IPv6
+        WHEN both are keyed
+        THEN the keys are equal, and a different mapped address differs
+        """
+        # WHEN
+        with _keyed():
+            plain = rate_limit.address_key("203.0.113.5")
+            mapped = rate_limit.address_key("::ffff:203.0.113.5")
+            other = rate_limit.address_key("::ffff:203.0.113.6")
+
+        # THEN
+        assert plain == mapped
+        assert plain != other
+
+    @pytest.mark.parametrize("value", ["unverified-origin", "unknown", "not an address"])
+    def test_a_value_that_is_not_an_address_is_keyed_as_it_is(self, value):
+        """
+        GIVEN a value get_client_ip may return that is not an address
+        WHEN it is keyed
+        THEN the key is stable, differs from an address key, and shows no part of the value
+        """
+        # WHEN
+        with _keyed():
+            key = rate_limit.address_key(value)
+            again = rate_limit.address_key(value)
+
+        # THEN
+        assert key == again
+        assert key != rate_limit.address_key("203.0.113.5")
+        assert key.startswith(rate_limit.ADDRESS_KEY_PREFIX)
+        assert value not in key
+
+    def test_the_key_is_an_hmac_and_not_a_plain_digest_of_the_address(self):
+        """
+        GIVEN an IPv4 address
+        WHEN it is keyed
+        THEN the key is neither the address, nor its SHA-256 digest, nor the digest under the
+            domain prefix alone, since an unkeyed hash of the small IPv4 space could be reversed
+        """
+        # WHEN
+        with _keyed():
+            key = rate_limit.address_key("203.0.113.5")
+
+        # THEN
+        digest = key.removeprefix(rate_limit.ADDRESS_KEY_PREFIX)
+        assert len(digest) == 64
+        assert "203.0.113.5" not in key
+        assert digest != hashlib.sha256(b"203.0.113.5").hexdigest()
+        assert digest != hashlib.sha256(b"assistant-address:203.0.113.5").hexdigest()
+
+    def test_the_key_follows_the_log_hash_key_and_falls_back_to_the_secret_key(self):
+        """
+        GIVEN one address, a secret key and a separate log hash key
+        WHEN it is keyed under each combination
+        THEN the log hash key decides when it is set, the secret key otherwise, and changing
+            the deciding key changes the result
+        """
+        # WHEN
+        with _keyed(log_hash_key=None, secret_key="secret-a"):  # pragma: allowlist secret
+            by_secret = rate_limit.address_key("203.0.113.5")
+        with _keyed(log_hash_key=None, secret_key="secret-b"):  # pragma: allowlist secret
+            other_secret = rate_limit.address_key("203.0.113.5")
+        with _keyed(log_hash_key="log-key", secret_key="secret-a"):  # pragma: allowlist secret
+            by_log_key = rate_limit.address_key("203.0.113.5")
+        with _keyed(log_hash_key="log-key", secret_key="secret-b"):  # pragma: allowlist secret
+            log_key_alone = rate_limit.address_key("203.0.113.5")
+
+        # THEN
+        assert by_secret != other_secret
+        assert by_log_key == log_key_alone
+        assert by_log_key != by_secret
+
+    def test_the_key_differs_from_a_bare_hmac_of_the_network_and_from_the_email_tag(self):
+        """
+        GIVEN an IPv4 address and the key it is counted under
+        WHEN the key is compared with a bare HMAC of the same network form under the same key
+            and with the keyed tag hash_email gives the same text
+        THEN it equals neither, which pins the domain prefix and keeps the counters apart from
+            the log tags
+        """
+        # WHEN
+        with _keyed(secret_key="secret-a"):  # pragma: allowlist secret
+            key = rate_limit.address_key("203.0.113.5")
+            email_tag = hash_email("203.0.113.5")
+        bare = hmac.new(
+            b"secret-a",  # pragma: allowlist secret
+            b"203.0.113.5",
+            hashlib.sha256,
+        ).hexdigest()
+
+        # THEN
+        digest = key.removeprefix(rate_limit.ADDRESS_KEY_PREFIX)
+        assert digest != bare
+        assert digest != email_tag
+        assert email_tag not in key
+
+    @pytest.mark.parametrize(
+        ("written", "plain"),
+        [
+            (" 203.0.113.5 ", "203.0.113.5"),
+            ("2001:DB8::1", "2001:db8::1"),
+            ("fe80::1%eth0", "fe80::1"),
+        ],
+    )
+    def test_padding_case_and_a_zone_id_do_not_change_the_key(self, written, plain):
+        """
+        GIVEN an address written with padding, in upper case, or with a zone id
+        WHEN it is keyed
+        THEN the key equals the one of the plain form
+        """
+        # WHEN
+        with _keyed():
+            key = rate_limit.address_key(written)
+            plain_key = rate_limit.address_key(plain)
+
+        # THEN
+        assert key == plain_key
+
+    def test_the_key_equals_no_user_digest_and_not_the_global_key(self):
+        """
+        GIVEN a keyed address and the key forms of a user and of the global ceiling
+        WHEN the Redis keys are compared
+        THEN the address's differs from both, so the three counters never share a key
+        """
+        # WHEN
+        with _keyed():
+            key = rate_limit.address_key("203.0.113.5")
+
+        # THEN
+        assert key != rate_limit.GLOBAL_KEY
+        assert key != rate_limit._digest(uuid4())
+        assert key.startswith(rate_limit.ADDRESS_KEY_PREFIX)
+        assert not rate_limit._digest(uuid4()).startswith(rate_limit.ADDRESS_KEY_PREFIX)
+
+    def test_a_redis_counter_for_an_address_lives_under_its_own_key(self):
+        """
+        GIVEN a Redis-backed throttle with a cap of one
+        WHEN an address is charged twice
+        THEN the second charge is refused and the store holds one key, under the address
+            prefix, with an hour-long expiry
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        with _keyed():
+            key = rate_limit.address_key("203.0.113.5")
+
+        # WHEN
+        first = throttle.charge_key(key)
+        second = throttle.charge_key(key)
+
+        # THEN
+        assert (first.allowed, second.allowed) == (True, False)
+        (stored,) = fake.keys("*")
+        assert stored.decode() == f"{rate_limit.KEY_PREFIX}:{key}"
+        assert 0 < fake.ttl(stored) <= rate_limit.WINDOW_SECONDS
