@@ -27,7 +27,7 @@ dev = [
     "pre-commit==4.7.0",
     "pip==26.3",
     "types-passlib==1.7.7.20260211",
-    "boto3-stubs[s3]==1.44.4",
+    "boto3-stubs[s3]==1.44.5",
     "mutmut==3.8.1",
     "locust==2.47.0",
     "fakeredis==2.40.0",
@@ -61,7 +61,7 @@ docs = [
     "markdown==3.11.3",
 ]
 api = [
-    "fastapi==0.163.1",
+    "fastapi==0.163.2",
     "uvicorn[standard]==0.54.0",
     "pydantic-settings==2.16.3",
     "httpx==0.28.1",
@@ -73,7 +73,7 @@ api = [
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.34",
     "email-validator==2.4.0",
-    "boto3==1.44.4",
+    "boto3==1.44.5",
     "slowapi==0.1.10",
     "bleach==6.4.0",
     "pillow==13.0.0",
@@ -91,11 +91,11 @@ assistant = [
     # Keep this order: each package comes after the packages it depends on. Dependabot
     # bumps a group one package at a time in the order listed here, so a package listed
     # before its dependency is tried against the old pin and the whole run fails.
-    "langsmith==0.14.17",
-    "langchain-core==1.8.1",
+    "langsmith==0.15.0",
+    "langchain-core==1.8.2",
     "langchain-text-splitters==1.1.3",
-    "openai==3.52.0",
-    "langchain-openai==1.8.0",
+    "openai==3.55.0",
+    "langchain-openai==1.8.1",
     "psycopg[binary]==3.3.9",
     "langchain-postgres==0.0.19",
     "langgraph==1.2.22",
