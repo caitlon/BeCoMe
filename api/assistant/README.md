@@ -442,7 +442,9 @@ watch for the disconnect itself fails, the turn runs on without it and
   turn over the ceiling is `503`, the same body as an unreachable model server, with
   `Retry-After` set to the seconds until the window closes; the record
   `assistant_global_cap_reached` carries `reason: global` and no user. Set it to `0` to switch it
-  off on a laptop; a deployed service refuses `0`. <!-- ALERT LINE -->
+  off on a laptop; a deployed service refuses `0`. A Better Stack alert on that record, one each
+  for dev and prod, opens one incident when the ceiling refuses a turn and sends an e-mail; the
+  incident closes after an hour without a refusal.
 - **Per-address cap.** `ASSISTANT_ADDRESS_TURNS_PER_HOUR` messages per client address in a fixed
   hour (default 240), counted with the same backends, fallback and window as the
   message limit. The key is the keyed hash of the address from `get_client_ip` (an HMAC under
