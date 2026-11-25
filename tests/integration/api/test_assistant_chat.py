@@ -40,7 +40,11 @@ from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.rag.models import make_answer_model
-from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
+from api.assistant.rate_limit import (
+    get_assistant_address_throttle,
+    get_assistant_global_throttle,
+    get_assistant_throttle,
+)
 from api.assistant.sse import KEEP_ALIVE
 from api.auth.cookies import CSRF_COOKIE
 from api.auth.jwt import create_access_token
@@ -94,6 +98,7 @@ _BASE_ENV = {
     "ASSISTANT_MAX_MESSAGE_CHARS": "4000",
     "ASSISTANT_TURN_TIMEOUT_SECONDS": "30",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
+    "ASSISTANT_ADDRESS_TURNS_PER_HOUR": "0",
     "ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0",
     "ASSISTANT_RETRIEVAL_K": "3",
     "ASSISTANT_SHOW_SOURCES": "true",
@@ -122,6 +127,7 @@ def _reset_assistant_state() -> None:
     deps.clear_caches()
     get_assistant_throttle.cache_clear()
     get_assistant_global_throttle.cache_clear()
+    get_assistant_address_throttle.cache_clear()
     tracing.shutdown_tracing()
     ls.utils.get_env_var.cache_clear()
 
@@ -1771,6 +1777,374 @@ class TestRefusedRequestSpendsNoMessage:
 
 
 UNKNOWN_PROJECT_ID = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+
+
+@contextmanager
+def _watched_address() -> Iterator[tuple[MagicMock, MagicMock]]:
+    """Yield spies on the per-address counter's ``charge_key`` and ``refund``.
+
+    Each spy calls through, so the cap behaves as it would.
+    """
+    address = get_assistant_address_throttle()
+    with (
+        patch.object(address, "charge_key", wraps=address.charge_key) as charge_spy,
+        patch.object(address, "refund", wraps=address.refund) as refund_spy,
+    ):
+        yield charge_spy, refund_spy
+
+
+ADDRESS_CAP_BODY = {"detail": "Too many assistant messages. Please try again later."}
+
+
+class TestAddressCap:
+    """One client address has an hourly cap of its own, shared by both chat routes."""
+
+    def test_one_address_cannot_spend_more_than_its_cap_across_both_routes(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cap of two messages per address and hour
+        WHEN one address posts a message to /chat, one to /chat/stream, and then one to each
+        THEN the first two are answered and both of the others are 429 with the fixed detail and
+            a Retry-After within the hour, so the two routes count in one place
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="2")
+        token = register_and_login(client, "address-both@example.com")
+        _use_model(client, _scripted("one", "two"))
+
+        # WHEN
+        chat = client.post(CHAT, json={"message": "a"}, headers=auth_header(token))
+        stream = client.post(STREAM, json={"message": "b"}, headers=auth_header(token))
+        over_chat = client.post(CHAT, json={"message": "c"}, headers=auth_header(token))
+        over_stream = client.post(STREAM, json={"message": "d"}, headers=auth_header(token))
+
+        # THEN
+        assert (chat.status_code, stream.status_code) == (200, 200)
+        for refused in (over_chat, over_stream):
+            assert refused.status_code == 429
+            assert refused.json() == ADDRESS_CAP_BODY
+            assert 1 <= int(refused.headers["Retry-After"]) <= 3600
+
+    def test_two_users_behind_one_address_share_the_cap(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cap of one message per address and hour, spent by one user
+        WHEN a second user, with a budget of their own, posts from the same address
+        THEN the answer is 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        first = register_and_login(client, "address-first@example.com")
+        second = register_and_login(client, "address-second@example.com")
+        _use_model(client, _scripted("one", "two"))
+        assert (
+            client.post(CHAT, json={"message": "a"}, headers=auth_header(first)).status_code == 200
+        )
+
+        # WHEN
+        refused = client.post(CHAT, json={"message": "b"}, headers=auth_header(second))
+
+        # THEN
+        assert refused.status_code == 429
+        assert refused.json() == ADDRESS_CAP_BODY
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_refusal_comes_before_the_turn_slot_and_charges_neither_budget(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address, spent, and the only turn slot held by another
+            user, and a retriever factory that counts its calls
+        WHEN the address posts again
+        THEN the answer is the cap's 429 and not the slot's 503, neither the user's budget nor
+            the ceiling was charged, no slot was taken and the factory did not run
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_ADDRESS_TURNS_PER_HOUR="1",
+            ASSISTANT_MAX_CONCURRENT_TURNS="1",
+            ASSISTANT_RATE_LIMIT_PER_HOUR="5",
+            ASSISTANT_GLOBAL_TURNS_PER_HOUR="5",
+        )
+        token = register_and_login(client, "address-order@example.com")
+        _use_model(client, _scripted("first"))
+        factory = _CountingRetrieverFactory()
+        client.app.dependency_overrides[deps.get_docs_retriever] = factory
+        assert (
+            client.post(endpoint, json={"message": "a"}, headers=auth_header(token)).status_code
+            == 200
+        )
+        holder = uuid4()
+        assert deps.get_turn_slots().acquire(holder) is None
+        built_before = factory.built
+
+        with _watched_budgets() as (user_spy, global_spy):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+            # THEN
+            assert refused.status_code == 429
+            assert (user_spy.call_count, global_spy.call_count) == (0, 0)
+            assert deps.get_turn_slots().holders == {holder: 1}
+            assert factory.built == built_before
+
+    def test_a_refusal_writes_one_warning_that_names_no_address_and_no_user(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cap of one message per address, spent
+        WHEN the address posts again
+        THEN exactly one record with the address event is written, at WARNING, the user's own
+            event is not, and no field of the record holds the address, a key or a user id
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-record@example.com")
+        _use_model(client, _scripted("one"))
+        client.post(CHAT, json={"message": "a"}, headers=auth_header(token))
+
+        with captured_log_records("api.assistant.exception_handlers") as records:
+            # WHEN
+            refused = client.post(CHAT, json={"message": "b"}, headers=auth_header(token))
+
+        # THEN
+        assert refused.status_code == 429
+        events = [getattr(r, "event", None) for r in records]
+        assert events == ["assistant_address_cap_reached"]
+        (record,) = records
+        assert record.levelno == logging.WARNING
+        fields = " ".join(str(value) for value in vars(record).values())
+        assert "testclient" not in fields
+        assert "addr:" not in fields
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_turn_refused_for_a_full_process_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address and the only turn slot held by another user
+        WHEN the address posts and is refused for the full process, the slot is released, and the
+            address posts again
+        THEN the first is 503 and the second is answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1", ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "address-slot@example.com")
+        _use_model(client, _scripted("ok"))
+        slots = deps.get_turn_slots()
+        holder = uuid4()
+        assert slots.acquire(holder) is None
+
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
+            slots.release(holder)
+            admitted = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+            # THEN
+            assert refused.status_code == 503
+            assert admitted.status_code == 200
+            assert refund_spy.call_count == 1
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_body_the_schema_rejects_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address
+        WHEN an invalid body is posted, and then a valid message
+        THEN the first is 422 and the second is answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-422@example.com")
+        _use_model(client, _scripted("fine"))
+
+        # WHEN
+        invalid = client.post(endpoint, json={"message": ""}, headers=auth_header(token))
+        valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert invalid.status_code == 422
+        assert valid.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_token_that_is_not_valid_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address
+        WHEN a request with a token this application never issued is posted, and then a valid one
+        THEN the first is 401 and the second is answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-401@example.com")
+        _use_model(client, _scripted("fine"))
+
+        # WHEN
+        unauthorised = client.post(endpoint, json={"message": "a"}, headers=auth_header("junk"))
+        valid = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+        # THEN
+        assert unauthorised.status_code == 401
+        assert valid.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_retriever_that_cannot_be_built_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address and a retriever factory that fails with the
+            outage error while the vector database is down
+        WHEN a message is posted, and the database comes back and the message is posted again
+        THEN the first is the fixed 503 and the second is answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-retriever@example.com")
+        _use_model(client, _scripted("fine"))
+
+        def down() -> StaticDocsRetriever:
+            raise AssistantUnavailableError("the assistant's vector database is down")
+
+        client.app.dependency_overrides[deps.get_docs_retriever] = down
+
+        # WHEN
+        refused = client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
+        client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
+        answered = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+        # THEN
+        assert refused.status_code == 503
+        assert answered.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_turn_refused_by_the_user_budget_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of two messages per address and a budget of one message per user
+        WHEN user A is answered, user A is refused for a spent budget, user B is answered and
+            user C posts
+        THEN B is answered because A's refused turn gave its address slot back, and C is the
+            address cap's 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="2", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        tokens = {name: register_and_login(client, f"address-{name}@example.com") for name in "abc"}
+        _use_model(client, _scripted("one", "two"))
+
+        # WHEN
+        first = client.post(endpoint, json={"message": "1"}, headers=auth_header(tokens["a"]))
+        spent = client.post(endpoint, json={"message": "2"}, headers=auth_header(tokens["a"]))
+        other = client.post(endpoint, json={"message": "3"}, headers=auth_header(tokens["b"]))
+        over = client.post(endpoint, json={"message": "4"}, headers=auth_header(tokens["c"]))
+
+        # THEN
+        assert (first.status_code, spent.status_code, other.status_code) == (200, 429, 200)
+        assert over.status_code == 429
+        assert over.json() == ADDRESS_CAP_BODY
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_turn_refused_by_the_global_ceiling_gives_the_address_slot_back(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of three messages per address and a global ceiling of one
+        WHEN one message is answered and a second is refused by the ceiling
+        THEN the second is 503 and the address cap's refund ran once for it
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="3", ASSISTANT_GLOBAL_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-ceiling@example.com")
+        _use_model(client, _scripted("one"))
+
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            answered = client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
+            refused = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+            # THEN
+            assert (answered.status_code, refused.status_code) == (200, 503)
+            assert refund_spy.call_count == 1
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_turn_that_fails_before_preparation_gives_the_address_slot_back_once(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address and a project id that names no project
+        WHEN a message naming it is posted, and then a message that names none
+        THEN the first is 404 and the address was refunded exactly once, by the turn and not
+            again by the cap, and the second is answered, not 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-unknown@example.com")
+        _use_model(client, _scripted("fine"))
+
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            missing = client.post(
+                endpoint,
+                json={"message": "hi", "project_id": UNKNOWN_PROJECT_ID},
+                headers=auth_header(token),
+            )
+            answered = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+            # THEN
+            assert missing.status_code == 404
+            assert answered.status_code == 200
+            assert refund_spy.call_count == 1
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_failure_of_the_answer_model_keeps_the_address_charge(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one message per address and the real answer model pointed at a port
+            nothing listens on
+        WHEN a message is posted, and then another
+        THEN the first fails once the model is called, nothing was refunded, and the second is
+            the address cap's 429
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "address-model-fails@example.com")
+
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
+            again = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+
+            # THEN
+            assert again.status_code == 429
+            assert refund_spy.call_count == 0
+
+    def test_a_cap_of_zero_lets_any_number_of_messages_through(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the cap set to 0, which switches it off
+        WHEN one address posts many messages
+        THEN all of them are answered
+        """
+        # GIVEN
+        configure(ASSISTANT_ADDRESS_TURNS_PER_HOUR="0")
+        token = register_and_login(client, "address-unlimited@example.com")
+        _use_model(client, _scripted(*["ok"] * 6))
+
+        # WHEN
+        statuses = [
+            client.post(CHAT, json={"message": f"m{i}"}, headers=auth_header(token)).status_code
+            for i in range(6)
+        ]
+
+        # THEN
+        assert statuses == [200] * 6
 
 
 class TestFailedPreparationGivesTheMessageBack:

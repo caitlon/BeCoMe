@@ -32,6 +32,7 @@ from api.assistant.rate_limit import (
     GLOBAL_KEY,
     Charge,
     InMemoryAssistantThrottle,
+    get_assistant_address_throttle,
     get_assistant_global_throttle,
     get_assistant_throttle,
 )
@@ -42,6 +43,7 @@ from tests.shared.assistant_fakes import tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
+ADDRESS_CHARGE = Charge("addr:0f", allowed=True)
 
 
 @pytest.fixture(autouse=True)
@@ -1152,6 +1154,176 @@ def fake_client():
         yield _FakeClient
 
 
+class TestChargeAddressTurn:
+    """The address cap takes one message per request and gives it back unless the turn owns it."""
+
+    @staticmethod
+    def _charge(throttle: Any, request: Request | None = None):
+        return asynccontextmanager(deps.charge_address_turn)(request or _request(), throttle)
+
+    @staticmethod
+    def _key(client_host: str = "203.0.113.5") -> str:
+        return rate_limit.address_key(client_host)
+
+    @pytest.mark.asyncio
+    async def test_it_charges_the_address_key_once_and_keeps_the_charge_on_a_normal_exit(self):
+        """
+        GIVEN a cap of two messages per address
+        WHEN the dependency runs and the response completes, twice from one address
+        THEN each run charged the keyed address, nothing was given back, and a third is refused
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=2)
+
+        # WHEN
+        for _ in range(2):
+            async with self._charge(throttle) as held:
+                # THEN
+                assert held.charge.key == self._key()
+                assert held.charge.allowed is True
+                assert held.throttle is throttle
+                assert held.taken_over is False
+        with pytest.raises(AssistantRateLimitedError):
+            async with self._charge(throttle):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_a_spent_cap_refuses_with_the_address_reason_and_a_retry_time(self):
+        """
+        GIVEN a cap of one message, spent by this address
+        WHEN the address asks again
+        THEN the error carries the reason address and the seconds until the window closes, the
+            body never runs, and another address is still let through
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        async with self._charge(throttle):
+            pass
+        ran: list[str] = []
+
+        # WHEN
+        with pytest.raises(AssistantRateLimitedError) as caught:
+            async with self._charge(throttle):
+                ran.append("body")
+
+        # THEN
+        assert ran == []
+        assert caught.value.reason == "address"
+        assert 1 <= caught.value.retry_after <= rate_limit.WINDOW_SECONDS
+        async with self._charge(throttle, _request("198.51.100.9")):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_an_error_thrown_in_before_the_turn_took_over_gives_the_charge_back(self):
+        """
+        GIVEN a cap of one message and a request that fails after the cap took its charge, as a
+            full turn slot or a spent user budget would
+        WHEN the error is thrown into the dependency
+        THEN it propagates and the charge was given back, so the same address is let through
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="boom"):
+            async with self._charge(throttle):
+                raise RuntimeError("boom")
+
+        # THEN
+        async with self._charge(throttle):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_an_error_after_the_turn_took_over_leaves_the_refund_to_the_turn(self):
+        """
+        GIVEN a cap of one message and a turn that took over the charge
+        WHEN an error is thrown into the dependency
+        THEN it propagates and the dependency gave nothing back, so the turn's own refund is the
+            only one
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge_key.return_value = ADDRESS_CHARGE
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="boom"):
+            async with self._charge(throttle) as held:
+                held.taken_over = True
+                raise RuntimeError("boom")
+
+        # THEN
+        throttle.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_cancellation_keeps_the_charge(self):
+        """
+        GIVEN a charged request that is cancelled before the turn took over
+        WHEN the cancellation is thrown into the dependency
+        THEN nothing is given back, as for the user's and the ceiling's charges
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge_key.return_value = ADDRESS_CHARGE
+
+        # WHEN
+        with pytest.raises(asyncio.CancelledError):
+            async with self._charge(throttle):
+                raise asyncio.CancelledError
+
+        # THEN
+        throttle.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_refund_is_logged_and_does_not_replace_the_error(self):
+        """
+        GIVEN a request that fails after the cap took its charge, and a throttle whose refund
+            raises
+        WHEN the error is thrown into the dependency
+        THEN the original error propagates and the failed refund is logged as an event without
+            the key or the address
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge_key.return_value = ADDRESS_CHARGE
+        throttle.refund.side_effect = ConnectionError("store down")
+
+        # WHEN
+        with (
+            captured_log_records("api.security") as records,
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            async with self._charge(throttle):
+                raise RuntimeError("boom")
+
+        # THEN
+        (record,) = [r for r in records if getattr(r, "event", None) == "assistant_refund_failed"]
+        assert record.levelno == logging.WARNING
+        assert "203.0.113.5" not in record.getMessage()
+        assert ADDRESS_CHARGE.key not in record.getMessage()
+        assert not any(ADDRESS_CHARGE.key in str(value) for value in vars(record).values())
+
+    @pytest.mark.asyncio
+    async def test_two_addresses_in_one_ipv6_network_share_the_cap(self):
+        """
+        GIVEN a cap of one message
+        WHEN two IPv6 addresses of one /64 ask, and then one of another /64
+        THEN the second is refused and the third is let through
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+
+        # WHEN
+        async with self._charge(throttle, _request("2001:db8:1:2::1")):
+            pass
+        with pytest.raises(AssistantRateLimitedError):
+            async with self._charge(throttle, _request("2001:db8:1:2:ffff::9")):
+                pass
+
+        # THEN
+        async with self._charge(throttle, _request("2001:db8:1:3::1")):
+            pass
+
+
 class TestOpenChatTurn:
     """The client and the context are built for one request and the client is always closed."""
 
@@ -1162,6 +1334,7 @@ class TestOpenChatTurn:
         retriever: Any,
         throttle: Any = None,
         ceiling: Any = None,
+        address: Any = None,
     ):
         counted = deps.CountedRequest(
             data, Charge("user", allowed=True), Charge(GLOBAL_KEY, allowed=True)
@@ -1173,6 +1346,7 @@ class TestOpenChatTurn:
             retriever,
             throttle or MagicMock(),
             ceiling or MagicMock(),
+            address or deps.AddressCharge(MagicMock(), ADDRESS_CHARGE),
         )
 
     @pytest.mark.asyncio
@@ -1249,27 +1423,30 @@ class TestOpenChatTurn:
         assert client.closed == 1
 
     @pytest.mark.asyncio
-    async def test_a_failure_before_preparation_finished_gives_both_messages_back(
+    async def test_a_failure_before_preparation_finished_gives_all_three_messages_back(
         self, fake_client
     ):
         """
         GIVEN an opened turn whose context was not marked prepared
         WHEN the block raises an ordinary error
-        THEN each charge is refunded on the throttle that took it, the error propagates and
-             the client was still closed
+        THEN each charge is refunded on the throttle that took it, the address's included, the
+             error propagates and the client was still closed
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
+        address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
         data = AssistantChatRequest(message="hi")
 
         # WHEN
         with pytest.raises(RuntimeError, match="boom"):
-            async with self._open(data, _request(), MagicMock(), throttle, ceiling):
+            async with self._open(data, _request(), MagicMock(), throttle, ceiling, address):
                 raise RuntimeError("boom")
 
         # THEN
         throttle.refund.assert_called_once_with(Charge("user", allowed=True))
         ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        address.throttle.refund.assert_called_once_with(ADDRESS_CHARGE)
+        assert address.taken_over is True
         (client,) = fake_client.instances
         assert client.closed == 1
 
@@ -1315,11 +1492,17 @@ class TestOpenChatTurn:
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
+        address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
 
         # WHEN
         with pytest.raises(RuntimeError, match="boom"):
             async with self._open(
-                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+                AssistantChatRequest(message="hi"),
+                _request(),
+                MagicMock(),
+                throttle,
+                ceiling,
+                address,
             ) as turn:
                 turn.context.prepared = True
                 raise RuntimeError("boom")
@@ -1327,6 +1510,7 @@ class TestOpenChatTurn:
         # THEN
         throttle.refund.assert_not_called()
         ceiling.refund.assert_not_called()
+        address.throttle.refund.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_turn_that_ends_without_an_error_keeps_both_messages(self, fake_client):
@@ -1338,16 +1522,18 @@ class TestOpenChatTurn:
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
+        address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
 
         # WHEN
         async with self._open(
-            AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+            AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling, address
         ):
             pass
 
         # THEN
         throttle.refund.assert_not_called()
         ceiling.refund.assert_not_called()
+        address.throttle.refund.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_cancelled_turn_keeps_both_messages(self, fake_client):
@@ -1358,17 +1544,24 @@ class TestOpenChatTurn:
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
+        address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
 
         # WHEN
         with pytest.raises(asyncio.CancelledError):
             async with self._open(
-                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+                AssistantChatRequest(message="hi"),
+                _request(),
+                MagicMock(),
+                throttle,
+                ceiling,
+                address,
             ):
                 raise asyncio.CancelledError
 
         # THEN
         throttle.refund.assert_not_called()
         ceiling.refund.assert_not_called()
+        address.throttle.refund.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_each_turn_gets_its_own_client_and_source_registry(self, fake_client):
@@ -1784,9 +1977,11 @@ def _mini_app() -> tuple[FastAPI, list[Any]]:
         )
 
     app.dependency_overrides[deps.enforce_message_limit] = _budget_that_passes
-    app.state.throttle, app.state.ceiling = MagicMock(), MagicMock()
+    app.state.throttle, app.state.ceiling, app.state.address = MagicMock(), MagicMock(), MagicMock()
+    app.state.address.charge_key.return_value = ADDRESS_CHARGE
     app.dependency_overrides[get_assistant_throttle] = lambda: app.state.throttle
     app.dependency_overrides[get_assistant_global_throttle] = lambda: app.state.ceiling
+    app.dependency_overrides[get_assistant_address_throttle] = lambda: app.state.address
 
     @app.exception_handler(_MissingError)
     async def _missing(request: Request, exc: _MissingError) -> JSONResponse:
@@ -1866,7 +2061,8 @@ class TestPreparedTurnThroughFastAPI:
         """
         GIVEN a route that raises an error the application's handler answers with 404
         WHEN a valid body is posted
-        THEN the answer is that 404, both charges were refunded once and the client closed
+        THEN the answer is that 404, the three charges were refunded once each and the client
+            closed
         """
         # GIVEN
         app, _ = _mini_app()
@@ -1880,6 +2076,7 @@ class TestPreparedTurnThroughFastAPI:
         assert response.status_code == 404
         app.state.throttle.refund.assert_called_once_with(Charge("user", allowed=True))
         app.state.ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        app.state.address.refund.assert_called_once_with(ADDRESS_CHARGE)
         (client,) = fake_client.instances
         assert client.closed == 1
 
@@ -1887,7 +2084,7 @@ class TestPreparedTurnThroughFastAPI:
         """
         GIVEN a route that marks its turn prepared and then raises the same 404 error
         WHEN a valid body is posted
-        THEN the answer is the 404 and neither charge was refunded
+        THEN the answer is the 404 and no charge was refunded
         """
         # GIVEN
         app, _ = _mini_app()
@@ -1903,6 +2100,7 @@ class TestPreparedTurnThroughFastAPI:
         assert response.status_code == 404
         app.state.throttle.refund.assert_not_called()
         app.state.ceiling.refund.assert_not_called()
+        app.state.address.refund.assert_not_called()
 
     def test_a_request_without_a_token_builds_no_client(self, fake_client):
         """

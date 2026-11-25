@@ -19,6 +19,7 @@ from api.assistant.agent.generation import raised_at
 from api.assistant.deps import (
     AssistantServiceDep,
     PreparedTurnDep,
+    charge_address_turn,
     hold_turn_slot,
     limit_per_address,
 )
@@ -265,7 +266,11 @@ def get_assistant_config(
     # Stated because the route may return a bare response (see below), which would otherwise
     # leave FastAPI no model to describe the body by.
     response_model=AssistantChatResponse,
-    dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
+    dependencies=[
+        Depends(limit_per_address),
+        Depends(charge_address_turn),
+        Depends(hold_turn_slot),
+    ],
 )
 async def chat(
     request: Request,
@@ -275,9 +280,10 @@ async def chat(
     """Answer one chat turn as the signed-in user.
 
     The checks run in the order :func:`~api.assistant.deps.enforce_message_limit` states: the
-    per-address limit (``429``), the turn slot (``503`` with ``Retry-After``), the request check
-    and the retriever (``422``, ``503``), then the hourly budget, and only after it the API
-    client and the model. A request refused before the budget spends no message. A reached
+    per-address limit per minute and the per-address hourly cap (both ``429``), the turn slot
+    (``503`` with ``Retry-After``), the request check and the retriever (``422``, ``503``), then
+    the hourly budget, and only after it the API client and the model. A request refused before
+    the budget spends no message, and gives back its charge of the address cap. A reached
     global ceiling is ``503`` with ``Retry-After``, not ``429``. The service turns a dependency
     outage or a turn that outlives its deadline into ``AssistantUnavailableError``, and a
     project the caller cannot see into ``ProjectNotFoundError``; both are answered by handlers
@@ -304,7 +310,11 @@ async def chat(
 @router.post(
     "/chat/stream",
     summary="Ask the assistant and read the answer as it is written",
-    dependencies=[Depends(limit_per_address), Depends(hold_turn_slot)],
+    dependencies=[
+        Depends(limit_per_address),
+        Depends(charge_address_turn),
+        Depends(hold_turn_slot),
+    ],
 )
 async def chat_stream(
     request: Request,
@@ -316,7 +326,7 @@ async def chat_stream(
 
     Retrieval runs before the response opens, so a project the caller cannot see, a
     dependency outage before the model is called, a full turn cap, the message limit, the
-    global ceiling and the per-address limit are answered as plain HTTP errors, exactly as
+    global ceiling and the per-address limits are answered as plain HTTP errors, exactly as
     ``/chat`` answers them and in the same order (see :func:`chat`). The turn slot is held
     until the stream ends. Once the stream is open the status is already 200: a failure of the
     model call is sent as an ``error`` event with the code and text the handlers would have used
