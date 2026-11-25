@@ -728,6 +728,46 @@ class TestEnforceMessageLimit:
         assert throttle._counts[key][0] == before
 
     @pytest.mark.asyncio
+    async def test_a_second_turn_refused_during_a_refused_ceiling_does_not_block_the_user(self):
+        """
+        GIVEN a user with a budget of one and a global ceiling that refuses the first turn after
+              that turn spent the user's message, while a second turn of the same user arrives
+        WHEN the second turn is refused for the budget and the first turn's message is given back
+        THEN the user's count is zero and the next message is allowed
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user = MagicMock(id=uuid4())
+        second_outcome: list[BaseException] = []
+
+        class _Ceiling(InMemoryAssistantThrottle):
+            def charge_key(self, key: str) -> Charge:
+                # The second turn runs here, after the first turn's user charge and before
+                # the first turn's refund.
+                try:
+                    asyncio.run(
+                        deps.enforce_message_limit(
+                            user, throttle, _open_ceiling(), data=MagicMock(), retriever=MagicMock()
+                        )
+                    )
+                except AssistantRateLimitedError as exc:
+                    second_outcome.append(exc)
+                return Charge(key, allowed=False)
+
+        ceiling = _Ceiling(max_per_hour=1)
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+
+        # THEN
+        assert len(second_outcome) == 1
+        assert throttle._counts[rate_limit._digest(user.id)][0] == 0
+        assert throttle.hit(user.id) is True
+
+    @pytest.mark.asyncio
     async def test_a_refund_follows_the_refused_ceiling_and_runs_in_a_worker_thread(self):
         """
         GIVEN a user within budget and a global ceiling that is reached, with a user throttle

@@ -2,9 +2,11 @@
 
 Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
 keyed on a hash of the identifier so no raw id sits in the store, and counted per process
-when Redis errors. Unlike the login throttle this is a plain fixed-window counter, not a lockout:
+when Redis errors. Unlike the login throttle this is a fixed-window counter, not a lockout:
 the window opens with a user's first message and closes an hour later however many
-messages follow, because a later message never moves the expiry.
+messages follow, because a later message never moves the expiry. A refused message is not
+counted: like the login throttle's reservation, a caller past the budget gives its increment
+back and is refused, which changes nothing, so the count never passes the budget.
 
 The Redis backend runs ``SET key 0 EX <ttl> NX`` and ``INCR key`` in one transaction, so
 a counter is created with its TTL in the same step that first increments it. A crash or
@@ -20,14 +22,14 @@ no user digest can equal.
 
 A message can be given back: ``charge`` and ``charge_key`` return a :class:`Charge` that records
 what was counted and where, and ``refund`` undoes exactly that charge, on the backend that took it,
-and only if it was allowed and stored something: a charge refused by the budget, or one made under
-a zero limit, has nothing to give back. The user's message is given back when the global ceiling
-refuses it, so a refusal that is not the user's doing leaves the user's budget whole. A refund
-never creates a counter: the in-memory one acts only while the window the charge opened in is
-still open, and the Redis one runs a Lua script that decrements a key only while it exists and is
-above zero, because a bare ``DECR`` on an expired key would create ``-1`` with no expiry and lock
-the user out for good. The accepted trade-off: a Redis refund that lands after the window rolled
-over takes one message off the new window.
+and only if it was allowed and stored something: a charge refused by the budget was never counted,
+and one made under a zero limit stored nothing, so neither has anything to give back. The user's
+message is given back when the global ceiling refuses it, so a refusal that is not the user's
+doing leaves the user's budget whole. A refund never creates a counter: the in-memory one acts
+only while the window the charge opened in is still open, and the Redis one runs a Lua script that
+decrements a key only while it exists and is above zero, because a bare ``DECR`` on an expired key
+would create ``-1`` with no expiry and lock the user out for good. The accepted trade-off: a Redis
+refund that lands after the window rolled over takes one message off the new window.
 
 A limit of zero switches the cap off; both backends then allow everything without
 touching their store. A deployed service refuses a zero limit at startup
@@ -73,7 +75,8 @@ KEY_PREFIX = "assistant:chat"
 GLOBAL_KEY = "all"
 
 # Decrement a counter only while it exists and is above zero. Atomic, so an expired key is never
-# recreated by a refund; DECR on an existing key keeps its TTL.
+# recreated by a refund or by the give-back of a refused charge; DECR on an existing key keeps
+# its TTL.
 _REFUND_SCRIPT = """
 local value = redis.call('GET', KEYS[1])
 if value and tonumber(value) > 0 then
@@ -196,6 +199,9 @@ class InMemoryAssistantThrottle:
     def charge_key(self, key: str) -> Charge:
         """Record one message under a key and return the charge, so it can be given back.
 
+        A refused message is not counted: the count stays as it was found, so a refusal never
+        leaves the key more spent than the messages that were let through.
+
         :param key: What the message is counted under: a user's digest, or
             :data:`GLOBAL_KEY`.
         :return: The charge; ``allowed`` is False when this window's budget is already spent.
@@ -212,9 +218,10 @@ class InMemoryAssistantThrottle:
                 if now - opened < self._window
             }
             count, opened = self._counts.get(key, (0, now))
-            count += 1
-            self._counts[key] = (count, opened)
-        return Charge(key, allowed=count <= self._max, window_opened=opened)
+            allowed = count + 1 <= self._max
+            if allowed:
+                self._counts[key] = (count + 1, opened)
+        return Charge(key, allowed=allowed, window_opened=opened)
 
     def refund(self, charge: Charge) -> None:
         """Give back a message, if its window is still the one it was counted in.
@@ -321,6 +328,10 @@ class RedisAssistantThrottle:
     def charge_key(self, key: str) -> Charge:
         """Count one message under a key and return the charge, so it can be given back.
 
+        A refused message is not counted: its increment is given back by the same guarded script
+        a refund uses, so the key never creates itself or loses its TTL. When that give-back
+        fails, the error is logged and not raised, and the message is still refused.
+
         :param key: What the message is counted under: a user's digest, or
             :data:`GLOBAL_KEY`.
         :return: The charge; ``allowed`` is False when the budget is spent. While the store is
@@ -337,15 +348,25 @@ class RedisAssistantThrottle:
         except redis.RedisError as e:
             _log_store_unavailable(e)
             return self._fallback.charge_key(key)
-        return Charge(key, allowed=int(results[1]) <= self._max, in_store=True)
+        if int(results[1]) <= self._max:
+            return Charge(key, allowed=True, in_store=True)
+        try:
+            self._client.eval(_REFUND_SCRIPT, 1, redis_key)
+        except redis.RedisError as e:
+            logger.warning(
+                "Assistant throttle store unavailable, refused message not given back",
+                extra={"event": "assistant_throttle_giveback_unavailable"},
+                exc_info=e,
+            )
+        return Charge(key, allowed=False, in_store=True)
 
     def refund(self, charge: Charge) -> None:
         """Give back a message on the backend that took it.
 
-        Does nothing for a charge that was refused. A charge the fallback took, a zero-limit one
-        included, goes back to the fallback, which ignores it when it opened no window. A charge
-        Redis took is undone by one script that decrements the key only while it exists and is
-        above zero, so an expired window is never recreated.
+        Does nothing for a charge that was refused, which was never counted. A charge the
+        fallback took, a zero-limit one included, goes back to the fallback, which ignores it
+        when it opened no window. A charge Redis took is undone by one script that decrements
+        the key only while it exists and is above zero, so an expired window is never recreated.
         A store error is logged and not raised, and not redirected to the fallback: the charge
         is in Redis, and the message stays spent there until its window closes.
 

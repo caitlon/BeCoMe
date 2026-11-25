@@ -438,6 +438,43 @@ class TestInMemoryAssistantThrottle:
         # THEN
         assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
 
+    def test_a_refused_charge_leaves_the_count_as_it_found_it(self):
+        """
+        GIVEN a budget of one, spent
+        WHEN the user is charged twice more
+        THEN both charges are refused and the count is still one
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        spent = throttle.charge(user_id)
+
+        # WHEN
+        refused = [throttle.charge(user_id), throttle.charge(user_id)]
+
+        # THEN
+        assert [c.allowed for c in refused] == [False, False]
+        assert throttle._counts[spent.key][0] == 1
+
+    def test_an_overlapping_refusal_does_not_outlive_the_refund_of_the_charge_it_met(self):
+        """
+        GIVEN a budget of one, a first charge that was allowed and a second that was refused
+        WHEN the first charge is refunded
+        THEN the count is zero and the next charge is allowed
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        first = throttle.charge(user_id)
+        assert throttle.charge(user_id).allowed is False
+
+        # WHEN
+        throttle.refund(first)
+
+        # THEN
+        assert throttle._counts[first.key][0] == 0
+        assert throttle.charge(user_id).allowed is True
+
 
 def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
     """Return the only key the throttle wrote."""
@@ -969,7 +1006,7 @@ class TestRedisAssistantThrottle:
 
         # THEN
         assert refused.allowed is False
-        assert int(fake.get(_key(fake))) == 2
+        assert int(fake.get(_key(fake))) == 1
         assert client.mock_calls == []
 
     def test_a_charge_taken_by_the_fallback_is_refunded_to_the_fallback(self):
@@ -1042,6 +1079,110 @@ class TestRedisAssistantThrottle:
         # THEN
         assert charge.key == rate_limit.GLOBAL_KEY
         assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
+
+    def test_a_refused_charge_leaves_the_count_and_the_ttl_as_it_found_them(self):
+        """
+        GIVEN a budget of one, spent, on a key whose TTL has been shortened to 100 seconds
+        WHEN the user is charged twice more
+        THEN both charges are refused, the count is still one and the TTL was not touched
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.charge(user_id)
+        key = _key(fake)
+        fake.expire(key, 100)
+
+        # WHEN
+        refused = [throttle.charge(user_id), throttle.charge(user_id)]
+
+        # THEN
+        assert [c.allowed for c in refused] == [False, False]
+        assert int(fake.get(key)) == 1
+        assert 0 < fake.ttl(key) <= 100
+
+    def test_an_overlapping_refusal_does_not_outlive_the_refund_of_the_charge_it_met(self):
+        """
+        GIVEN a budget of one, a first charge that was allowed and a second that was refused
+        WHEN the first charge is refunded
+        THEN the count is zero and the next charge is allowed
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        first = throttle.charge(user_id)
+        assert throttle.charge(user_id).allowed is False
+
+        # WHEN
+        throttle.refund(first)
+
+        # THEN
+        assert int(fake.get(_key(fake))) == 0
+        assert throttle.charge(user_id).allowed is True
+
+    def test_a_refused_charge_on_a_key_that_just_expired_creates_no_key(self):
+        """
+        GIVEN a charge over budget whose key expires between the INCR and the give-back
+        WHEN the give-back runs
+        THEN the guarded script leaves no key behind, so no counter without a TTL is created
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.charge(user_id)
+        key = _key(fake)
+        real_eval = fake.eval
+
+        def expire_then_eval(*args, **kwargs):
+            fake.delete(key)
+            return real_eval(*args, **kwargs)
+
+        # WHEN
+        with patch.object(fake, "eval", side_effect=expire_then_eval):
+            refused = throttle.charge(user_id)
+
+        # THEN
+        assert refused.allowed is False
+        assert fake.keys("*") == []
+
+    def test_a_store_error_while_giving_back_a_refused_charge_is_logged_and_not_raised(
+        self, caplog
+    ):
+        """
+        GIVEN a spent budget and a store that raises on the give-back of the refused increment
+        WHEN the user is charged again
+        THEN the charge is refused, nothing is raised, and a WARNING record names the event
+             without the key or digest
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        user_id = uuid4()
+        throttle.charge(user_id)
+
+        # WHEN
+        with (
+            patch.object(fake, "eval", side_effect=redis.RedisError("down")),
+            caplog.at_level(logging.WARNING, logger="api.security"),
+        ):
+            refused = throttle.charge(user_id)
+
+        # THEN
+        records = [
+            r
+            for r in caplog.records
+            if getattr(r, "event", None) == "assistant_throttle_giveback_unavailable"
+        ]
+        assert refused.allowed is False
+        assert refused.in_store is True
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert records[0].exc_info is not None
+        assert rate_limit._digest(user_id) not in str(records[0].__dict__)
+        assert throttle._fallback._counts == {}
 
     def test_close_closes_the_redis_client(self):
         """
