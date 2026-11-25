@@ -60,15 +60,33 @@ class TestIsDatabaseModule:
 
 
 class TestSafeMessageText:
-    """First line, quoted spans masked."""
+    """First line, cut at the first quote mark."""
 
-    def test_masks_double_and_single_quoted_spans(self):
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ('invalid input syntax for type uuid: "x"', 'invalid input syntax for type uuid: "***'),
+            ("Not a boolean value: 'a\"b'", "Not a boolean value: '***"),
+            ("bad 'abc' and \"x y\"", "bad '***"),
+        ],
+        ids=["double", "single-holding-double", "single-first"],
+    )
+    def test_cuts_at_the_first_quote_mark_of_either_kind(self, text, expected):
         """
-        GIVEN a message with a double-quoted and a single-quoted span
+        GIVEN a first line with a quote mark of either kind
         WHEN it is reduced
-        THEN each span keeps its quote marks around the mask
+        THEN the text before the earliest mark stays, then that mark and the mask
+        AND everything after it is dropped
         """
-        assert safe_message_text("bad \"abc\" and 'x y'") == "bad \"***\" and '***'"
+        assert safe_message_text(text) == expected
+
+    def test_a_line_without_a_quote_mark_is_unchanged(self):
+        """
+        GIVEN a first line with no quote mark
+        WHEN it is reduced
+        THEN it is returned as it is
+        """
+        assert safe_message_text("deadlock detected") == "deadlock detected"
 
     @pytest.mark.parametrize(
         "text",
@@ -78,6 +96,7 @@ class TestSafeMessageText:
             f"Not a boolean value: 'a'{SENTINEL}'",
             f'invalid input syntax for type uuid: "a\'{SENTINEL}"',
             f"Not a boolean value: 'a\"{SENTINEL}'",
+            f'foo "ident" bar: "{SENTINEL}',
         ],
     )
     def test_a_quote_mark_inside_the_value_does_not_expose_its_rest(self, text):
@@ -88,17 +107,15 @@ class TestSafeMessageText:
         """
         assert SENTINEL not in safe_message_text(text)
 
-    def test_text_between_two_quoted_spans_is_masked_with_them(self):
+    def test_text_after_the_first_quote_mark_is_dropped_with_later_spans(self):
         """
-        GIVEN a first line with two quoted identifiers
+        GIVEN a first line with two quoted identifiers and text after them
         WHEN it is reduced
-        THEN one mask covers both and the text between them
+        THEN the line is cut at the first mark and nothing after it is kept
         """
         text = 'null value in column "email" of relation "users" violates not-null constraint'
 
-        assert safe_message_text(text) == '"'.join(
-            ["null value in column ", "***", " violates not-null constraint"]
-        )
+        assert safe_message_text(text) == 'null value in column "***'
 
     def test_keeps_only_the_first_line(self):
         """
@@ -136,7 +153,7 @@ class TestSafeErrorText:
         """
         GIVEN SQLAlchemy's wrapper around a psycopg2 unique violation
         WHEN its text is reduced
-        THEN the first line stays with the quoted constraint name masked
+        THEN the first line stays up to the first quote mark, then the mask
         AND neither the value nor the statement remains
         """
         wrapped, _ = psycopg2_unique_violation()
@@ -144,7 +161,7 @@ class TestSafeErrorText:
         text = safe_error_text(wrapped)
 
         assert text == (
-            '(psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "***"'
+            '(psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "***'
         )
 
     def test_type_error_quotes_are_masked(self):
@@ -155,7 +172,7 @@ class TestSafeErrorText:
         """
         _, orig = psycopg2_invalid_uuid()
 
-        assert safe_error_text(orig) == 'invalid input syntax for type uuid: "***"'
+        assert safe_error_text(orig) == 'invalid input syntax for type uuid: "***'
 
     def test_psycopg2_sqlstate_and_schema_names_are_appended(self):
         """
@@ -197,15 +214,15 @@ class TestSafeErrorText:
         assert text.endswith("(SQLSTATE 23505)")
         assert SENTINEL not in text
 
-    def test_builtin_error_inside_a_statement_error_keeps_its_first_line_masked(self):
+    def test_builtin_error_inside_a_statement_error_keeps_its_first_line_cut(self):
         """
         GIVEN a statement error around the TypeError of a bind processor
         WHEN the wrapper's text is reduced
-        THEN the quoted value is masked and the statement is dropped
+        THEN the line is cut at the first quote mark and the statement is dropped
         """
         wrapped, _ = bind_processor_error()
 
-        assert safe_error_text(wrapped) == "(builtins.TypeError) Not a boolean value: '***'"
+        assert safe_error_text(wrapped) == "(builtins.TypeError) Not a boolean value: '***"
 
     def test_never_raises_for_a_broken_string_conversion(self):
         """

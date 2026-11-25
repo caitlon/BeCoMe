@@ -924,9 +924,9 @@ regardless of who calls it.
 The database engine is created with `hide_parameters=True` (`api/db/engine.py`), so
 SQLAlchemy leaves the bound values out of the parameter block of its exception messages and of
 the SQL echo. PostgreSQL's own error text can still quote a value, in a `DETAIL` line or in the
-message of a type error, so `api/db/error_text.py` reduces it where it leaves the process. A
+message of a type error, so `api/db/error_text.py` reduces it before it reaches Sentry. A
 database error reaches Sentry as its exception type, the first line of its message
-with quoted values masked, the SQLSTATE and the constraint, table and column names; the `DETAIL`,
+cut at the first quote mark, the SQLSTATE and the constraint, table and column names; the `DETAIL`,
 `HINT` and `CONTEXT` lines and the SQL statement are dropped. The Sentry filter does this for
 every exception of an event's chain.
 

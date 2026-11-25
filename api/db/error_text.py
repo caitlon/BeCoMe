@@ -3,9 +3,9 @@
 PostgreSQL's own error text can quote row values: the ``DETAIL`` line of a unique, NOT NULL or
 check violation does, and the first line of a type error does (``invalid input syntax for type
 uuid: "..."``). SQLAlchemy's wrapper repeats the driver's text and adds the statement. The Sentry
-filter calls the functions here so that only the exception type, the first
-line of the message with quoted values masked, the SQLSTATE and the schema identifiers
-(constraint, table and column names) are sent.
+filter calls the functions here so that only the exception type, the first line of the message
+cut at its first quote mark, the SQLSTATE and the schema identifiers (constraint, table and
+column names) are sent.
 """
 
 from sqlalchemy.exc import StatementError
@@ -13,9 +13,7 @@ from sqlalchemy.exc import StatementError
 # ``psycopg`` also matches ``psycopg2``.
 _DATABASE_MODULE_PREFIXES = ("sqlalchemy", "psycopg")
 
-# Masked in this order. A double-quoted value can hold a single quote, never the reverse once
-# the double-quoted span is masked.
-_QUOTE_MARKS = ('"', "'")
+_QUOTES = "\"'"
 _MASK = "***"
 
 
@@ -28,34 +26,25 @@ def is_database_module(module: object) -> bool:
     return isinstance(module, str) and module.startswith(_DATABASE_MODULE_PREFIXES)
 
 
-def _mask_quoted(line: str, quote: str) -> str:
-    """Mask everything from the first to the last ``quote`` of one line.
-
-    PostgreSQL does not escape a quote mark inside a quoted value, so the value can hold the
-    mark itself (``"ab"cd"``). Masking from the first mark to the last one covers it whole, at
-    the price of also masking any text between two quoted spans. A lone mark means the value
-    went on past the line break, so the rest of the line is masked.
-    """
-    first = line.find(quote)
-    if first == -1:
-        return line
-    last = line.rfind(quote)
-    if last == first:
-        return f"{line[:first]}{quote}{_MASK}"
-    return f"{line[:first]}{quote}{_MASK}{quote}{line[last + 1 :]}"
-
-
 def safe_message_text(text: str) -> str:
-    """Keep the first line of an error message and mask its quoted spans.
+    """Keep the first line of an error message, cut at its first quote mark.
+
+    PostgreSQL does not escape a quote mark inside a value, so a value can hold either mark or
+    an odd number of them. Cutting at the first mark and dropping the rest is the only rule that
+    never keeps part of a value; the SQLSTATE and schema names that
+    :func:`safe_error_text` appends keep the error identifiable.
 
     :param text: The message of a database error.
-    :return: The first line, with the quoted part replaced by the quote marks around ``***``.
+    :return: The first line up to and including its first quote mark, followed by ``***``; the
+        line unchanged when it has no quote mark.
     """
     lines = text.splitlines()
     line = lines[0] if lines else ""
-    for quote in _QUOTE_MARKS:
-        line = _mask_quoted(line, quote)
-    return line
+    marks = [i for i in (line.find(mark) for mark in _QUOTES) if i != -1]
+    if not marks:
+        return line
+    first = min(marks)
+    return f"{line[: first + 1]}{_MASK}"
 
 
 def _driver_error(exc: BaseException) -> BaseException | None:
@@ -98,7 +87,7 @@ def safe_error_text(exc: BaseException) -> str:
     """Return the text of a database error that may leave the process.
 
     :param exc: A driver error, or a SQLAlchemy error wrapping one.
-    :return: The first line of its message with quoted values masked, followed by the SQLSTATE
+    :return: The first line of its message cut at the first quote mark, followed by the SQLSTATE
         and the constraint, table and column names when the driver reports them. Never raises.
     """
     try:
@@ -111,13 +100,10 @@ def safe_error_text(exc: BaseException) -> str:
         return type(exc).__name__
 
 
-def _linked(exc: BaseException) -> list[BaseException]:
-    """Return the cause and the context of an exception, when set."""
-    return [link for link in (exc.__cause__, exc.__context__) if link is not None]
-
-
 def exception_chain(exc: BaseException) -> list[BaseException]:
-    """List ``exc`` and every exception reachable through ``__cause__`` and ``__context__``.
+    """List ``exc`` and every exception reachable from it.
+
+    Reachable means through ``__cause__``, ``__context__`` and the members of an exception group.
 
     :param exc: The exception to start from.
     :return: The exceptions in depth-first order, each once.
@@ -131,7 +117,10 @@ def exception_chain(exc: BaseException) -> list[BaseException]:
             continue
         seen.add(id(current))
         chain.append(current)
-        pending.extend(reversed(_linked(current)))
+        links = [link for link in (current.__cause__, current.__context__) if link is not None]
+        if isinstance(current, BaseExceptionGroup):
+            links.extend(current.exceptions)
+        pending.extend(reversed(links))
     return chain
 
 

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import sys
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -14,6 +15,7 @@ from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception
 
 from api.auth.login_throttle import LOGIN_KEY_PREFIX, RedisLoginThrottle
+from api.db.error_text import exception_chain
 from api.dependencies import get_email_address_policy, get_registration_service
 from api.sentry_filter import ALLOWED_REQUEST_HEADERS, scrub_request_data
 from tests.shared.database_errors import (
@@ -659,13 +661,13 @@ class TestScrubDatabaseErrors:
         event = self._scrubbed_event(bind_processor_error)
 
         assert SENTINEL not in json.dumps(event, default=str)
-        assert event["exception"]["values"][0]["value"] == "Not a boolean value: '***'"
+        assert event["exception"]["values"][0]["value"] == "Not a boolean value: '***"
 
     def test_entry_without_a_matching_exception_is_cut_by_its_module(self):
         """
         GIVEN an event with a driver error entry and a hint that names no exception
         WHEN the filter runs
-        THEN the entry keeps its first line with quoted values masked
+        THEN the entry keeps its first line cut at the first quote mark
         AND an entry of another module is left alone
         """
         event: Any = {
@@ -683,7 +685,7 @@ class TestScrubDatabaseErrors:
 
         result = scrub_request_data(event, {})
 
-        assert result["exception"]["values"][0]["value"] == 'clash "***"'
+        assert result["exception"]["values"][0]["value"] == 'clash "***'
         assert result["exception"]["values"][1]["value"] == f'kept "{SENTINEL}"'
 
     def test_application_error_raised_from_a_database_error_keeps_its_text(self):
@@ -693,24 +695,40 @@ class TestScrubDatabaseErrors:
         THEN the application error keeps its message and the database errors are reduced
         """
         wrapped, orig = psycopg2_unique_violation()
-        try:
-            try:
-                raise orig
-            except BaseException as cause:
-                raise wrapped from cause
-        except BaseException as caught:
-            try:
-                raise ValueError("signup failed") from caught
-            except ValueError:
-                import sys
-
-                event, hint = _event_from(sys.exc_info())
+        database_error = raised(wrapped, orig)[1]
+        assert database_error is not None
+        event, hint = _event_from(raised(ValueError("signup failed"), database_error))
 
         result: Any = scrub_request_data(event, hint)
 
         values = {v["type"]: v["value"] for v in result["exception"]["values"]}
         assert values["ValueError"] == "signup failed"
         assert SENTINEL not in json.dumps(result, default=str)
+
+    def test_database_error_inside_an_exception_group_is_reduced(self):
+        """
+        GIVEN an event from an exception group whose member is a statement error raised from
+            the TypeError of a bind processor
+        WHEN the filter runs
+        THEN the quoted value is gone from every entry
+        AND the chain of the group reaches the member and the TypeError
+        """
+        wrapped, orig = bind_processor_error()
+        member = raised(wrapped, orig)[1]
+        assert member is not None
+        group = ExceptionGroup("g", [member])
+        try:
+            raise group
+        except ExceptionGroup:
+            event, hint = _event_from(sys.exc_info())
+        assert SENTINEL in json.dumps(event, default=str)
+
+        result: Any = scrub_request_data(event, hint)
+
+        assert SENTINEL not in json.dumps(result, default=str)
+        chain = exception_chain(group)
+        assert member in chain
+        assert orig in chain
 
     @pytest.mark.parametrize(
         "event",

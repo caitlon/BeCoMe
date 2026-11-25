@@ -2,8 +2,8 @@
 
 Only the request data listed here reaches the error tracker. Log records the SDK turns into
 breadcrumbs or event extras lose their ``ip`` field, which the access, auth, CSRF and
-rate-limit records carry. The text of a database error is cut to its first line with quoted
-values masked, because PostgreSQL's own message can quote row values.
+rate-limit records carry. The text of a database error is cut to its first line at the first
+quote mark, because PostgreSQL's own message can quote row values.
 """
 
 from typing import TYPE_CHECKING
@@ -81,7 +81,7 @@ def _scrub_database_errors(event: "Event", hint: "Hint") -> None:
 
     An entry is paired with the exception it came from through the hint. A database error
     gets :func:`api.db.error_text.safe_error_text`. An entry that cannot be paired but names a
-    SQLAlchemy or driver module keeps the first line of its message with quoted values masked.
+    SQLAlchemy or driver module keeps the first line of its message cut at the first quote mark.
     ``type``, ``module``, ``mechanism`` and ``stacktrace`` stay as they are. An event whose
     exception data has an unexpected shape is left alone.
 
@@ -114,7 +114,7 @@ def scrub_request_data(event: "Event", hint: "Hint") -> "Event":
     named in ``ALLOWED_REQUEST_HEADERS``, drops cookies, body, environment and query string,
     removes the client address from the user, and removes the ``ip`` field from the data of log
     breadcrumbs and from the event extras. It also reduces the text of database errors in the
-    event's exception chain to the first line of the message with quoted values masked, plus
+    event's exception chain to the first line of the message cut at the first quote mark, plus
     the SQLSTATE and the constraint, table and column names; the ``DETAIL`` line and the SQL
     statement are dropped. An event without a request, or with fields of an unexpected type, is
     passed through otherwise unchanged, so the filter never raises and never drops an event.

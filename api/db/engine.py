@@ -135,7 +135,7 @@ def _create_engine() -> Engine:
         echo=settings.debug,
         # Leaves bound values out of SQLAlchemy's exception messages and the SQL echo. The
         # database's own error text (a constraint DETAIL line) is not affected here; it is
-        # reduced where it leaves the process, see api/db/error_text.py.
+        # reduced before it reaches Sentry, see api/db/error_text.py.
         hide_parameters=True,
         connect_args=connect_args,
         **pool_kwargs,
