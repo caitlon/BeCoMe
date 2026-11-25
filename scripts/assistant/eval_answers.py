@@ -18,8 +18,10 @@ service.
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database must hold the fixtures' user and projects. Set
-``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` and ``ASSISTANT_GLOBAL_TURNS_PER_HOUR=0`` for a long run:
-the pacing below sends about 1140 questions an hour, past the global default of 600.
+``ASSISTANT_RATE_LIMIT_PER_HOUR=0``, ``ASSISTANT_ADDRESS_TURNS_PER_HOUR=0`` and
+``ASSISTANT_GLOBAL_TURNS_PER_HOUR=0`` for a long run: the pacing below sends about 1140
+questions an hour from one address, past the per-address default of 240 and the global default
+of 600.
 ``LIMIT_ASSISTANT_CHAT`` (per address, per minute) is met by pacing: the runner starts at most
 one question fewer per 60 s than that limit allows, and the wait is not part of ``latency_s``.
 ``--no-pacing`` turns it off, for a rig where the limiter is off.
@@ -74,8 +76,9 @@ _STOP_AT_ONCE = {
     "http_401": "the fixtures user was refused; check the user id in the fixtures file and "
     "that the user exists and is verified in the configured database",
     "http_429": "a rate limit refused the question; the per-minute limit is met by pacing, so "
-    "set ASSISTANT_RATE_LIMIT_PER_HOUR=0 for the hourly cap, and check that no other client "
-    "uses this address or that --no-pacing was not passed",
+    "set ASSISTANT_RATE_LIMIT_PER_HOUR=0 and ASSISTANT_ADDRESS_TURNS_PER_HOUR=0 for the "
+    "hourly caps, and check that no other client uses this address or that --no-pacing was "
+    "not passed",
 }
 # The longest window the pacing counts in: the route's limit is per minute.
 PACING_WINDOW_S = 60.0

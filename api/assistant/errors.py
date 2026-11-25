@@ -48,12 +48,17 @@ class AssistantBusyError(AssistantError):
 
 
 class AssistantRateLimitedError(AssistantError):
-    """Raised when a user has spent their per-hour assistant message budget.
+    """Raised when a user or a client address has spent its per-hour assistant message budget.
 
     :param message: Description for the log; never shown to the caller.
-    :param retry_after: Whole seconds until the user's window closes, sent as ``Retry-After``.
+    :param retry_after: Whole seconds until the window closes, sent as ``Retry-After``.
+    :param reason: Whose budget is spent: ``"user"`` for the caller's own, ``"address"`` for the
+        client address's. It picks the log event; it is never shown to the caller.
     """
 
-    def __init__(self, message: str, *, retry_after: int) -> None:
+    def __init__(
+        self, message: str, *, retry_after: int, reason: Literal["user", "address"] = "user"
+    ) -> None:
         super().__init__(message)
         self.retry_after = retry_after
+        self.reason = reason

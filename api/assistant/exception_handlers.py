@@ -55,7 +55,11 @@ def _log(
 def assistant_rate_limited_handler(
     request: Request, exc: AssistantRateLimitedError
 ) -> JSONResponse:
-    """Answer 429 when a user has spent their hourly assistant budget.
+    """Answer 429 when a user or a client address has spent its hourly assistant budget.
+
+    The body is the same for both. A user's refusal is written as ``assistant_rate_limited``; an
+    address's has its own event, ``assistant_address_cap_reached``, with no address, no hash of
+    one and no user in the record.
 
     :param request: FastAPI request.
     :param exc: The raised error.
@@ -63,7 +67,13 @@ def assistant_rate_limited_handler(
     """
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     _log(
-        request, exc, event="assistant_rate_limited", status_code=status_code, level=logging.WARNING
+        request,
+        exc,
+        event=(
+            "assistant_address_cap_reached" if exc.reason == "address" else "assistant_rate_limited"
+        ),
+        status_code=status_code,
+        level=logging.WARNING,
     )
     return JSONResponse(
         status_code=status_code,
