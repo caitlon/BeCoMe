@@ -457,3 +457,56 @@ class TestFormatExceptionSafely:
         assert SENTINEL not in text
         assert "DETAIL" not in text
         assert "INSERT INTO" not in text
+
+    def test_a_suppressed_context_is_not_printed(self):
+        """
+        GIVEN a database error raised ``from None`` while another one was being handled
+        WHEN the chain is formatted
+        THEN only the outer error is printed, reduced, under its own type
+        AND the suppressed context and the separator that would join it are absent
+        """
+        _, first_orig = psycopg2_unique_violation()
+        second, _ = psycopg2_unique_violation()
+        try:
+            try:
+                raise first_orig
+            except psycopg2.errors.UniqueViolation:
+                raise second from None
+        except Exception:
+            exc_info = sys.exc_info()
+
+        text = format_exception_safely(exc_info)
+
+        assert text is not None
+        assert SENTINEL not in text
+        assert "During handling of the above exception" not in text
+        assert "The above exception was the direct cause" not in text
+        assert "psycopg2.errors.UniqueViolation: duplicate key" not in text
+        assert text.splitlines()[-1].startswith("sqlalchemy.exc.IntegrityError: ")
+
+    def test_default_formatting_is_kept_for_a_non_database_exception_group(self):
+        """
+        GIVEN exception groups with no database error, one member having its own cause
+        WHEN they are formatted
+        THEN no reduction applies
+        AND the project's formatter prints the same text as the standard one
+        """
+        try:
+            raise ExceptionGroup("batch", [ValueError(SENTINEL), KeyError("k")])
+        except ExceptionGroup:
+            plain = sys.exc_info()
+        try:
+            try:
+                raise KeyError(SENTINEL)
+            except KeyError as cause:
+                member = ValueError("member")
+                member.__cause__ = cause
+                raise ExceptionGroup("batch", [member]) from None
+        except ExceptionGroup:
+            with_cause = sys.exc_info()
+
+        for exc_info in (plain, with_cause):
+            assert format_exception_safely(exc_info) is None
+            assert SafeTextFormatter().formatException(
+                exc_info
+            ) == logging.Formatter().formatException(exc_info)
