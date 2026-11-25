@@ -1,6 +1,7 @@
 """Tests for the per-user hourly assistant message cap."""
 
 import hashlib
+import hmac
 import logging
 import sys
 import threading
@@ -18,6 +19,7 @@ from api.assistant.rate_limit import (
     InMemoryAssistantThrottle,
     RedisAssistantThrottle,
 )
+from api.auth.logging import hash_email
 
 
 class TestInMemoryAssistantThrottle:
@@ -1437,6 +1439,52 @@ class TestAddressKey:
         assert by_log_key == log_key_alone
         assert by_log_key != by_secret
 
+    def test_the_key_differs_from_a_bare_hmac_of_the_network_and_from_the_email_tag(self):
+        """
+        GIVEN an IPv4 address and the key it is counted under
+        WHEN the key is compared with a bare HMAC of the same network form under the same key
+            and with the keyed tag hash_email gives the same text
+        THEN it equals neither, which pins the domain prefix and keeps the counters apart from
+            the log tags
+        """
+        # WHEN
+        with _keyed(secret_key="secret-a"):  # pragma: allowlist secret
+            key = rate_limit.address_key("203.0.113.5")
+            email_tag = hash_email("203.0.113.5")
+        bare = hmac.new(
+            b"secret-a",  # pragma: allowlist secret
+            b"203.0.113.5",
+            hashlib.sha256,
+        ).hexdigest()
+
+        # THEN
+        digest = key.removeprefix(rate_limit.ADDRESS_KEY_PREFIX)
+        assert digest != bare
+        assert digest != email_tag
+        assert email_tag not in key
+
+    @pytest.mark.parametrize(
+        ("written", "plain"),
+        [
+            (" 203.0.113.5 ", "203.0.113.5"),
+            ("2001:DB8::1", "2001:db8::1"),
+            ("fe80::1%eth0", "fe80::1"),
+        ],
+    )
+    def test_padding_case_and_a_zone_id_do_not_change_the_key(self, written, plain):
+        """
+        GIVEN an address written with padding, in upper case, or with a zone id
+        WHEN it is keyed
+        THEN the key equals the one of the plain form
+        """
+        # WHEN
+        with _keyed():
+            key = rate_limit.address_key(written)
+            plain_key = rate_limit.address_key(plain)
+
+        # THEN
+        assert key == plain_key
+
     def test_the_key_equals_no_user_digest_and_not_the_global_key(self):
         """
         GIVEN a keyed address and the key forms of a user and of the global ceiling
@@ -1450,8 +1498,8 @@ class TestAddressKey:
         # THEN
         assert key != rate_limit.GLOBAL_KEY
         assert key != rate_limit._digest(uuid4())
-        assert ":" in key
-        assert ":" not in rate_limit._digest(uuid4())
+        assert key.startswith(rate_limit.ADDRESS_KEY_PREFIX)
+        assert not rate_limit._digest(uuid4()).startswith(rate_limit.ADDRESS_KEY_PREFIX)
 
     def test_a_redis_counter_for_an_address_lives_under_its_own_key(self):
         """

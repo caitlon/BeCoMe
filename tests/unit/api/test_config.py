@@ -1450,6 +1450,10 @@ class TestAssistantSettings:
                 "assistant_address_turns_per_hour must be below",
             ),
             (
+                {"ASSISTANT_ADDRESS_TURNS_PER_HOUR": "700"},
+                "assistant_address_turns_per_hour must be below",
+            ),
+            (
                 {
                     "ASSISTANT_LANGSMITH_ENABLED": "true",
                     "ASSISTANT_LANGSMITH_API_KEY": "lsv2_test",  # pragma: allowlist secret

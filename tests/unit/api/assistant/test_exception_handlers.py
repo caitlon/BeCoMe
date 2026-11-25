@@ -133,7 +133,18 @@ class TestAssistantExceptionHandlers:
         (record,) = records
         assert record.event == "assistant_address_cap_reached"
         assert record.levelno == logging.WARNING
-        for forbidden in ("user_id", "user", "ip", "address", "client_ip", "key"):
+        for forbidden in (
+            "user_id",
+            "user",
+            "ip",
+            "address",
+            "client_ip",
+            "key",
+            "reason",
+            "addr",
+            "ip_hash",
+            "address_key",
+        ):
             assert not hasattr(record, forbidden)
 
     def test_the_busy_answer_carries_retry_after(self):

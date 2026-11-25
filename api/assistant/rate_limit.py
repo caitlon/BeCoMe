@@ -155,9 +155,7 @@ def _address_network(address: str) -> str:
         return str(parsed)
     if parsed.ipv4_mapped is not None:
         return str(parsed.ipv4_mapped)
-    shift = 128 - _IPV6_NETWORK_BITS
-    network = ipaddress.IPv6Address((int(parsed) >> shift) << shift)
-    return f"{network}/{_IPV6_NETWORK_BITS}"
+    return str(ipaddress.ip_network((parsed, _IPV6_NETWORK_BITS), strict=False))
 
 
 def address_key(address: str) -> str:
