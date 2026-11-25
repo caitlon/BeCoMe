@@ -5,14 +5,10 @@ root after the scans::
 
     python3 .github/dast/gate.py dast-out
 
-It reads, inside the output directory:
-
-- ``schemathesis/json-*.json`` and ``schemathesis.rc``: the Schemathesis run report and the
-  exit code of the process;
-- ``zap/report.json`` and ``zap-api.rc``: the ZAP API scan;
-- ``zap-web/report.json`` and ``zap-web.rc``: the ZAP baseline scan of the frontend image;
-- ``zap/openapi.pruned.json``: the paths of the API, used to turn a scanned address into its
-  path template.
+It reads, inside the output directory, a report and the exit code of each scan
+(``schemathesis/json-*.json`` with ``schemathesis.rc``, ``zap/report.json`` with ``zap-api.rc``,
+``zap-web/report.json`` with ``zap-web.rc``) and ``zap/openapi.pruned.json``, the paths of the
+API, which turn a scanned address into its path template.
 
 What blocks:
 
@@ -37,11 +33,11 @@ A fingerprint never holds a payload or an id::
     zap-web:<alert ref>:<METHOD> <path with unknown segments as {x}>
 
 Output. The job log and ``$GITHUB_STEP_SUMMARY`` get totals per tool and, for a scan that did
-not complete, one reason out of a fixed list of strings written in this file, never text taken
-from a report, because the repository is public. ``<out dir>/gate.json`` gets the detail with
-fingerprints and stays private. Whatever the reports hold, the script exits 0 and writes
-``blocking=<n>`` to ``$GITHUB_OUTPUT``; a report it cannot judge counts as one blocking item.
-The last step of the job fails on a value other than 0, including a missing one.
+not complete, one reason out of a fixed list of strings in this file, never text from a report,
+because the repository is public. ``<out dir>/gate.json`` gets the detail with fingerprints and
+stays private. Whatever the reports hold, the script exits 0 and writes ``blocking=<n>`` to
+``$GITHUB_OUTPUT``; a report it cannot judge counts as one blocking item. The last step of the
+job fails on a value other than 0, including a missing one.
 """
 
 import json
@@ -63,13 +59,11 @@ CHECK_BY_CODE = {
     "ST402": "object_level_authorization",
 }
 BLOCKING_SCHEMATHESIS_CODES = frozenset(CHECK_BY_CODE)
-# ZAP ignores a rule by plugin id, which also drops every other alert of that plugin from its
-# exit code. The gate narrows the by-design ones: an ignored plugin listed here is dropped only
-# for an alert whose name holds the text (compared in lower case), and the others stay.
+# ZAP ignores a rule by plugin id, which drops every alert of that plugin. For a plugin listed
+# here the gate drops only the alerts whose name holds the text (in lower case).
 BY_DESIGN = {("zap-web", "10055"): "style-src"}
 ID_SEGMENT = re.compile(r"^(?:[0-9a-fA-F-]{32,36}|\d+)$")
-# Static routes of the frontend image: the public pages, the app routes of nginx.conf, the
-# asset directory and the files in frontend/public. Any other path segment is a variable.
+# Static routes of the frontend image (pages, nginx.conf routes, assets, frontend/public files).
 WEB_ROUTES = frozenset(
     {
         "about", "apple-touch-icon.png", "assets", "case-studies", "case-study", "docs", "faq",
@@ -85,10 +79,9 @@ def schemathesis_completed(rc: int | None, report: dict[str, Any]) -> str:
 
     Exit codes, from ``schemathesis/cli/constants.py`` of the pinned release: 0 no failures,
     1 failed checks or non-fatal errors (also an uncaught exception), 2 the run could not do
-    its job (configuration, schema, nothing tested), 130 interrupted. Code 1 does not say
-    whether the run finished, so the report decides: it must exist, say ``complete`` and the
-    stop reason ``completed`` (not ``server_unavailable``, ``failure_limit`` or
-    ``interrupted``), and have tested at least one operation.
+    its job, 130 interrupted. Code 1 does not say whether the run finished, so the report
+    decides: it must say ``complete`` with the stop reason ``completed`` (not
+    ``server_unavailable``, ``failure_limit`` or ``interrupted``) and have tested an operation.
 
     :param rc: Exit code of the process, ``None`` when no code was recorded
     :param report: The parsed JSON report
@@ -96,22 +89,18 @@ def schemathesis_completed(rc: int | None, report: dict[str, Any]) -> str:
     """
     if rc not in (0, 1):
         return "unexpected exit code"
-    if report.get("complete") is not True or report.get("stop_reason") != "completed":
-        return "scan did not finish"
     operations = report.get("operations") or {}
-    if not operations.get("tested"):
-        return "scan did not finish"
-    return ""
+    finished = report.get("complete") is True and report.get("stop_reason") == "completed"
+    return "" if finished and operations.get("tested") else "scan did not finish"
 
 
 def zap_completed(rc: int | None, report: dict[str, Any]) -> str:
     """Say why a ZAP scan did not finish, or return an empty string when it did.
 
-    Exit codes, from ``zap-api-scan.py`` and ``zap-baseline.py`` of the pinned image (the end
-    of ``main``): 0 passed, 1 at least one FAIL rule, 2 at least one WARN (never with ``-I``),
-    3 any other failure, which covers an exception and a run that passed no rule at all. The
-    scripts do not tell whether the scan reached its target, so the report must also have a
-    non-empty ``site`` list: a target that was never reached leaves it empty.
+    Exit codes, from ``zap-api-scan.py`` and ``zap-baseline.py`` of the pinned image: 0 passed,
+    1 at least one FAIL rule, 2 at least one WARN (never with ``-I``), 3 any other failure.
+    The scripts do not tell whether the scan reached its target, so the report must also have
+    a non-empty ``site`` list: a target that was never reached leaves it empty.
 
     :param rc: Exit code of the process, ``None`` when no code was recorded
     :param report: The parsed JSON report
@@ -119,9 +108,7 @@ def zap_completed(rc: int | None, report: dict[str, Any]) -> str:
     """
     if rc not in (0, 1, 2):
         return "unexpected exit code"
-    if not report.get("site"):
-        return "target not reached"
-    return ""
+    return "" if report.get("site") else "target not reached"
 
 
 def read_rc(path: Path) -> int | None:
@@ -148,10 +135,8 @@ def read_json(path: Path) -> tuple[dict[str, Any] | None, str]:
     except FileNotFoundError:
         return None, "report missing"
     except (OSError, ValueError, RecursionError):
-        return None, "report unreadable"
-    if not isinstance(data, dict):
-        return None, "report unreadable"
-    return data, ""
+        data = None
+    return (data, "") if isinstance(data, dict) else (None, "report unreadable")
 
 
 def ignored_plugins(rules: Path) -> frozenset[str]:
@@ -279,10 +264,9 @@ class ToolResult:
 def judge_schemathesis(out: Path, accepted: frozenset[str]) -> ToolResult:
     """Read the Schemathesis report and sort its failures.
 
-    A run writes exactly one ``json-<timestamp>.json``: the timestamp is taken once, when the
-    reports configuration is built (``config/_report.py`` of the pinned release 4.34.2). More
-    than one file means more than one run wrote into the directory, so the exit code cannot be
-    tied to a report and the run counts as incomplete.
+    A run writes exactly one ``json-<timestamp>.json`` (``config/_report.py`` of the pinned
+    release 4.34.2). More than one file means more than one run wrote into the directory, so the
+    exit code cannot be tied to a report and the run counts as incomplete.
 
     :param out: The output directory of the run
     :param accepted: Fingerprints that must not block
@@ -329,18 +313,6 @@ def parse_risk(value: Any) -> int:
     return risk if risk in (RISK_INFO, RISK_LOW, BLOCKING_RISK, 3) else UNKNOWN_RISK
 
 
-def is_by_design(tool: str, plugin: str, alert_name: str) -> bool:
-    """Tell whether an alert of an ``IGNORE`` plugin is the by-design one.
-
-    :param tool: ``zap-api`` or ``zap-web``
-    :param plugin: The plugin id of the alert, already known to be ignored by the rules file
-    :param alert_name: The name of the alert
-    :return: ``True`` when the plugin has no ``BY_DESIGN`` entry, or the alert name holds its text
-    """
-    needle = BY_DESIGN.get((tool, plugin))
-    return needle is None or needle in alert_name.lower()
-
-
 def judge_zap(
     name: str,
     report_dir: Path,
@@ -382,7 +354,8 @@ def judge_zap(
         for alert in site.get("alerts") or []:
             plugin = str(alert.get("pluginid", ""))
             alert_name = str(alert.get("name") or alert.get("alert") or "")
-            if plugin in ignored and is_by_design(name, plugin, alert_name):
+            needle = BY_DESIGN.get((name, plugin))
+            if plugin in ignored and (needle is None or needle in alert_name.lower()):
                 continue
             reference = str(alert.get("alertRef") or plugin)
             risk = parse_risk(alert.get("riskcode"))
