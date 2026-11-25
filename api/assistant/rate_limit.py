@@ -13,13 +13,15 @@ expiry, and that user would stay locked out for good.
 
 The global ceiling is the same counter under one fixed key, :data:`GLOBAL_KEY`, with its own
 budget, so it bounds what all users together can spend in an hour. Both backends count any key:
-``hit`` and ``retry_after`` are the per-user forms and pass the user's digest to ``hit_key`` and
-``retry_after_key``, so the fallback, the zero limit and the remaining window apply to the global
-key as well. Its Redis key is ``assistant:chat:all``, which no user digest can equal.
+``hit``, ``charge`` and ``retry_after`` are the per-user forms and pass the user's digest to
+``hit_key``, ``charge_key`` and ``retry_after_key``, so the fallback, the zero limit and the
+remaining window apply to the global key as well. Its Redis key is ``assistant:chat:all``, which
+no user digest can equal.
 
 A message can be given back: ``charge`` and ``charge_key`` return a :class:`Charge` that records
 what was counted and where, and ``refund`` undoes exactly that charge, on the backend that took it,
-and only if it was counted and allowed. The user's message is given back when the global ceiling
+and only if it was allowed and stored something: a charge refused by the budget, or one made under
+a zero limit, has nothing to give back. The user's message is given back when the global ceiling
 refuses it, so a refusal that is not the user's doing leaves the user's budget whole. A refund
 never creates a counter: the in-memory one acts only while the window the charge opened in is
 still open, and the Redis one runs a Lua script that decrements a key only while it exists and is
@@ -88,17 +90,15 @@ class Charge:
     :param key: What the message was counted under: a user's digest, or :data:`GLOBAL_KEY`.
         Never log it.
     :param allowed: Whether the message was within budget.
-    :param counted: False when nothing was stored because the limit is zero.
     :param in_store: True when Redis took the charge, False when an in-memory table did,
         including the Redis backend's own fallback while the store is down.
     :param window_opened: The monotonic time the in-memory window opened at, or None for a
-        charge Redis took or one that was not counted. An in-memory refund does nothing once
-        that window has closed or been replaced.
+        charge Redis took or a zero-limit one, which stores nothing and has no window. An
+        in-memory refund does nothing once that window has closed or been replaced.
     """
 
     key: str
     allowed: bool
-    counted: bool = True
     in_store: bool = False
     window_opened: float | None = None
 
@@ -201,7 +201,7 @@ class InMemoryAssistantThrottle:
         :return: The charge; ``allowed`` is False when this window's budget is already spent.
         """
         if self._max == 0:
-            return Charge(key, allowed=True, counted=False)
+            return Charge(key, allowed=True)
         now = time.monotonic()
         with self._lock:
             # Drop every window that has closed, so the table holds only users active
@@ -219,12 +219,13 @@ class InMemoryAssistantThrottle:
     def refund(self, charge: Charge) -> None:
         """Give back a message, if its window is still the one it was counted in.
 
-        Does nothing for a charge that was refused, not counted or taken by another store, and
-        when the key's window has closed or been replaced since. It never creates an entry.
+        Does nothing for a charge that was refused, a zero-limit one or one taken by another
+        store, and when the key's window has closed or been replaced since. It never creates an
+        entry.
 
         :param charge: The charge to undo.
         """
-        if not (charge.allowed and charge.counted) or charge.window_opened is None:
+        if not charge.allowed or charge.window_opened is None:
             return
         now = time.monotonic()
         with self._lock:
@@ -326,7 +327,7 @@ class RedisAssistantThrottle:
             down, it comes from this process's own count.
         """
         if self._max == 0:
-            return Charge(key, allowed=True, counted=False)
+            return Charge(key, allowed=True)
         redis_key = f"{KEY_PREFIX}:{key}"
         try:
             pipe = self._client.pipeline(transaction=True)
@@ -341,15 +342,16 @@ class RedisAssistantThrottle:
     def refund(self, charge: Charge) -> None:
         """Give back a message on the backend that took it.
 
-        Does nothing for a charge that was refused or not counted. A charge the fallback took
-        goes back to the fallback. A charge Redis took is undone by one script that decrements
-        the key only while it exists and is above zero, so an expired window is never recreated.
+        Does nothing for a charge that was refused. A charge the fallback took, a zero-limit one
+        included, goes back to the fallback, which ignores it when it opened no window. A charge
+        Redis took is undone by one script that decrements the key only while it exists and is
+        above zero, so an expired window is never recreated.
         A store error is logged and not raised, and not redirected to the fallback: the charge
         is in Redis, and the message stays spent there until its window closes.
 
         :param charge: The charge to undo.
         """
-        if not (charge.allowed and charge.counted):
+        if not charge.allowed:
             return
         if not charge.in_store:
             self._fallback.refund(charge)

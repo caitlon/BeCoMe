@@ -291,7 +291,7 @@ class TestInMemoryAssistantThrottle:
         # THEN
         assert throttle.hit(user_id) is True
 
-    def test_hit_is_the_allowed_flag_of_a_charge(self):
+    def test_charges_report_allowed_then_refused_and_name_the_users_digest(self):
         """
         GIVEN a budget of one
         WHEN a user is charged twice
@@ -401,7 +401,8 @@ class TestInMemoryAssistantThrottle:
 
         # THEN
         assert charge.allowed is True
-        assert charge.counted is False
+        assert charge.window_opened is None
+        assert charge.in_store is False
         assert throttle._counts == {}
 
     def test_a_refund_never_takes_the_count_below_zero(self):
@@ -900,6 +901,30 @@ class TestRedisAssistantThrottle:
 
         # THEN
         assert fake.keys("*") == []
+
+    def test_a_refund_after_the_window_rolled_over_takes_one_off_the_new_window(self):
+        """
+        GIVEN a charge whose key expired and a second charge that opened a new window
+        WHEN the first charge is refunded
+        THEN the new window drops to zero and keeps its TTL: the accepted trade-off
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=2, window_seconds=3600)
+        user_id = uuid4()
+        first = throttle.charge(user_id)
+        key = _key(fake)
+        assert int(fake.get(key)) == 1
+        fake.delete(key)
+        throttle.charge(user_id)
+        assert int(fake.get(key)) == 1
+
+        # WHEN
+        throttle.refund(first)
+
+        # THEN
+        assert int(fake.get(key)) == 0
+        assert fake.ttl(key) > 0
 
     def test_a_refund_on_a_key_at_zero_leaves_it_at_zero(self):
         """
