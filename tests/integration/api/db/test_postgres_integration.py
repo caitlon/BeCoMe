@@ -6,7 +6,9 @@ They will be skipped if pg_ctl is not found in PATH.
 Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 """
 
+import json
 import shutil
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -15,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sentry_sdk.utils import event_from_exception
 from sqlalchemy import create_engine, delete, event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -36,12 +39,14 @@ from api.exceptions import (
     ProjectNotFoundError,
     ProjectOwnershipChangedError,
 )
+from api.sentry_filter import scrub_request_data
 from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
 from api.services.user_service import UserService
+from tests.shared.database_errors import SENTINEL
 from tests.shared.helpers import add_project
 
 # Skip all tests in this module if PostgreSQL is not installed
@@ -1512,3 +1517,71 @@ class TestPostgreSQLSpecificFeatures:
 
         # THEN
         assert user.created_at is not None
+
+
+class TestDatabaseErrorTextReduction:
+    """The text of errors PostgreSQL really raises is reduced before it leaves the process."""
+
+    @staticmethod
+    def _failure(pg_session, statement):
+        """Run ``statement`` and return the ``exc_info`` of the error it raises."""
+        try:
+            statement()
+        except Exception:
+            exc_info = sys.exc_info()
+            pg_session.rollback()
+            return exc_info
+        raise AssertionError("the statement did not fail")
+
+    def _assert_reduced(self, exc_info, *expected):
+        """Check the Sentry event of ``exc_info`` against the sentinel."""
+        assert SENTINEL in str(exc_info[1].orig), "the driver's own text must carry the value"
+        event, hint = event_from_exception(
+            exc_info,
+            client_options={
+                "include_local_variables": False,
+                "include_source_context": True,
+                "max_value_length": 1024,
+            },
+        )
+        sent = json.dumps(scrub_request_data(event, hint), default=str)
+        assert SENTINEL not in sent
+        assert "DETAIL" not in sent
+        for part in expected:
+            assert part in sent
+
+    def test_unique_violation_keeps_sqlstate_and_constraint_name(self, pg_session):
+        """
+        GIVEN a user whose e-mail address carries a sentinel value
+        WHEN a second user with the same address is committed
+        THEN the Sentry event hold the SQLSTATE and the constraint name
+        AND neither holds the address or the DETAIL line
+        """
+        # GIVEN
+        email = f"{SENTINEL}@example.com"
+        pg_session.add(User(email=email, hashed_password="hash", first_name="A", last_name="B"))
+        pg_session.commit()
+        pg_session.add(User(email=email, hashed_password="hash", first_name="C", last_name="D"))
+
+        # WHEN
+        exc_info = self._failure(pg_session, pg_session.commit)
+
+        # THEN
+        self._assert_reduced(exc_info, "SQLSTATE 23505", "constraint ix_users_email", "table users")
+
+    def test_invalid_uuid_keeps_sqlstate(self, pg_session):
+        """
+        GIVEN a value with a sentinel that is not a UUID
+        WHEN PostgreSQL is asked to cast it to a UUID
+        THEN the Sentry event hold the SQLSTATE and not the value
+        """
+        # GIVEN
+        statement = text("SELECT CAST(:value AS uuid)")
+
+        # WHEN
+        exc_info = self._failure(
+            pg_session, lambda: pg_session.execute(statement, {"value": SENTINEL})
+        )
+
+        # THEN
+        self._assert_reduced(exc_info, "SQLSTATE 22P02", "invalid input syntax for type uuid")
