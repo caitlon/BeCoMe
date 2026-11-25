@@ -3,11 +3,16 @@
 import json
 import logging
 from logging.handlers import RotatingFileHandler
+from typing import TYPE_CHECKING, override
 
 from logtail import LogtailHandler
 
 from api.config import Environment, Settings
+from api.db.error_text import format_exception_safely
 from api.logging_context import ContextFilter
+
+if TYPE_CHECKING:
+    from logging import _SysExcInfoType
 
 # Rotating file handler sizing, used only when LOG_FILE is configured.
 _LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
@@ -79,7 +84,29 @@ _RESERVED_ATTRS = frozenset(
 )
 
 
-class JsonLogFormatter(logging.Formatter):
+class SafeTextFormatter(logging.Formatter):
+    """Format a record like :class:`logging.Formatter`, with database error text reduced.
+
+    The traceback of an exception chain that holds a database error is printed with the text
+    of that error cut to its first line, masked, plus its SQLSTATE and schema identifiers
+    (see :mod:`api.db.error_text`), because PostgreSQL's own message can quote row values.
+    Other tracebacks are formatted as the base class does. The base class caches the formatted
+    traceback on ``record.exc_text``; every handler this module sets up uses a formatter of
+    this kind, so the cached text is the reduced one.
+    """
+
+    @override
+    def formatException(self, ei: "_SysExcInfoType") -> str:
+        """Format the traceback of a record.
+
+        :param ei: The ``exc_info`` tuple of the record.
+        :return: The traceback text, with database error text reduced.
+        """
+        safe = format_exception_safely(ei)
+        return super().formatException(ei) if safe is None else safe
+
+
+class JsonLogFormatter(SafeTextFormatter):
     """Render log records as single-line JSON objects.
 
     The standard :class:`logging.Formatter` only emits the fields named in its
@@ -125,7 +152,7 @@ def _build_formatter(settings: Settings) -> logging.Formatter:
         settings.environment is Environment.DEV and settings.railway_environment_name is None
     )
     if is_local_dev:
-        return logging.Formatter(_DEBUG_FORMAT if settings.debug else _TEXT_FORMAT)
+        return SafeTextFormatter(_DEBUG_FORMAT if settings.debug else _TEXT_FORMAT)
     return JsonLogFormatter()
 
 
@@ -180,6 +207,8 @@ def _build_handlers(settings: Settings) -> list[logging.Handler]:
             source_token=settings.betterstack_source_token,
             host=f"https://{_betterstack_host(settings.betterstack_ingesting_host)}",
         )
+        # The handler ships ``format(record)`` as the message, traceback included.
+        logtail_handler.setFormatter(SafeTextFormatter())
         handlers.append(logtail_handler)
 
     for handler in handlers:
@@ -224,6 +253,10 @@ def setup_logging(settings: Settings) -> None:
     :param settings: Application settings.
     """
     handlers = _build_handlers(settings)
+    # Loggers outside the configured set (asyncio, starlette, sqlalchemy.pool) print WARNING and
+    # above through the last-resort handler to stderr, which the platform keeps.
+    if logging.lastResort is not None:
+        logging.lastResort.setFormatter(SafeTextFormatter())
     _attach(logging.getLogger("api"), handlers, settings.log_level.upper())
     for name, level in _EXTERNAL_LOG_LEVELS.items():
         _attach(logging.getLogger(name), handlers, level)

@@ -1,7 +1,9 @@
 """Tests for the request data that reaches the error tracker."""
 
 import hashlib
+import io
 import json
+import logging
 import sys
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -180,6 +182,15 @@ class _RaisingDatabaseError:
             raise wrapped from cause
 
 
+def _capture_api_log(monkeypatch: pytest.MonkeyPatch) -> io.StringIO:
+    """Point the app's own stream handlers at a buffer, so the output of its formatters is read."""
+    buffer = io.StringIO()
+    for handler in logging.getLogger("api").handlers:
+        if isinstance(handler, logging.StreamHandler):
+            monkeypatch.setattr(handler, "stream", buffer)
+    return buffer
+
+
 class _AcceptingPolicy:
     """An address policy that accepts every address, so no DNS lookup happens."""
 
@@ -249,7 +260,7 @@ class TestErrorEventRequestData:
 
 
 class TestDatabaseErrorText:
-    """PostgreSQL's own error text stays out of the envelopes."""
+    """PostgreSQL's own error text stays out of the envelopes and the log output."""
 
     @staticmethod
     def _register_failing(client: TestClient) -> None:
@@ -284,7 +295,7 @@ class TestDatabaseErrorText:
         ],
         ids=["unique-violation", "invalid-uuid"],
     )
-    def test_event_carries_no_quoted_row_value(
+    def test_event_and_log_carry_no_quoted_row_value(
         self, monkeypatch, tmp_path, transport, build, wrapper, driver, first_line
     ):
         """
@@ -293,11 +304,13 @@ class TestDatabaseErrorText:
         WHEN the request reaches it
         THEN the event still names both exception types and modules and keeps the first line
         AND the value, the DETAIL line and the statement appear in no envelope
+        AND the log output of the app's handlers holds none of them either
         """
         client = _build_client(monkeypatch, tmp_path, transport, traces=0.0)
         client.app.dependency_overrides[get_registration_service] = lambda: _RaisingDatabaseError(
             build
         )
+        log = _capture_api_log(monkeypatch)
 
         self._register_failing(client)
 
@@ -308,9 +321,13 @@ class TestDatabaseErrorText:
         assert {("psycopg2.errors", driver), ("sqlalchemy.exc", wrapper)} <= seen
         assert any(first_line in value["value"] for value in values)
         serialized = transport.serialized()
-        assert SENTINEL not in serialized
-        assert "DETAIL" not in serialized
-        assert "INSERT INTO" not in serialized
+        output = log.getvalue()
+        assert "Unhandled exception" in output
+        assert driver in output
+        for text in (serialized, output):
+            assert SENTINEL not in text
+            assert "DETAIL" not in text
+            assert "INSERT INTO" not in text
 
 
 class TestLogRecordFields:
