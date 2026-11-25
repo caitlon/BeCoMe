@@ -12,8 +12,8 @@ API, which turn a scanned address into its path template.
 
 What blocks:
 
-- a Schemathesis failure of a check in ``BLOCKING_SCHEMATHESIS_CODES``: a server error (ST101),
-  ignored authentication (ST401) or broken object-level authorization (ST402);
+- a Schemathesis failure of a check in ``CHECK_BY_CODE``: a server error (ST101, ST102), ignored
+  authentication (ST401) or broken object-level authorization (ST402);
 - a ZAP alert of risk Medium or higher, API or web, and one whose risk the report does not state
   readably, after the by-design ``IGNORE`` rules of ``rules-api.conf`` and ``rules-web.conf`` are
   applied here, because ZAP applies them only to its own exit code and still writes the alert
@@ -28,7 +28,7 @@ not test, ZAP Low and Informational alerts) is only counted as a warning.
 
 A fingerprint never holds a payload or an id::
 
-    schemathesis:<check>:<METHOD> <path template>
+    schemathesis:<check>:<METHOD> <path template>, or <no operation> when a failure names none
     zap-api:<alert ref>:<METHOD> <path template of the OpenAPI file, or <unmatched>>
     zap-web:<alert ref>:<METHOD> <path with unknown segments as {x}>
 
@@ -52,16 +52,15 @@ from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 RISK_INFO, RISK_LOW, BLOCKING_RISK, UNKNOWN_RISK = 0, 1, 2, 4
-RISK_NAMES = {RISK_INFO: "info", RISK_LOW: "low", BLOCKING_RISK: "medium", 3: "high", 4: "unknown"}
 CHECK_BY_CODE = {
     "ST101": "not_a_server_error",
+    "ST102": "not_a_server_error",
     "ST401": "ignored_auth",
     "ST402": "object_level_authorization",
 }
-BLOCKING_SCHEMATHESIS_CODES = frozenset(CHECK_BY_CODE)
 # ZAP ignores a rule by plugin id, which drops every alert of that plugin. For a plugin listed
 # here the gate drops only the alerts whose name holds the text (in lower case).
-BY_DESIGN = {("zap-web", "10055"): "style-src"}
+BY_DESIGN = {("zap-web", "10055"): "style-src unsafe-inline"}
 ID_SEGMENT = re.compile(r"^(?:[0-9a-fA-F-]{32,36}|\d+)$")
 # Static routes of the frontend image (pages, nginx.conf routes, assets, frontend/public files).
 WEB_ROUTES = frozenset(
@@ -80,8 +79,9 @@ def schemathesis_completed(rc: int | None, report: dict[str, Any]) -> str:
     Exit codes, from ``schemathesis/cli/constants.py`` of the pinned release: 0 no failures,
     1 failed checks or non-fatal errors (also an uncaught exception), 2 the run could not do
     its job, 130 interrupted. Code 1 does not say whether the run finished, so the report
-    decides: it must say ``complete`` with the stop reason ``completed`` (not
-    ``server_unavailable``, ``failure_limit`` or ``interrupted``) and have tested an operation.
+    decides: it must say ``complete`` and have tested an operation. Of the stop reasons
+    (``completed``, ``interrupted``, ``failure_limit``, ``max_time``, ``server_unavailable``;
+    ``StopReason`` in ``engine/__init__.py`` of the pinned release) only ``completed`` passes.
 
     :param rc: Exit code of the process, ``None`` when no code was recorded
     :param report: The parsed JSON report
@@ -188,10 +188,10 @@ def api_template(path: str, spec_paths: list[str]) -> str:
     :param spec_paths: The paths of the OpenAPI file
     :return: The normalised template, or ``<unmatched>`` when no path of the file fits
     """
-    segments = path.strip("/").split("/")
+    segments = [part for part in path.split("/") if part]
     best: tuple[int, list[str]] | None = None
     for candidate in spec_paths:
-        template = candidate.strip("/").split("/")
+        template = [part for part in candidate.split("/") if part]
         if len(template) != len(segments):
             continue
         score = 0
@@ -242,7 +242,6 @@ class ToolResult:
     findings: dict[str, Finding] = field(default_factory=dict)
     suppressed: set[str] = field(default_factory=set)
     errored: int = 0
-    seconds: float | None = None
 
     def counts(self) -> dict[str, int]:
         """Count what is left after suppression, by the public categories.
@@ -256,9 +255,18 @@ class ToolResult:
             "warnings": sum(1 for f in findings if not f.blocking) + self.errored,
         }
         if self.name.startswith("zap"):
-            for risk in (RISK_LOW, RISK_INFO):
-                counts[RISK_NAMES[risk]] = sum(1 for f in findings if f.risk == risk)
+            counts["low"] = sum(1 for f in findings if f.risk == RISK_LOW)
+            counts["info"] = sum(1 for f in findings if f.risk == RISK_INFO)
         return counts
+
+
+def as_list(value: Any) -> list[Any]:
+    """Read a JSON array a report may leave out: empty for ``None``, ``TypeError`` otherwise."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise TypeError("expected a list")
+    return value
 
 
 def judge_schemathesis(out: Path, accepted: frozenset[str]) -> ToolResult:
@@ -282,34 +290,35 @@ def judge_schemathesis(out: Path, accepted: frozenset[str]) -> ToolResult:
         result.incomplete = problem
         return result
     result.incomplete = schemathesis_completed(result.rc, report)
-    running_time = report.get("running_time")
-    result.seconds = running_time if isinstance(running_time, int | float) else None
     operations = report.get("operations") or {}
-    errors = report.get("errors") or []
-    result.errored = max(int(operations.get("errored") or 0), len(errors))
-    for failure in report.get("failures") or []:
-        code = str(failure.get("code", ""))
+    result.errored = max(int(operations.get("errored") or 0), len(as_list(report.get("errors"))))
+    # A fingerprint that blocks once keeps blocking, whatever else shares it.
+    blocks: dict[str, bool] = {}
+    for failure in as_list(report.get("failures")):
+        code = str(failure.get("code", "")).upper()
         check = CHECK_BY_CODE.get(code, code.lower())
-        for operation in failure.get("operations") or []:
+        for operation in as_list(failure.get("operations")) or ["<no operation>"]:
             fingerprint = f"schemathesis:{check}:{operation}"
-            blocking = code in BLOCKING_SCHEMATHESIS_CODES
-            if blocking and fingerprint in accepted:
-                result.suppressed.add(fingerprint)
-            else:
-                result.findings[fingerprint] = Finding(fingerprint, blocking)
+            blocks[fingerprint] = blocks.get(fingerprint, False) or code in CHECK_BY_CODE
+    for fingerprint, blocking in blocks.items():
+        if blocking and fingerprint in accepted:
+            result.suppressed.add(fingerprint)
+        else:
+            result.findings[fingerprint] = Finding(fingerprint, blocking)
     return result
 
 
 def parse_risk(value: Any) -> int:
     """Read the ``riskcode`` of a ZAP alert, failing closed.
 
-    :param value: The raw value, a digit string in a real report
-    :return: The risk 0 to 3, or ``UNKNOWN_RISK`` for anything else, which blocks
+    :param value: The raw value, a digit string in a real report; an integer reads the same
+    :return: The risk 0 to 3, or ``UNKNOWN_RISK`` for anything else (a boolean, a float), which
+        blocks
     """
-    try:
-        risk = int(value)
-    except (TypeError, ValueError):
-        return UNKNOWN_RISK
+    readable = (isinstance(value, int) and not isinstance(value, bool)) or (
+        isinstance(value, str) and value.isascii() and value.isdigit()
+    )
+    risk = int(value) if readable else UNKNOWN_RISK
     return risk if risk in (RISK_INFO, RISK_LOW, BLOCKING_RISK, 3) else UNKNOWN_RISK
 
 
@@ -344,7 +353,7 @@ def judge_zap(
     if spec is not None:
         document, _ = read_json(spec)
         paths = document.get("paths") if document else None
-        if isinstance(paths, dict):
+        if isinstance(paths, dict) and paths:
             spec_paths = list(paths)
         elif not result.incomplete:
             result.incomplete = "spec missing"
@@ -462,7 +471,6 @@ def main(out: Path) -> None:
             result.name: {
                 "rc": result.rc,
                 "incomplete": result.incomplete,
-                "seconds": result.seconds,
                 "errored": result.errored,
                 "counts": result.counts(),
                 "blocking": sorted(f.fingerprint for f in result.findings.values() if f.blocking),

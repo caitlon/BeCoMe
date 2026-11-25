@@ -44,7 +44,6 @@ def _schemathesis_report(failures: list[Any], **overrides: Any) -> dict[str, Any
     report = {
         "complete": True,
         "stop_reason": "completed",
-        "running_time": 12.5,
         "operations": {"tested": 25},
         "failures": failures,
     }
@@ -96,7 +95,8 @@ def _clean_run(out: Path, **overrides: Any) -> None:
         if data is not None:
             (out / relative).write_text(data if isinstance(data, str) else json.dumps(data))
     for name, rc in zip(("schemathesis", "zap-api", "zap-web"), parts["rcs"], strict=True):
-        (out / f"{name}.rc").write_text(f"{rc}\n")
+        if rc is not None:
+            (out / f"{name}.rc").write_text(f"{rc}\n")
 
 
 @pytest.fixture
@@ -124,10 +124,11 @@ def test_clean_run_does_not_block(run, tmp_path):
     assert (tmp_path / "github_output").read_text() == "blocking=0\n"
 
 
-def test_only_the_three_blocking_checks_block(run, tmp_path):
-    """A server error, ignored auth and broken object-level authorization block; the rest warn."""
+def test_only_the_blocking_checks_block(run, tmp_path):
+    """Server errors, ignored auth and broken object-level authorization block; the rest warn."""
     failures = [
         _failure("ST101", "GET /api/v1/projects"),
+        _failure("ST102", "POST /api/v1/projects"),
         _failure("ST401", "GET /api/v1/projects/{project_id}"),
         _failure("ST402", "GET /api/v1/projects/{project_id}"),
         _failure("ST108", "GET /api/v1/projects", "GET /api/v1/projects/{project_id}"),
@@ -140,11 +141,12 @@ def test_only_the_three_blocking_checks_block(run, tmp_path):
     assert tool["blocking"] == [
         "schemathesis:ignored_auth:GET /api/v1/projects/{project_id}",
         SERVER_ERROR,
+        "schemathesis:not_a_server_error:POST /api/v1/projects",
         "schemathesis:object_level_authorization:GET /api/v1/projects/{project_id}",
     ]
-    assert tool["counts"] == {"blocking": 3, "warnings": 3}
-    assert detail["blocking"] == 3
-    assert (tmp_path / "github_output").read_text() == "blocking=3\n"
+    assert tool["counts"] == {"blocking": 4, "warnings": 3}
+    assert detail["blocking"] == 4
+    assert (tmp_path / "github_output").read_text() == "blocking=4\n"
 
 
 @pytest.mark.parametrize(
@@ -165,6 +167,24 @@ def test_errored_schemathesis_operations_are_warnings(run, overrides, errored):
     assert tool["counts"] == {"blocking": 0, "warnings": errored}
 
 
+def test_schemathesis_failure_without_operations_and_odd_codes(run):
+    """A failure without operations counts, lowercase codes count and a block is never lowered."""
+    failures = [
+        _failure("st401"),
+        _failure("NOT_A_SERVER_ERROR", "GET /api/v1/projects"),
+        _failure("ST101", "GET /api/v1/projects"),
+        _failure("not_a_server_error", "GET /api/v1/projects"),
+    ]
+
+    tool = run(schemathesis=_schemathesis_report(failures))["tools"]["schemathesis"]
+
+    assert tool["blocking"] == [
+        "schemathesis:ignored_auth:<no operation>",
+        SERVER_ERROR,
+    ]
+    assert tool["warnings"] == []
+
+
 def test_zap_medium_blocks_and_low_only_warns(run):
     """A Medium alert blocks; a Low or Informational one is a warning."""
     uri = f"http://127.0.0.1:8000/api/v1/projects/{PROJECT_ID}/opinions/1"
@@ -179,6 +199,9 @@ def test_zap_medium_blocks_and_low_only_warns(run):
 # fmt: off
 IGNORE_CASES = [
     ("zap_web", [_alert("10055", 2, WEB_ROOT, name=STYLE_SRC)], []),
+    ("zap_web", [_alert("10055", 2, WEB_ROOT, alert=STYLE_SRC)], []),
+    ("zap_web", [_alert("10055", 2, WEB_ROOT, name="CSP: style-src unsafe-hashes")],
+     ["zap-web:10055:GET /"]),
     ("zap_api", [_alert("10055", 2, WEB_ROOT, name=STYLE_SRC)], ["zap-api:10055:GET <unmatched>"]),
     ("zap_web", [_alert("10055", 2, WEB_ROOT, name=STYLE_SRC.upper()),
                  _alert("10055", 2, WEB_ROOT, name=SCRIPT_SRC, alertRef="10055-1")],
@@ -190,7 +213,7 @@ IGNORE_CASES = [
 @pytest.mark.parametrize(
     ("tool", "alerts", "blocking"),
     IGNORE_CASES,
-    ids=["web-style-src", "api-scan-ignores-nothing", "web-script-src-still-blocks"],
+    ids=["web-style-src", "alert-field", "unsafe-hashes", "api-ignores-nothing", "script-src"],
 )
 def test_ignore_rule_of_the_web_scan_drops_the_style_src_alert_only(run, tool, alerts, blocking):
     """Plugin 10055 is ignored by rules-web.conf only, and the gate narrows it to style-src."""
@@ -225,16 +248,23 @@ def _unjudgeable_cases():
         ({"schemathesis": report("text")}, shape),
         ({"schemathesis": report([1])}, shape),
         ({"schemathesis": report([{"code": "ST101", "operations": 5}])}, shape),
+        ({"schemathesis": report([{"code": "ST101", "operations": "GET /x"}])}, shape),
+        ({"schemathesis": report([], errors="text")}, shape),
         ({"schemathesis": report([], operations={"tested": 3, "errored": "x"})}, shape),
     ]
     # fmt: on
     cases += [({tool: None}, "report missing") for tool in tools]
+    for bad_rc in (None, "x"):
+        cases += [
+            ({"rcs": tuple(bad_rc if at == i else 0 for i in range(3))}, "unexpected exit code")
+            for at in range(3)
+        ]
     cases += [
         ({tool: content}, "report unreadable")
         for tool in tools
         for content in ("{not json", "[]", '"text"', "")
     ]
-    specs = (None, "not json", "[]", '{"paths": []}', '{"info": {}}')
+    specs = (None, "not json", "[]", '{"paths": []}', '{"paths": {}}', '{"info": {}}')
     return cases + [({"spec": spec}, "spec missing") for spec in specs]
 
 
@@ -248,9 +278,9 @@ def test_a_scan_that_cannot_be_judged_blocks_alone(run, tmp_path, overrides, rea
     assert (tmp_path / "github_output").read_text() == "blocking=1\n"
 
 
-@pytest.mark.parametrize("rcs", [(1, 0, 0), (0, 1, 0), (0, 0, 1)])
-def test_exit_code_one_with_a_finished_report_is_not_incomplete(run, rcs):
-    """Exit code 1 means failed checks or a FAIL rule, so the report decides completion."""
+@pytest.mark.parametrize("rcs", [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 2, 0), (0, 0, 2)])
+def test_exit_code_one_or_zap_two_with_a_finished_report_is_not_incomplete(run, rcs):
+    """Exit code 1 means failed checks or a FAIL rule, ZAP's 2 a WARN rule: the report decides."""
     report = _schemathesis_report([_failure("ST108", "GET /api/v1/projects")])
 
     detail = run(schemathesis=report, rcs=rcs)
@@ -302,6 +332,14 @@ def test_fingerprints_hold_templates_and_never_a_payload(run):
         "zap-api:40018:POST <unmatched>",
     ]
     assert detail["tools"]["zap-web"]["blocking"] == ["zap-web:10038:GET /assets/{x}"]
+
+
+def test_api_template_prefers_literal_segments_and_never_maps_the_root():
+    """Of two templates of one length the literal match wins, and `/` fits no template."""
+    spec = ["/api/v1/projects/{id}", "/api/v1/projects/mine", "/{id}"]
+
+    assert gate.api_template("/api/v1/projects/mine", spec) == "/api/v1/projects/mine"
+    assert gate.api_template("/", spec) == "<unmatched>"
 
 
 def test_public_output_holds_totals_and_fixed_reasons_only(run, tmp_path, capsys):
@@ -386,7 +424,7 @@ def test_alert_without_instances_still_counts(run, instances):
 
 @pytest.mark.parametrize(
     "riskcode",
-    [None, "", "high", "4", "-1", "2.5", [2], {"a": 1}, MISSING, 2],
+    [None, "", "high", "4", "-1", "2.5", [2], {"a": 1}, MISSING, 2, True, False, 0.5, 1.5, 2.0],
     ids=lambda value: "missing" if value is MISSING else repr(value),
 )
 def test_unreadable_or_medium_risk_code_blocks(run, riskcode):
