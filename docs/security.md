@@ -442,7 +442,8 @@ retriever, so a message that is too long or an invalid body (`422`) and a retrie
 built (`503`) are refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
 memory otherwise. A deployed service refuses to start with the per-user or the global hourly
-limit at `0`, so neither cap can be switched off there.
+limit at `0`, so neither cap can be switched off there. A message the global ceiling refuses is
+given back to the user's own budget.
 
 The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
 seconds: the time left in the limit's window, or until that user's hourly window closes.

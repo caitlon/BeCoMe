@@ -429,7 +429,7 @@ watch for the disconnect itself fails, the turn runs on without it and
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
   set and in memory otherwise, with the same per-process fallback as the message limit. It is
   spent after the user's own budget, so an account whose budget is spent cannot drain it; a turn
-  the ceiling refuses has therefore already spent one of that user's own hourly messages. A
+  the ceiling refuses gives the user's message back, so it spends none of the user's own budget. A
   turn over the ceiling is `503`, the same body as an unreachable model server, with
   `Retry-After` set to the seconds until the window closes; the record
   `assistant_global_cap_reached` carries `reason: global` and no user. Set it to `0` to switch it

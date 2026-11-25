@@ -495,8 +495,10 @@ async def enforce_message_limit(
     down, a caller over budget drives one build attempt per request, bounded by the per-address
     limit and the turn slots, and gets ``503`` where ``429`` came before. The user's own budget
     comes before the ceiling, so an account with a spent budget cannot drain the shared one.
-    ``hit`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
-    ``retry_after`` and the ceiling's calls, which are asked only after a refusal.
+    A message the ceiling refuses is given back: the user's charge is refunded before the refusal
+    is raised, so a ceiling the user did not reach does not spend the user's own budget.
+    ``charge`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
+    ``retry_after``, the refund and the ceiling's calls, which are asked only after a refusal.
 
     :param current_user: The authenticated caller.
     :param throttle: The per-user hourly message cap.
@@ -510,14 +512,18 @@ async def enforce_message_limit(
     :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
         the seconds until the window closes.
     :raises AssistantBusyError: When the global ceiling is already reached; it carries the
-        seconds until its window closes and the reason ``"global"``.
+        seconds until its window closes and the reason ``"global"``. The user's message is
+        given back first.
     """
-    if not await run_in_threadpool(throttle.hit, current_user.id):
+    user_charge = await run_in_threadpool(throttle.charge, current_user.id)
+    if not user_charge.allowed:
         retry_after = await run_in_threadpool(throttle.retry_after, current_user.id)
         raise AssistantRateLimitedError(
             "the hourly assistant message budget is spent", retry_after=retry_after
         )
-    if not await run_in_threadpool(global_throttle.hit_key, GLOBAL_KEY):
+    ceiling_charge = await run_in_threadpool(global_throttle.charge_key, GLOBAL_KEY)
+    if not ceiling_charge.allowed:
+        await run_in_threadpool(throttle.refund, user_charge)
         retry_after = await run_in_threadpool(global_throttle.retry_after_key, GLOBAL_KEY)
         raise AssistantBusyError(
             "the global hourly assistant message ceiling is reached",

@@ -17,6 +17,16 @@ budget, so it bounds what all users together can spend in an hour. Both backends
 ``retry_after_key``, so the fallback, the zero limit and the remaining window apply to the global
 key as well. Its Redis key is ``assistant:chat:all``, which no user digest can equal.
 
+A message can be given back: ``charge`` and ``charge_key`` return a :class:`Charge` that records
+what was counted and where, and ``refund`` undoes exactly that charge, on the backend that took it,
+and only if it was counted and allowed. The user's message is given back when the global ceiling
+refuses it, so a refusal that is not the user's doing leaves the user's budget whole. A refund
+never creates a counter: the in-memory one acts only while the window the charge opened in is
+still open, and the Redis one runs a Lua script that decrements a key only while it exists and is
+above zero, because a bare ``DECR`` on an expired key would create ``-1`` with no expiry and lock
+the user out for good. The accepted trade-off: a Redis refund that lands after the window rolled
+over takes one message off the new window.
+
 A limit of zero switches the cap off; both backends then allow everything without
 touching their store. A deployed service refuses a zero limit at startup
 (``Settings._validate_assistant_deploy``), so that is for a laptop only.
@@ -42,6 +52,7 @@ import logging
 import math
 import threading
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol, runtime_checkable
 from uuid import UUID
@@ -58,6 +69,38 @@ KEY_PREFIX = "assistant:chat"
 
 # The one key every message is also counted under, for the global ceiling.
 GLOBAL_KEY = "all"
+
+# Decrement a counter only while it exists and is above zero. Atomic, so an expired key is never
+# recreated by a refund; DECR on an existing key keeps its TTL.
+_REFUND_SCRIPT = """
+local value = redis.call('GET', KEYS[1])
+if value and tonumber(value) > 0 then
+    redis.call('DECR', KEYS[1])
+end
+return 0
+"""
+
+
+@dataclass(frozen=True)
+class Charge:
+    """One message counted against a key, with what a refund needs to undo exactly that.
+
+    :param key: What the message was counted under: a user's digest, or :data:`GLOBAL_KEY`.
+        Never log it.
+    :param allowed: Whether the message was within budget.
+    :param counted: False when nothing was stored because the limit is zero.
+    :param in_store: True when Redis took the charge, False when an in-memory table did,
+        including the Redis backend's own fallback while the store is down.
+    :param window_opened: The monotonic time the in-memory window opened at, or None for a
+        charge Redis took or one that was not counted. An in-memory refund does nothing once
+        that window has closed or been replaced.
+    """
+
+    key: str
+    allowed: bool
+    counted: bool = True
+    in_store: bool = False
+    window_opened: float | None = None
 
 
 def _digest(user_id: UUID) -> str:
@@ -99,6 +142,12 @@ class AssistantThrottle(Protocol):
 
     def retry_after_key(self, key: str) -> int: ...
 
+    def charge(self, user_id: UUID) -> Charge: ...
+
+    def charge_key(self, key: str) -> Charge: ...
+
+    def refund(self, charge: Charge) -> None: ...
+
 
 class InMemoryAssistantThrottle:
     """Process-local throttle for dev and tests (not shared across processes).
@@ -124,7 +173,7 @@ class InMemoryAssistantThrottle:
         :return: True when this message is allowed, False when this window's budget
             is already spent.
         """
-        return self.hit_key(_digest(user_id))
+        return self.charge(user_id).allowed
 
     def hit_key(self, key: str) -> bool:
         """Record one message under a key and report whether it is still within budget.
@@ -134,8 +183,25 @@ class InMemoryAssistantThrottle:
         :return: True when this message is allowed, False when this window's budget
             is already spent.
         """
+        return self.charge_key(key).allowed
+
+    def charge(self, user_id: UUID) -> Charge:
+        """Record one message and return the charge, so it can be given back.
+
+        :param user_id: The user sending the message.
+        :return: The charge; ``allowed`` is False when this window's budget is already spent.
+        """
+        return self.charge_key(_digest(user_id))
+
+    def charge_key(self, key: str) -> Charge:
+        """Record one message under a key and return the charge, so it can be given back.
+
+        :param key: What the message is counted under: a user's digest, or
+            :data:`GLOBAL_KEY`.
+        :return: The charge; ``allowed`` is False when this window's budget is already spent.
+        """
         if self._max == 0:
-            return True
+            return Charge(key, allowed=True, counted=False)
         now = time.monotonic()
         with self._lock:
             # Drop every window that has closed, so the table holds only users active
@@ -148,7 +214,27 @@ class InMemoryAssistantThrottle:
             count, opened = self._counts.get(key, (0, now))
             count += 1
             self._counts[key] = (count, opened)
-        return count <= self._max
+        return Charge(key, allowed=count <= self._max, window_opened=opened)
+
+    def refund(self, charge: Charge) -> None:
+        """Give back a message, if its window is still the one it was counted in.
+
+        Does nothing for a charge that was refused, not counted or taken by another store, and
+        when the key's window has closed or been replaced since. It never creates an entry.
+
+        :param charge: The charge to undo.
+        """
+        if not (charge.allowed and charge.counted) or charge.window_opened is None:
+            return
+        now = time.monotonic()
+        with self._lock:
+            entry = self._counts.get(charge.key)
+            if entry is None:
+                return
+            count, opened = entry
+            if opened != charge.window_opened or now - opened >= self._window or count <= 0:
+                return
+            self._counts[charge.key] = (count - 1, opened)
 
     def remaining(self, key: str) -> int | None:
         """Report how long until a key's open window closes.
@@ -210,7 +296,7 @@ class RedisAssistantThrottle:
         :return: True when this message is allowed, False when the budget is spent. While
             the store is down, the answer comes from this process's own count.
         """
-        return self.hit_key(_digest(user_id))
+        return self.charge(user_id).allowed
 
     def hit_key(self, key: str) -> bool:
         """Count one message under a key and report whether it is within budget.
@@ -220,8 +306,27 @@ class RedisAssistantThrottle:
         :return: True when this message is allowed, False when the budget is spent. While
             the store is down, the answer comes from this process's own count.
         """
+        return self.charge_key(key).allowed
+
+    def charge(self, user_id: UUID) -> Charge:
+        """Count one message and return the charge, so it can be given back.
+
+        :param user_id: The user sending the message.
+        :return: The charge; ``allowed`` is False when the budget is spent. While the store is
+            down, it comes from this process's own count.
+        """
+        return self.charge_key(_digest(user_id))
+
+    def charge_key(self, key: str) -> Charge:
+        """Count one message under a key and return the charge, so it can be given back.
+
+        :param key: What the message is counted under: a user's digest, or
+            :data:`GLOBAL_KEY`.
+        :return: The charge; ``allowed`` is False when the budget is spent. While the store is
+            down, it comes from this process's own count.
+        """
         if self._max == 0:
-            return True
+            return Charge(key, allowed=True, counted=False)
         redis_key = f"{KEY_PREFIX}:{key}"
         try:
             pipe = self._client.pipeline(transaction=True)
@@ -230,8 +335,33 @@ class RedisAssistantThrottle:
             results = pipe.execute()
         except redis.RedisError as e:
             _log_store_unavailable(e)
-            return self._fallback.hit_key(key)
-        return int(results[1]) <= self._max
+            return self._fallback.charge_key(key)
+        return Charge(key, allowed=int(results[1]) <= self._max, in_store=True)
+
+    def refund(self, charge: Charge) -> None:
+        """Give back a message on the backend that took it.
+
+        Does nothing for a charge that was refused or not counted. A charge the fallback took
+        goes back to the fallback. A charge Redis took is undone by one script that decrements
+        the key only while it exists and is above zero, so an expired window is never recreated.
+        A store error is logged and not raised, and not redirected to the fallback: the charge
+        is in Redis, and the message stays spent there until its window closes.
+
+        :param charge: The charge to undo.
+        """
+        if not (charge.allowed and charge.counted):
+            return
+        if not charge.in_store:
+            self._fallback.refund(charge)
+            return
+        try:
+            self._client.eval(_REFUND_SCRIPT, 1, f"{KEY_PREFIX}:{charge.key}")
+        except redis.RedisError as e:
+            logger.warning(
+                "Assistant throttle store unavailable, message not given back",
+                extra={"event": "assistant_throttle_refund_unavailable"},
+                exc_info=e,
+            )
 
     def retry_after(self, user_id: UUID) -> int:
         """Report how long until the user's window closes; call it after a refusal.

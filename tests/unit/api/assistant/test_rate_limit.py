@@ -273,6 +273,170 @@ class TestInMemoryAssistantThrottle:
 
         assert [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(5)] == [True] * 5
 
+    def test_a_refund_gives_the_slot_back(self):
+        """
+        GIVEN a budget of one and a user who spent it
+        WHEN the charge is refunded
+        THEN the user may send again
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        charge = throttle.charge(user_id)
+        assert charge.allowed is True
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert throttle.hit(user_id) is True
+
+    def test_hit_is_the_allowed_flag_of_a_charge(self):
+        """
+        GIVEN a budget of one
+        WHEN a user is charged twice
+        THEN the charges are allowed and refused, and both name the user's digest
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+
+        # WHEN
+        first, second = throttle.charge(user_id), throttle.charge(user_id)
+
+        # THEN
+        assert (first.allowed, second.allowed) == (True, False)
+        assert first.key == second.key == rate_limit._digest(user_id)
+        assert first.in_store is False
+
+    def test_a_refund_after_the_window_closed_is_a_no_op_and_creates_no_entry(self):
+        """
+        GIVEN a charge taken at t=0 in a one-hour window
+        WHEN it is refunded at t=3600, once the window has closed
+        THEN nothing changes and no entry is created
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            charge = throttle.charge(uuid4())
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
+            throttle.refund(charge)
+
+        # THEN
+        assert throttle._counts == {charge.key: (1, 0.0)}
+
+    def test_a_refund_after_the_window_was_replaced_leaves_the_new_window_alone(self):
+        """
+        GIVEN a charge taken at t=0, then a new window for the same key opened at t=4000
+        WHEN the old charge is refunded at t=4001
+        THEN the new window keeps its message
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=5, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            old = throttle.charge(user_id)
+        with patch.object(rate_limit.time, "monotonic", return_value=4000.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=4001.0):
+            throttle.refund(old)
+
+        # THEN
+        assert throttle._counts[old.key] == (1, 4000.0)
+
+    def test_a_refund_never_creates_an_entry(self):
+        """
+        GIVEN a charge for a key the table has dropped
+        WHEN it is refunded
+        THEN the table stays empty
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        charge = throttle.charge(uuid4())
+        throttle._counts.clear()
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert throttle._counts == {}
+
+    def test_a_refund_of_a_refused_charge_is_a_no_op(self):
+        """
+        GIVEN a budget of one, spent, and a second charge that was refused
+        WHEN the refused charge is refunded
+        THEN the count is unchanged and the user is still refused
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        throttle.charge(user_id)
+        refused = throttle.charge(user_id)
+        assert refused.allowed is False
+        before = dict(throttle._counts)
+
+        # WHEN
+        throttle.refund(refused)
+
+        # THEN
+        assert throttle._counts == before
+        assert throttle.hit(user_id) is False
+
+    def test_a_refund_of_an_uncounted_charge_is_a_no_op(self):
+        """
+        GIVEN a budget of zero, so a charge stores nothing
+        WHEN the charge is refunded
+        THEN it is not counted and the table stays empty
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=0)
+        charge = throttle.charge(uuid4())
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert charge.allowed is True
+        assert charge.counted is False
+        assert throttle._counts == {}
+
+    def test_a_refund_never_takes_the_count_below_zero(self):
+        """
+        GIVEN a charge refunded once already
+        WHEN it is refunded a second time
+        THEN the count stays at zero
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=2)
+        charge = throttle.charge(uuid4())
+        throttle.refund(charge)
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert throttle._counts[charge.key][0] == 0
+
+    def test_a_refund_works_for_the_global_key(self):
+        """
+        GIVEN a budget of one spent under the global key
+        WHEN the charge is refunded
+        THEN the key may be charged again
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        charge = throttle.charge_key(rate_limit.GLOBAL_KEY)
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
+
 
 def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
     """Return the only key the throttle wrote."""
@@ -695,6 +859,164 @@ class TestRedisAssistantThrottle:
 
         assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
         assert client.mock_calls == []
+
+    def test_a_refund_gives_the_slot_back_and_keeps_the_ttl(self):
+        """
+        GIVEN a budget of one, spent, on a key whose TTL has been shortened to 100 seconds
+        WHEN the charge is refunded
+        THEN the user may send again and the TTL was not touched
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        charge = throttle.charge(user_id)
+        key = _key(fake)
+        fake.expire(key, 100)
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert charge.in_store is True
+        assert int(fake.get(key)) == 0
+        assert 0 < fake.ttl(key) <= 100
+        assert throttle.hit(user_id) is True
+
+    def test_a_refund_on_an_expired_key_creates_no_key(self):
+        """
+        GIVEN a charge whose key has expired
+        WHEN the charge is refunded
+        THEN no key exists, so the next window starts clean instead of at -1 with no TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        charge = throttle.charge(uuid4())
+        fake.delete(_key(fake))
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert fake.keys("*") == []
+
+    def test_a_refund_on_a_key_at_zero_leaves_it_at_zero(self):
+        """
+        GIVEN a key at zero
+        WHEN the charge is refunded
+        THEN the key stays at zero with its TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=2, window_seconds=3600)
+        charge = throttle.charge(uuid4())
+        key = _key(fake)
+        throttle.refund(charge)
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert int(fake.get(key)) == 0
+        assert 0 < fake.ttl(key) <= 3600
+
+    def test_a_refund_of_a_refused_or_uncounted_charge_is_a_no_op(self):
+        """
+        GIVEN a spent key with a refused charge, and a zero-budget throttle with a client
+              that records every call
+        WHEN each charge is refunded
+        THEN the key still holds its count and the zero-budget client is never used
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        user_id = uuid4()
+        throttle.charge(user_id)
+        refused = throttle.charge(user_id)
+        client = MagicMock()
+        off = RedisAssistantThrottle(client, max_per_hour=0)
+        uncounted = off.charge(uuid4())
+
+        # WHEN
+        throttle.refund(refused)
+        off.refund(uncounted)
+
+        # THEN
+        assert refused.allowed is False
+        assert int(fake.get(_key(fake))) == 2
+        assert client.mock_calls == []
+
+    def test_a_charge_taken_by_the_fallback_is_refunded_to_the_fallback(self):
+        """
+        GIVEN a store that is down for the charge and up again for the refund
+        WHEN the fallback's charge is refunded
+        THEN the fallback's count drops, and the store is not asked
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+        user_id = uuid4()
+        charge = throttle.charge(user_id)
+        assert charge.in_store is False
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        client.eval.assert_not_called()
+        assert throttle._fallback.hit(user_id) is True
+
+    def test_a_store_error_during_a_refund_is_logged_and_not_raised(self, caplog):
+        """
+        GIVEN a charge Redis took and a store that now raises on the refund
+        WHEN the charge is refunded
+        THEN nothing is raised, a WARNING record names the event without the key or digest,
+             and the fallback is not touched
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        user_id = uuid4()
+        charge = throttle.charge(user_id)
+        client = MagicMock()
+        client.eval.side_effect = redis.RedisError("down")
+        throttle._client = client
+
+        # WHEN
+        with caplog.at_level(logging.WARNING, logger="api.security"):
+            throttle.refund(charge)
+
+        # THEN
+        records = [
+            r
+            for r in caplog.records
+            if getattr(r, "event", None) == "assistant_throttle_refund_unavailable"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert records[0].exc_info is not None
+        assert rate_limit._digest(user_id) not in str(records[0].__dict__)
+        assert throttle._fallback._counts == {}
+
+    def test_a_refund_works_for_the_global_key(self):
+        """
+        GIVEN a budget of one spent under the global key
+        WHEN the charge is refunded
+        THEN the key may be charged again
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+        charge = throttle.charge_key(rate_limit.GLOBAL_KEY)
+
+        # WHEN
+        throttle.refund(charge)
+
+        # THEN
+        assert charge.key == rate_limit.GLOBAL_KEY
+        assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
 
     def test_close_closes_the_redis_client(self):
         """
