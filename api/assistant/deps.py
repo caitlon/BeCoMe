@@ -66,6 +66,7 @@ from api.services.user_cache import UserCacheStore, get_user_cache
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
+security_logger = logging.getLogger("api.security")
 
 # The cap on one statement of the retriever's searches, in milliseconds (see make_engine).
 _STATEMENT_TIMEOUT_MS = 30000
@@ -642,7 +643,9 @@ async def open_chat_turn(
     is prepared. Once preparation has finished the messages stay spent, whatever happens next:
     an error of the answer model, which in the ``agent`` mode is also where an unknown project
     shows up, and a client that goes away, which ends the turn without an exception. Only an
-    ``Exception`` triggers the refund, so a cancellation does not.
+    ``Exception`` triggers the refund, so a cancellation does not. A refund that itself fails
+    is logged (``assistant_refund_failed``) and never replaces the turn's own error, and the
+    other refund still runs.
 
     :param request: The incoming request, for its application and the caller's address.
     :param counted: The checked chat request and the two charges that paid for it.
@@ -669,8 +672,18 @@ async def open_chat_turn(
         yield PreparedTurn(request=data, context=context)
     except Exception:
         if not context.prepared:
-            await run_in_threadpool(throttle.refund, counted.user_charge)
-            await run_in_threadpool(global_throttle.refund, counted.ceiling_charge)
+            for taker, charge in (
+                (throttle, counted.user_charge),
+                (global_throttle, counted.ceiling_charge),
+            ):
+                try:
+                    await run_in_threadpool(taker.refund, charge)
+                except Exception:
+                    security_logger.warning(
+                        "Assistant message not given back after a failed turn",
+                        extra={"event": "assistant_refund_failed"},
+                        exc_info=True,
+                    )
         raise
     finally:
         await client.aclose()

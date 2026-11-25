@@ -1274,6 +1274,39 @@ class TestOpenChatTurn:
         assert client.closed == 1
 
     @pytest.mark.asyncio
+    async def test_a_failing_refund_neither_replaces_the_error_nor_skips_the_other(
+        self, fake_client
+    ):
+        """
+        GIVEN an opened turn that is not marked prepared and a user throttle whose refund raises
+        WHEN the block raises an ordinary error
+        THEN that error propagates, the ceiling is still refunded and the failed refund is
+             logged as an event without the charge
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+        throttle.refund.side_effect = ConnectionError("store down")
+
+        # WHEN
+        with (
+            captured_log_records("api.security") as records,
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            async with self._open(
+                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+            ):
+                raise RuntimeError("boom")
+
+        # THEN
+        ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        (record,) = [r for r in records if getattr(r, "event", None) == "assistant_refund_failed"]
+        assert record.levelno == logging.WARNING
+        assert record.exc_info is not None
+        assert "user" not in record.getMessage()
+        (client,) = fake_client.instances
+        assert client.closed == 1
+
+    @pytest.mark.asyncio
     async def test_a_failure_after_preparation_finished_keeps_both_messages(self, fake_client):
         """
         GIVEN an opened turn whose context was marked prepared
