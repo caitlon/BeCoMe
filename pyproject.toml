@@ -31,6 +31,7 @@ dev = [
     "mutmut==3.8.1",
     "locust==2.47.0",
     "fakeredis==2.40.0",
+    "lupa==2.8",
     "import-linter==2.17",
 ]
 viz = [

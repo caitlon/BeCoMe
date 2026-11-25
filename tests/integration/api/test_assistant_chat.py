@@ -1412,8 +1412,8 @@ class TestMessageLimit:
         GIVEN a global ceiling of one message per hour, spent by one user
         WHEN a second user, with a budget of one message, sends their first message
         THEN it is 503 with the fixed unavailable body and a Retry-After within the hour,
-            not 429, the turn slot was given back, and that user's own message was spent
-            all the same (their next turn, past a fresh ceiling, is 429)
+            not 429, the turn slot was given back, and that user's own message was given
+            back too (their next turn, past a fresh ceiling, is 200)
         """
         # GIVEN
         configure(ASSISTANT_GLOBAL_TURNS_PER_HOUR="1", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
@@ -1433,7 +1433,7 @@ class TestMessageLimit:
         assert deps.get_turn_slots().holders == {}
         get_assistant_global_throttle.cache_clear()
         again = client.post(endpoint, json={"message": "three"}, headers=auth_header(second_token))
-        assert again.status_code == 429
+        assert again.status_code == 200
 
     def test_a_spent_budget_builds_no_client_and_asks_no_model(
         self, assistant_settings, client, configure, monkeypatch
@@ -1524,7 +1524,7 @@ class TestMessageLimit:
 
 @contextmanager
 def _watched_budgets() -> Iterator[tuple[MagicMock, MagicMock]]:
-    """Yield spies on the hourly counters: the per-user ``hit`` and the global ``hit_key``.
+    """Yield spies on the hourly counters: the per-user ``charge`` and the global ``charge_key``.
 
     Each spy calls through, so the budget behaves as it would; the call count of a spy is how
     many messages the requests in the block spent.
@@ -1532,8 +1532,8 @@ def _watched_budgets() -> Iterator[tuple[MagicMock, MagicMock]]:
     user = get_assistant_throttle()
     everyone = get_assistant_global_throttle()
     with (
-        patch.object(user, "hit", wraps=user.hit) as user_spy,
-        patch.object(everyone, "hit_key", wraps=everyone.hit_key) as global_spy,
+        patch.object(user, "charge", wraps=user.charge) as user_spy,
+        patch.object(everyone, "charge_key", wraps=everyone.charge_key) as global_spy,
     ):
         yield user_spy, global_spy
 

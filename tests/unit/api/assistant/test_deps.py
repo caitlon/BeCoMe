@@ -29,6 +29,8 @@ from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.rag.store import CollectionUnavailableError
 from api.assistant.rate_limit import (
     GLOBAL_KEY,
+    Charge,
+    InMemoryAssistantThrottle,
     get_assistant_global_throttle,
     get_assistant_throttle,
 )
@@ -519,7 +521,7 @@ class TestGetAssistantUser:
 def _open_ceiling() -> MagicMock:
     """Return a global throttle that allows every message."""
     ceiling = MagicMock()
-    ceiling.hit_key.return_value = True
+    ceiling.charge_key.return_value = Charge(GLOBAL_KEY, allowed=True)
     return ceiling
 
 
@@ -536,7 +538,7 @@ class TestEnforceMessageLimit:
         """
         # GIVEN
         throttle = MagicMock()
-        throttle.hit.return_value = True
+        throttle.charge.return_value = Charge("user", allowed=True)
         user = MagicMock(id=uuid4())
         data = MagicMock()
 
@@ -547,7 +549,7 @@ class TestEnforceMessageLimit:
 
         # THEN
         assert returned is data
-        throttle.hit.assert_called_once_with(user.id)
+        throttle.charge.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
     async def test_a_spent_budget_raises_the_rate_limited_error(self):
@@ -558,7 +560,7 @@ class TestEnforceMessageLimit:
         """
         # GIVEN
         throttle = MagicMock()
-        throttle.hit.return_value = False
+        throttle.charge.return_value = Charge("user", allowed=False)
         throttle.retry_after.return_value = 1234
         user = MagicMock(id=uuid4())
 
@@ -582,9 +584,9 @@ class TestEnforceMessageLimit:
         threads: list[int] = []
 
         class _Throttle:
-            def hit(self, user_id: UUID) -> bool:
+            def charge(self, user_id: UUID) -> Charge:
                 threads.append(threading.get_ident())
-                return True
+                return Charge("user", allowed=True)
 
         # WHEN
         await deps.enforce_message_limit(
@@ -610,8 +612,8 @@ class TestEnforceMessageLimit:
         threads: list[int] = []
 
         class _Throttle:
-            def hit(self, user_id: UUID) -> bool:
-                return False
+            def charge(self, user_id: UUID) -> Charge:
+                return Charge("user", allowed=False)
 
             def retry_after(self, user_id: UUID) -> int:
                 threads.append(threading.get_ident())
@@ -640,7 +642,7 @@ class TestEnforceMessageLimit:
         """
         # GIVEN
         throttle = MagicMock()
-        throttle.hit.return_value = True
+        throttle.charge.return_value = Charge("user", allowed=True)
         ceiling = _open_ceiling()
         user = MagicMock(id=uuid4())
 
@@ -650,8 +652,8 @@ class TestEnforceMessageLimit:
         )
 
         # THEN
-        throttle.hit.assert_called_once_with(user.id)
-        ceiling.hit_key.assert_called_once_with(GLOBAL_KEY)
+        throttle.charge.assert_called_once_with(user.id)
+        ceiling.charge_key.assert_called_once_with(GLOBAL_KEY)
 
     @pytest.mark.asyncio
     async def test_a_spent_user_budget_leaves_the_global_ceiling_untouched(self):
@@ -663,7 +665,7 @@ class TestEnforceMessageLimit:
         """
         # GIVEN
         throttle = MagicMock()
-        throttle.hit.return_value = False
+        throttle.charge.return_value = Charge("user", allowed=False)
         throttle.retry_after.return_value = 60
         ceiling = _open_ceiling()
 
@@ -684,9 +686,9 @@ class TestEnforceMessageLimit:
         """
         # GIVEN
         throttle = MagicMock()
-        throttle.hit.return_value = True
+        throttle.charge.return_value = Charge("user", allowed=True)
         ceiling = MagicMock()
-        ceiling.hit_key.return_value = False
+        ceiling.charge_key.return_value = Charge(GLOBAL_KEY, allowed=False)
         ceiling.retry_after_key.return_value = 1800
 
         # WHEN/THEN
@@ -699,19 +701,170 @@ class TestEnforceMessageLimit:
         ceiling.retry_after_key.assert_called_once_with(GLOBAL_KEY)
 
     @pytest.mark.asyncio
+    async def test_a_reached_ceiling_gives_the_users_message_back_before_it_refuses(self):
+        """
+        GIVEN a user with a budget of three and one message already spent, and a global
+              ceiling of one that is already spent
+        WHEN the limit dependency runs
+        THEN AssistantBusyError is raised and the user's count is what it was before the call
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=3)
+        ceiling = InMemoryAssistantThrottle(max_per_hour=1)
+        user = MagicMock(id=uuid4())
+        assert throttle.hit(user.id) is True
+        assert ceiling.hit_key(GLOBAL_KEY) is True
+        key = rate_limit._digest(user.id)
+        before = throttle._counts[key][0]
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+
+        # THEN
+        assert before == 1
+        assert throttle._counts[key][0] == before
+
+    @pytest.mark.asyncio
+    async def test_a_second_turn_refused_during_a_refused_ceiling_does_not_block_the_user(self):
+        """
+        GIVEN a user with a budget of one and a global ceiling that refuses the first turn after
+              that turn spent the user's message, while a second turn of the same user arrives
+        WHEN the second turn is refused for the budget and the first turn's message is given back
+        THEN the user's count is zero and the next message is allowed
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user = MagicMock(id=uuid4())
+        second_outcome: list[BaseException] = []
+
+        class _Ceiling(InMemoryAssistantThrottle):
+            def charge_key(self, key: str) -> Charge:
+                # The second turn runs here, after the first turn's user charge and before
+                # the first turn's refund.
+                try:
+                    asyncio.run(
+                        deps.enforce_message_limit(
+                            user, throttle, _open_ceiling(), data=MagicMock(), retriever=MagicMock()
+                        )
+                    )
+                except AssistantRateLimitedError as exc:
+                    second_outcome.append(exc)
+                return Charge(key, allowed=False)
+
+        ceiling = _Ceiling(max_per_hour=1)
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+
+        # THEN
+        assert len(second_outcome) == 1
+        assert throttle._counts[rate_limit._digest(user.id)][0] == 0
+        assert throttle.hit(user.id) is True
+
+    @pytest.mark.asyncio
+    async def test_a_refund_follows_the_refused_ceiling_and_runs_in_a_worker_thread(self):
+        """
+        GIVEN a user within budget and a global ceiling that is reached, with a user throttle
+              that records the thread its refund is called on
+        WHEN the limit dependency runs on the event loop
+        THEN the refund got the user's own charge, on another thread
+        """
+        # GIVEN
+        refunds: list[tuple[Charge, int]] = []
+        charge = Charge("user", allowed=True)
+
+        class _Throttle:
+            def charge(self, user_id: UUID) -> Charge:
+                return charge
+
+            def refund(self, spent: Charge) -> None:
+                refunds.append((spent, threading.get_ident()))
+
+        ceiling = MagicMock()
+        ceiling.charge_key.return_value = Charge(GLOBAL_KEY, allowed=False)
+        ceiling.retry_after_key.return_value = 5
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                _Throttle(),
+                ceiling,
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
+
+        # THEN
+        assert len(refunds) == 1
+        assert refunds[0][0] is charge
+        assert refunds[0][1] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_a_spent_user_budget_gives_nothing_back(self):
+        """
+        GIVEN a user whose own budget is spent
+        WHEN the limit dependency runs
+        THEN the 429 is raised and no refund is made
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge.return_value = Charge("user", allowed=False)
+        throttle.retry_after.return_value = 60
+
+        # WHEN/THEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                throttle,
+                _open_ceiling(),
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
+        throttle.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_message_that_passes_both_budgets_stays_spent(self):
+        """
+        GIVEN a user within budget and an open global ceiling
+        WHEN the limit dependency runs
+        THEN nothing is refunded
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge.return_value = Charge("user", allowed=True)
+
+        # WHEN
+        await deps.enforce_message_limit(
+            MagicMock(id=uuid4()),
+            throttle,
+            _open_ceiling(),
+            data=MagicMock(),
+            retriever=MagicMock(),
+        )
+
+        # THEN
+        throttle.refund.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_the_ceiling_runs_in_a_worker_thread(self):
         """
         GIVEN a refusing global throttle that records the threads it is called on
         WHEN the limit dependency runs on the event loop
-        THEN hit_key and retry_after_key both ran on another thread
+        THEN charge_key and retry_after_key both ran on another thread
         """
         # GIVEN
         threads: list[int] = []
 
         class _Ceiling:
-            def hit_key(self, key: str) -> bool:
+            def charge_key(self, key: str) -> Charge:
                 threads.append(threading.get_ident())
-                return False
+                return Charge(key, allowed=False)
 
             def retry_after_key(self, key: str) -> int:
                 threads.append(threading.get_ident())
@@ -721,7 +874,7 @@ class TestEnforceMessageLimit:
         with pytest.raises(AssistantBusyError):
             await deps.enforce_message_limit(
                 MagicMock(id=uuid4()),
-                MagicMock(hit=MagicMock(return_value=True)),
+                MagicMock(charge=MagicMock(return_value=Charge("user", allowed=True))),
                 _Ceiling(),
                 data=MagicMock(),
                 retriever=MagicMock(),
