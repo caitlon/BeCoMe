@@ -1,0 +1,147 @@
+"""Reduce the text of database errors to what may leave the process.
+
+PostgreSQL's own error text can quote row values: the ``DETAIL`` line of a unique, NOT NULL or
+check violation does, and the first line of a type error does (``invalid input syntax for type
+uuid: "..."``). SQLAlchemy's wrapper repeats the driver's text and adds the statement. The Sentry
+filter calls the functions here so that only the exception type, the first line of the message
+cut at its first quote mark, the SQLSTATE and the schema identifiers (constraint, table and
+column names) are sent.
+"""
+
+from sqlalchemy.exc import StatementError
+
+# ``psycopg`` also matches ``psycopg2``.
+_DATABASE_MODULE_PREFIXES = ("sqlalchemy", "psycopg")
+
+_QUOTES = "\"'"
+_MASK = "***"
+
+
+def is_database_module(module: object) -> bool:
+    """Tell whether a module name belongs to SQLAlchemy or a PostgreSQL driver.
+
+    :param module: A module name, as in ``type(exc).__module__``.
+    :return: True for a string starting with ``sqlalchemy`` or ``psycopg``.
+    """
+    return isinstance(module, str) and module.startswith(_DATABASE_MODULE_PREFIXES)
+
+
+def safe_message_text(text: str) -> str:
+    """Keep the first line of an error message, cut at its first quote mark.
+
+    PostgreSQL does not escape a quote mark inside a value, so a value can hold either mark or
+    an odd number of them. Cutting at the first mark and dropping the rest is the only rule that
+    never keeps part of a value; the SQLSTATE and schema names that
+    :func:`safe_error_text` appends keep the error identifiable.
+
+    :param text: The message of a database error.
+    :return: The first line up to and including its first quote mark, followed by ``***``; the
+        line unchanged when it has no quote mark.
+    """
+    lines = text.splitlines()
+    line = lines[0] if lines else ""
+    marks = [i for i in (line.find(mark) for mark in _QUOTES) if i != -1]
+    if not marks:
+        return line
+    first = min(marks)
+    return f"{line[: first + 1]}{_MASK}"
+
+
+def _driver_error(exc: BaseException) -> BaseException | None:
+    """Return the driver's own error: ``exc`` itself, or what SQLAlchemy wrapped."""
+    if type(exc).__module__.startswith("psycopg"):
+        return exc
+    if isinstance(exc, StatementError):
+        return exc.orig
+    return None
+
+
+def _identifier_suffix(exc: BaseException) -> str:
+    """Describe the SQLSTATE and the schema identifiers a driver error carries.
+
+    :param exc: Any exception.
+    :return: ``" (SQLSTATE ...; constraint ...; table ...; column ...)"`` with the known parts
+        only, or an empty string when the exception is no driver error or none is known.
+    """
+    err = _driver_error(exc)
+    if err is None:
+        return ""
+    diag = getattr(err, "diag", None)
+    parts: list[str] = []
+    # ``sqlstate`` is psycopg 3, ``pgcode`` psycopg2.
+    state = getattr(err, "sqlstate", None) or getattr(err, "pgcode", None)
+    if isinstance(state, str) and state:
+        parts.append(f"SQLSTATE {state}")
+    for label, attribute in (
+        ("constraint", "constraint_name"),
+        ("table", "table_name"),
+        ("column", "column_name"),
+    ):
+        name = getattr(diag, attribute, None)
+        if isinstance(name, str) and name:
+            parts.append(f"{label} {name}")
+    return f" ({'; '.join(parts)})" if parts else ""
+
+
+def safe_error_text(exc: BaseException) -> str:
+    """Return the text of a database error that may leave the process.
+
+    :param exc: A driver error, or a SQLAlchemy error wrapping one.
+    :return: The first line of its message cut at the first quote mark, followed by the SQLSTATE
+        and the constraint, table and column names when the driver reports them. Never raises.
+    """
+    try:
+        text = str(exc)
+    except Exception:
+        text = type(exc).__name__
+    try:
+        return safe_message_text(text) + _identifier_suffix(exc)
+    except Exception:
+        return type(exc).__name__
+
+
+def exception_chain(exc: BaseException) -> list[BaseException]:
+    """List ``exc`` and every exception reachable from it.
+
+    Reachable means through ``__cause__``, ``__context__`` and the members of an exception group.
+
+    :param exc: The exception to start from.
+    :return: The exceptions in depth-first order, each once.
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    pending = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        links = [link for link in (current.__cause__, current.__context__) if link is not None]
+        if isinstance(current, BaseExceptionGroup):
+            links.extend(current.exceptions)
+        pending.extend(reversed(links))
+    return chain
+
+
+def database_error_chain(exc: BaseException) -> list[BaseException]:
+    """List the exceptions of a chain whose text has to be reduced.
+
+    That is every exception whose type comes from SQLAlchemy or a PostgreSQL driver, and the
+    ``orig`` of every SQLAlchemy statement error, which can be a builtin error such as the
+    ``TypeError`` of a bind processor.
+
+    :param exc: The exception to start from.
+    :return: The exceptions to reduce, each once; empty when the chain holds no database error.
+    """
+    members: list[BaseException] = []
+    seen: set[int] = set()
+    for link in exception_chain(exc):
+        candidates = [link] if is_database_module(type(link).__module__) else []
+        if isinstance(link, StatementError) and link.orig is not None:
+            candidates.append(link.orig)
+        for candidate in candidates:
+            if id(candidate) not in seen:
+                seen.add(id(candidate))
+                members.append(candidate)
+    return members

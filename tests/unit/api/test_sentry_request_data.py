@@ -2,7 +2,8 @@
 
 import hashlib
 import json
-from collections.abc import Iterator
+import sys
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import fakeredis
@@ -11,10 +12,20 @@ import sentry_sdk
 import sentry_sdk.integrations as sentry_integrations
 from fastapi.testclient import TestClient
 from sentry_sdk.transport import Transport
+from sentry_sdk.utils import event_from_exception
 
 from api.auth.login_throttle import LOGIN_KEY_PREFIX, RedisLoginThrottle
+from api.db.error_text import exception_chain
 from api.dependencies import get_email_address_policy, get_registration_service
 from api.sentry_filter import ALLOWED_REQUEST_HEADERS, scrub_request_data
+from tests.shared.database_errors import (
+    SENTINEL,
+    bind_processor_error,
+    psycopg2_invalid_uuid,
+    psycopg2_unique_violation,
+    psycopg3_unique_violation,
+    raised,
+)
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://public@o0.ingest.sentry.io/0"
@@ -155,6 +166,20 @@ def _build_client(
     return TestClient(app, raise_server_exceptions=False)
 
 
+class _RaisingDatabaseError:
+    """A registration service whose database call fails the way the engine reports it."""
+
+    def __init__(self, build: Callable[[], tuple[Any, BaseException]]) -> None:
+        self._build = build
+
+    def register(self, **_: object) -> None:
+        wrapped, orig = self._build()
+        try:
+            raise orig
+        except BaseException as cause:
+            raise wrapped from cause
+
+
 class _AcceptingPolicy:
     """An address policy that accepts every address, so no DNS lookup happens."""
 
@@ -221,6 +246,71 @@ class TestErrorEventRequestData:
         serialized = transport.serialized()
         for sentinel in (*_SENTINELS, "Sentinel-Passw0rd-123"):
             assert sentinel not in serialized
+
+
+class TestDatabaseErrorText:
+    """PostgreSQL's own error text stays out of the envelopes."""
+
+    @staticmethod
+    def _register_failing(client: TestClient) -> None:
+        response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "person@example.com",
+                "password": "Sentinel-Passw0rd-123",  # pragma: allowlist secret
+                "first_name": "Given",
+                "last_name": "Person",
+            },
+            headers={"Origin": _ORIGIN, "Content-Type": "application/json"},
+        )
+        sentry_sdk.flush()
+        assert response.status_code == 500
+
+    @pytest.mark.parametrize(
+        ("build", "wrapper", "driver", "first_line"),
+        [
+            (
+                psycopg2_unique_violation,
+                "IntegrityError",
+                "UniqueViolation",
+                "duplicate key value violates unique constraint",
+            ),
+            (
+                psycopg2_invalid_uuid,
+                "DataError",
+                "InvalidTextRepresentation",
+                "invalid input syntax for type uuid",
+            ),
+        ],
+        ids=["unique-violation", "invalid-uuid"],
+    )
+    def test_event_carries_no_quoted_row_value(
+        self, monkeypatch, tmp_path, transport, build, wrapper, driver, first_line
+    ):
+        """
+        GIVEN the real app with Sentry on and a route whose database call fails with an error
+            whose text quotes a value
+        WHEN the request reaches it
+        THEN the event still names both exception types and modules and keeps the first line
+        AND the value, the DETAIL line and the statement appear in no envelope
+        """
+        client = _build_client(monkeypatch, tmp_path, transport, traces=0.0)
+        client.app.dependency_overrides[get_registration_service] = lambda: _RaisingDatabaseError(
+            build
+        )
+
+        self._register_failing(client)
+
+        events = transport.items("event")
+        assert events
+        values = [value for event in events for value in event["exception"]["values"]]
+        seen = {(value["module"], value["type"]) for value in values}
+        assert {("psycopg2.errors", driver), ("sqlalchemy.exc", wrapper)} <= seen
+        assert any(first_line in value["value"] for value in values)
+        serialized = transport.serialized()
+        assert SENTINEL not in serialized
+        assert "DETAIL" not in serialized
+        assert "INSERT INTO" not in serialized
 
 
 class TestLogRecordFields:
@@ -515,3 +605,148 @@ class TestScrubLogRecordFields:
         THEN it returns the event without raising
         """
         assert scrub_request_data(event, {}) is event
+
+
+# The options of the app's Sentry client that the event builder reads; frame locals are off there
+# (``include_local_variables=False``), so a test event carries none either.
+_EVENT_OPTIONS = {
+    "include_local_variables": False,
+    "include_source_context": True,
+    "max_value_length": 1024,
+}
+
+
+def _event_from(exc_info: Any) -> tuple[Any, Any]:
+    return event_from_exception(exc_info, client_options=_EVENT_OPTIONS)
+
+
+class TestScrubDatabaseErrors:
+    """The filter reduces the text of database errors in an event's exception chain."""
+
+    @staticmethod
+    def _scrubbed_event(build) -> dict[str, Any]:
+        wrapped, orig = build()
+        exc_info = raised(wrapped, orig)
+        event, hint = _event_from(exc_info)
+        assert SENTINEL in json.dumps(event, default=str)
+        return scrub_request_data(event, hint)  # type: ignore[return-value]
+
+    def test_psycopg3_unique_violation_keeps_type_sqlstate_and_first_line(self):
+        """
+        GIVEN an event from a psycopg 3 unique violation wrapped by SQLAlchemy
+        WHEN the filter runs
+        THEN no value, DETAIL line or statement is left
+        AND the entries keep their type, module and stack trace
+        AND the SQLSTATE is reported on the driver entry
+        """
+        event = self._scrubbed_event(psycopg3_unique_violation)
+
+        values = event["exception"]["values"]
+        assert [(v["module"], v["type"]) for v in values] == [
+            ("psycopg.errors", "UniqueViolation"),
+            ("sqlalchemy.exc", "IntegrityError"),
+        ]
+        assert all(v["stacktrace"]["frames"] for v in values)
+        assert SENTINEL not in json.dumps(event, default=str)
+        assert "DETAIL" not in json.dumps(event, default=str)
+        assert values[0]["value"].endswith("(SQLSTATE 23505)")
+        assert values[1]["value"].startswith("(psycopg.errors.UniqueViolation)")
+
+    def test_builtin_error_inside_a_statement_error_is_reduced(self):
+        """
+        GIVEN an event from a statement error raised from the TypeError of a bind processor
+        WHEN the filter runs
+        THEN the quoted value is gone from both entries
+        """
+        event = self._scrubbed_event(bind_processor_error)
+
+        assert SENTINEL not in json.dumps(event, default=str)
+        assert event["exception"]["values"][0]["value"] == "Not a boolean value: '***"
+
+    def test_entry_without_a_matching_exception_is_cut_by_its_module(self):
+        """
+        GIVEN an event with a driver error entry and a hint that names no exception
+        WHEN the filter runs
+        THEN the entry keeps its first line cut at the first quote mark
+        AND an entry of another module is left alone
+        """
+        event: Any = {
+            "exception": {
+                "values": [
+                    {
+                        "type": "UniqueViolation",
+                        "module": "psycopg2.errors",
+                        "value": f'clash "{SENTINEL}"\nDETAIL: Key (email)=({SENTINEL})',
+                    },
+                    {"type": "ValueError", "module": "builtins", "value": f'kept "{SENTINEL}"'},
+                ]
+            }
+        }
+
+        result = scrub_request_data(event, {})
+
+        assert result["exception"]["values"][0]["value"] == 'clash "***'
+        assert result["exception"]["values"][1]["value"] == f'kept "{SENTINEL}"'
+
+    def test_application_error_raised_from_a_database_error_keeps_its_text(self):
+        """
+        GIVEN an event from an application error whose cause is a database error
+        WHEN the filter runs
+        THEN the application error keeps its message and the database errors are reduced
+        """
+        wrapped, orig = psycopg2_unique_violation()
+        database_error = raised(wrapped, orig)[1]
+        assert database_error is not None
+        event, hint = _event_from(raised(ValueError("signup failed"), database_error))
+
+        result: Any = scrub_request_data(event, hint)
+
+        values = {v["type"]: v["value"] for v in result["exception"]["values"]}
+        assert values["ValueError"] == "signup failed"
+        assert SENTINEL not in json.dumps(result, default=str)
+
+    def test_database_error_inside_an_exception_group_is_reduced(self):
+        """
+        GIVEN an event from an exception group whose member is a statement error raised from
+            the TypeError of a bind processor
+        WHEN the filter runs
+        THEN the quoted value is gone from every entry
+        AND the chain of the group reaches the member and the TypeError
+        """
+        wrapped, orig = bind_processor_error()
+        member = raised(wrapped, orig)[1]
+        assert member is not None
+        group = ExceptionGroup("g", [member])
+        try:
+            raise group
+        except ExceptionGroup:
+            event, hint = _event_from(sys.exc_info())
+        assert SENTINEL in json.dumps(event, default=str)
+
+        result: Any = scrub_request_data(event, hint)
+
+        assert SENTINEL not in json.dumps(result, default=str)
+        chain = exception_chain(group)
+        assert member in chain
+        assert orig in chain
+
+    @pytest.mark.parametrize(
+        "event",
+        [
+            {"exception": None},
+            {"exception": "text"},
+            {"exception": {"values": None}},
+            {"exception": {"values": "text"}},
+            {"exception": {"values": [None, "text", 3, {"module": "psycopg2.errors"}]}},
+            {"exception": {"values": [{"module": "psycopg2.errors", "value": None}]}},
+        ],
+        ids=["none", "text", "values-none", "values-text", "odd-items", "value-none"],
+    )
+    @pytest.mark.parametrize("hint", [{}, {"exc_info": None}, {"exc_info": "text"}, None])
+    def test_never_raises_on_unexpected_shapes(self, event, hint):
+        """
+        GIVEN an event whose exception data, or a hint, has an unexpected shape
+        WHEN the filter runs
+        THEN it returns the event without raising
+        """
+        assert scrub_request_data(event, hint) is event

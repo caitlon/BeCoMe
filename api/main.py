@@ -76,8 +76,8 @@ def _init_sentry(settings: Settings) -> None:
     exception a route raises is reported by ``UnhandledErrorMiddleware``; one
     that escapes to Starlette's ``ServerErrorMiddleware`` is reported by the
     integration. A no-op when the DSN is unset, which keeps development and
-    tests offline. Request data is reduced to an allowlist by
-    :func:`api.sentry_filter.scrub_request_data`.
+    tests offline. Request data is reduced to an allowlist, and the text of database
+    errors is reduced, by :func:`api.sentry_filter.scrub_request_data`.
 
     :param settings: Application settings.
     """
