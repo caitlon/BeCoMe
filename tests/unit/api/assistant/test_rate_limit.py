@@ -1423,9 +1423,9 @@ class TestAddressKey:
             the deciding key changes the result
         """
         # WHEN
-        with _keyed(log_hash_key=None, secret_key="secret-a"):
+        with _keyed(log_hash_key=None, secret_key="secret-a"):  # pragma: allowlist secret
             by_secret = rate_limit.address_key("203.0.113.5")
-        with _keyed(log_hash_key=None, secret_key="secret-b"):
+        with _keyed(log_hash_key=None, secret_key="secret-b"):  # pragma: allowlist secret
             other_secret = rate_limit.address_key("203.0.113.5")
         with _keyed(log_hash_key="log-key", secret_key="secret-a"):
             by_log_key = rate_limit.address_key("203.0.113.5")
