@@ -446,6 +446,9 @@ limit at `0`, so neither cap can be switched off there. A message the global cei
 given back to the user's own budget, and a message a budget refuses is given back too: in
 memory it is never stored, and in Redis its increment is given back by a guarded script. If that
 give-back fails with a store error, the counter stays above its budget until the window closes.
+A turn that fails while it is prepared, before the answer model is called (an unknown project, a
+retrieval error, a timeout), gives back both its messages, the user's and the global ceiling's; a
+failure of the answer model, and a client that goes away, keep them.
 
 The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
 seconds: the time left in the limit's window, or until that user's hourly window closes.

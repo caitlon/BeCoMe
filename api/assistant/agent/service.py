@@ -160,6 +160,10 @@ class AssistantService:
         which is a known limit. The fetching runs under ``assistant_first_byte_timeout_seconds``
         (or the turn timeout, when that is shorter), so that a caller that streams the answer
         meets its failures before any byte is sent, and sends one before a proxy gives up.
+        Preparation includes the retriever's own query-transform call; the answer model is not
+        called until it returns. Its last step sets ``ctx.prepared``, which tells the route's
+        dependency that a later failure is no longer a failure of preparation and keeps the
+        turn's messages spent.
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
@@ -204,6 +208,7 @@ class AssistantService:
         except BaseException as exc:
             end_turn(trace, error=type(exc).__name__)
             raise
+        ctx.prepared = True
         return TurnDraft(request, ctx, kept, messages, started, deadline_at, trace)
 
     async def answer(

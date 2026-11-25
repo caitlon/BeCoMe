@@ -128,6 +128,9 @@ class AssistantContext:
     :ivar locale: The UI locale the request carried (``en`` or ``cs``).
     :ivar roster: The experts of every opinions list this turn fetched, with their labels.
         The trace of the turn is masked with it.
+    :ivar prepared: True once :meth:`~api.assistant.agent.service.AssistantService.prepare` has
+        finished, which is the last step before the answer model is called. The route's
+        dependency reads it to tell a turn that failed in preparation from one that did not.
     """
 
     client: UserApiClient
@@ -137,3 +140,4 @@ class AssistantContext:
     current_project_id: str | None
     locale: str
     roster: TurnRoster = field(default_factory=TurnRoster)
+    prepared: bool = False

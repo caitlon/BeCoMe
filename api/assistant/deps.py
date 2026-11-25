@@ -48,6 +48,7 @@ from api.assistant.rag.store import make_engine, open_store
 from api.assistant.rate_limit import (
     GLOBAL_KEY,
     AssistantThrottle,
+    Charge,
     RedisAssistantThrottle,
     get_assistant_global_throttle,
     get_assistant_throttle,
@@ -464,13 +465,27 @@ def get_chat_request(
 ChatRequestDep = Annotated[AssistantChatRequest, Depends(get_chat_request)]
 
 
+@dataclass(frozen=True)
+class CountedRequest:
+    """A chat request that has taken its message, with the two charges that paid for it.
+
+    :ivar request: The checked chat request.
+    :ivar user_charge: The message counted against the caller's hourly budget.
+    :ivar ceiling_charge: The message counted against the global ceiling.
+    """
+
+    request: AssistantChatRequest
+    user_charge: Charge
+    ceiling_charge: Charge
+
+
 async def enforce_message_limit(
     current_user: AssistantUser,
     throttle: AssistantThrottleDep,
     global_throttle: AssistantGlobalThrottleDep,
     data: ChatRequestDep,
     retriever: DocsRetrieverDep,
-) -> AssistantChatRequest:
+) -> CountedRequest:
     """Spend one message of the caller's hourly budget and of the global ceiling.
 
     The order of the checks on a chat turn, which both routes share and which this docstring
@@ -478,17 +493,20 @@ async def enforce_message_limit(
     (:func:`hold_turn_slot`), the request check and the retriever, then this budget, and only
     after it the API client and every model. A request refused by an earlier step spends no
     message. The first two are route dependencies; the rest are resolved through
-    :func:`open_chat_turn`, which the endpoint takes after them.
+    :func:`open_chat_turn`, which the endpoint takes after them. A turn that fails while the
+    service prepares it, before the answer model is first called, gives both messages back
+    (see :func:`open_chat_turn`); a turn that fails in the answer model call or after it, or
+    whose client goes away, keeps them.
 
     The checked request and the retriever are parameters here, which FastAPI resolves before
     this body runs: a message that is too long or a body the schema rejects (``422``), and a
     retriever that cannot be built because the vector database is down or not configured
     (``503``), are refused before any message is spent. The retriever is not used here, and
     :func:`open_chat_turn` reuses the same one, as FastAPI resolves each dependency once per
-    request. The request is returned, and it reaches :func:`open_chat_turn` only through this
-    function: the body is declared once in the dependency tree, because FastAPI reports a body
-    error once for every dependency that declares it, and a second path to the body would answer
-    ``422`` with every error twice.
+    request. The request is returned with the two charges, and it reaches
+    :func:`open_chat_turn` only through this function: the body is declared once in the
+    dependency tree, because FastAPI reports a body error once for every dependency that
+    declares it, and a second path to the body would answer ``422`` with every error twice.
 
     The trade-off is deliberate. The retriever is process-cached, so once it is built a request
     pays nothing for it. A failed build is not cached, so on a process whose vector database is
@@ -508,7 +526,7 @@ async def enforce_message_limit(
         retriever is built.
     :param retriever: The documentation retriever; unused, it only has to be available before a
         message is spent.
-    :return: The same checked request, once both budgets have taken the message.
+    :return: The checked request and the two charges, once both budgets have taken the message.
     :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
         the seconds until the window closes.
     :raises AssistantBusyError: When the global ceiling is already reached; it carries the
@@ -530,10 +548,10 @@ async def enforce_message_limit(
             retry_after=retry_after,
             reason="global",
         )
-    return data
+    return CountedRequest(data, user_charge, ceiling_charge)
 
 
-CountedChatRequestDep = Annotated[AssistantChatRequest, Depends(enforce_message_limit)]
+CountedChatRequestDep = Annotated[CountedRequest, Depends(enforce_message_limit)]
 
 
 @limiter.limit(LIMIT_ASSISTANT_CHAT)
@@ -601,9 +619,11 @@ class PreparedTurn:
 
 async def open_chat_turn(
     request: Request,
-    data: CountedChatRequestDep,
+    counted: CountedChatRequestDep,
     access_token: AccessToken,
     retriever: DocsRetrieverDep,
+    throttle: AssistantThrottleDep,
+    global_throttle: AssistantGlobalThrottleDep,
 ) -> AsyncIterator[PreparedTurn]:
     """Build the API client and the context for one chat turn, and close the client after.
 
@@ -615,13 +635,25 @@ async def open_chat_turn(
     ``app.dependency_overrides`` can replace it; it is the one already resolved for the budget
     check.
 
+    A turn that raises before :meth:`~api.assistant.agent.service.AssistantService.prepare` has
+    finished gives back both messages it spent, the caller's and the ceiling's, and re-raises:
+    a project the caller cannot see, a retrieval error (the query-transform call of the
+    retriever is retrieval, not the answer model), a timeout or any other error while the turn
+    is prepared. Once preparation has finished the messages stay spent, whatever happens next:
+    an error of the answer model, which in the ``agent`` mode is also where an unknown project
+    shows up, and a client that goes away, which ends the turn without an exception. Only an
+    ``Exception`` triggers the refund, so a cancellation does not.
+
     :param request: The incoming request, for its application and the caller's address.
-    :param data: The checked chat request, after the hourly budget has taken the message.
+    :param counted: The checked chat request and the two charges that paid for it.
     :param access_token: The caller's own access token, the one the authentication
         dependency checked.
     :param retriever: The documentation retriever for this turn.
+    :param throttle: The per-user hourly message cap, which took the caller's charge.
+    :param global_throttle: The hourly ceiling on all users together, which took the other.
     :return: The request and its context.
     """
+    data = counted.request
     client = UserApiClient(
         app=request.app, access_token=access_token, client_ip=get_client_ip(request)
     )
@@ -635,6 +667,11 @@ async def open_chat_turn(
     )
     try:
         yield PreparedTurn(request=data, context=context)
+    except Exception:
+        if not context.prepared:
+            await run_in_threadpool(throttle.refund, counted.user_charge)
+            await run_in_threadpool(global_throttle.refund, counted.ceiling_charge)
+        raise
     finally:
         await client.aclose()
 

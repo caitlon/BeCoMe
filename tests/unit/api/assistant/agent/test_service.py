@@ -1124,6 +1124,40 @@ class TestStream:
 
         assert model.seen == []
 
+    async def test_prepare_marks_the_context_prepared_only_when_it_succeeds(self):
+        """
+        GIVEN a context, and another whose retriever is down
+        WHEN each turn is prepared
+        THEN the first context is marked prepared on return, and the second is not, since the
+             failure came before the answer model could be called
+        """
+        ok_ctx = _ctx()
+        down_ctx = _ctx()
+        down_ctx.retriever.search.side_effect = httpx.ConnectError("down")
+        assert ok_ctx.prepared is False
+
+        await AssistantService(_settings(), _model(_say())).prepare(_request(), ok_ctx)
+        with pytest.raises(AssistantUnavailableError):
+            await AssistantService(_settings(), _model(_say())).prepare(_request(), down_ctx)
+
+        assert ok_ctx.prepared is True
+        assert down_ctx.prepared is False
+
+    async def test_a_failing_answer_model_leaves_the_context_marked_prepared(self):
+        """
+        GIVEN a model whose call fails
+        WHEN a turn is answered
+        THEN the error reaches the caller and the context is marked prepared, so the route
+             keeps the turn's messages spent
+        """
+        ctx = _ctx()
+        model = _FailingModel(responses=[], error=httpx.ConnectError("down"))
+
+        with pytest.raises(AssistantUnavailableError):
+            await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        assert ctx.prepared is True
+
     async def test_a_stream_that_outlives_the_deadline_is_unavailable(self):
         """
         GIVEN a model that waits 200 ms before its first piece and a deadline of 50 ms
