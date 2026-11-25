@@ -19,9 +19,9 @@ set -euo pipefail
 #     of frontend/nginx.conf, because a script the policy does not allow is blocked silently.
 #
 # Image checks (--docker): builds the frontend image, runs it, and fetches pages over HTTP to
-# prove that nginx answers without a redirect, with the security headers, with no-cache on the
-# HTML, the prerendered page for a public route, the shell for each app
-# route of the nginx allowlist (/login, /register, /forgot-password, /reset-password, /verify-email,
+# prove that nginx answers without a redirect, with the security headers, with no version in the
+# Server header, with no-cache on the HTML, the prerendered page for a public route, the shell
+# for each app route of the nginx allowlist (/login, /register, /forgot-password, /reset-password, /verify-email,
 # /projects, /projects/<id>, /profile, /profile/, /onboarding), a real 404 with the not-found page
 # for an unknown path and an unknown case study, and a plain 404 with the security headers for a
 # missing asset, also one under an allowlisted prefix (/projects/x.js), and a real 404 for an
@@ -197,6 +197,7 @@ if [ "$DOCKER" = true ]; then
     [ "$STATUS" = "$expected" ] || problems="$problems status-$STATUS"
     if grep -qi '^location:' "$WORK/headers"; then problems="$problems redirect"; fi
     grep -qi '^content-security-policy:' "$WORK/headers" || problems="$problems no-csp"
+    if grep -qiE '^server:.*[0-9]' "$WORK/headers"; then problems="$problems server-version"; fi
     if [ "$expected" = "200" ]; then
       grep -qi '^cache-control: no-cache' "$WORK/headers" || problems="$problems cache-control"
     elif grep -qiE '^(cache-control|last-modified):' "$WORK/headers"; then

@@ -116,3 +116,6 @@ site/
 
 # Local state written by `wrangler pages deploy`; never part of the site.
 .wrangler/
+
+# Output of the DAST workflow and of a local run of it.
+dast-out/

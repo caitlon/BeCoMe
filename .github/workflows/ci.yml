@@ -591,6 +591,27 @@ jobs:
         with:
           args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
 
+  # Dynamic scans of the API and of the frontend image, started on the runner and never
+  # pointed at a deployed host (.github/workflows/dast.yml has the detail). It is a reusable
+  # workflow because the same scans also run weekly and by hand, and a schedule on this file
+  # would start every other job here with them. It runs for pull requests into `dev` from this
+  # repository only: a fork gets no secrets, and the reports go to a private repository. The
+  # secrets are passed one by one, never with `inherit`.
+  dast:
+    name: DAST
+    needs: lint
+    if: >-
+      github.event_name == 'pull_request' && github.base_ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dast.yml
+    with:
+      control: false
+    secrets:
+      DAST_REPORTS_TOKEN: ${{ secrets.DAST_REPORTS_TOKEN }}
+      DAST_OPEN_FINGERPRINTS: ${{ secrets.DAST_OPEN_FINGERPRINTS }}
+
   # One result to read for the verdict of the whole run. The job rows above stay where they
   # are; this adds a single named line that is red whenever any job listed in `needs` below
   # failed or was cancelled, and that a branch protection rule can require later by this one
@@ -625,6 +646,7 @@ jobs:
       - e2e-shard
       - e2e
       - sonarcloud
+      - dast
     if: always()
     timeout-minutes: 5
     steps:

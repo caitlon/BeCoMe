@@ -1,0 +1,71 @@
+# Schemathesis configuration for the DAST workflow (Schemathesis 4.34.2).
+#
+# Two users log in through the Web Fuzzing Commons auth file that fixtures.py writes into
+# dast-out/ at run time, because the passwords are made up per run and never committed. The
+# path is relative to the directory the job runs in, the repository root.
+[auth.wfc]
+path = "dast-out/auth.json"
+peers = ["userA", "userB"]
+refresh_interval = 300
+
+# Do not send the HTTP methods the schema leaves out.
+[phases.coverage]
+unexpected-methods = []
+
+# Operations that end the session of a fixture user, lock an account, or destroy the data
+# the rest of the run needs.
+[[operations]]
+include-name = "POST /api/v1/auth/login"
+enabled = false
+
+[[operations]]
+include-name = "POST /api/v1/auth/logout"
+enabled = false
+
+[[operations]]
+include-name = "POST /api/v1/auth/refresh"
+enabled = false
+
+[[operations]]
+include-name = "POST /api/v1/auth/reset-password"
+enabled = false
+
+[[operations]]
+include-name = "PUT /api/v1/users/me/password"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/users/me"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/users/me/photo"
+enabled = false
+
+[[operations]]
+include-name = "POST /api/v1/users/me/photo"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/projects/{project_id}"
+enabled = false
+
+[[operations]]
+include-name = "POST /api/v1/projects/{project_id}/transfer-ownership"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/projects/{project_id}/members/me"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/projects/{project_id}/members/{user_id}"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/projects/{project_id}/opinions"
+enabled = false
+
+[[operations]]
+include-name = "DELETE /api/v1/projects/{project_id}/invitations/{invitation_id}"
+enabled = false

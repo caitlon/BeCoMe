@@ -1,0 +1,16 @@
+[project]
+name = "become-dast"
+version = "0.0.0"
+description = "Pinned scanner tooling for the DAST workflow. Not part of the application."
+requires-python = ">=3.13"
+dependencies = [
+    "schemathesis==4.34.2",
+]
+
+[tool.uv]
+package = false
+# Resolution ignores releases newer than this date. uv accepts "7 days" here, but the pinned
+# schemathesis 4.34.2 (2026-11-24) needs jsonschema-rs 0.63 (2026-11-23), so neither resolves
+# under it until a week has passed, and exempting schemathesis alone does not help: its
+# dependency stays excluded. Hence a fixed date. Move it forward when the lock is refreshed.
+exclude-newer = "2026-11-25T00:00:00Z"

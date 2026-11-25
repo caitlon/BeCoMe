@@ -24,6 +24,24 @@ updates:
         patterns:
           - "*"
 
+  # The scanner tooling of the DAST workflow is its own uv project, so the main
+  # project's entry does not see it.
+  - package-ecosystem: "uv"
+    directory: "/.github/dast"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    assignees:
+      - "caitlon"
+    labels:
+      - "dependencies"
+      - "area:infra"
+    groups:
+      dast-deps:
+        patterns:
+          - "*"
+
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
@@ -65,10 +83,10 @@ updates:
       - "dependencies"
       - "area:infra"
 
-  # Bumps the exact Node tag of the frontend build stage. Weekly rather than monthly,
-  # because the pinned tag no longer picks up a patch release on its own. The major
-  # stays at 22, the version CI tests the frontend on. The nginx stage uses a moving
-  # tag, which Dependabot leaves alone.
+  # Bumps the exact Node tag of the frontend build stage and the digest of the nginx
+  # stage, whose `alpine` tag is kept beside it. Weekly rather than monthly, because a
+  # pinned reference no longer picks up a patch release on its own. The Node major
+  # stays at 22, the version CI tests the frontend on.
   - package-ecosystem: "docker"
     directory: "/frontend"
     schedule:

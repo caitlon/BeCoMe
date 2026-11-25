@@ -982,7 +982,7 @@ November 2026, with the exact-pins row added on 23 November 2026 and the pip-aud
 | CodeQL | Python, JavaScript/TypeScript and Actions, default query suite | GitHub default setup, on pull requests and weekly | On `dev` only |
 | SonarCloud | Code quality and security issues | `SonarCloud Analysis` in `ci.yml`, on pull requests and pushes to `prod` | Not on the quality gate |
 | Semgrep | The diff on a pull request, the whole tree on the weekly and manual runs | `semgrep.yml`, on pull requests into `dev` and `prod` | Yes |
-| Dependabot version updates | uv, npm (`frontend`, `.railway`) and GitHub Actions, monthly, and the Node build image of the frontend, weekly, all with a 7-day cooldown | `.github/dependabot.yml` | No |
+| Dependabot version updates | uv (the application and the scanner tooling in `.github/dast`), npm (`frontend`, `.railway`) and GitHub Actions, monthly, and the Node and nginx images of the frontend, weekly, all with a 7-day cooldown | `.github/dependabot.yml` | No |
 | Dependabot alerts and security updates | Known advisories in the dependency graph | GitHub repository settings | No |
 | Secret scanning with push protection | Provider credential patterns | GitHub repository settings | Refuses the push instead |
 
@@ -999,11 +999,12 @@ The ruleset `dev code scanning` covers `dev` and has no bypass actors. It refuse
 CodeQL reports a security alert of High or above, or an alert at error level. `prod`
 carries no such rule, and code reaches it only through `dev`.
 
-Some things are not covered. `dependabot.yml` has a `docker` entry only for the Node build
-stage of the frontend image, which is pinned to an exact tag. The nginx stage and the API
-image's `python:3.13-alpine` stages use moving tags that Dependabot does not bump. A pinned Node
-tag picks up a patch only through that pull request, so a Node fix can lag by up to about two
-weeks (the weekly run plus the 7-day cooldown) unless it is merged by hand sooner. Node runs
+Some things are not covered. `dependabot.yml` has a `docker` entry only for the frontend
+image: the Node build stage, pinned to an exact tag, and the nginx stage, pinned to the digest
+of its `alpine` tag. The API image's `python:3.13-alpine` stages use moving tags that Dependabot
+does not bump. A pinned Node tag picks up a patch only through that pull request, so a Node
+fix can lag by up to about two weeks (the weekly run plus the 7-day cooldown) unless it is
+merged by hand sooner. Node runs
 only in the build stage, not in the served image. Both images upgrade their distribution
 packages when they are built, so a build that does not reuse a cached upgrade layer takes
 Alpine's security fixes before the base image is refreshed, and the API runtime stage removes the base
@@ -1016,6 +1017,20 @@ the `node` image (the build stays on 22, the version CI uses), for the reasons i
 the comments beside those entries. Dependabot and fork pull requests get no repository secrets
 and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
 scan runs on them without uploading to code scanning.
+
+Dynamic scanning runs as `dast.yml`: on pull requests into `dev` from this repository, weekly,
+and by hand. The job starts the API and the frontend image on the runner and never touches a
+deployed host. Schemathesis and the ZAP API scan test the API; the ZAP baseline scan tests the
+frontend image. A run fails on a server error (the Content-Type variant included), on
+authentication that is not enforced, on one user's object returned to another user, on a ZAP
+alert of Medium risk or higher, on a scan that did not finish, and when the reports could not be
+stored. The API runs in the test profile, with the rate limiter off and the schema made by
+`create_all`, so rate limits are out of its reach. The API scan ignores ZAP's card-number rule
+(10062): random UUIDs trip it and the API holds no payment data. The public log and step summary
+carry totals per tool only, and the full reports go to a private repository with
+`DAST_REPORTS_TOKEN`. That token exists as an Actions secret and as a Dependabot secret, and
+losing the Dependabot copy turns Dependabot pull requests red. A manual run with `control` set
+starts an app with one planted fault and passes only when both API scanners report it.
 
 GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
 

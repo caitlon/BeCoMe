@@ -56,7 +56,8 @@ RUN API_ORIGIN="$(printf '%s' "${VITE_API_URL}" | grep -oE '^https?://[^/]*' || 
 
 # Production stage
 # nginx-unprivileged runs as the non-root "nginx" user (UID 101) and listens on 8080.
-FROM nginxinc/nginx-unprivileged:alpine
+# Pinned by digest, with the tag kept so Dependabot's docker entry bumps both together.
+FROM nginxinc/nginx-unprivileged:alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 # Take the Alpine security fixes published since the base image was built (upstream
 # refreshes it on its own schedule), then drop back to the image's own user. USER
