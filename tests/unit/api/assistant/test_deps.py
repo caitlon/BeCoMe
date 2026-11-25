@@ -1418,6 +1418,30 @@ class TestOpenChatTurn:
         assert client.closed == 1
 
     @pytest.mark.asyncio
+    async def test_a_failure_while_building_the_client_leaves_the_address_charge_unowned(self):
+        """
+        GIVEN a client class that raises when it is built
+        WHEN the turn is opened
+        THEN the error propagates and the address holder was not taken over, so the charge is
+             still given back by the dependency that took it
+        """
+        # GIVEN
+        address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
+
+        # WHEN
+        with (
+            patch.object(deps, "UserApiClient", side_effect=RuntimeError("no client")),
+            pytest.raises(RuntimeError, match="no client"),
+        ):
+            async with self._open(
+                AssistantChatRequest(message="hi"), _request(), MagicMock(), address=address
+            ):
+                pass
+
+        # THEN
+        assert address.taken_over is False
+
+    @pytest.mark.asyncio
     async def test_closes_the_client_when_the_turn_fails(self, fake_client):
         """
         GIVEN an opened turn

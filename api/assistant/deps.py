@@ -732,8 +732,9 @@ async def open_chat_turn(
     shows up, and a client that goes away, which ends the turn without an exception. Only an
     ``Exception`` triggers the refund, so a cancellation does not. A refund that itself fails
     is logged (``assistant_refund_failed``) and never replaces the turn's own error, and the
-    other refunds still run. Entering this function makes it the owner of the address's charge
-    (``address.taken_over``), so :func:`charge_address_turn` leaves it alone.
+    other refunds still run. Once the client and the context are built, this function owns the
+    address's charge (``address.taken_over``), so :func:`charge_address_turn` leaves it alone;
+    an error while building them leaves the charge to that dependency, which gives it back.
 
     :param request: The incoming request, for its application and the caller's address.
     :param counted: The checked chat request and the two charges that paid for it.
@@ -745,7 +746,6 @@ async def open_chat_turn(
     :param address: The charge of the per-address hourly cap, which this function now owns.
     :return: The request and its context.
     """
-    address.taken_over = True
     data = counted.request
     client = UserApiClient(
         app=request.app, access_token=access_token, client_ip=get_client_ip(request)
@@ -758,6 +758,7 @@ async def open_chat_turn(
         current_project_id=None if data.project_id is None else str(data.project_id),
         locale=data.locale,
     )
+    address.taken_over = True
     try:
         yield PreparedTurn(request=data, context=context)
     except Exception:

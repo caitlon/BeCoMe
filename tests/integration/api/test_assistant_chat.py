@@ -2003,13 +2003,15 @@ class TestAddressCap:
         token = register_and_login(client, "address-422@example.com")
         _use_model(client, _scripted("fine"))
 
-        # WHEN
-        invalid = client.post(endpoint, json={"message": ""}, headers=auth_header(token))
-        valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            invalid = client.post(endpoint, json={"message": ""}, headers=auth_header(token))
+            valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
 
-        # THEN
-        assert invalid.status_code == 422
-        assert valid.status_code == 200
+            # THEN
+            assert invalid.status_code == 422
+            assert valid.status_code == 200
+            assert refund_spy.call_count == 1
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_token_that_is_not_valid_gives_the_address_slot_back(
@@ -2025,13 +2027,15 @@ class TestAddressCap:
         token = register_and_login(client, "address-401@example.com")
         _use_model(client, _scripted("fine"))
 
-        # WHEN
-        unauthorised = client.post(endpoint, json={"message": "a"}, headers=auth_header("junk"))
-        valid = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            unauthorised = client.post(endpoint, json={"message": "a"}, headers=auth_header("junk"))
+            valid = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
 
-        # THEN
-        assert unauthorised.status_code == 401
-        assert valid.status_code == 200
+            # THEN
+            assert unauthorised.status_code == 401
+            assert valid.status_code == 200
+            assert refund_spy.call_count == 1
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_retriever_that_cannot_be_built_gives_the_address_slot_back(
@@ -2053,14 +2057,16 @@ class TestAddressCap:
 
         client.app.dependency_overrides[deps.get_docs_retriever] = down
 
-        # WHEN
-        refused = client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
-        client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
-        answered = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
+        with _watched_address() as (_, refund_spy):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "a"}, headers=auth_header(token))
+            client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
+            answered = client.post(endpoint, json={"message": "b"}, headers=auth_header(token))
 
-        # THEN
-        assert refused.status_code == 503
-        assert answered.status_code == 200
+            # THEN
+            assert refused.status_code == 503
+            assert answered.status_code == 200
+            assert refund_spy.call_count == 1
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_turn_refused_by_the_user_budget_gives_the_address_slot_back(

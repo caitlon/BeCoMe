@@ -38,6 +38,14 @@ logger = logging.getLogger(__name__)
 # request log and the metrics can tell from a success and from a server fault.
 CLIENT_CLOSED_REQUEST = 499
 
+# The guards of a chat turn, in the order of the checks: the address cap, the address charge,
+# then the turn slot.
+_TURN_GUARDS = [
+    Depends(limit_per_address),
+    Depends(charge_address_turn),
+    Depends(hold_turn_slot),
+]
+
 
 async def _wait_for_disconnect(request: Request) -> None:
     """Return when the client has gone away.
@@ -266,11 +274,7 @@ def get_assistant_config(
     # Stated because the route may return a bare response (see below), which would otherwise
     # leave FastAPI no model to describe the body by.
     response_model=AssistantChatResponse,
-    dependencies=[
-        Depends(limit_per_address),
-        Depends(charge_address_turn),
-        Depends(hold_turn_slot),
-    ],
+    dependencies=_TURN_GUARDS,
 )
 async def chat(
     request: Request,
@@ -310,11 +314,7 @@ async def chat(
 @router.post(
     "/chat/stream",
     summary="Ask the assistant and read the answer as it is written",
-    dependencies=[
-        Depends(limit_per_address),
-        Depends(charge_address_turn),
-        Depends(hold_turn_slot),
-    ],
+    dependencies=_TURN_GUARDS,
 )
 async def chat_stream(
     request: Request,
