@@ -423,6 +423,7 @@ limit applies on top of the defaults:
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and prod services |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
+| Assistant per-address cap | `240/hour` per client address | The same route and `/chat/stream` together, as a fixed one-hour window per address (`ASSISTANT_ADDRESS_TURNS_PER_HOUR`, default 240; `0` switches it off on a laptop, and a deployed service refuses `0` and a value at or above the global ceiling). Everyone behind one address shares it, an office or university network included. The key is a keyed hash of the address (HMAC under `LOG_HASH_KEY`, or `SECRET_KEY` when unset), an IPv6 address cut to its /64, so this cap's counter key and its refusal record hold no address. It is taken before the turn slot and before either budget, and is given back when the turn is refused or fails before it is prepared. A spent cap answers `429` with `Retry-After`, and a fixed window allows up to twice the cap across a window edge |
 | Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses gives the user's message back. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken before the message limit |
 
@@ -431,28 +432,33 @@ Only those routes carry a limit of their own. The defaults do not count the heal
 docs and the OpenAPI schema (`/docs`, `/redoc`, `/openapi.json`, which prod hides), or a body
 FastAPI refuses as malformed before it runs any dependency (`422`). The count is per path, so a
 client that fetches many different photo URLs has a count for each, while one URL asked for in a
-loop reaches the burst limit. The three assistant caps (the hourly messages per
-account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
-applied through dependencies, and the `20/minute` per-IP limit is one too. The per-IP limit runs
-first, so a request it refuses takes no slot, spends no message and builds no API client; the
-`hold_turn_slot` dependency follows, so a request refused for a full process spends no message of
-the hourly budget, and the message limit comes last. It is no longer a route dependency:
+loop reaches the burst limit. The four assistant caps (the hourly messages per
+account, the hourly turns per client address, the global hourly ceiling counted for everyone, and
+the concurrent turns per process) are applied through dependencies, and the `20/minute` per-IP
+limit is one too. The per-IP limit runs first, so a request it refuses takes no slot, spends no
+message and builds no API client. The per-address cap (`charge_address_turn`) follows, so a turn
+it refuses takes no slot and spends no message of the hourly budget. The `hold_turn_slot`
+dependency comes next, so a request refused for a full process spends no message of the hourly
+budget, and the message limit comes last. It is no longer a route dependency:
 `open_chat_turn` calls `enforce_message_limit` after the request body check and the documentation
 retriever, so a message that is too long or an invalid body (`422`) and a retriever that cannot be
 built (`503`) are refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
-memory otherwise. A deployed service refuses to start with the per-user or the global hourly
-limit at `0`, so neither cap can be switched off there. A message the global ceiling refuses is
+memory otherwise. A deployed service refuses to start with the per-user, the per-address or the
+global hourly limit at `0`, so no cap can be switched off there, and with a per-address limit that
+is not below the global one. A message the global ceiling refuses is
 given back to the user's own budget, and a message a budget refuses is given back too: in
 memory it is never stored, and in Redis its increment is given back by a guarded script. If that
 give-back fails with a store error, the counter stays above its budget until the window closes.
 A turn that fails while it is prepared, before the answer model is called (an unknown project, a
-retrieval error, a timeout), gives back both its messages, the user's and the global ceiling's; in
-the `agent` mode a project is looked up only when the model calls a tool, so an unknown project
-there keeps them. A failure of the answer model, and a client that goes away, keep them.
+retrieval error, a timeout), gives back all three of its messages, the user's, the global
+ceiling's and the address's; in the `agent` mode a project is looked up only when the model
+calls a tool, so an unknown project there keeps them. A failure of the answer model, and a client
+that goes away, keep them.
 
-The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
-seconds: the time left in the limit's window, or until that user's hourly window closes.
+The slowapi limits and the user's and the address's hourly assistant caps answer `429` with a `Retry-After` header in whole
+seconds: the time left in the limit's window, or until that user's or that address's hourly
+window closes.
 `CORSMiddleware` lists the header in `expose_headers`, so the SPA can read it and start its retry
 timer.
 
@@ -578,8 +584,9 @@ check of its own, separate from the nine invariants. `assistant_enabled` default
 name is not `dev` or `prod` (compared stripped and case-insensitively, so an unknown or
 renamed environment is refused). The `prod` profile is a deploy like the dev service and is held to
 the rules that follow. On any deploy the validator also requires the three model roles to be `api`, since a local model
-server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR` or
-`ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch the cap off. The model is shown each
+server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR`,
+`ASSISTANT_ADDRESS_TURNS_PER_HOUR` or `ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch
+the cap off, and an address limit that is not below the global one. The model is shown each
 expert's name and position in the opinions block, except for members who objected to the assistant
 (`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are left out for
 everyone but themselves. The result block still includes their values in the aggregates (mean,
