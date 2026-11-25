@@ -10,6 +10,7 @@ dependencies = [
 [tool.uv]
 package = false
 # Resolution ignores releases newer than this date. uv accepts "7 days" here, but the pinned
-# schemathesis 4.34.2 was published on 2026-11-24 and cannot resolve under it until a week
-# has passed, so the cut-off is a fixed date. Move it forward when the lock is refreshed.
+# schemathesis 4.34.2 (2026-11-24) needs jsonschema-rs 0.63 (2026-11-23), so neither resolves
+# under it until a week has passed, and exempting schemathesis alone does not help: its
+# dependency stays excluded. Hence a fixed date. Move it forward when the lock is refreshed.
 exclude-newer = "2026-11-25T00:00:00Z"
