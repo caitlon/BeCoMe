@@ -11,8 +11,9 @@ HTML page that looks like a leaked Python traceback, so that
   fake trace also raises "Application Error Disclosure" (90022), which is only Low.
 
 The workflow starts ``control_app:app`` instead of ``api.main:app`` only when it is run by
-hand with the ``control`` input set, and expects its gate to fail. Nothing else imports this
-module and the route is never part of the deployed application.
+hand with the ``control`` input set. That run passes only when both API scanners, Schemathesis
+and the ZAP API scan, report the fault. Nothing else imports this module and the route is
+never part of the deployed application.
 """
 
 from fastapi import Response

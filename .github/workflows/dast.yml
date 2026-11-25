@@ -15,13 +15,14 @@ name: DAST
 # Three ways in: ci.yml calls it on pull requests into `dev` (a reusable workflow, so the
 # weekly schedule below does not drag every CI job along), the weekly run, and a manual run.
 # A manual run with `control` set starts control_app:app instead of the real application. That
-# app has one planted fault, and the gate is expected to fail on it: it proves the scans
-# can still find something.
+# app has one planted fault. The run passes only when both API scanners, Schemathesis and the
+# ZAP API scan, report it as blocking and the reports were stored: it proves the scans can
+# still find something. A normal run fails on any blocking item or on a failed store.
 on:
   workflow_call:
     inputs:
       control:
-        description: Start the control app with a planted fault and expect the gate to fail.
+        description: Start the control app with a planted fault and pass only when both API scanners report it.
         type: boolean
         required: false
         default: false
@@ -37,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       control:
-        description: Start the control app with a planted fault and expect the gate to fail.
+        description: Start the control app with a planted fault and pass only when both API scanners report it.
         type: boolean
         required: false
         default: false
@@ -101,11 +102,12 @@ jobs:
 
       # The image is 3.6 GB. Pulling it while the Python side sets up hides most of the
       # minute it takes. All three streams of the background shell are redirected, because
-      # a step does not finish while a child still holds its stdout. The exit code lands in
-      # a file that the first ZAP step waits for.
+      # a step does not finish while a child still holds its stdout. The step shell runs with
+      # `set -e`, which a subshell inherits, so the subshell turns it off: a failed pull must
+      # still write its exit code, into a file that the "Wait for the ZAP image" step reads.
       - name: Pull the ZAP image in the background
         run: |
-          (docker pull --quiet "$ZAP_IMAGE" > dast-out/zap-pull.log 2>&1 < /dev/null; echo $? > dast-out/pull.rc) \
+          (set +e; docker pull --quiet "$ZAP_IMAGE" > dast-out/zap-pull.log 2>&1 < /dev/null; echo $? > dast-out/pull.rc) \
             > /dev/null 2>&1 < /dev/null &
 
       - uses: ./.github/actions/setup-python-uv
@@ -144,7 +146,7 @@ jobs:
         run: |
           seed=$(( (RANDOM << 15) | RANDOM ))
           echo "$seed" > dast-out/seed.txt
-          started=$(date +%s)
+          started=$SECONDS
           rc=0
           SCHEMATHESIS_HOOKS=dast_hooks PYTHONPATH=.github/dast \
             timeout 900 uv run --frozen --project .github/dast schemathesis \
@@ -154,16 +156,23 @@ jobs:
               --report json --report-dir dast-out/schemathesis \
               > dast-out/schemathesis.log 2>&1 || rc=$?
           echo "$rc" > dast-out/schemathesis.rc
-          echo $(( $(date +%s) - started )) > dast-out/schemathesis.seconds
+          echo $(( SECONDS - started )) > dast-out/schemathesis.seconds
           echo "schemathesis finished"
 
-      - name: ZAP API scan
+      # Both ZAP scans need the image, and the baseline scan must run even when the API side
+      # failed, so the wait is a step of its own. A failed pull ends the wait at once.
+      - name: Wait for the ZAP image
+        id: image
+        if: ${{ !cancelled() }}
         run: |
-          for _ in $(seq 1 150); do
-            [ -f dast-out/pull.rc ] && break
+          deadline=$(( SECONDS + 300 ))
+          while [ ! -s dast-out/pull.rc ] && [ "$SECONDS" -lt "$deadline" ]; do
             sleep 2
           done
           [ "$(cat dast-out/pull.rc 2> /dev/null)" = "0" ] || { echo "the ZAP image did not pull"; exit 1; }
+
+      - name: ZAP API scan
+        run: |
           PYTHONPATH=. uv run python .github/dast/make_zap_spec.py dast-out > dast-out/zap-spec.log 2>&1 \
             || { echo "the ZAP spec step failed"; exit 1; }
           cp .github/dast/rules-api.conf dast-out/zap/
@@ -186,21 +195,25 @@ jobs:
           echo "$rc" > dast-out/zap-api.rc
           echo "zap api scan finished"
 
-      # The image is built the way scripts/ci/check-prerender.sh --docker builds it.
+      # The image is built the way scripts/ci/check-prerender.sh --docker builds it. This step
+      # and the baseline scan do not need the API, so they run after a failure on the API side.
       - name: Build and start the frontend image
+        id: web
+        if: ${{ !cancelled() }}
         run: |
           docker build --quiet -t become-frontend-dast frontend > dast-out/web-build.log 2>&1 \
             || { echo "the frontend image did not build"; exit 1; }
           docker run -d --rm --name become-frontend-dast -p 127.0.0.1:8081:8080 become-frontend-dast \
             > dast-out/web-run.log 2>&1 || { echo "the frontend image did not start"; exit 1; }
           for _ in $(seq 1 30); do
-            curl -s -o /dev/null --max-time 2 http://127.0.0.1:8081/ && break
+            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8081/ && break
             sleep 1
           done
-          curl -s -o /dev/null --max-time 2 http://127.0.0.1:8081/ || { echo "the frontend is not answering"; exit 1; }
+          curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8081/ || { echo "the frontend is not answering"; exit 1; }
           echo "frontend is up"
 
       - name: ZAP baseline scan
+        if: ${{ !cancelled() && steps.web.outcome == 'success' && steps.image.outcome == 'success' }}
         run: |
           cp .github/dast/rules-web.conf dast-out/zap-web/
           chmod -R 777 dast-out/zap-web
@@ -235,6 +248,9 @@ jobs:
         run: |
           echo "push=failed" >> "$GITHUB_OUTPUT"
           if [ -z "$DAST_REPORTS_TOKEN" ]; then echo "reports: no token, nothing stored"; exit 0; fi
+          # A step that failed early can leave no directory or no gate.json behind.
+          mkdir -p dast-out
+          [ -f dast-out/gate.json ] || echo '{"blocking": null, "tools": {}}' > dast-out/gate.json
           echo "::add-mask::$DAST_REPORTS_TOKEN"
           encoded=$(printf 'x-access-token:%s' "$DAST_REPORTS_TOKEN" | base64 | tr -d '\n')
           echo "::add-mask::$encoded"
@@ -243,6 +259,7 @@ jobs:
           export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $encoded"
           log="$RUNNER_TEMP/dast-git.log"
           clone="$RUNNER_TEMP/dast-reports"
+          trap 'rm -rf "$clone"' EXIT
           rm -rf "$clone"
           if ! git clone https://github.com/caitlon/become-dast-reports.git "$clone" > "$log" 2>&1; then
             echo "reports: clone failed"; exit 0
@@ -253,7 +270,6 @@ jobs:
           mkdir -p "$clone/$target"
           cp -R dast-out/. "$clone/$target/"
           rm -f "$clone/$target/auth.json"
-          [ -f dast-out/gate.json ] || echo '{"blocking": null, "tools": {}}' > dast-out/gate.json
           code() { cat "dast-out/$1.rc" 2> /dev/null || echo null; }
           jq -n \
             --arg sha "$GITHUB_SHA" --arg head_sha "$HEAD_SHA" --arg ref "$GITHUB_REF" \
@@ -277,13 +293,11 @@ jobs:
             if git push origin HEAD:main >> "$log" 2>&1; then
               echo "push=ok" >> "$GITHUB_OUTPUT"
               echo "reports: stored"
-              rm -rf "$clone"
               exit 0
             fi
             git pull --rebase origin main >> "$log" 2>&1 || true
           done
           echo "reports: push failed"
-          rm -rf "$clone"
 
       - name: Fail on blocking findings or a lost report
         if: always()
@@ -293,7 +307,16 @@ jobs:
         run: |
           echo "blocking: ${BLOCKING:-unknown}, reports stored: ${PUSHED:-no}"
           failed=0
-          if [ "${BLOCKING:-unknown}" != "0" ]; then
+          if [ "$CONTROL" = "true" ]; then
+            # The control app has one planted fault. Both API scanners have to name a blocking
+            # finding for it; an incomplete scan has none, so it does not pass for a catch.
+            caught=$(jq -r '[.tools.schemathesis.blocking, .tools["zap-api"].blocking] | map(length >= 1) | all' \
+              dast-out/gate.json 2> /dev/null || echo false)
+            if [ "$caught" != "true" ]; then
+              echo "::error::control run: a scanner missed the planted fault"
+              failed=1
+            fi
+          elif [ "${BLOCKING:-unknown}" != "0" ]; then
             echo "::error::DAST blocking items: ${BLOCKING:-unknown}"
             failed=1
           fi

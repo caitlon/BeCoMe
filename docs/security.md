@@ -1018,11 +1018,19 @@ the comments beside those entries. Dependabot and fork pull requests get no repo
 and a read-only token, so Semgrep skips them, SonarCloud has no token for them, and the image
 scan runs on them without uploading to code scanning.
 
-Dynamic scanning runs as `dast.yml`: on pull requests into `dev` from this repository and
-weekly, against an API and a frontend image that the job starts on the runner itself. It uses
-Schemathesis and ZAP, never touches a deployed host, and its gate fails the job on a server
-error or a ZAP alert of Medium risk or higher. The public log and step summary carry totals per
-tool only, and the full reports are stored in a private repository.
+Dynamic scanning runs as `dast.yml`: on pull requests into `dev` from this repository, weekly,
+and by hand. The job starts the API and the frontend image on the runner and never touches a
+deployed host. Schemathesis and the ZAP API scan test the API; the ZAP baseline scan tests the
+frontend image. A run fails on a server error (the Content-Type variant included), on
+authentication that is not enforced, on one user's object returned to another user, on a ZAP
+alert of Medium risk or higher, on a scan that did not finish, and when the reports could not be
+stored. The API runs in the test profile, with the rate limiter off and the schema made by
+`create_all`, so rate limits are out of its reach. The API scan ignores ZAP's card-number rule
+(10062): random UUIDs trip it and the API holds no payment data. The public log and step summary
+carry totals per tool only, and the full reports go to a private repository with
+`DAST_REPORTS_TOKEN`. That token exists as an Actions secret and as a Dependabot secret, and
+losing the Dependabot copy turns Dependabot pull requests red. A manual run with `control` set
+starts an app with one planted fault and passes only when both API scanners report it.
 
 GitHub private vulnerability reporting is on. `.github/SECURITY.md` describes how to report.
 

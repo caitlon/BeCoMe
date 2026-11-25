@@ -24,8 +24,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from sqlalchemy.engine import make_url
 from sqlmodel import Session, select
 
+from api.config import get_settings
 from api.db.engine import get_engine
 from api.db.models import User
 from api.db.utils import utc_now
@@ -33,13 +35,27 @@ from api.db.utils import utc_now
 BASE_URL = "http://127.0.0.1:8000/api/v1"
 USERS = {"A": "dast-a@e2e-test.com", "B": "dast-b@e2e-test.com"}
 TIMEOUT_SECONDS = 15
+LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1"})
+
+
+def require_local_database() -> None:
+    """Stop the script unless the configured database is on this machine.
+
+    The script verifies accounts straight in the database, so a local run with a real
+    ``.env`` must never reach another one. The URL is not printed, it holds a password. A
+    ``host``, ``hostaddr`` or ``service`` entry in the query string can override the URL's
+    host in libpq, so any of them also counts as not local.
+    """
+    url = make_url(get_settings().database_url)
+    if url.host not in LOCAL_DATABASE_HOSTS or {"host", "hostaddr", "service"} & set(url.query):
+        sys.exit("fixtures: refusing to run, DATABASE_URL does not point at localhost")
 
 
 def make_password() -> str:
     """Make a password that meets the registration policy and is unique to this run.
 
-    :return: 12 hex characters of randomness plus an upper-case letter, a lower-case
-        letter, a digit and a symbol, 29 characters in all
+    :return: 24 random hex characters and the suffix ``-Aa1``, which supplies an upper-case
+        letter, a lower-case letter, a digit and a symbol, 28 characters in all
     """
     return f"{secrets.token_hex(12)}-Aa1"
 
@@ -107,31 +123,30 @@ def build_auth_file(password: str) -> dict[str, Any]:
     :param password: Password shared by both fixture accounts
     :return: The auth file content, one entry per fixture user
     """
-    entries = []
-    for label, email in USERS.items():
-        entries.append(
-            {
-                "name": f"user{label}",
-                "loginEndpointAuth": {
-                    "verb": "POST",
-                    "endpoint": "/api/v1/auth/login",
-                    "contentType": "application/x-www-form-urlencoded",
-                    "payloadUserPwd": {
-                        "username": email,
-                        "password": password,
-                        "usernameField": "username",
-                        "passwordField": "password",  # pragma: allowlist secret
-                    },
-                    "token": {
-                        "extractFrom": "body",
-                        "extractSelector": "/access_token",
-                        "sendIn": "header",
-                        "sendName": "Authorization",
-                        "sendTemplate": "Bearer {token}",
-                    },
+    entries = [
+        {
+            "name": f"user{label}",
+            "loginEndpointAuth": {
+                "verb": "POST",
+                "endpoint": "/api/v1/auth/login",
+                "contentType": "application/x-www-form-urlencoded",
+                "payloadUserPwd": {
+                    "username": email,
+                    "password": password,
+                    "usernameField": "username",
+                    "passwordField": "password",  # pragma: allowlist secret
                 },
-            }
-        )
+                "token": {
+                    "extractFrom": "body",
+                    "extractSelector": "/access_token",
+                    "sendIn": "header",
+                    "sendName": "Authorization",
+                    "sendTemplate": "Bearer {token}",
+                },
+            },
+        }
+        for label, email in USERS.items()
+    ]
     return {"auth": entries}
 
 
@@ -140,6 +155,7 @@ def main(out_dir: Path) -> None:
 
     :param out_dir: Directory that receives both files
     """
+    require_local_database()
     password = make_password()
     fixtures: dict[str, dict[str, str]] = {}
     with httpx.Client(base_url=BASE_URL, timeout=TIMEOUT_SECONDS) as client:

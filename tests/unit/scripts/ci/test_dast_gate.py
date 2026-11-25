@@ -372,7 +372,7 @@ def test_parsers_and_shipped_rules(tmp_path):
     assert gate.open_fingerprints("\n  \n# note\n a \nb\n") == {"a", "b"}
     assert gate.ignored_plugins(rules) == {"10055"}
     assert gate.ignored_plugins(tmp_path / "missing.conf") == set()
-    assert gate.ignored_plugins(dast / "rules-api.conf") == set()
+    assert gate.ignored_plugins(dast / "rules-api.conf") == {"10062"}
     assert gate.ignored_plugins(dast / "rules-web.conf") == {"10055"}
 
 
