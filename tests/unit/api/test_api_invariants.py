@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import get_origin
 
 from fastapi.dependencies.models import Dependant
+from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 
 from api.config import Settings
@@ -221,6 +222,25 @@ class TestListRoutesPaginate:
         unpaginated = [_route_key(r) for r in _list_routes() if not _has_pagination(r.dependant)]
 
         assert not unpaginated, f"list routes without PaginationParams: {unpaginated}"
+
+    def test_every_list_route_bounds_its_offset(self):
+        """
+        GIVEN every GET route whose response is a list
+        WHEN its OpenAPI ``offset`` query parameter is read
+        THEN it declares a maximum that fits a 64-bit integer
+
+        An unbounded offset reaches the database and overflows its integer type.
+        """
+        schema = get_openapi(title="invariants", version="0", routes=list(_api_routes()))
+        unbounded = []
+        for route in _list_routes():
+            parameters = schema["paths"][route.path]["get"].get("parameters", [])
+            offset = next((p for p in parameters if p["name"] == "offset"), None)
+            maximum = offset["schema"].get("maximum") if offset else None
+            if maximum is None or maximum > 2**63 - 1:
+                unbounded.append(_route_key(route))
+
+        assert not unbounded, f"list routes whose offset has no 64-bit bound: {unbounded}"
 
 
 class TestEveryLogCallCarriesAnEvent:

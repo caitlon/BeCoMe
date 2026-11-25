@@ -7,6 +7,7 @@ import pytest
 
 from api.data.example_project import EXAMPLE_EXPERTS
 from api.db.models import MemberRole, Project, ProjectMember
+from api.pagination import MAX_OFFSET
 from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 from tests.integration.api.conftest import (
@@ -655,6 +656,21 @@ class TestListMembers:
         )
         assert len(second.json()) == 1
         assert first.json()[0]["user_id"] != second.json()[0]["user_id"]
+
+    def test_list_members_rejects_offset_beyond_bound(self, client):
+        """An offset above MAX_OFFSET answers 422; MAX_OFFSET itself is accepted."""
+        # GIVEN a project with an owner
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        url = f"/api/v1/projects/{project['id']}/members"
+
+        # WHEN the offset exceeds a 64-bit integer, and when it equals the bound
+        too_large = client.get(f"{url}?offset=9223372036854775808", headers=auth_header(owner))
+        at_bound = client.get(f"{url}?offset={MAX_OFFSET}", headers=auth_header(owner))
+
+        # THEN the first is rejected before the database, the second returns an empty page
+        assert too_large.status_code == 422
+        assert at_bound.status_code == 200
 
     @staticmethod
     def _emails_by_user(client, token, project_id):
