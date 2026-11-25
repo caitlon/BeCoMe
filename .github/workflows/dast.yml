@@ -1,0 +1,304 @@
+name: DAST
+
+# Dynamic scans of the application, run against a stack this job starts itself: the API
+# from this checkout on 127.0.0.1 with a throwaway Postgres, and the frontend image on
+# 127.0.0.1. Nothing is ever pointed at a deployed host. Three scans:
+#   - Schemathesis, generated requests against the API's OpenAPI schema, every phase;
+#   - the ZAP API scan, an active scan of the same operations;
+#   - the ZAP baseline scan of the frontend image.
+# The files and the reasoning behind them are in .github/dast/ (gate.py explains what blocks).
+#
+# The repository is public, so this job log is too. Every tool's output goes to a file under
+# dast-out/, and a step prints one status line at most. The gate prints totals per tool and
+# nothing else. The full reports are pushed to a private repository.
+#
+# Three ways in: ci.yml calls it on pull requests into `dev` (a reusable workflow, so the
+# weekly schedule below does not drag every CI job along), the weekly run, and a manual run.
+# A manual run with `control` set starts control_app:app instead of the real application. That
+# app has one planted fault, and the gate is expected to fail on it: it proves the scans
+# can still find something.
+on:
+  workflow_call:
+    inputs:
+      control:
+        description: Start the control app with a planted fault and expect the gate to fail.
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      DAST_REPORTS_TOKEN:
+        description: Token with write access to the private reports repository.
+        required: false
+      DAST_OPEN_FINGERPRINTS:
+        description: Fingerprints of findings that are known and tracked elsewhere.
+        required: false
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      control:
+        description: Start the control app with a planted fault and expect the gate to fail.
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dast:
+    name: DAST (Schemathesis + ZAP)
+    runs-on: ubuntu-24.04
+    # A run takes about ten minutes. ZAP stops its API scan by itself after 12 minutes and
+    # Schemathesis is cut at 15, so this limit only catches a stuck step.
+    timeout-minutes: 35
+    env:
+      APP_ENV: test
+      TESTING: "1"
+      SECRET_KEY: test-secret-key-for-ci  # pragma: allowlist secret
+      DATABASE_URL: postgresql://become:become@localhost:5432/become_dast  # pragma: allowlist secret
+      CORS_ORIGINS: '["http://localhost:8080"]'
+      DEBUG: "false"
+      # The fixture accounts sign up under a synthetic domain with no DNS records.
+      MX_CHECK_ENABLED: "false"
+      # Registration mails an activation link: console prints it to the API log and sends nothing.
+      EMAIL_PROVIDER: console
+      PYTHONUNBUFFERED: "1"
+      # Bumped by hand: Dependabot does not read an image reference inside a workflow `env`.
+      # 2.17.0 is the version the scans were trialled with. To move it, read the new digest
+      # with `docker buildx imagetools inspect ghcr.io/zaproxy/zaproxy:stable` and run the
+      # control once after the merge.
+      ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
+      # `true` or `false`. It is empty on a scheduled run, which reads as false.
+      CONTROL: ${{ inputs.control == true }}
+
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+        env:
+          POSTGRES_USER: become
+          POSTGRES_PASSWORD: become  # pragma: allowlist secret
+          POSTGRES_DB: become_dast
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # ZAP runs as uid 1000 and the runner as uid 1001, so the directories ZAP writes to
+      # have to be open to both.
+      - name: Prepare the output directories
+        run: |
+          mkdir -p dast-out/schemathesis dast-out/zap dast-out/zap-web
+          chmod -R 777 dast-out
+
+      # The image is 3.6 GB. Pulling it while the Python side sets up hides most of the
+      # minute it takes. All three streams of the background shell are redirected, because
+      # a step does not finish while a child still holds its stdout. The exit code lands in
+      # a file that the first ZAP step waits for.
+      - name: Pull the ZAP image in the background
+        run: |
+          (docker pull --quiet "$ZAP_IMAGE" > dast-out/zap-pull.log 2>&1 < /dev/null; echo $? > dast-out/pull.rc) \
+            > /dev/null 2>&1 < /dev/null &
+
+      - uses: ./.github/actions/setup-python-uv
+        with:
+          extras: dev api
+
+      - name: Install the scanner
+        run: |
+          uv sync --project .github/dast --frozen > dast-out/uv-dast.log 2>&1 \
+            || { echo "installing the scanner failed"; exit 1; }
+
+      # Not scripts/ci/start-api.sh: that one prints the tail of the API log when it fails,
+      # and a traceback does not belong in a public log.
+      - name: Start the API
+        run: |
+          if [ "$CONTROL" = "true" ]; then app="control_app:app"; else app="api.main:app"; fi
+          PYTHONPATH=.github/dast uv run uvicorn "$app" --host 127.0.0.1 --port 8000 > dast-out/api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/api/v1/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/api/v1/health > /dev/null || { echo "API failed to start"; exit 1; }
+          echo "API is up"
+
+      - name: Create the fixture accounts
+        run: |
+          PYTHONPATH=. uv run python .github/dast/fixtures.py dast-out > dast-out/fixtures.log 2>&1 \
+            || { echo "fixtures failed"; exit 1; }
+          echo "fixtures created"
+
+      # Every phase, with a seed made up here and kept in dast-out/seed.txt, so that a
+      # finding can be replayed. `--max-time` is no cap: it keeps fuzzing until the time is
+      # spent. The cap is `timeout`, and a run it cuts has no finished report, which the gate
+      # counts as a scan that did not complete.
+      - name: Schemathesis
+        run: |
+          seed=$(( (RANDOM << 15) | RANDOM ))
+          echo "$seed" > dast-out/seed.txt
+          started=$(date +%s)
+          rc=0
+          SCHEMATHESIS_HOOKS=dast_hooks PYTHONPATH=.github/dast \
+            timeout 900 uv run --frozen --project .github/dast schemathesis \
+              --config-file .github/dast/schemathesis.toml \
+              run http://127.0.0.1:8000/openapi.json --url http://127.0.0.1:8000 \
+              --no-color --checks all --continue-on-failure --seed "$seed" \
+              --report json --report-dir dast-out/schemathesis \
+              > dast-out/schemathesis.log 2>&1 || rc=$?
+          echo "$rc" > dast-out/schemathesis.rc
+          echo $(( $(date +%s) - started )) > dast-out/schemathesis.seconds
+          echo "schemathesis finished"
+
+      - name: ZAP API scan
+        run: |
+          for _ in $(seq 1 150); do
+            [ -f dast-out/pull.rc ] && break
+            sleep 2
+          done
+          [ "$(cat dast-out/pull.rc 2> /dev/null)" = "0" ] || { echo "the ZAP image did not pull"; exit 1; }
+          PYTHONPATH=. uv run python .github/dast/make_zap_spec.py dast-out > dast-out/zap-spec.log 2>&1 \
+            || { echo "the ZAP spec step failed"; exit 1; }
+          cp .github/dast/rules-api.conf dast-out/zap/
+          chmod -R 777 dast-out/zap
+          # A login right before the scan: the access token lives 15 minutes. The password
+          # and the token stay in pipes and in this step's variables.
+          TOKEN=$(jq -r '.auth[0].loginEndpointAuth.payloadUserPwd | "username=\(.username | @uri)&password=\(.password | @uri)"' dast-out/auth.json \
+            | curl -s --data @- http://127.0.0.1:8000/api/v1/auth/login | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "the ZAP login failed"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          export ZAP_AUTH_HEADER_VALUE="Bearer $TOKEN"
+          rc=0
+          docker run --rm --network host -v "$PWD/dast-out/zap:/zap/wrk:rw" \
+            -e ZAP_AUTH_HEADER=Authorization -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER_SITE=127.0.0.1 \
+            "$ZAP_IMAGE" zap-api-scan.py -t /zap/wrk/openapi.pruned.json -f openapi \
+              -O http://127.0.0.1:8000 -c rules-api.conf \
+              -r report.html -J report.json -w report.md -I \
+              -z "-silent -config scanner.threadPerHost=2 -config scanner.maxScanDurationInMins=12 -config scanner.maxRuleDurationInMins=2" \
+            > dast-out/zap-api.log 2>&1 || rc=$?
+          echo "$rc" > dast-out/zap-api.rc
+          echo "zap api scan finished"
+
+      # The image is built the way scripts/ci/check-prerender.sh --docker builds it.
+      - name: Build and start the frontend image
+        run: |
+          docker build --quiet -t become-frontend-dast frontend > dast-out/web-build.log 2>&1 \
+            || { echo "the frontend image did not build"; exit 1; }
+          docker run -d --rm --name become-frontend-dast -p 127.0.0.1:8081:8080 become-frontend-dast \
+            > dast-out/web-run.log 2>&1 || { echo "the frontend image did not start"; exit 1; }
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null --max-time 2 http://127.0.0.1:8081/ && break
+            sleep 1
+          done
+          curl -s -o /dev/null --max-time 2 http://127.0.0.1:8081/ || { echo "the frontend is not answering"; exit 1; }
+          echo "frontend is up"
+
+      - name: ZAP baseline scan
+        run: |
+          cp .github/dast/rules-web.conf dast-out/zap-web/
+          chmod -R 777 dast-out/zap-web
+          rc=0
+          docker run --rm --network host -v "$PWD/dast-out/zap-web:/zap/wrk:rw" \
+            "$ZAP_IMAGE" zap-baseline.py -t http://127.0.0.1:8081 -c rules-web.conf \
+              -r report.html -J report.json -w report.md -I -z "-silent" \
+            > dast-out/zap-web.log 2>&1 || rc=$?
+          echo "$rc" > dast-out/zap-web.rc
+          echo "zap baseline scan finished"
+
+      # The list of accepted fingerprints reaches this step alone.
+      - name: Gate
+        id: gate
+        if: always()
+        env:
+          DAST_OPEN_FINGERPRINTS: ${{ secrets.DAST_OPEN_FINGERPRINTS }}
+        run: |
+          python3 .github/dast/gate.py dast-out 2> dast-out/gate.err || echo "the gate script failed"
+
+      # The token is in this step's environment and nowhere else. Git takes the credential from
+      # GIT_CONFIG_* variables, never from a URL or a command line, and both the token and
+      # its base64 form are masked before anything runs.
+      - name: Store the reports in the private repository
+        id: reports
+        if: always()
+        env:
+          DAST_REPORTS_TOKEN: ${{ secrets.DAST_REPORTS_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "push=failed" >> "$GITHUB_OUTPUT"
+          if [ -z "$DAST_REPORTS_TOKEN" ]; then echo "reports: no token, nothing stored"; exit 0; fi
+          echo "::add-mask::$DAST_REPORTS_TOKEN"
+          encoded=$(printf 'x-access-token:%s' "$DAST_REPORTS_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::$encoded"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $encoded"
+          log="$RUNNER_TEMP/dast-git.log"
+          clone="$RUNNER_TEMP/dast-reports"
+          rm -rf "$clone"
+          if ! git clone https://github.com/caitlon/become-dast-reports.git "$clone" > "$log" 2>&1; then
+            echo "reports: clone failed"; exit 0
+          fi
+          name="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${EVENT_NAME}"
+          if [ -n "$PR_NUMBER" ]; then name="$name-pr$PR_NUMBER"; fi
+          target="runs/$(date -u +%F)/$name"
+          mkdir -p "$clone/$target"
+          cp -R dast-out/. "$clone/$target/"
+          rm -f "$clone/$target/auth.json"
+          [ -f dast-out/gate.json ] || echo '{"blocking": null, "tools": {}}' > dast-out/gate.json
+          code() { cat "dast-out/$1.rc" 2> /dev/null || echo null; }
+          jq -n \
+            --arg sha "$GITHUB_SHA" --arg head_sha "$HEAD_SHA" --arg ref "$GITHUB_REF" \
+            --arg event "$EVENT_NAME" --arg pr "$PR_NUMBER" --arg seed "$(cat dast-out/seed.txt 2> /dev/null)" \
+            --argjson control "$([ "$CONTROL" = "true" ] && echo true || echo false)" \
+            --argjson schemathesis_rc "$(code schemathesis)" --argjson zap_api_rc "$(code zap-api)" \
+            --argjson zap_web_rc "$(code zap-web)" \
+            --argjson schemathesis_seconds "$(cat dast-out/schemathesis.seconds 2> /dev/null || echo null)" \
+            --slurpfile gate dast-out/gate.json \
+            '{sha: $sha, head_sha: $head_sha, ref: $ref, event: $event, pr: ($pr | tonumber? // null),
+              seed: $seed, control: $control,
+              exit_codes: {schemathesis: $schemathesis_rc, zap_api: $zap_api_rc, zap_web: $zap_web_rc},
+              schemathesis_seconds: $schemathesis_seconds,
+              gate: ($gate[0] | {blocking, counts: (.tools | map_values(.counts))})}' \
+            > "$clone/$target/meta.json" 2>> "$log" || { echo "reports: meta.json failed"; exit 0; }
+          cd "$clone" || exit 0
+          git add runs >> "$log" 2>&1
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "DAST run $GITHUB_RUN_ID" >> "$log" 2>&1 || { echo "reports: commit failed"; exit 0; }
+          for _ in 1 2 3; do
+            if git push origin HEAD:main >> "$log" 2>&1; then
+              echo "push=ok" >> "$GITHUB_OUTPUT"
+              echo "reports: stored"
+              rm -rf "$clone"
+              exit 0
+            fi
+            git pull --rebase origin main >> "$log" 2>&1 || true
+          done
+          echo "reports: push failed"
+          rm -rf "$clone"
+
+      - name: Fail on blocking findings or a lost report
+        if: always()
+        env:
+          BLOCKING: ${{ steps.gate.outputs.blocking }}
+          PUSHED: ${{ steps.reports.outputs.push }}
+        run: |
+          echo "blocking: ${BLOCKING:-unknown}, reports stored: ${PUSHED:-no}"
+          failed=0
+          if [ "${BLOCKING:-unknown}" != "0" ]; then
+            echo "::error::DAST blocking items: ${BLOCKING:-unknown}"
+            failed=1
+          fi
+          if [ "$PUSHED" != "ok" ]; then
+            echo "::error::DAST reports were not stored"
+            failed=1
+          fi
+          exit "$failed"
