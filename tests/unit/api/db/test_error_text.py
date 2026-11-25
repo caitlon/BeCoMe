@@ -1,5 +1,7 @@
 """Tests for the reduction of database error text."""
 
+import logging
+import sys
 from types import SimpleNamespace
 
 import psycopg2.errors
@@ -8,16 +10,19 @@ import pytest
 from api.db.error_text import (
     database_error_chain,
     exception_chain,
+    format_exception_safely,
     is_database_module,
     safe_error_text,
     safe_message_text,
 )
+from api.logging_config import SafeTextFormatter
 from tests.shared.database_errors import (
     SENTINEL,
     bind_processor_error,
     psycopg2_invalid_uuid,
     psycopg2_unique_violation,
     psycopg3_unique_violation,
+    raised,
 )
 
 
@@ -282,3 +287,173 @@ class TestChains:
         top.__cause__ = KeyError("b")
 
         assert database_error_chain(top) == []
+
+
+class TestFormatExceptionSafely:
+    """The traceback text for a log record."""
+
+    def test_reduces_every_database_error_of_the_chain(self):
+        """
+        GIVEN a wrapper raised from a psycopg2 unique violation
+        WHEN its traceback is formatted
+        THEN both closing lines are reduced and the sentinel is gone
+        AND the traceback keeps its frames and the cause separator
+        """
+        wrapped, orig = psycopg2_unique_violation()
+        exc_info = raised(wrapped, orig)
+
+        text = format_exception_safely(exc_info)
+
+        assert text is not None
+        assert SENTINEL not in text
+        assert "DETAIL" not in text
+        assert "INSERT INTO" not in text
+        assert (
+            'psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint "***'
+            in text
+        )
+        assert "sqlalchemy.exc.IntegrityError: (psycopg2.errors.UniqueViolation)" in text
+        assert "The above exception was the direct cause of the following exception" in text
+        assert "raise wrapped from cause" in text
+        assert not text.endswith("\n")
+
+    def test_prints_the_root_cause_before_the_wrapper(self):
+        """
+        GIVEN a wrapper raised from a driver error
+        WHEN its traceback is formatted
+        THEN the driver error comes first
+        """
+        wrapped, orig = psycopg2_invalid_uuid()
+
+        text = format_exception_safely(raised(wrapped, orig))
+
+        assert text is not None
+        assert text.index("psycopg2.errors.InvalidTextRepresentation") < text.index(
+            "sqlalchemy.exc.DataError"
+        )
+
+    def test_reduces_the_builtin_error_of_a_statement_error(self):
+        """
+        GIVEN a statement error raised from a TypeError that quotes a value
+        WHEN its traceback is formatted
+        THEN the value is masked and the builtin name is printed without a module
+        """
+        wrapped, orig = bind_processor_error()
+
+        text = format_exception_safely(raised(wrapped, orig))
+
+        assert text is not None
+        assert SENTINEL not in text
+        assert "TypeError: Not a boolean value: '***" in text
+        assert "builtins.TypeError" not in text.replace("(builtins.TypeError)", "")
+
+    def test_keeps_the_text_of_a_non_database_member_of_a_mixed_chain(self):
+        """
+        GIVEN an application error raised from a wrapper that was raised from a driver error
+        WHEN the chain is formatted
+        THEN the application error keeps its own message
+        AND the database errors are reduced
+        """
+        wrapped, orig = psycopg2_unique_violation()
+        try:
+            try:
+                raise orig
+            except psycopg2.errors.UniqueViolation as cause:
+                raise wrapped from cause
+        except Exception as caught:
+            try:
+                raise ValueError("service failed for the signup") from caught
+            except ValueError:
+                exc_info = sys.exc_info()
+
+        text = format_exception_safely(exc_info)
+
+        assert text is not None
+        assert "ValueError: service failed for the signup" in text
+        assert SENTINEL not in text
+
+    def test_uses_the_context_when_there_is_no_cause(self):
+        """
+        GIVEN a database error that was being handled when another error was raised
+        WHEN the chain is formatted
+        THEN the context separator joins them and the database error is reduced
+        """
+        _, orig = psycopg2_unique_violation()
+        try:
+            try:
+                raise orig
+            except psycopg2.errors.UniqueViolation:
+                raise ValueError("while handling")  # noqa: B904
+        except ValueError:
+            exc_info = sys.exc_info()
+
+        text = format_exception_safely(exc_info)
+
+        assert text is not None
+        assert "During handling of the above exception, another exception occurred" in text
+        assert SENTINEL not in text
+
+    def test_returns_none_without_a_database_error(self):
+        """
+        GIVEN a chain with no database error
+        WHEN it is formatted
+        THEN None is returned so that the caller keeps its default formatting
+        """
+        try:
+            raise ValueError(SENTINEL)
+        except ValueError:
+            exc_info = sys.exc_info()
+
+        assert format_exception_safely(exc_info) is None
+
+    def test_returns_none_without_an_exception(self):
+        """
+        GIVEN a tuple without an exception
+        WHEN it is formatted
+        THEN None is returned
+        """
+        assert format_exception_safely((None, None, None)) is None
+
+    def test_default_formatter_output_for_a_non_database_chain_is_unchanged(self):
+        """
+        GIVEN a non-database exception chain
+        WHEN the project's formatter and the standard one format it
+        THEN the texts are identical
+        """
+        try:
+            try:
+                raise KeyError(SENTINEL)
+            except KeyError as cause:
+                raise ValueError("outer") from cause
+        except ValueError:
+            exc_info = sys.exc_info()
+
+        assert SafeTextFormatter().formatException(exc_info) == logging.Formatter().formatException(
+            exc_info
+        )
+
+    def test_reduces_a_database_error_inside_an_exception_group(self):
+        """
+        GIVEN an exception group whose member is a statement error raised from a driver error
+        WHEN its traceback is formatted
+        THEN the group line and both database errors are printed, the database errors reduced
+        AND the sentinel, the DETAIL line and the statement are gone
+        """
+        wrapped, orig = psycopg2_unique_violation()
+        member = raised(wrapped, orig)[1]
+        assert member is not None
+        try:
+            raise ExceptionGroup("batch failed", [member])
+        except ExceptionGroup:
+            exc_info = sys.exc_info()
+
+        text = format_exception_safely(exc_info)
+
+        assert text is not None
+        assert "ExceptionGroup: batch failed (1 sub-exception)" in text
+        assert "Sub-exception 1 of 1:" in text
+        assert "sqlalchemy.exc.IntegrityError: (psycopg2.errors.UniqueViolation)" in text
+        assert 'unique constraint "***' in text
+        assert SENTINEL not in text
+        assert "DETAIL" not in text
+        assert "INSERT INTO" not in text

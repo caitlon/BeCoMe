@@ -3,12 +3,19 @@
 import json
 import logging
 from logging.handlers import RotatingFileHandler
+from unittest.mock import patch
 
 import pytest
 
 from api.config import Environment, Settings
-from api.logging_config import _EXTERNAL_LOG_LEVELS, JsonLogFormatter, setup_logging
+from api.logging_config import (
+    _EXTERNAL_LOG_LEVELS,
+    JsonLogFormatter,
+    SafeTextFormatter,
+    setup_logging,
+)
 from api.logging_context import ContextFilter
+from tests.shared.database_errors import SENTINEL, psycopg2_unique_violation, raised
 
 _CONFIGURED_LOGGERS = ("api", *_EXTERNAL_LOG_LEVELS)
 
@@ -193,6 +200,127 @@ class TestJsonLogFormatter:
 
         # THEN
         assert "ValueError: boom" in parsed["exception"]
+
+
+class _PlainHandler(logging.Handler):
+    """Stands in for ``LogtailHandler``, which would start a network thread."""
+
+    def __init__(self, source_token: str, host: str) -> None:
+        super().__init__()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        pass
+
+
+def _database_error_record() -> logging.LogRecord:
+    """Build an ERROR record whose traceback holds a unique violation that quotes a value."""
+    wrapped, orig = psycopg2_unique_violation()
+    return _make_record(
+        name="api.test",
+        level=logging.ERROR,
+        msg="Unhandled exception",
+        exc_info=raised(wrapped, orig),
+    )
+
+
+class TestDatabaseErrorTextInLogs:
+    """Every handler this module builds prints database errors without the quoted values."""
+
+    @staticmethod
+    def _assert_reduced(output: str) -> None:
+        assert SENTINEL not in output
+        assert "DETAIL" not in output
+        assert "INSERT INTO" not in output
+        assert "UniqueViolation" in output
+
+    def test_json_formatter_reduces_the_exception_field(self):
+        """
+        GIVEN a record whose traceback holds a unique violation that quotes a value
+        WHEN JsonLogFormatter formats it
+        THEN the exception field still names the error and holds no value, DETAIL or statement
+        """
+        # GIVEN
+        record = _database_error_record()
+
+        # WHEN
+        parsed = json.loads(JsonLogFormatter().format(record))
+
+        # THEN
+        self._assert_reduced(parsed["exception"])
+        assert parsed["message"] == "Unhandled exception"
+
+    def test_local_text_formatter_reduces_the_traceback(self):
+        """
+        GIVEN the development profile on a laptop
+        WHEN its stream handler formats a record with a unique violation
+        THEN the traceback in the line holds no value, DETAIL or statement
+        """
+        # GIVEN
+        setup_logging(_settings(environment=Environment.DEV))
+        handler = logging.getLogger("api").handlers[0]
+
+        # WHEN
+        output = handler.format(_database_error_record())
+
+        # THEN
+        self._assert_reduced(output)
+        assert "Unhandled exception" in output
+
+    def test_better_stack_handler_ships_a_reduced_message(self):
+        """
+        GIVEN Better Stack settings and a handler that stands in for the real one
+        WHEN the handler formats a record with a unique violation
+        THEN the shipped text keeps the message and holds no value, DETAIL or statement
+        """
+        # GIVEN
+        settings = _settings(
+            betterstack_source_token="tok",
+            betterstack_ingesting_host="s1.example.betterstackdata.com",
+        )
+        with patch("api.logging_config.LogtailHandler", _PlainHandler):
+            setup_logging(settings)
+        handler = next(h for h in logging.getLogger("api").handlers if isinstance(h, _PlainHandler))
+
+        # WHEN
+        output = handler.format(_database_error_record())
+
+        # THEN
+        self._assert_reduced(output)
+        assert output.startswith("Unhandled exception")
+
+    def test_last_resort_handler_prints_a_reduced_traceback(self, monkeypatch):
+        """
+        GIVEN setup_logging has run
+        WHEN the last-resort handler formats a record with a unique violation
+        THEN the traceback holds no value, DETAIL or statement
+        """
+        # GIVEN
+        last_resort = logging.lastResort
+        assert last_resort is not None
+        monkeypatch.setattr(last_resort, "formatter", None)
+        setup_logging(_settings())
+
+        # WHEN
+        output = last_resort.format(_database_error_record())
+
+        # THEN
+        self._assert_reduced(output)
+
+    def test_cached_traceback_on_the_record_is_the_reduced_one(self):
+        """
+        GIVEN a record formatted by the safe text formatter
+        WHEN the traceback the base class cached on the record is read
+        THEN it holds no value, DETAIL or statement
+        """
+        # GIVEN
+        record = _database_error_record()
+
+        # WHEN
+        SafeTextFormatter().format(record)
+
+        # THEN
+        assert record.exc_text is not None
+        self._assert_reduced(record.exc_text)
 
 
 class TestSetupLogging:

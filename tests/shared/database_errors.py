@@ -1,7 +1,6 @@
 """Database errors built the way the engine raises them, for tests of error-text handling."""
 
 import sys
-from types import TracebackType
 
 import psycopg
 import psycopg.errors
@@ -9,10 +8,9 @@ import psycopg2
 import psycopg2.errors
 from sqlalchemy.exc import DBAPIError, StatementError
 
-# The logging tuple ``(type, value, traceback)``; each member is None outside an exception.
-ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
+from api.db.error_text import ExcInfo
 
-# A value that must never reach the error tracker.
+# A value that must never reach the error tracker or a log handler.
 SENTINEL = "SENTINEL-db-value-7f3a"
 
 

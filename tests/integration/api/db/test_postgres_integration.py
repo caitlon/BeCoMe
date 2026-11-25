@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import Session, SQLModel, select
 
+from api.db.error_text import format_exception_safely
 from api.db.models import (
     CalculationResult,
     EmailVerificationToken,
@@ -1534,8 +1535,10 @@ class TestDatabaseErrorTextReduction:
         raise AssertionError("the statement did not fail")
 
     def _assert_reduced(self, exc_info, *expected):
-        """Check the Sentry event of ``exc_info`` against the sentinel."""
+        """Check the log text and the Sentry event of ``exc_info`` against the sentinel."""
         assert SENTINEL in str(exc_info[1].orig), "the driver's own text must carry the value"
+        logged = format_exception_safely(exc_info)
+        assert logged is not None
         event, hint = event_from_exception(
             exc_info,
             client_options={
@@ -1545,16 +1548,17 @@ class TestDatabaseErrorTextReduction:
             },
         )
         sent = json.dumps(scrub_request_data(event, hint), default=str)
-        assert SENTINEL not in sent
-        assert "DETAIL" not in sent
-        for part in expected:
-            assert part in sent
+        for output in (logged, sent):
+            assert SENTINEL not in output
+            assert "DETAIL" not in output
+            for part in expected:
+                assert part in output
 
     def test_unique_violation_keeps_sqlstate_and_constraint_name(self, pg_session):
         """
         GIVEN a user whose e-mail address carries a sentinel value
         WHEN a second user with the same address is committed
-        THEN the Sentry event hold the SQLSTATE and the constraint name
+        THEN the log text and the Sentry event hold the SQLSTATE and the constraint name
         AND neither holds the address or the DETAIL line
         """
         # GIVEN
@@ -1573,7 +1577,7 @@ class TestDatabaseErrorTextReduction:
         """
         GIVEN a value with a sentinel that is not a UUID
         WHEN PostgreSQL is asked to cast it to a UUID
-        THEN the Sentry event hold the SQLSTATE and not the value
+        THEN the log text and the Sentry event hold the SQLSTATE and not the value
         """
         # GIVEN
         statement = text("SELECT CAST(:value AS uuid)")

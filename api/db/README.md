@@ -137,7 +137,7 @@ DATABASE_URL=sqlite:///./become.db
 api/db/
 ├── __init__.py     # Package marker
 ├── engine.py       # Database engine and table creation
-├── error_text.py   # Reduces database error text before it reaches Sentry
+├── error_text.py   # Reduces database error text before it reaches Sentry or the log formatters
 ├── models.py       # SQLModel table definitions
 ├── session.py      # Database session management (get_session)
 ├── utils.py        # Utilities (utc_now, ensure_utc)
