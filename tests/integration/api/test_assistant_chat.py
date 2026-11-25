@@ -32,7 +32,7 @@ from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
 from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import QueuePool, StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from api.assistant import deps
@@ -43,7 +43,10 @@ from api.assistant.rag.models import make_answer_model
 from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.assistant.sse import KEEP_ALIVE
 from api.auth.cookies import CSRF_COOKIE
+from api.auth.jwt import create_access_token
+from api.auth.revocation_store import InMemoryRevocationStore
 from api.config import get_settings
+from api.db.models import User
 from api.db.session import get_session
 from api.logging_context import ContextFilter
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
@@ -1942,6 +1945,53 @@ class TestNoTransactionAcrossTheTurn:
         assert model.probes
         assert retriever.probes == [False] * len(retriever.probes)
         assert model.probes == [False] * len(model.probes)
+
+
+class TestGetAssistantUser:
+    """The caller lookup gives its database connection back as soon as the user is loaded."""
+
+    def test_the_session_is_released_and_the_loaded_fields_stay_readable(self):
+        """
+        GIVEN a stored user and an empty user cache, so the lookup reads the database
+        WHEN the dependency resolves the caller
+        THEN its session holds no open transaction, and the returned user's loaded fields
+            read correctly without beginning another one
+        """
+        # GIVEN
+        engine = create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        SQLModel.metadata.create_all(engine)
+        stored = User(
+            email="lookup@example.com",
+            hashed_password="not-a-real-hash",  # pragma: allowlist secret
+            first_name="Lookup",
+            last_name="Caller",
+        )
+        with Session(engine) as seeding:
+            seeding.add(stored)
+            seeding.commit()
+            user_id = stored.id
+        token = create_access_token(user_id)
+
+        try:
+            with Session(engine) as session:
+                # WHEN
+                user = asyncio.run(
+                    deps.get_assistant_user(
+                        token, session, InMemoryRevocationStore(), InMemoryUserCache()
+                    )
+                )
+                released = not session.in_transaction()
+                fields = (user.id, user.email, user.first_name, user.last_name)
+                still_released = not session.in_transaction()
+        finally:
+            engine.dispose()
+
+        # THEN
+        assert released
+        assert fields == (user_id, "lookup@example.com", "Lookup", "Caller")
+        assert still_released
 
 
 class TestTurnsOnAOneConnectionPool:

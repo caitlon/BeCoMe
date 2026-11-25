@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -16,8 +16,6 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
 
 from api.assistant import deps, rate_limit
 from api.assistant.agent.context import AssistantContext
@@ -34,13 +32,9 @@ from api.assistant.rate_limit import (
     get_assistant_global_throttle,
     get_assistant_throttle,
 )
-from api.auth.jwt import create_access_token
-from api.auth.revocation_store import InMemoryRevocationStore
 from api.config import Settings
-from api.db.models import User
 from api.exceptions import ValidationError
 from api.schemas.assistant import AssistantChatRequest
-from api.services.user_cache import InMemoryUserCache
 from tests.shared.assistant_fakes import tagged
 from tests.shared.helpers import captured_log_records
 
@@ -493,48 +487,33 @@ class TestGetAssistantService:
 class TestGetAssistantUser:
     """The caller lookup gives its database connection back as soon as the user is loaded."""
 
-    def test_the_session_is_released_and_the_loaded_fields_stay_readable(self):
+    def test_the_session_is_closed_once_after_the_user_is_loaded(self):
         """
-        GIVEN a stored user and an empty user cache, so the lookup reads the database
+        GIVEN a caller lookup that returns a user and a session that records its calls
         WHEN the dependency resolves the caller
-        THEN its session holds no open transaction, and the returned user's loaded fields
-            read correctly without beginning another one
+        THEN the lookup is awaited with the token, session, store and cache, the session is
+            closed exactly once and only after it, and the loaded user is returned
         """
         # GIVEN
-        engine = create_engine(
-            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
-        )
-        SQLModel.metadata.create_all(engine)
-        stored = User(
-            email="lookup@example.com",
-            hashed_password="not-a-real-hash",  # pragma: allowlist secret
-            first_name="Lookup",
-            last_name="Caller",
-        )
-        with Session(engine) as seeding:
-            seeding.add(stored)
-            seeding.commit()
-            user_id = stored.id
-        token = create_access_token(user_id)
+        sentinel_user = object()
+        session, store, cache = MagicMock(), MagicMock(), MagicMock()
+        order = MagicMock()
+        lookup = AsyncMock(return_value=sentinel_user)
+        order.attach_mock(lookup, "get_current_user")
+        order.attach_mock(session.close, "close")
 
-        try:
-            with Session(engine) as session:
-                # WHEN
-                user = asyncio.run(
-                    deps.get_assistant_user(
-                        token, session, InMemoryRevocationStore(), InMemoryUserCache()
-                    )
-                )
-                released = not session.in_transaction()
-                fields = (user.id, user.email, user.first_name, user.last_name)
-                still_released = not session.in_transaction()
-        finally:
-            engine.dispose()
+        # WHEN
+        with patch("api.assistant.deps.get_current_user", lookup):
+            user = asyncio.run(deps.get_assistant_user("token", session, store, cache))
 
         # THEN
-        assert released
-        assert fields == (user_id, "lookup@example.com", "Lookup", "Caller")
-        assert still_released
+        lookup.assert_awaited_once_with("token", session, store, cache)
+        session.close.assert_called_once_with()
+        assert order.mock_calls == [
+            call.get_current_user("token", session, store, cache),
+            call.close(),
+        ]
+        assert user is sentinel_user
 
 
 def _open_ceiling() -> MagicMock:
