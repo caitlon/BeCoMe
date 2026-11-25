@@ -1,12 +1,13 @@
 """Tests for the assistant's dependency factories (fakes only, no network)."""
 
+import asyncio
 import logging
 import threading
 import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -481,6 +482,38 @@ class TestGetAssistantService:
         # THEN
         service_cls.assert_called_once_with(settings, answer_model)
         assert service is service_cls.return_value
+
+
+class TestGetAssistantUser:
+    """The caller lookup gives its database connection back as soon as the user is loaded."""
+
+    def test_the_session_is_closed_once_after_the_user_is_loaded(self):
+        """
+        GIVEN a caller lookup that returns a user and a session that records its calls
+        WHEN the dependency resolves the caller
+        THEN the lookup is awaited with the token, session, store and cache, the session is
+            closed exactly once and only after it, and the loaded user is returned
+        """
+        # GIVEN
+        sentinel_user = object()
+        session, store, cache = MagicMock(), MagicMock(), MagicMock()
+        order = MagicMock()
+        lookup = AsyncMock(return_value=sentinel_user)
+        order.attach_mock(lookup, "get_current_user")
+        order.attach_mock(session.close, "close")
+
+        # WHEN
+        with patch("api.assistant.deps.get_current_user", lookup):
+            user = asyncio.run(deps.get_assistant_user("token", session, store, cache))
+
+        # THEN
+        lookup.assert_awaited_once_with("token", session, store, cache)
+        session.close.assert_called_once_with()
+        assert order.mock_calls == [
+            call.get_current_user("token", session, store, cache),
+            call.close(),
+        ]
+        assert user is sentinel_user
 
 
 def _open_ceiling() -> MagicMock:

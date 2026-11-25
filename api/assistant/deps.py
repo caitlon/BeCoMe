@@ -407,23 +407,26 @@ async def get_assistant_user(
 ) -> User:
     """Return the authenticated caller of a chat route, without holding a database session.
 
-    The same lookup as :func:`~api.auth.dependencies.get_current_user`, called as a function. Its
-    session has the ``function`` scope, so it is closed when the route function returns, before
-    the body of a streamed response is sent. ``get_current_user``'s own session lasts until the
-    stream ends, and on a user-cache miss would keep a pool connection checked out for the whole
-    turn. This dependency is separate, and not a change to that one, because the other routes
-    share the request's session through the dependency cache. The chat dependencies that need the
-    caller all take this one, so they all get the same user. A user loaded on a cache miss is
-    detached once the session closes, and its loaded fields stay readable.
+    The same lookup as :func:`~api.auth.dependencies.get_current_user`, called as a function,
+    and the session is closed as soon as the user is loaded, so no connection stays checked out
+    and no transaction stays open while the turn runs. That holds for the streamed route and for
+    the one that answers in a single response. ``get_current_user``'s own session lasts until the
+    route's response is done, and on a user-cache miss would keep a pool connection checked out
+    for the whole turn. This dependency is separate, and not a change to that one, because the
+    other routes share the request's session through the dependency cache. The chat dependencies
+    that need the caller all take this one, so they all get the same user. The user is detached
+    once the session closes, and its loaded fields stay readable.
 
     :param token: JWT access token.
-    :param session: Database session, used only on a user-cache miss.
+    :param session: Database session, used only on a user-cache miss and closed before return.
     :param store: Revocation store consulted during token validation.
     :param cache: User profile cache.
     :return: The authenticated user.
     :raises HTTPException: 401 if the token is invalid or the user is not found.
     """
-    return await get_current_user(token, session, store, cache)
+    user = await get_current_user(token, session, store, cache)
+    await run_in_threadpool(session.close)
+    return user
 
 
 AssistantUser = Annotated[User, Depends(get_assistant_user)]
