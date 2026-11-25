@@ -445,11 +445,9 @@ watch for the disconnect itself fails, the turn runs on without it and
   so a streamed answer holds it until the stream ends. The count is per process: with several
   processes the ceiling is the setting times their number.
 - **Database session.** The chat routes look the caller up through their own dependency
-  (`get_assistant_user` in `api/assistant/deps.py`), whose database session closes when the route
-  function returns, before the body of a stream is sent. On a user-cache miss a stream therefore
-  does not keep a connection of the application's pool checked out for the whole turn. Non-streamed
-  `/chat` still holds the lookup's session for its whole turn, because the turn runs inside the
-  route function; the frontend uses only `/chat/stream`.
+  (`get_assistant_user` in `api/assistant/deps.py`), which closes its database session as soon as
+  the caller is loaded. On a user-cache miss neither route therefore keeps a connection of the
+  application's pool checked out, and no transaction stays open across a turn.
 - **Shutdown.** When the application stops with the assistant on, it closes what the process built:
   the corpus engine, the two chat models' clients and the throttles' Redis clients. Nothing is
   built only to be closed. A close that fails is recorded as `assistant_shutdown_close_failed`,

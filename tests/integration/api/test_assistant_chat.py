@@ -14,6 +14,7 @@ import logging
 import re
 import threading
 from collections.abc import AsyncIterator, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -29,8 +30,10 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGenerationChunk
 from pydantic import Field
+from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
-from sqlmodel import Session
+from sqlalchemy.pool import QueuePool
+from sqlmodel import Session, SQLModel, create_engine
 
 from api.assistant import deps
 from api.assistant.agent import tracing
@@ -44,8 +47,10 @@ from api.config import get_settings
 from api.db.session import get_session
 from api.logging_context import ContextFilter
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
+from api.services.user_cache import InMemoryUserCache, get_user_cache
 from tests.integration.api.conftest import (
     create_project,
+    create_test_app,
     register_and_login,
     register_verified,
     stored_accounts,
@@ -1832,6 +1837,180 @@ class TestSessionNotHeldWhileStreaming:
         assert len(model.opened) == 1
         assert len(model.probes) > 2
         assert all(probe == [True] for probe in model.probes)
+
+
+def _forget_cached_users() -> None:
+    """Empty the user cache, so that the next request looks its caller up in the database."""
+    cache = get_user_cache()
+    assert isinstance(cache, InMemoryUserCache)
+    cache.clear()
+
+
+class _TransactionProbingRetriever(StaticDocsRetriever):
+    """A retriever that records whether the lookup's database session had a transaction open.
+
+    :ivar probes: One entry per search: ``in_transaction()`` of the first session the request
+        opened, which is the one that looked the caller up.
+    """
+
+    def __init__(self, opened: list[Any]) -> None:
+        super().__init__([])
+        self._opened = opened
+        self.probes: list[bool] = []
+
+    async def search(self, query: str) -> list[Any]:
+        self.probes.append(self._opened[0].in_transaction())
+        return await super().search(query)
+
+
+class _TransactionProbingModel(ScriptedToolCallingModel):
+    """A scripted model that records whether the lookup's session had a transaction open.
+
+    :ivar opened: The sessions the request opened, appended to by the test's override.
+    :ivar probes: One entry per call, plain or streamed: ``in_transaction()`` of the first
+        session the request opened, which is the one that looked the caller up.
+    """
+
+    opened: list[Any] = Field(default_factory=list)
+    probes: list[bool] = Field(default_factory=list)
+
+    def _generate(self, *args: Any, **kwargs: Any):
+        self.probes.append(self.opened[0].in_transaction())
+        return super()._generate(*args, **kwargs)
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        self.probes.append(self.opened[0].in_transaction())
+        async for chunk in super()._astream(*args, **kwargs):
+            yield chunk
+
+
+class _BarrierRetriever(StaticDocsRetriever):
+    """A retriever whose search waits until ``parties`` searches are running at once.
+
+    A turn that is stuck behind another one never reaches the barrier, so the wait times out
+    and the search fails instead of the test hanging.
+
+    :param parties: How many searches must be waiting for any of them to go on.
+    :param timeout_s: Seconds a search waits for the others.
+    """
+
+    def __init__(self, parties: int = 2, timeout_s: float = 5.0) -> None:
+        super().__init__([])
+        self._barrier = asyncio.Barrier(parties)
+        self._timeout_s = timeout_s
+
+    async def search(self, query: str) -> list[Any]:
+        await asyncio.wait_for(self._barrier.wait(), self._timeout_s)
+        return await super().search(query)
+
+
+class TestNoTransactionAcrossTheTurn:
+    """The caller lookup leaves no transaction open while the turn runs."""
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_the_lookup_session_has_no_transaction_while_the_turn_runs(
+        self, assistant_settings, client, test_engine, endpoint
+    ):
+        """
+        GIVEN a user-cache miss, a retriever and a model that look at the session which
+            looked the caller up
+        WHEN one turn is answered
+        THEN that session had no transaction open when the retriever searched and when the
+            model was called, and both were reached
+        """
+        # GIVEN
+        token = register_and_login(client, "no-transaction@example.com")
+        model = _TransactionProbingModel(responses=[AIMessage(content="an answer")])
+        retriever = _TransactionProbingRetriever(model.opened)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: retriever
+        _use_model(client, model)
+
+        def recording_session():
+            with Session(test_engine) as session:
+                model.opened.append(session)
+                yield session
+
+        client.app.dependency_overrides[get_session] = recording_session
+        _forget_cached_users()
+
+        # WHEN
+        response = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert retriever.probes
+        assert model.probes
+        assert retriever.probes == [False] * len(retriever.probes)
+        assert model.probes == [False] * len(model.probes)
+
+
+class TestTurnsOnAOneConnectionPool:
+    """Two turns that overlap are both answered when the pool holds a single connection."""
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_two_overlapping_turns_both_get_a_connection(
+        self, assistant_settings, tmp_path, endpoint
+    ):
+        """
+        GIVEN every database read of the application going through a pool of one connection
+            that waits two seconds for it, and a retriever that holds each turn until both
+            turns are searching
+        WHEN two users, who are both user-cache misses, send a turn at the same time
+        THEN both are answered with 200, so neither turn held the connection while it ran
+        """
+        # GIVEN
+        engine = create_engine(
+            f"sqlite:///{tmp_path / 'pool.db'}",
+            connect_args={"check_same_thread": False},
+            poolclass=QueuePool,
+            pool_size=1,
+            max_overflow=0,
+            pool_timeout=2,
+        )
+
+        @event.listens_for(engine, "connect")
+        def _enforce_foreign_keys(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        SQLModel.metadata.create_all(engine)
+        app = create_test_app()
+
+        def pooled_session():
+            with Session(engine) as session:
+                yield session
+
+        app.dependency_overrides[get_session] = pooled_session
+        retriever = _BarrierRetriever()
+        app.dependency_overrides[deps.get_docs_retriever] = lambda: retriever
+        model = _scripted("first answer", "second answer")
+        app.dependency_overrides[deps.get_answer_model] = lambda: model
+
+        try:
+            with TestClient(app) as client:
+                tokens = [
+                    register_and_login(client, "pool-one@example.com"),
+                    register_and_login(client, "pool-two@example.com"),
+                ]
+                _forget_cached_users()
+
+                # WHEN
+                def send(token: str) -> httpx.Response:
+                    return client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = [pool.submit(send, token) for token in tokens]
+                    responses = [future.result(timeout=30) for future in futures]
+        finally:
+            engine.dispose()
+
+        # THEN
+        assert [response.status_code for response in responses] == [200, 200]
+        if endpoint == STREAM:
+            for response in responses:
+                assert _events(response.text)[-1][0] == "done"
+        assert len(retriever.queries) == 2
 
 
 class TestConcurrentTurnCap:
