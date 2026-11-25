@@ -442,8 +442,9 @@ the hourly budget, and the message limit comes last. It is no longer a route dep
 retriever, so a message that is too long or an invalid body (`422`) and a retriever that cannot be
 built (`503`) are refused before a message is spent.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
-memory otherwise. A deployed service refuses to start with the per-user or the global hourly
-limit at `0`, so neither cap can be switched off there. A message the global ceiling refuses is
+memory otherwise. A deployed service refuses to start with the per-user, the per-address or the
+global hourly limit at `0`, so no cap can be switched off there, and with a per-address limit that
+is not below the global one. A message the global ceiling refuses is
 given back to the user's own budget, and a message a budget refuses is given back too: in
 memory it is never stored, and in Redis its increment is given back by a guarded script. If that
 give-back fails with a store error, the counter stays above its budget until the window closes.
