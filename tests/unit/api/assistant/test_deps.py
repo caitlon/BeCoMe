@@ -14,6 +14,7 @@ import httpx
 import openai
 import pytest
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
@@ -533,22 +534,25 @@ class TestEnforceMessageLimit:
         """
         GIVEN a throttle that allows the message
         WHEN the limit dependency runs
-        THEN it returns the checked request it was given and the throttle was asked about
-             that user
+        THEN it returns the checked request it was given with the two charges that paid
+             for it, and the throttle was asked about that user
         """
         # GIVEN
         throttle = MagicMock()
         throttle.charge.return_value = Charge("user", allowed=True)
+        ceiling = _open_ceiling()
         user = MagicMock(id=uuid4())
         data = MagicMock()
 
         # WHEN
         returned = await deps.enforce_message_limit(
-            user, throttle, _open_ceiling(), data=data, retriever=MagicMock()
+            user, throttle, ceiling, data=data, retriever=MagicMock()
         )
 
         # THEN
-        assert returned is data
+        assert returned.request is data
+        assert returned.user_charge is throttle.charge.return_value
+        assert returned.ceiling_charge is ceiling.charge_key.return_value
         throttle.charge.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
@@ -1152,8 +1156,24 @@ class TestOpenChatTurn:
     """The client and the context are built for one request and the client is always closed."""
 
     @staticmethod
-    def _open(data: AssistantChatRequest, request: Request, retriever: Any):
-        return asynccontextmanager(deps.open_chat_turn)(request, data, "token-abc", retriever)
+    def _open(
+        data: AssistantChatRequest,
+        request: Request,
+        retriever: Any,
+        throttle: Any = None,
+        ceiling: Any = None,
+    ):
+        counted = deps.CountedRequest(
+            data, Charge("user", allowed=True), Charge(GLOBAL_KEY, allowed=True)
+        )
+        return asynccontextmanager(deps.open_chat_turn)(
+            request,
+            counted,
+            "token-abc",
+            retriever,
+            throttle or MagicMock(),
+            ceiling or MagicMock(),
+        )
 
     @pytest.mark.asyncio
     async def test_builds_a_client_for_this_caller_and_a_context_around_it(self, fake_client):
@@ -1227,6 +1247,128 @@ class TestOpenChatTurn:
         # THEN
         (client,) = fake_client.instances
         assert client.closed == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failure_before_preparation_finished_gives_both_messages_back(
+        self, fake_client
+    ):
+        """
+        GIVEN an opened turn whose context was not marked prepared
+        WHEN the block raises an ordinary error
+        THEN each charge is refunded on the throttle that took it, the error propagates and
+             the client was still closed
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+        data = AssistantChatRequest(message="hi")
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="boom"):
+            async with self._open(data, _request(), MagicMock(), throttle, ceiling):
+                raise RuntimeError("boom")
+
+        # THEN
+        throttle.refund.assert_called_once_with(Charge("user", allowed=True))
+        ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        (client,) = fake_client.instances
+        assert client.closed == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failing_refund_neither_replaces_the_error_nor_skips_the_other(
+        self, fake_client
+    ):
+        """
+        GIVEN an opened turn that is not marked prepared and a user throttle whose refund raises
+        WHEN the block raises an ordinary error
+        THEN that error propagates, the ceiling is still refunded and the failed refund is
+             logged as an event without the charge
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+        throttle.refund.side_effect = ConnectionError("store down")
+
+        # WHEN
+        with (
+            captured_log_records("api.security") as records,
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            async with self._open(
+                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+            ):
+                raise RuntimeError("boom")
+
+        # THEN
+        ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        (record,) = [r for r in records if getattr(r, "event", None) == "assistant_refund_failed"]
+        assert record.levelno == logging.WARNING
+        assert record.exc_info is not None
+        assert "user" not in record.getMessage()
+        (client,) = fake_client.instances
+        assert client.closed == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failure_after_preparation_finished_keeps_both_messages(self, fake_client):
+        """
+        GIVEN an opened turn whose context was marked prepared
+        WHEN the block raises an ordinary error, as a failing answer model would
+        THEN nothing is refunded and the error propagates
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="boom"):
+            async with self._open(
+                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+            ) as turn:
+                turn.context.prepared = True
+                raise RuntimeError("boom")
+
+        # THEN
+        throttle.refund.assert_not_called()
+        ceiling.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_ends_without_an_error_keeps_both_messages(self, fake_client):
+        """
+        GIVEN an opened turn that is never marked prepared, as when the client goes away and
+            the route returns without raising
+        WHEN the block ends normally
+        THEN nothing is refunded
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+
+        # WHEN
+        async with self._open(
+            AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+        ):
+            pass
+
+        # THEN
+        throttle.refund.assert_not_called()
+        ceiling.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_turn_keeps_both_messages(self, fake_client):
+        """
+        GIVEN an opened turn that is not marked prepared
+        WHEN the block is cancelled
+        THEN nothing is refunded, since a cancellation is not a failure of preparation
+        """
+        # GIVEN
+        throttle, ceiling = MagicMock(), MagicMock()
+
+        # WHEN
+        with pytest.raises(asyncio.CancelledError):
+            async with self._open(
+                AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
+            ):
+                raise asyncio.CancelledError
+
+        # THEN
+        throttle.refund.assert_not_called()
+        ceiling.refund.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_each_turn_gets_its_own_client_and_source_registry(self, fake_client):
@@ -1622,6 +1764,10 @@ class TestBuildFailures:
         assert deps._docs_resources is None
 
 
+class _MissingError(Exception):
+    """A domain error that the mini app's handler turns into a 404, like ProjectNotFoundError."""
+
+
 def _mini_app() -> tuple[FastAPI, list[Any]]:
     """Build an app whose one route takes the turn dependency and reports what it saw."""
     app = FastAPI()
@@ -1632,15 +1778,33 @@ def _mini_app() -> tuple[FastAPI, list[Any]]:
 
     app.dependency_overrides[deps.get_docs_retriever] = _counting_retriever
 
-    def _budget_that_passes(data: deps.ChatRequestDep) -> AssistantChatRequest:
-        return data
+    def _budget_that_passes(data: deps.ChatRequestDep) -> deps.CountedRequest:
+        return deps.CountedRequest(
+            data, Charge("user", allowed=True), Charge(GLOBAL_KEY, allowed=True)
+        )
 
     app.dependency_overrides[deps.enforce_message_limit] = _budget_that_passes
+    app.state.throttle, app.state.ceiling = MagicMock(), MagicMock()
+    app.dependency_overrides[get_assistant_throttle] = lambda: app.state.throttle
+    app.dependency_overrides[get_assistant_global_throttle] = lambda: app.state.ceiling
+
+    @app.exception_handler(_MissingError)
+    async def _missing(request: Request, exc: _MissingError) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "missing"})
 
     @app.post("/turn")
     async def turn_route(turn: deps.PreparedTurnDep) -> dict[str, Any]:
         opened.append(turn)
         return {"message": turn.request.message, "project": turn.context.current_project_id}
+
+    @app.post("/missing")
+    async def missing_route(turn: deps.PreparedTurnDep) -> None:
+        raise _MissingError
+
+    @app.post("/after-preparation")
+    async def after_preparation_route(turn: deps.PreparedTurnDep) -> None:
+        turn.context.prepared = True
+        raise _MissingError
 
     return app, opened
 
@@ -1695,6 +1859,50 @@ class TestPreparedTurnThroughFastAPI:
         assert [error["loc"] for error in response.json()["detail"]] == [["body", "unknown"]]
         assert opened == []
         assert fake_client.instances == []
+
+    def test_an_error_the_app_turns_into_a_404_reaches_the_dependency_and_is_refunded(
+        self, fake_client
+    ):
+        """
+        GIVEN a route that raises an error the application's handler answers with 404
+        WHEN a valid body is posted
+        THEN the answer is that 404, both charges were refunded once and the client closed
+        """
+        # GIVEN
+        app, _ = _mini_app()
+
+        # WHEN
+        response = TestClient(app).post(
+            "/missing", json={"message": "hi"}, headers={"Authorization": "Bearer token-xyz"}
+        )
+
+        # THEN
+        assert response.status_code == 404
+        app.state.throttle.refund.assert_called_once_with(Charge("user", allowed=True))
+        app.state.ceiling.refund.assert_called_once_with(Charge(GLOBAL_KEY, allowed=True))
+        (client,) = fake_client.instances
+        assert client.closed == 1
+
+    def test_the_same_error_after_preparation_refunds_nothing(self, fake_client):
+        """
+        GIVEN a route that marks its turn prepared and then raises the same 404 error
+        WHEN a valid body is posted
+        THEN the answer is the 404 and neither charge was refunded
+        """
+        # GIVEN
+        app, _ = _mini_app()
+
+        # WHEN
+        response = TestClient(app).post(
+            "/after-preparation",
+            json={"message": "hi"},
+            headers={"Authorization": "Bearer token-xyz"},
+        )
+
+        # THEN
+        assert response.status_code == 404
+        app.state.throttle.refund.assert_not_called()
+        app.state.ceiling.refund.assert_not_called()
 
     def test_a_request_without_a_token_builds_no_client(self, fake_client):
         """

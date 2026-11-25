@@ -1538,6 +1538,22 @@ def _watched_budgets() -> Iterator[tuple[MagicMock, MagicMock]]:
         yield user_spy, global_spy
 
 
+@contextmanager
+def _watched_refunds() -> Iterator[tuple[MagicMock, MagicMock]]:
+    """Yield spies on the ``refund`` of the per-user counter and of the global one.
+
+    Each spy calls through, so the budget behaves as it would; the call count of a spy is how
+    many messages the requests in the block gave back.
+    """
+    user = get_assistant_throttle()
+    everyone = get_assistant_global_throttle()
+    with (
+        patch.object(user, "refund", wraps=user.refund) as user_spy,
+        patch.object(everyone, "refund", wraps=everyone.refund) as global_spy,
+    ):
+        yield user_spy, global_spy
+
+
 class _CountingRetrieverFactory:
     """A retriever factory for ``dependency_overrides`` that records how often it runs."""
 
@@ -1752,6 +1768,187 @@ class TestRefusedRequestSpendsNoMessage:
             assert refused.status_code == 503
             assert (user_spy.call_count, global_spy.call_count) == (0, 0)
             assert factory.built == 0
+
+
+UNKNOWN_PROJECT_ID = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+
+
+class TestFailedPreparationGivesTheMessageBack:
+    """A turn that fails before the answer model is called gives back both messages it spent."""
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_project_the_caller_cannot_see_spends_nothing(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a budget of one message per hour, a global ceiling of one and a project id that
+            names no project
+        WHEN a message naming it is posted, and then a message that names none
+        THEN the first is a 404 and each counter gave its message back once, the model was
+            never asked, and the second is answered, so neither budget was left spent
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1", ASSISTANT_GLOBAL_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "unknown-project-refund@example.com")
+        model = _scripted("fine")
+        _use_model(client, model)
+
+        with _watched_refunds() as (user_refund, global_refund):
+            # WHEN
+            missing = client.post(
+                endpoint,
+                json={"message": "hi", "project_id": UNKNOWN_PROJECT_ID},
+                headers=auth_header(token),
+            )
+
+            # THEN
+            assert missing.status_code == 404
+            assert model.seen == []
+            assert (user_refund.call_count, global_refund.call_count) == (1, 1)
+            assert deps.get_turn_slots().holders == {}
+            answered = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+            assert answered.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_retriever_that_fails_during_the_search_spends_nothing(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a budget of one message per hour, a global ceiling of one and a retriever whose
+            search fails with a refused connection
+        WHEN a message is posted, and the retriever recovers and the message is posted again
+        THEN the first is the fixed 503, each counter gave its message back once and the model
+            was never asked, and the second is answered, not 429 or 503
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1", ASSISTANT_GLOBAL_TURNS_PER_HOUR="1")
+        token = register_and_login(client, "search-refund@example.com")
+        model = _scripted("fine")
+        _use_model(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _DownRetriever()
+
+        with _watched_refunds() as (user_refund, global_refund):
+            # WHEN
+            refused = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+
+            # THEN
+            assert refused.status_code == 503
+            assert refused.json() == UNAVAILABLE_BODY
+            assert model.seen == []
+            assert (user_refund.call_count, global_refund.call_count) == (1, 1)
+            client.app.dependency_overrides[deps.get_docs_retriever] = _CountingRetrieverFactory()
+            answered = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+            assert answered.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_retrieval_that_times_out_spends_nothing(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a budget of one message per hour, a global ceiling of one, a first-byte limit of
+            0.2 s and a retriever whose search takes 30 s
+        WHEN a message is posted
+        THEN it is the fixed 503, each counter gave its message back once and the model was
+            never asked
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_RATE_LIMIT_PER_HOUR="1",
+            ASSISTANT_GLOBAL_TURNS_PER_HOUR="1",
+            ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS="0.2",
+        )
+        token = register_and_login(client, "timeout-refund@example.com")
+        model = _scripted("fine")
+        _use_model(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _SlowRetriever()
+
+        with _watched_refunds() as (user_refund, global_refund):
+            # WHEN
+            slow = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+
+            # THEN
+            assert slow.status_code == 503
+            assert slow.json() == UNAVAILABLE_BODY
+            assert model.seen == []
+            assert (user_refund.call_count, global_refund.call_count) == (1, 1)
+
+    def test_in_the_agent_mode_an_unknown_project_found_by_a_tool_keeps_both_messages(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the agent mode, a budget of one message per hour, a global ceiling of one and a
+            model that asks the project tool for a project that does not exist
+        WHEN a message is posted, and then another
+        THEN the first is answered after the tool said not_found, each counter was charged once
+            and gave nothing back, because the project is only looked up once the model asks,
+            and the second is 429
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_MODE="agent",
+            ASSISTANT_RATE_LIMIT_PER_HOUR="1",
+            ASSISTANT_GLOBAL_TURNS_PER_HOUR="1",
+        )
+        token = register_and_login(client, "agent-unknown-project@example.com")
+        _use_model(
+            client, ToolEchoingModel(first_call=_tool_call("get_project", UNKNOWN_PROJECT_ID))
+        )
+
+        with (
+            _watched_budgets() as (user_charge, global_charge),
+            _watched_refunds() as (user_refund, global_refund),
+        ):
+            # WHEN
+            first = client.post(
+                CHAT,
+                json={"message": "hi", "project_id": UNKNOWN_PROJECT_ID},
+                headers=auth_header(token),
+            )
+
+            # THEN
+            assert first.status_code == 200
+            assert first.json()["answer"].startswith("not_found:")
+            assert (user_charge.call_count, global_charge.call_count) == (1, 1)
+            assert (user_refund.call_count, global_refund.call_count) == (0, 0)
+            again = client.post(CHAT, json={"message": "two"}, headers=auth_header(token))
+            assert again.status_code == 429
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    def test_a_failure_of_the_answer_model_keeps_both_messages(
+        self, assistant_settings, client, configure, endpoint, mode
+    ):
+        """
+        GIVEN a budget of one message per hour and the real answer model pointed at a port
+            nothing listens on, in the given mode
+        WHEN a message is posted, and then another
+        THEN the first fails once the model is called (a 503, or an error event on the stream),
+            each counter was charged once and gave nothing back, and the second is 429
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_MODE=mode,
+            ASSISTANT_RATE_LIMIT_PER_HOUR="1",
+            ASSISTANT_GLOBAL_TURNS_PER_HOUR="1",
+        )
+        token = register_and_login(client, f"model-fails-{mode}@example.com")
+
+        with (
+            _watched_budgets() as (user_charge, global_charge),
+            _watched_refunds() as (user_refund, global_refund),
+        ):
+            # WHEN
+            failed = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+
+            # THEN
+            if endpoint == CHAT:
+                assert failed.status_code == 503
+            else:
+                assert [name for name, _ in _events(failed.text)] == ["error"]
+            assert (user_charge.call_count, global_charge.call_count) == (1, 1)
+            assert (user_refund.call_count, global_refund.call_count) == (0, 0)
+            again = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+            assert again.status_code == 429
 
 
 class _SlotProbingModel(ScriptedToolCallingModel):

@@ -428,6 +428,10 @@ watch for the disconnect itself fails, the turn runs on without it and
   its own memory with the same budget, and the record `assistant_throttle_unavailable` is logged
   at ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
+  A turn that fails while it is prepared, before the answer model is called (an unknown project,
+  a retrieval error, a timeout), gives back both its messages, the user's and the ceiling's; in
+  the `agent` mode a project is looked up only when the model calls a tool, so an unknown project
+  there keeps them. A failure of the answer model, and a client that goes away, keep them.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
   set and in memory otherwise, with the same per-process fallback as the message limit. It is
