@@ -421,10 +421,12 @@ watch for the disconnect itself fails, the turn runs on without it and
   (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
   after the turn slot is taken and the request and the retriever are checked (see "Order of the
   checks" below), and before the API client or any model is built, so a message it refuses
-  costs no model call. A refused message is not counted, so the count never passes the
-  budget. A Redis error does not lift it: each process then counts in its own
-  memory with the same budget, and the record `assistant_throttle_unavailable` is logged at
-  ERROR. Set it to `0` to switch it off, for a
+  costs no model call. A refused message is given back: in memory it is never stored, and in
+  Redis its increment is given back by a guarded script (if that give-back fails with a store
+  error, `assistant_throttle_giveback_unavailable` is logged and the counter stays above the
+  budget until the window closes). A Redis error does not lift it: each process then counts in
+  its own memory with the same budget, and the record `assistant_throttle_unavailable` is logged
+  at ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is

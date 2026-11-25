@@ -5,8 +5,10 @@ keyed on a hash of the identifier so no raw id sits in the store, and counted pe
 when Redis errors. Unlike the login throttle this is a fixed-window counter, not a lockout:
 the window opens with a user's first message and closes an hour later however many
 messages follow, because a later message never moves the expiry. A refused message is not
-counted: like the login throttle's reservation, a caller past the budget gives its increment
-back and is refused, which changes nothing, so the count never passes the budget.
+counted: like the login throttle's reservation, a caller past the budget is refused and its
+increment is given back. In memory the refused message is never stored. In Redis the increment
+sits one above the budget until the guarded script gives it back a moment later, and if that
+give-back fails with a store error the counter stays above the budget until the window closes.
 
 The Redis backend runs ``SET key 0 EX <ttl> NX`` and ``INCR key`` in one transaction, so
 a counter is created with its TTL in the same step that first increments it. A crash or
@@ -29,7 +31,7 @@ doing leaves the user's budget whole. A refund never creates a counter: the in-m
 only while the window the charge opened in is still open, and the Redis one runs a Lua script that
 decrements a key only while it exists and is above zero, because a bare ``DECR`` on an expired key
 would create ``-1`` with no expiry and lock the user out for good. The accepted trade-off: a Redis
-refund that lands after the window rolled over takes one message off the new window.
+refund or give-back that lands after the window rolled over takes one message off the new window.
 
 A limit of zero switches the cap off; both backends then allow everything without
 touching their store. A deployed service refuses a zero limit at startup
