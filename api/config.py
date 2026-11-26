@@ -700,12 +700,7 @@ class Settings(BaseSettings):
                 f"environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:
-            if self.assistant_mode not in _ASSISTANT_DEPLOY_MODES:
-                raise ValueError(
-                    f"assistant_mode must be {' or '.join(sorted(_ASSISTANT_DEPLOY_MODES))} on a "
-                    "deployed service; a mode is added to _ASSISTANT_DEPLOY_MODES in api/config.py "
-                    "after a review of its controls"
-                )
+            self._validate_assistant_deploy_mode()
             for limit_name in (
                 "assistant_rate_limit_per_hour",
                 "assistant_address_turns_per_hour",
@@ -735,6 +730,21 @@ class Settings(BaseSettings):
             self._validate_assistant_langsmith_deploy()
             self._validate_assistant_corpus_database()
         return self
+
+    def _validate_assistant_deploy_mode(self) -> None:
+        """Hold a deployed service to the assistant modes in _ASSISTANT_DEPLOY_MODES.
+
+        The message names the field and the allowed modes, built from the set, so it stays true
+        when a reviewed PR adds a mode.
+
+        :raises ValueError: If assistant_mode is outside _ASSISTANT_DEPLOY_MODES.
+        """
+        if self.assistant_mode not in _ASSISTANT_DEPLOY_MODES:
+            raise ValueError(
+                f"assistant_mode must be {' or '.join(sorted(_ASSISTANT_DEPLOY_MODES))} on a "
+                "deployed service; a mode is added to _ASSISTANT_DEPLOY_MODES in api/config.py "
+                "after a review of its controls"
+            )
 
     def _validate_assistant_provider_pins(self) -> None:
         """Hold each hosted role to a reviewed provider host and a reviewed model id.
