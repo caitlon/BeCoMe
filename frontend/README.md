@@ -281,10 +281,13 @@ A unit test sends no network request. `tests/setup.ts` installs the guard in
 `navigator.sendBeacon`, in the happy-dom and the node environment alike. A call that reaches it fails
 with the URL in the message, and the attempt is recorded, so a test also fails when the code under
 test swallowed the refusal. A test mocks a request with `vi.stubGlobal('fetch', vi.fn(...))`, and
-`vi.unstubAllGlobals()` brings the guard back. The setup puts the guard back after every test, so
-a mock assigned to `globalThis.fetch` does not leave its test; a mock that must hold for a whole
-file goes in `beforeEach`. A test that triggers the guard on purpose calls `takeBlockedRequests()` to
-clear the record; `tests/network-guard.test.ts` shows both sides.
+likewise for `XMLHttpRequest` and `WebSocket`. `vi.stubGlobal` does not replace
+`navigator.sendBeacon`, so use `vi.spyOn(navigator, 'sendBeacon')` there. `vi.unstubAllGlobals()`
+brings the guard back. The setup puts the guard back after every test, so a mock assigned to
+`globalThis.fetch` does not leave its test, and a mock that must hold for a whole file goes in
+`beforeEach`. A request recorded after the last test of a file fails the file. A test that triggers
+the guard on purpose calls `takeBlockedRequests()` to clear the record, and
+`tests/network-guard.test.ts` shows both sides.
 
 `tests/ssr/entry-server.test.tsx` runs the server render in the node environment, with no DOM. The
 hydration tests (`hydration.test.tsx`, and `hydration.reduced-motion.test.tsx` in a file of its own

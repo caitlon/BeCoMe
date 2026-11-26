@@ -62,13 +62,21 @@ describe('fetch', () => {
     // GIVEN a test that replaces fetch by plain assignment and never puts it back
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('assigned'));
     expect(await (await fetch('https://example.test/assigned')).text()).toBe('assigned');
-  });
 
-  it('is refused again in the test after the one that assigned it', async () => {
-    // WHEN the next test of the file runs, after the afterEach in tests/setup.ts
-    await expect(fetch('https://example.test/next-test')).rejects.toThrow('next-test');
+    // WHEN the setup's afterEach reinstalls the guard
+    installNetworkGuard();
 
+    // THEN the next call is refused again
+    await expect(fetch('https://example.test/next-call')).rejects.toThrow('next-call');
     expect(takeBlockedRequests()).toHaveLength(1);
+  });
+});
+
+describe('a call without a URL', () => {
+  it('is reported as "(no URL)"', async () => {
+    await expect((fetch as () => Promise<Response>)()).rejects.toThrow('(no URL)');
+
+    expect(takeBlockedRequests()).toEqual([{ api: 'fetch', url: '' }]);
   });
 });
 
@@ -187,15 +195,13 @@ describe('navigator.sendBeacon', () => {
     );
     expect(takeBlockedRequests()).toHaveLength(1);
   });
-});
 
-describe('installNetworkGuard', () => {
-  it('puts the guard back over a replaced fetch', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('replaced'));
+  it('is guarded again after a test removed it', () => {
+    Object.defineProperty(navigator, 'sendBeacon', { value: undefined, configurable: true });
 
     installNetworkGuard();
 
-    await expect(fetch('https://example.test/reinstalled')).rejects.toThrow('reinstalled');
+    expect(() => navigator.sendBeacon('https://example.test/back', 'x')).toThrow('/back');
     expect(takeBlockedRequests()).toHaveLength(1);
   });
 });

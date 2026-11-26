@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { Storage } from 'happy-dom'
-import { afterEach } from 'vitest'
+import { afterAll, afterEach } from 'vitest'
 import { failOnBlockedRequests, installNetworkGuard } from './support/network-guard'
 
 // Node 26 puts its own `localStorage` accessor on `globalThis`, and that accessor returns
@@ -46,6 +46,10 @@ afterEach(() => {
   installNetworkGuard()
   failOnBlockedRequests()
 })
+
+// A request recorded after the last test of a file (an afterAll, a timer, a late unmount) fails
+// the file instead of passing.
+afterAll(failOnBlockedRequests)
 
 afterEach(() => {
   cleanup()

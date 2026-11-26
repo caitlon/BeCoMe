@@ -12,7 +12,7 @@
  * A test that triggers the guard on purpose calls `takeBlockedRequests()` to clear the record.
  */
 
-export interface BlockedRequest {
+interface BlockedRequest {
   /** The API the request went through: `fetch`, `XMLHttpRequest`, `WebSocket` and so on. */
   api: string;
   url: string;
@@ -22,9 +22,11 @@ const blocked: BlockedRequest[] = [];
 
 const HOW_TO_MOCK =
   "Frontend unit tests send no network requests: mock it, for example " +
-  "vi.stubGlobal('fetch', vi.fn(...)) for fetch or the same call for the other global.";
+  "vi.stubGlobal('fetch', vi.fn(...)), likewise for XMLHttpRequest and WebSocket, " +
+  "or vi.spyOn(navigator, 'sendBeacon') for sendBeacon.";
 
 function urlOf(input: unknown): string {
+  if (input === undefined) return "";
   if (typeof input === "object" && input !== null && "url" in input) {
     return String(input.url);
   }
@@ -81,6 +83,10 @@ const GuardedWebSocket =
         }
       };
 
+// Whether the environment has a sendBeacon, read once so that a test which removes or stubs it
+// does not leave later tests unguarded.
+const hasSendBeacon = typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function";
+
 function guardedSendBeacon(url: string | URL): boolean {
   throw refuse("navigator.sendBeacon", urlOf(url));
 }
@@ -94,20 +100,15 @@ function define(target: object, key: string, value: unknown): void {
   });
 }
 
-/** Puts the guard over every request API the environment has, replacing whatever stands there. */
+/**
+ * Puts the guard over every request API the environment has, replacing whatever stands there.
+ * Under vitest's happy-dom `window` is `globalThis`, so defining on `globalThis` covers both.
+ */
 export function installNetworkGuard(): void {
-  const targets: object[] = [globalThis];
-  if (typeof window !== "undefined" && window !== globalThis) {
-    targets.push(window);
-  }
-  for (const target of targets) {
-    define(target, "fetch", guardedFetch);
-    if (GuardedXhr) define(target, "XMLHttpRequest", GuardedXhr);
-    if (GuardedWebSocket) define(target, "WebSocket", GuardedWebSocket);
-  }
-  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-    define(navigator, "sendBeacon", guardedSendBeacon);
-  }
+  define(globalThis, "fetch", guardedFetch);
+  if (GuardedXhr) define(globalThis, "XMLHttpRequest", GuardedXhr);
+  if (GuardedWebSocket) define(globalThis, "WebSocket", GuardedWebSocket);
+  if (hasSendBeacon) define(navigator, "sendBeacon", guardedSendBeacon);
 }
 
 /** Returns the requests the guard refused since the last call and clears the record. */
