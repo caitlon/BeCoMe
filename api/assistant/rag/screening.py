@@ -61,8 +61,9 @@ _ROLE_MARKERS: tuple[str, ...] = (
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
-        r"\bignore\s*(?:all\s*|the\s*|any\s*)?(?:previous|prior|above|earlier)\s*instructions\b",
-        r"\bdisregard\s*(?:all\s*|the\s*)?(?:previous|prior|above)\s*(?:instructions|rules)\b",
+        r"\b(?:ignore|disregard)\s*(?:(?:all|the|any|your|my|these|those|every|everything)\s*){0,2}"
+        r"(?:(?:previous|prior|above|earlier)\s*)?(?:instructions|rules|prompts?)\b",
+        r"\b(?:ignore|disregard)\s*everything\s*above\b",
         r"\bnew\s*instructions\b",
         r"\bsystem\s*prompt\b",
         r"\bdo(?:\s*not|n['\u2019]t)\s*tell\s*the\s*user\b",
@@ -84,8 +85,10 @@ class FlaggedChunk:
     :param layer: "public", "local", or "" when the chunk carries no layer metadata.
     :param source: The chunk's source path, or its title when it has no path, or "".
     :param section: The chunk's heading path, "" when it has none.
-    :param reason: What was found, for example "assistant tag <docs>". Never the
-        chunk's text.
+    :param reason: What was found, for example "assistant tag <docs>". For a phrase it
+        quotes the span matched in the normalized text (case folded, whitespace
+        collapsed), so it holds words of the chunk; for a tag or a marker it is a fixed
+        string.
     """
 
     layer: str
