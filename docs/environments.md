@@ -164,7 +164,7 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 `VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod sets it to `true`, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
-The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs, key and model ids of a deployed service. An id left unset (the local default) or outside the reviewed list in `api/config.py` fails start-up instead of the first question, and so does a base URL host outside that file's reviewed list. Set each one explicitly on every deployed backend:
+The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs, key and model ids of a deployed service. An id left unset (the local default) or outside the reviewed list in `api/config.py` fails start-up instead of the first question, and so does a base URL host outside that file's reviewed list. `ASSISTANT_MODE` must stay unset or `workflow` on a deployed backend; `hybrid` and `agent` fail start-up. Set each model id explicitly on every deployed backend:
 
 - `ASSISTANT_ANSWER_LLM_MODEL`: the model that writes chat answers, `Qwen3.5-9B` on OVHcloud.
 - `ASSISTANT_LLM_MODEL`: the query model, `Qwen3.5-9B` on OVHcloud.

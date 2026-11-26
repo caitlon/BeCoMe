@@ -347,6 +347,10 @@ runs skip the check.
 - `agent`: nothing is fetched ahead; the model calls the tools, at most
   `ASSISTANT_MAX_TOOL_CALLS` times.
 
+A deployed service (dev, prod) runs `workflow` only: `_validate_assistant_deploy` refuses `hybrid`
+and `agent` there until a reviewed PR adds them to `_ASSISTANT_DEPLOY_MODES` in `api/config.py`,
+once their controls for a deployed service are in place. A laptop and CI may pick any mode.
+
 Whatever the mode, the model reads the opinions through `GET .../opinions?for_assistant=true`
 (`UserApiClient.get_opinions`), which omits members who objected to the assistant (GDPR Art. 21,
 `users.assistant_objection`) except the caller. The result block still counts them and includes
