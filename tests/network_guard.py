@@ -124,8 +124,9 @@ def remote_database_host(url: str) -> str | None:
 def remote_libpq_environment() -> tuple[str, str] | None:
     """Find a libpq environment variable that points a database connection off this machine.
 
-    libpq reads these whatever the URL says: ``PGHOST`` and ``PGHOSTADDR`` fill in a missing
-    host, and ``PGSERVICE`` names a service file that cannot be read here.
+    ``PGHOST`` and ``PGHOSTADDR`` fill in a host the URL leaves out, and ``PGSERVICE`` names a
+    service file that cannot be read here. They are refused whatever the URL says, on purpose:
+    a later test may build a URL without a host.
 
     :return: The variable and its host (``service=<name>`` for ``PGSERVICE``), or None.
     """

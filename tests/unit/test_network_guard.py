@@ -106,7 +106,7 @@ _OUTSIDE_HOSTS += [
     "[::1]",
 ]
 _OUTSIDE_HOSTS += ["localhost.localdomain", "ip6-localhost", "ip6-loopback", "[127.0.0.1]"]
-_SOCKET_DIR = "/tmp"  # noqa: S108 - a unix socket directory, never created
+_SOCKET_DIR = "/tmp"  # noqa: S108 - parent of short-lived unix socket folders
 
 
 def _run(pytester, conftest: str, source: str, *args: str) -> Any:
