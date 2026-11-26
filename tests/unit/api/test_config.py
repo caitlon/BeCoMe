@@ -5,6 +5,7 @@ from typing import ClassVar
 import pytest
 from pydantic import ValidationError
 
+import api.config as config_module
 from api.config import Environment, Settings
 from api.schemas.assistant import MAX_HISTORY_ENTRIES, MAX_MESSAGE_CHARS
 
@@ -1361,6 +1362,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
         monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.delenv("ASSISTANT_MODE", raising=False)
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "60")
@@ -1750,6 +1752,172 @@ class TestAssistantSettings:
         # THEN
         assert getattr(settings, url) == good_url
         assert getattr(settings, model) == model_id
+
+    @pytest.mark.parametrize("mode", ["agent", "hybrid"])
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [
+            ("dev", "dev", False),
+            ("prod", "prod", False),
+            ("prod", None, False),
+            ("dev", "prod", True),
+        ],
+    )
+    def test_rejects_a_tool_mode_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing, mode
+    ):
+        """
+        GIVEN a fully configured deployed service, the Railway dev, the Railway prod, the
+            prod profile without Railway and Railway prod with TESTING set included, and
+            ASSISTANT_MODE set to a mode that gives the model tools
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails on the mode, since only workflow has its controls
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_MODE", mode)
+
+        # WHEN/THEN
+        with pytest.raises(
+            ValidationError, match="assistant_mode must be workflow on a deployed service"
+        ):
+            Settings()
+
+    @pytest.mark.parametrize("mode", ["workflow", None])
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [
+            ("dev", "dev", False),
+            ("prod", "prod", False),
+            ("prod", None, False),
+            ("dev", "prod", True),
+        ],
+    )
+    def test_allows_workflow_mode_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing, mode
+    ):
+        """
+        GIVEN a fully configured deployed service with ASSISTANT_MODE set to workflow or
+            left unset
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes and the mode is workflow
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        if mode is not None:
+            monkeypatch.setenv("ASSISTANT_MODE", mode)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_mode == "workflow"
+
+    def test_a_mode_added_to_the_reviewed_set_is_allowed_and_the_message_follows_it(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN _ASSISTANT_DEPLOY_MODES widened to workflow and hybrid, as a reviewed PR would
+            do, and a deployed prod service
+        WHEN Settings is constructed with hybrid and then with agent
+        THEN hybrid passes and agent is refused with a message that names both allowed modes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setattr(
+            config_module, "_ASSISTANT_DEPLOY_MODES", frozenset({"workflow", "hybrid"})
+        )
+
+        # WHEN
+        monkeypatch.setenv("ASSISTANT_MODE", "hybrid")
+        settings = Settings()
+        monkeypatch.setenv("ASSISTANT_MODE", "agent")
+
+        # THEN
+        assert settings.assistant_mode == "hybrid"
+        with pytest.raises(ValidationError, match="assistant_mode must be hybrid or workflow"):
+            Settings()
+
+    @pytest.mark.parametrize("mode", ["agent", "hybrid"])
+    def test_a_laptop_may_use_any_assistant_mode(self, monkeypatch, tmp_path, mode):
+        """
+        GIVEN the dev profile with no Railway marker (a laptop), the assistant on, every
+            role local and a mode that gives the model tools
+        WHEN Settings is constructed
+        THEN validation passes, since the mode rule binds deployed services only
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_MODE", mode)
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_mode == mode
+
+    @pytest.mark.parametrize("mode", ["agent", "hybrid"])
+    def test_the_ci_test_profile_may_use_any_assistant_mode(self, monkeypatch, tmp_path, mode):
+        """
+        GIVEN APP_ENV=test with TESTING=1 and no Railway marker (the CI test runner), the
+            assistant on, every role local and a mode that gives the model tools
+        WHEN Settings is constructed
+        THEN validation passes, since the runner is not a deployed service
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-test")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_MODE", mode)
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_mode == mode
+
+    @pytest.mark.parametrize("mode", ["agent", "hybrid"])
+    def test_a_tool_mode_is_allowed_while_the_assistant_is_off_on_a_deployed_service(
+        self, monkeypatch, tmp_path, mode
+    ):
+        """
+        GIVEN a fully configured prod service with ASSISTANT_ENABLED=false and a mode that
+            gives the model tools
+        WHEN Settings is constructed
+        THEN validation passes, since the deploy rules apply only to a service that runs the
+            assistant
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_MODE", mode)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is False
+        assert settings.assistant_mode == mode
 
     def test_a_laptop_may_use_any_provider_host_and_model_id(self, monkeypatch, tmp_path):
         """
