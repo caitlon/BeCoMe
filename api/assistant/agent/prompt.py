@@ -148,6 +148,27 @@ def _project_block(project: ResultView) -> str:
     return "\n".join(lines)
 
 
+def result_values(result: ResultView) -> list[str]:
+    """List the numbers :func:`_project_block` writes for a result, as it writes them.
+
+    These are the structured values of the result, with none of its free text: the four
+    numbers of the best compromise, the mean and the median, the maximum error, the number
+    of experts and, when the block shows a Likert reading, its value.
+
+    :param result: The result to read.
+    :return: The numbers as strings: floats with two decimals, integers as they are.
+    """
+    values = [
+        format_number(number)
+        for fuzzy in (result.best_compromise, result.arithmetic_mean, result.median)
+        for number in (fuzzy.lower, fuzzy.peak, fuzzy.upper, fuzzy.centroid)
+    ]
+    values += [format_number(result.max_error), str(result.num_experts)]
+    if result.likert_value is not None and result.likert_decision is not None:
+        values.append(str(result.likert_value))
+    return values
+
+
 def render_context_block(
     chunks: list[tuple[int, RetrievedChunk]], project: ResultView | None
 ) -> str:

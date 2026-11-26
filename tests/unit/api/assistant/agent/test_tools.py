@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import tools
+from api.assistant.agent.checks import find_ungrounded_numbers
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.masking import mask_participants
 from api.assistant.agent.prompt import render_context_block
@@ -24,6 +25,9 @@ from api.assistant.agent.tools import (
     get_project_result,
     list_my_projects,
     mask_opinion_names,
+    opinion_values,
+    project_list_values,
+    project_values,
     render_opinions,
     render_project,
     render_project_list,
@@ -1172,6 +1176,251 @@ class TestToolOutputs:
 
         assert len(ctx.tool_outputs) == 1
         assert "[1]" not in "".join(ctx.tool_outputs)
+
+
+PLANTED = "7351"
+
+
+class TestProjectValues:
+    """The numbers of a project's details, written as the block writes them."""
+
+    def test_lists_the_scale_bounds_and_nothing_from_the_free_text(self):
+        """
+        GIVEN a project whose name, description and unit carry digits
+        WHEN its values are listed
+        THEN they are the two scale bounds with two decimals
+        """
+        project = _project(
+            name=f"Plan {PLANTED}", description=f"Budget {PLANTED}", scale_unit=f"{PLANTED} u"
+        ).model_copy(update={"scale_min": -5.0, "scale_max": 250.5})
+
+        assert project_values(project) == ["-5.00", "250.50"]
+        assert all(value in render_project(project) for value in project_values(project))
+
+
+class TestProjectListValues:
+    """The numbers of a project list, written as the block writes them."""
+
+    def test_lists_the_count_and_the_ids_but_not_the_names(self):
+        """
+        GIVEN two projects, one named with digits
+        WHEN the values are listed
+        THEN they are the count and the two ids
+        """
+        projects = [
+            ProjectBrief(id=PROJECT_ID, name=f"Plan {PLANTED}", role="admin", is_example=False),
+            ProjectBrief(id="other-id", name="Second", role="expert", is_example=True),
+        ]
+
+        values = project_list_values(projects)
+
+        assert values == ["2", PROJECT_ID, "other-id"]
+        assert all(value in render_project_list(projects) for value in values)
+
+    def test_an_id_is_cleaned_the_way_the_block_cleans_it(self):
+        """
+        GIVEN a project whose id holds angle brackets
+        WHEN the values are listed
+        THEN the id is written as the block writes it
+        """
+        project = ProjectBrief(id="<a>b1", name="P", role="admin", is_example=False)
+
+        assert project_list_values([project]) == ["1", "ab1"]
+
+    def test_fifty_projects_have_no_remainder(self):
+        """
+        GIVEN exactly fifty projects
+        WHEN the values are listed
+        THEN they are the count and fifty ids
+        """
+        values = project_list_values([_brief(i) for i in range(50)])
+
+        assert len(values) == 51
+        assert values[0] == "50"
+
+    def test_the_remainder_is_listed_only_when_the_block_writes_it(self):
+        """
+        GIVEN sixty projects
+        WHEN the values are listed
+        THEN they are the count, the first fifty ids and the number of the rest
+        """
+        projects = [_brief(i) for i in range(60)]
+
+        values = project_list_values(projects)
+
+        assert values == ["60", *(_brief(i).id for i in range(50)), "10"]
+        assert _brief(50).id not in values
+        assert "... and 10 more projects" in render_project_list(projects)
+
+
+class TestOpinionValues:
+    """The numbers of an opinions list, written as the block writes them."""
+
+    def test_lists_the_count_and_the_four_numbers_of_each_row_but_no_text(self):
+        """
+        GIVEN two opinions whose names and positions carry digits
+        WHEN the values are listed
+        THEN they are the count and each row's four numbers
+        """
+        opinions = [
+            _opinion(name=f"Jana {PLANTED}", position=f"Hydrologist {PLANTED}"),
+            _opinion(name="Karel"),
+        ]
+
+        values = opinion_values(opinions)
+
+        assert values == ["2", *["37.00", "42.00", "47.00", "42.00"] * 2]
+        assert all(value in render_opinions(opinions) for value in values)
+
+    def test_fifty_opinions_have_no_remainder(self):
+        """
+        GIVEN exactly fifty opinions
+        WHEN the values are listed
+        THEN they are the count and two hundred numbers
+        """
+        values = opinion_values([_opinion() for _ in range(50)])
+
+        assert len(values) == 201
+        assert values[0] == "50"
+
+    def test_the_remainder_is_listed_only_when_the_block_writes_it(self):
+        """
+        GIVEN fifty-two opinions, the last two with numbers of their own
+        WHEN the values are listed
+        THEN they are the count, the first fifty rows and the number of the rest
+        """
+        late = OpinionView(
+            expert_name="Late",
+            position="x",
+            lower_bound=1.5,
+            peak=2.5,
+            upper_bound=3.5,
+            centroid=2.5,
+        )
+        opinions = [*(_opinion() for _ in range(50)), late, late]
+
+        values = opinion_values(opinions)
+
+        assert len(values) == 1 + 50 * 4 + 1
+        assert values[0] == "52"
+        assert values[-1] == "2"
+        assert "1.50" not in values
+        assert "... and 2 more opinions" in render_opinions(opinions)
+
+
+def _planted_client() -> AsyncMock:
+    """Build a client whose data carries the planted number in every free-text field."""
+    client = AsyncMock(spec=UserApiClient)
+    client.list_projects.return_value = [
+        ProjectBrief(id=PROJECT_ID, name=f"Plan {PLANTED}", role="admin", is_example=False)
+    ]
+    client.get_project.return_value = _project(
+        name=f"Plan {PLANTED}", description=f"Budget {PLANTED}", scale_unit=f"{PLANTED} u"
+    )
+    client.get_result.return_value = _result().model_copy(
+        update={"agreement_level": f"high {PLANTED}"}
+    )
+    client.get_opinions.return_value = [
+        _opinion(name=f"Jana {PLANTED}", position=f"Hydrologist {PLANTED}")
+    ]
+    return client
+
+
+@pytest.mark.asyncio
+class TestDataValues:
+    """Each project tool adds the structured numbers of its reply to data_values, and no text."""
+
+    @pytest.mark.parametrize(
+        ("tool", "args", "expected"),
+        [
+            (list_my_projects, {}, ["1", PROJECT_ID]),
+            (get_project, {"project_id": PROJECT_ID}, ["0.00", "100.00"]),
+            (
+                get_project_result,
+                {"project_id": PROJECT_ID},
+                [
+                    *("11.54", "14.19", "17.19", "14.31"),
+                    *("17.08", "20.38", "23.38", "20.28"),
+                    *("6.00", "8.00", "11.00", "8.33"),
+                    *("5.97", "13"),
+                ],
+            ),
+            (
+                get_project_opinions,
+                {"project_id": PROJECT_ID},
+                ["1", "37.00", "42.00", "47.00", "42.00"],
+            ),
+        ],
+        ids=["projects", "project", "result", "opinions"],
+    )
+    async def test_holds_the_structured_values_and_not_the_planted_number(
+        self, tool, args, expected
+    ):
+        """
+        GIVEN a client whose data carries a number in every free-text field
+        WHEN a project tool runs
+        THEN data_values holds the structured values of the reply and not the number, while
+             the number check flags it and grounds a structured value
+        """
+        ctx = _ctx(_planted_client())
+
+        reply = await tool.ainvoke({**args, "runtime": _runtime(ctx)})
+
+        assert ctx.data_values == expected
+        assert PLANTED in reply or tool is get_project_result
+        assert find_ungrounded_numbers(f"It is {PLANTED}.", ctx.data_values) == [PLANTED]
+        assert find_ungrounded_numbers(f"It is {expected[-1]}.", ctx.data_values) == []
+
+    @pytest.mark.parametrize(
+        ("tool", "method", "error"),
+        [
+            (get_project, "get_project", AssistantNotFoundError("no")),
+            (get_project, "get_project", AssistantUpstreamError("boom")),
+            (get_project_result, "get_result", AssistantNotFoundError("no")),
+            (get_project_result, "get_result", AssistantUpstreamError("boom")),
+            (get_project_result, "get_result", None),
+            (get_project_opinions, "get_opinions", AssistantNotFoundError("no")),
+            (get_project_opinions, "get_opinions", AssistantUpstreamError("boom")),
+            (get_project_opinions, "get_opinions", []),
+            (list_my_projects, "list_projects", AssistantUpstreamError("boom")),
+            (list_my_projects, "list_projects", []),
+        ],
+    )
+    async def test_a_reply_that_is_not_data_adds_no_value(self, tool, method, error):
+        """
+        GIVEN a client whose call fails, finds nothing or has no data
+        WHEN the tool runs
+        THEN the line reaches tool_outputs but data_values stays empty
+        """
+        client = AsyncMock(spec=UserApiClient)
+        mock = getattr(client, method)
+        if isinstance(error, Exception):
+            mock.side_effect = error
+        else:
+            mock.return_value = error
+        ctx = _ctx(client)
+        args = {} if tool is list_my_projects else {"project_id": PROJECT_ID}
+
+        reply = await tool.ainvoke({**args, "runtime": _runtime(ctx)})
+
+        assert reply.startswith(("not_found:", "unavailable:", "no_result:"))
+        assert ctx.tool_outputs == [reply]
+        assert ctx.data_values == []
+
+    async def test_a_search_adds_no_value(self):
+        """
+        GIVEN a retriever that finds a passage
+        WHEN the search tool runs
+        THEN data_values stays empty: the passage grounds through the source registry
+        """
+        retriever = AsyncMock(spec=DocsRetriever)
+        retriever.search.return_value = [_chunk("It is 8 weeks.")]
+        ctx = _ctx(retriever=retriever)
+
+        await search_docs.ainvoke({"query": "x", "runtime": _runtime(ctx)})
+
+        assert ctx.data_values == []
+        assert find_ungrounded_numbers("It is 8 weeks.", ctx.sources.texts()) == []
 
 
 @pytest.mark.asyncio
