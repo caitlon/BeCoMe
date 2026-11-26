@@ -1232,7 +1232,15 @@ _PROVIDER_ROLES = [
     ("assistant_llm_provider", "assistant_llm_base_url"),
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 ]
+# The same roles with their model setting and a reviewed model id, for the pin tests.
+_PINNED_ROLES = [
+    ("assistant_answer_llm_base_url", "assistant_answer_llm_model", "Qwen3.5-9B"),
+    ("assistant_llm_base_url", "assistant_llm_model", "Qwen3.5-9B"),
+    ("assistant_embedding_base_url", "assistant_embedding_model", "bge-m3"),
+]
 _REMOTE_URL = "https://models.example.test/v1"
+_PROVIDER_HOST = "oai.endpoints.kepler.ai.cloud.ovh.net"
+_PROVIDER_URL = f"https://{_PROVIDER_HOST}/v1"
 _LANGSMITH_LIBRARY_SWITCHES = [
     "LANGSMITH_TRACING_V2",
     "LANGCHAIN_TRACING_V2",
@@ -1362,7 +1370,9 @@ class TestAssistantSettings:
             monkeypatch.delenv(name, raising=False)
         for provider, url in _PROVIDER_ROLES:
             monkeypatch.setenv(provider.upper(), "api")
-            monkeypatch.setenv(url.upper(), _REMOTE_URL)
+            monkeypatch.setenv(url.upper(), _PROVIDER_URL)
+        for _, model, model_id in _PINNED_ROLES:
+            monkeypatch.setenv(model.upper(), model_id)
 
     @pytest.mark.parametrize(
         ("profile", "railway_name"),
@@ -1593,6 +1603,272 @@ class TestAssistantSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
             Settings()
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("dev", "dev"), ("prod", "prod"), ("prod", None)]
+    )
+    @pytest.mark.parametrize("url", [role[0] for role in _PINNED_ROLES])
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "https://api.openai.com/v1",
+            "https://oai.endpoints.kepler.ai.cloud.ovh.net.evil.test/v1",
+            "https://oai.endpoints.kepler.ai.cloud.ovh.net./v1",
+            "https://evil-oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+            "https://user:pw@oai.endpoints.kepler.ai.cloud.ovh.net/v1",  # pragma: allowlist secret
+            "https://alice@oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+            "https://oai.endpoints.kepler.ai.cloud.ovh.net:8443/v1",
+            "https://oai.endpoints.kepler.ai.cloud.ovh.net:abc/v1",
+        ],
+    )
+    def test_rejects_an_unreviewed_provider_url_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, url, bad_url
+    ):
+        """
+        GIVEN a deployed service (dev, prod, or the prod profile without a Railway marker)
+            with one role's base URL naming a host outside the
+            reviewed list: another provider, a lookalike suffix, a trailing dot, a prefix
+            lookalike, userinfo, a port other than 443 or a non-numeric port
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails naming that URL setting, and the message carries neither
+            the URL nor its host nor its credentials
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        monkeypatch.setenv(url.upper(), bad_url)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{url} must name a reviewed provider host") as e:
+            Settings()
+        message = str(e.value)
+        for leaked in ("openai.com", "evil", "user:pw", "alice", "8443", "abc"):
+            assert leaked not in message
+        assert _PROVIDER_HOST not in message
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("dev", "dev"), ("prod", "prod"), ("prod", None)]
+    )
+    @pytest.mark.parametrize("model", [role[1] for role in _PINNED_ROLES])
+    @pytest.mark.parametrize(
+        "bad_model",
+        ["gpt-5", "qwen3.5-9b", " Qwen3.5-9B", "bge-m3 ", "BGE-M3", ""],
+    )
+    def test_rejects_an_unreviewed_model_id_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, model, bad_model
+    ):
+        """
+        GIVEN a deployed service (dev, prod, or the prod profile without a Railway marker)
+            with one role's model id outside its reviewed set: an
+            unlisted model, a case variant, one with a surrounding space or an empty one
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails naming that model setting, and the message carries no id
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        monkeypatch.setenv(model.upper(), bad_model)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id") as e:
+            Settings()
+        if bad_model.strip():
+            assert bad_model.strip() not in str(e.value)
+
+    @pytest.mark.parametrize("model", [role[1] for role in _PINNED_ROLES])
+    def test_rejects_a_local_default_model_id_on_a_deployed_service(
+        self, monkeypatch, tmp_path, model
+    ):
+        """
+        GIVEN a deployed prod service with one role's model env var removed, so the code
+            default (a local id) applies
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails naming that model setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.delenv(model.upper(), raising=False)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id"):
+            Settings()
+
+    @pytest.mark.parametrize(
+        ("model", "swapped_id"),
+        [
+            ("assistant_embedding_model", "Qwen3.5-9B"),
+            ("assistant_answer_llm_model", "bge-m3"),
+            ("assistant_llm_model", "bge-m3"),
+        ],
+    )
+    def test_keeps_chat_and_embedding_model_ids_apart_on_a_deployed_service(
+        self, monkeypatch, tmp_path, model, swapped_id
+    ):
+        """
+        GIVEN a deployed dev service with the chat model id on the embedding role, or the
+            embedding model id on a chat role
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails naming that model setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(model.upper(), swapped_id)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id") as e:
+            Settings()
+        assert swapped_id not in str(e.value)
+
+    @pytest.mark.parametrize(("url", "model", "model_id"), _PINNED_ROLES)
+    @pytest.mark.parametrize(
+        "good_url",
+        [
+            "https://OAI.Endpoints.Kepler.AI.Cloud.OVH.net/v1",
+            "https://oai.endpoints.kepler.ai.cloud.ovh.net:443/v1",
+        ],
+    )
+    def test_accepts_an_upper_case_host_and_an_explicit_443_port(
+        self, monkeypatch, tmp_path, url, model, model_id, good_url
+    ):
+        """
+        GIVEN a deployed dev service whose base URL spells the reviewed host in upper case
+            or names port 443 explicitly
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes, since the host is compared lower-cased and 443 is the default
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(url.upper(), good_url)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert getattr(settings, url) == good_url
+        assert getattr(settings, model) == model_id
+
+    def test_a_laptop_may_use_any_provider_host_and_model_id(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker (a laptop), the assistant on, every
+            role api with a key, a host outside the reviewed list and model id gpt-5
+        WHEN Settings is constructed
+        THEN validation passes, since the pins bind deployed services only
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        for provider, url in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "api")
+            monkeypatch.setenv(url.upper(), "https://api.openai.com/v1")
+        for _, model, _ in _PINNED_ROLES:
+            monkeypatch.setenv(model.upper(), "gpt-5")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_llm_base_url == "https://api.openai.com/v1"
+        assert settings.assistant_answer_llm_model == "gpt-5"
+
+    def test_holds_railway_prod_to_the_provider_pins_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 alongside Railway environment prod, so is_deploy is false, with one
+            role's base URL on an unreviewed host
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the provider pin still refuses it, since a process on Railway prod is a
+            deployed service whatever else is set alongside it
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", "https://api.openai.com/v1")
+
+        # WHEN/THEN
+        with pytest.raises(
+            ValidationError, match="assistant_answer_llm_base_url must name a reviewed provider"
+        ):
+            Settings()
+
+    def test_holds_railway_prod_to_the_model_pins_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 alongside Railway environment prod, with the embedding model id
+            set to one that is not reviewed
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the model pin still refuses it, naming that model setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_EMBEDDING_MODEL", "gpt-5")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_embedding_model must be a reviewed"):
+            Settings()
+
+    def test_does_not_pin_providers_while_the_assistant_is_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed prod service with the assistant off, a base URL on an unreviewed
+            host and an unreviewed model id
+        WHEN Settings is constructed
+        THEN validation passes, since nothing calls the providers
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_MODEL", "gpt-5")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_does_not_pin_providers_in_the_ci_test_profile(self, monkeypatch, tmp_path):
+        """
+        GIVEN APP_ENV=test with TESTING=1 and no Railway marker, the assistant on, every
+            role api with a key, a host outside the reviewed list and model id gpt-5
+        WHEN Settings is constructed
+        THEN validation passes, since the runner is not a deployed service
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-test")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        for provider, url in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "api")
+            monkeypatch.setenv(url.upper(), "https://api.openai.com/v1")
+        for _, model, _ in _PINNED_ROLES:
+            monkeypatch.setenv(model.upper(), "gpt-5")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_llm_model == "gpt-5"
 
     def test_allows_local_roles_in_the_ci_test_profile(self, monkeypatch, tmp_path):
         """

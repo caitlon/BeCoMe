@@ -104,12 +104,38 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
 
-# Each assistant model role that can run hosted: its provider setting, and the base URL
-# setting a hosted role sends its requests to.
+# The hosts a deployed service may send assistant prompts and the provider key to, and the
+# model ids it may ask for there. Constants and not settings on purpose: a setting would be
+# one more Railway variable next to the URL it guards, changed by the same person with the
+# same lack of review, while a constant changes only through a reviewed PR. Adding a host or
+# a model id is a code change, checked against the provider's data processing agreement.
+_ASSISTANT_PROVIDER_HOSTS = frozenset({"oai.endpoints.kepler.ai.cloud.ovh.net"})
+_ASSISTANT_CHAT_MODELS = frozenset({"Qwen3.5-9B"})
+_ASSISTANT_EMBEDDING_MODELS = frozenset({"bge-m3"})
+_ASSISTANT_PROVIDER_PORT = 443
+
+# Each assistant model role that can run hosted: its provider setting, the base URL setting a
+# hosted role sends its requests to, its model setting and the model ids a deployed service
+# may name there.
 _ASSISTANT_PROVIDER_ROLES = (
-    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
-    ("assistant_llm_provider", "assistant_llm_base_url"),
-    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+    (
+        "assistant_answer_provider",
+        "assistant_answer_llm_base_url",
+        "assistant_answer_llm_model",
+        _ASSISTANT_CHAT_MODELS,
+    ),
+    (
+        "assistant_llm_provider",
+        "assistant_llm_base_url",
+        "assistant_llm_model",
+        _ASSISTANT_CHAT_MODELS,
+    ),
+    (
+        "assistant_embedding_provider",
+        "assistant_embedding_base_url",
+        "assistant_embedding_model",
+        _ASSISTANT_EMBEDDING_MODELS,
+    ),
 )
 
 # Railway environments the assistant may run in: the two real ones. An allowlist, so it
@@ -192,6 +218,28 @@ def _same_postgres_database(first: URL, second: URL) -> bool:
         )
 
     return identity(first) == identity(second)
+
+
+def _is_reviewed_provider_url(url: str) -> bool:
+    """Return whether a model provider base URL names a reviewed host and nothing else.
+
+    :param url: The base URL setting of a hosted model role.
+    :return: True when the host is in _ASSISTANT_PROVIDER_HOSTS (``urlparse`` has lowered
+        its case) and the URL has no user, no password and no port other than 443. An
+        unparsable URL or port is False, and no error text leaves this function, since it
+        could carry the value.
+    """
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.hostname in _ASSISTANT_PROVIDER_HOSTS
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, _ASSISTANT_PROVIDER_PORT)
+    )
 
 
 def _demands_tls(url: URL) -> bool:
@@ -377,7 +425,9 @@ class Settings(BaseSettings):
     # URL, paid for with assistant_api_key_ovh (OVHcloud, an EU provider). The roles switch
     # independently; the reranker has no hosted counterpart and always stays local.
     # _validate_assistant_providers refuses an api role with no key, a non-https URL or a
-    # loopback host.
+    # loopback host. On a deployed service _validate_assistant_provider_pins also refuses a
+    # base URL host outside _ASSISTANT_PROVIDER_HOSTS and a model id outside the role's
+    # reviewed set; a laptop is not checked.
     assistant_answer_provider: Literal["local", "api"] = "local"
     assistant_llm_provider: Literal["local", "api"] = "local"
     assistant_embedding_provider: Literal["local", "api"] = "local"
@@ -583,8 +633,11 @@ class Settings(BaseSettings):
         (``production``, ``staging``, a preview) is refused. The prod profile is a deploy
         too and is held to every rule below. A deployed service has no
         llama-server to reach, so every model role there must be api; a laptop and a CI
-        runner keep local roles. A zero message limit
-        switches that cap off, so a deployed service may set none of the per-user, the
+        runner keep local roles. The api roles are pinned too: each base URL must name a host
+        in _ASSISTANT_PROVIDER_HOSTS, with no user, password or port other than 443, and each
+        model id must be in the role's reviewed set, so a changed variable cannot send
+        project text and the provider key to a host or a model nobody reviewed. A zero
+        message limit switches that cap off, so a deployed service may set none of the per-user, the
         per-address and the global limit to zero, and the per-address limit must stay below the
         global one, since an address that could spend the whole ceiling would not be capped by
         it. Neither check applies to a laptop. LangSmith tracing
@@ -615,7 +668,9 @@ class Settings(BaseSettings):
             the allowlist, or on a deployed service while
             assistant_rate_limit_per_hour, assistant_address_turns_per_hour or
             assistant_global_turns_per_hour is 0, the per-address limit is not below the global
-            one, a model role is still local, assistant_langsmith_enabled is true with an
+            one, a model role is still local, a role's base URL names a host outside the
+            reviewed list or carries a user, password or port other than 443, a role's model
+            id is outside its reviewed set, assistant_langsmith_enabled is true with an
             endpoint other than the EU one or a blank or local-default project, a library tracing
             switch is on, a ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty,
             not a ``postgresql+psycopg`` URL, without a database or a single host, carrying a
@@ -651,7 +706,7 @@ class Settings(BaseSettings):
                 )
             local_roles = [
                 provider_name
-                for provider_name, _ in _ASSISTANT_PROVIDER_ROLES
+                for provider_name, *_ in _ASSISTANT_PROVIDER_ROLES
                 if getattr(self, provider_name) != "api"
             ]
             if local_roles:
@@ -659,9 +714,36 @@ class Settings(BaseSettings):
                     f"{', '.join(local_roles)} must be api on a deployed service; a local "
                     "model server is not reachable there"
                 )
+            self._validate_assistant_provider_pins()
             self._validate_assistant_langsmith_deploy()
             self._validate_assistant_corpus_database()
         return self
+
+    def _validate_assistant_provider_pins(self) -> None:
+        """Hold each hosted role to a reviewed provider host and a reviewed model id.
+
+        The base URL decides where every prompt and the provider key go, so its host must be
+        in _ASSISTANT_PROVIDER_HOSTS: an exact match, with no suffix rule, so a trailing dot
+        or a lookalike domain fails. The URL may carry no user or password and no port other
+        than 443. The model id must be in the role's reviewed set, compared exactly, with no
+        case folding or stripping. Messages name the setting and never carry its value.
+
+        :raises ValueError: If a role's base URL is unparsable, names a host outside
+            _ASSISTANT_PROVIDER_HOSTS, carries userinfo or a port other than 443, or the
+            role's model id is outside its reviewed set.
+        """
+        for _, url_name, model_name, allowed_models in _ASSISTANT_PROVIDER_ROLES:
+            if not _is_reviewed_provider_url(getattr(self, url_name)):
+                raise ValueError(
+                    f"{url_name} must name a reviewed provider host, with no user, password "
+                    "or port other than 443, on a deployed service; a new host is added to "
+                    "_ASSISTANT_PROVIDER_HOSTS in api/config.py"
+                )
+            if getattr(self, model_name) not in allowed_models:
+                raise ValueError(
+                    f"{model_name} must be a reviewed model id on a deployed service; a new "
+                    "id is added to the role's reviewed set in api/config.py"
+                )
 
     def _validate_assistant_langsmith_deploy(self) -> None:
         """Hold LangSmith tracing on a deployed service to the EU endpoint and one switch.
@@ -776,7 +858,7 @@ class Settings(BaseSettings):
             is a loopback address.
         """
         key = self.assistant_api_key_ovh.get_secret_value() if self.assistant_api_key_ovh else ""
-        for provider_name, url_name in _ASSISTANT_PROVIDER_ROLES:
+        for provider_name, url_name, *_ in _ASSISTANT_PROVIDER_ROLES:
             if getattr(self, provider_name) != "api":
                 continue
             if not key.strip():
