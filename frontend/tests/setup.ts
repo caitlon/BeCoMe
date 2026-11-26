@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { Storage } from 'happy-dom'
-import { afterEach } from 'vitest'
+import { afterAll, afterEach } from 'vitest'
+import { failOnBlockedRequests, installNetworkGuard } from './support/network-guard'
 
 // Node 26 puts its own `localStorage` accessor on `globalThis`, and that accessor returns
 // `undefined` unless the process was started with `--localstorage-file`, because Node backs
@@ -34,6 +35,21 @@ if (typeof Animation !== 'undefined') {
     originalCancel.call(this)
   }
 }
+
+// No test may send a request over the network: see tests/support/network-guard.ts. Installed
+// again after every test so that a mock assigned straight to `globalThis.fetch` does not outlive
+// its test, and the refusals a test swallowed fail that test. vitest runs afterEach hooks in
+// reverse order of registration, so this one is registered before the cleanup below and so
+// runs after it and after the hooks of the test file, which restore their own stubs.
+installNetworkGuard()
+afterEach(() => {
+  installNetworkGuard()
+  failOnBlockedRequests()
+})
+
+// A request recorded after the last test of a file (an afterAll, a timer, a late unmount) fails
+// the file instead of passing.
+afterAll(failOnBlockedRequests)
 
 afterEach(() => {
   cleanup()
