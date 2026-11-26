@@ -54,16 +54,12 @@ jobs:
     # Schemathesis is cut at 15, so this limit only catches a stuck step.
     timeout-minutes: 35
     env:
-      APP_ENV: test
-      TESTING: "1"
       SECRET_KEY: test-secret-key-for-ci  # pragma: allowlist secret
       DATABASE_URL: postgresql://become:become@localhost:5432/become_dast  # pragma: allowlist secret
       CORS_ORIGINS: '["http://localhost:8080"]'
       DEBUG: "false"
       # The fixture accounts sign up under a synthetic domain with no DNS records.
       MX_CHECK_ENABLED: "false"
-      # Registration mails an activation link: console prints it to the API log and sends nothing.
-      EMAIL_PROVIDER: console
       PYTHONUNBUFFERED: "1"
       # Bumped by hand: Dependabot does not read an image reference inside a workflow `env`.
       # 2.17.0 is the version the scans were trialled with. To move it, read the new digest
@@ -92,6 +88,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      # APP_ENV, TESTING and the console mail sender come from here: registration mails an
+      # activation link, and console prints it to the API log and sends nothing.
+      - name: Pin the test environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' tests/test.env >> "$GITHUB_ENV"
 
       # ZAP runs as uid 1000 and the runner as uid 1001, so the directories ZAP writes to
       # have to be open to both.

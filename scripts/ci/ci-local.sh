@@ -39,9 +39,13 @@ run_lint() {
 run_test() {
   echo "=== Tests (unit + integration) ==="
   cd "$PROJECT_ROOT"
-  SECRET_KEY=test-secret-key TESTING=1 \
-    uv run pytest tests/unit/ tests/integration/ \
-      --cov=src --cov=api --cov-report=term-missing
+  # A subshell, so the test environment reaches pytest and not the frontend steps below.
+  (
+    . "$PROJECT_ROOT/scripts/ci/test-env.sh"
+    SECRET_KEY=test-secret-key \
+      uv run pytest tests/unit/ tests/integration/ \
+        --cov=src --cov=api --cov-report=term-missing
+  )
   cd "$PROJECT_ROOT/frontend"
   npm run test:run
   env -u VITE_ASSISTANT_ENABLED npm run build

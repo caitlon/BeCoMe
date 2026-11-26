@@ -50,11 +50,8 @@ jobs:
     # The same environment as the e2e-shard job in ci.yml, whose comments explain each
     # value: the tests register users and read the activation link from the API log.
     env:
-      APP_ENV: "test"
-      TESTING: "1"
       E2E_API_LOG: /tmp/become-e2e-api.log
       SECRET_KEY: test-secret-key-for-ci
-      EMAIL_PROVIDER: console
 
     services:
       postgres:
@@ -73,6 +70,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The same list of variables the tests read (tests/test.env), so a runner's
+      # environment cannot select a live mail provider, a tracing key or a model host.
+      - name: Pin the test environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' tests/test.env >> "$GITHUB_ENV"
 
       # No dependency cache: this job builds the branch it is dispatched on.
       - uses: ./.github/actions/setup-python-uv

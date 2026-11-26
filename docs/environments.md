@@ -38,9 +38,9 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 `APP_ENV` and `TESTING` answer different questions and never substitute for each other.
 
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
-- **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
+- **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it, all from `tests/test.env`: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL. The guard treats a `test` process that runs without `TESTING` as a deploy, so the profile name alone never switches it off.
+The pytest suite takes `APP_ENV=test` together with `TESTING=1` from `tests/test.env`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL. The guard treats a `test` process that runs without `TESTING` as a deploy, so the profile name alone never switches it off.
 
 ## Profiles in detail
 
@@ -99,7 +99,7 @@ The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. 
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and pull request to `dev` and `prod`, so both deploy branches get the same full pipeline. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
+`.github/workflows/ci.yml` runs on every push and pull request to `dev` and `prod`, so both deploy branches get the same full pipeline. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). Those jobs take `APP_ENV=test` from `tests/test.env`, which they append to `$GITHUB_ENV`, so the steps that start a live server get it too. `scripts/ci/e2e-local.sh` takes the same value from that file through `scripts/ci/test-env.sh`.
 
 The last job, `check` (shown as `Check`), waits on every other job in the workflow and fails unless each one succeeded or was skipped, so a failed or cancelled run ends in one red result. It runs even when a job it waits on fails, which a plain `needs` would not. Branch protection on `dev` requires `Check`.
 

@@ -207,14 +207,17 @@ jobs:
     needs: lint
     timeout-minutes: 20
     env:
-      APP_ENV: "test"
       SECRET_KEY: test-secret-key-for-ci
-      TESTING: "1"
 
     steps:
       # A shallow clone is enough here; only the SonarCloud job needs full history for
       # its blame data, and it does its own checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The same list of variables the tests read (tests/test.env), so a runner's
+      # environment cannot select a live mail provider, a tracing key or a model host.
+      - name: Pin the test environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' tests/test.env >> "$GITHUB_ENV"
 
       # `docs` is here for one test file. `tests/unit/docs/test_toc.py` imports the
       # table-of-contents generator, which imports the slug function the site uses, and
@@ -331,9 +334,6 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
     timeout-minutes: 15
-    env:
-      APP_ENV: "test"
-      TESTING: "1"
 
     services:
       postgres:
@@ -352,6 +352,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The same list of variables the tests read (tests/test.env), so a runner's
+      # environment cannot select a live mail provider, a tracing key or a model host.
+      - name: Pin the test environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' tests/test.env >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-python-uv
         with:
@@ -428,18 +433,12 @@ jobs:
             projects: --project=wcag-audit
     needs: lint
     env:
-      APP_ENV: "test"
-      TESTING: "1"
       # An account is unusable until its emailed link is redeemed, so the suite has to
       # read that link somewhere. The console sender prints it to the API's stdout and
       # this file captures it. Job-level because two steps need to agree on the path,
       # and on the key the link's recipient tag is derived from.
       E2E_API_LOG: /tmp/become-e2e-api.log
       SECRET_KEY: test-secret-key-for-ci
-      # Never let a provider variable from anywhere else select a real sender: a runner
-      # that mailed a synthetic @test.com address on every signup would be an outbound
-      # spam source and would starve the suite of the link it needs.
-      EMAIL_PROVIDER: console
 
     services:
       postgres:
@@ -458,6 +457,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # APP_ENV, TESTING and the console mail sender come from here. A runner that mailed
+      # a synthetic @test.com address on every signup would be an outbound spam source and
+      # would starve the suite of the link it needs.
+      - name: Pin the test environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' tests/test.env >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-python-uv
         with:

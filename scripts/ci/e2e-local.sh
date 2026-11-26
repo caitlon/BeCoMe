@@ -79,17 +79,16 @@ done
 
 # 2. Start API server
 echo "[2/3] Starting API server..."
-export APP_ENV="test"
+# The shared test environment: APP_ENV=test, TESTING=1, the console mail sender and every
+# outside service blanked. A developer's .env points at a live mail provider, and without
+# this every E2E signup would attempt a real send to a made-up address. The console sender
+# is also what makes the activation link readable below.
+. "$PROJECT_ROOT/scripts/ci/test-env.sh"
 export DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME"
 export SECRET_KEY="e2e-local-test-secret-key"
-export TESTING="1"
 # E2E signs up under a synthetic domain with no DNS records, so the address policy's
 # resolver check is switched off for this run.
 export MX_CHECK_ENABLED="false"
-# Forced, never inherited: this machine's .env points at a live mail provider, and
-# without this every E2E signup would attempt a real send to a made-up address. The
-# console sender is also what makes the activation link readable below.
-export EMAIL_PROVIDER="console"
 # Forced off for the same reason: a developer's .env may switch the assistant on, and its
 # routes call the vector database and the model endpoints, which an E2E run must not touch.
 export ASSISTANT_ENABLED="false"
