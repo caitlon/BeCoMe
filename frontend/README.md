@@ -282,8 +282,9 @@ A unit test sends no network request. `tests/setup.ts` installs the guard in
 with the URL in the message, and the attempt is recorded, so a test also fails when the code under
 test swallowed the refusal. A test mocks a request with `vi.stubGlobal('fetch', vi.fn(...))`, and
 likewise for `XMLHttpRequest` and `WebSocket`. `vi.stubGlobal` does not replace
-`navigator.sendBeacon`, so use `vi.spyOn(navigator, 'sendBeacon')` there. `vi.unstubAllGlobals()`
-brings the guard back. The setup puts the guard back after every test, so a mock assigned to
+`navigator.sendBeacon`, so use `vi.spyOn(navigator, 'sendBeacon').mockReturnValue(true)` there.
+`vi.unstubAllGlobals()` brings the guard back after a `vi.stubGlobal`, `vi.restoreAllMocks()` after
+a spy. The setup puts the guard back after every test, so a mock assigned to
 `globalThis.fetch` does not leave its test, and a mock that must hold for a whole file goes in
 `beforeEach`. A request recorded after the last test of a file fails the file. A test that triggers
 the guard on purpose calls `takeBlockedRequests()` to clear the record, and

@@ -58,16 +58,29 @@ describe('fetch', () => {
     expect(takeBlockedRequests()).toHaveLength(1);
   });
 
-  it('comes back after a test that assigned globalThis.fetch directly', async () => {
+  it('is restored by installNetworkGuard() after fetch was assigned directly', async () => {
     // GIVEN a test that replaces fetch by plain assignment and never puts it back
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('assigned'));
     expect(await (await fetch('https://example.test/assigned')).text()).toBe('assigned');
 
-    // WHEN the setup's afterEach reinstalls the guard
+    // WHEN the guard is installed again
     installNetworkGuard();
 
     // THEN the next call is refused again
     await expect(fetch('https://example.test/next-call')).rejects.toThrow('next-call');
+    expect(takeBlockedRequests()).toHaveLength(1);
+  });
+
+  it('leaves a directly assigned fetch behind (test A of the reinstall pair)', () => {
+    // Does NOT reinstall the guard: the afterEach in tests/setup.ts has to.
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('assigned'));
+  });
+
+  // Relies on the test above running first (vitest runs a file's tests in order); under -t it
+  // only gets weaker, never falsely red.
+  it('is back in the test after one that assigned globalThis.fetch (test B)', async () => {
+    await expect(fetch('https://example.test/after-assign')).rejects.toThrow('after-assign');
+
     expect(takeBlockedRequests()).toHaveLength(1);
   });
 });

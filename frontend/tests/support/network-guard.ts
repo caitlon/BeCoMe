@@ -7,7 +7,7 @@
  * a rejected request and carries on: `failOnBlockedRequests()` then fails the test that made it.
  *
  * `tests/setup.ts` installs the guard once per file and again after every test, so a test that
- * assigned `globalThis.fetch` directly does not leave its mock behind. A test mocks a request
+ * assigned `globalThis.fetch` directly does not leave its mock behind, and a setup `afterAll` fails on a refusal recorded after the last test. A test mocks a request
  * with `vi.stubGlobal('fetch', ...)`, which replaces the guard until `vi.unstubAllGlobals()`.
  * A test that triggers the guard on purpose calls `takeBlockedRequests()` to clear the record.
  */
@@ -23,7 +23,7 @@ const blocked: BlockedRequest[] = [];
 const HOW_TO_MOCK =
   "Frontend unit tests send no network requests: mock it, for example " +
   "vi.stubGlobal('fetch', vi.fn(...)), likewise for XMLHttpRequest and WebSocket, " +
-  "or vi.spyOn(navigator, 'sendBeacon') for sendBeacon.";
+  "or vi.spyOn(navigator, 'sendBeacon').mockReturnValue(true) for sendBeacon.";
 
 function urlOf(input: unknown): string {
   if (input === undefined) return "";
