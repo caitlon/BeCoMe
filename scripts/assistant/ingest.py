@@ -19,8 +19,9 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.chunkers import ChunkerConfig
-from api.assistant.rag.pipeline import CollectionSpec, build_collection
+from api.assistant.rag.pipeline import BuildReport, CollectionSpec, build_collection
 from api.config import get_settings
 
 
@@ -65,13 +66,36 @@ def _build_spec(args: argparse.Namespace) -> CollectionSpec:
     )
 
 
-async def _main() -> None:
-    """Build the collection named on the command line."""
+def _terminal_safe(text: str) -> str:
+    """Make corpus metadata safe to print: no control character, one line.
+
+    A source or section comes from the documents being ingested, so it may carry an escape
+    sequence that a terminal would act on, or a line break that forges another line.
+
+    :param text: A field of a flagged chunk.
+    :return: The text without invisible or control characters, on one line.
+    """
+    return " ".join(strip_invisible(text).split())
+
+
+async def _main() -> BuildReport:
+    """Build the collection named on the command line.
+
+    Prints the chunk count and, one line per chunk, the chunks that look like planted
+    instructions (layer | source | section | reason). They are written to the collection
+    all the same: the ingest reports them and never stops.
+
+    :return: The build's report.
+    """
     spec = _build_spec(_parse_args())
     settings = get_settings()
     repo_root = Path(__file__).resolve().parents[2]
-    chunk_count = await build_collection(spec, settings, repo_root=repo_root)
-    print(f"Built collection {spec.name!r}: {chunk_count} chunks")
+    report = await build_collection(spec, settings, repo_root=repo_root)
+    print(f"Built collection {spec.name!r}: {report.chunk_count} chunks")
+    for item in report.flagged:
+        fields = (item.layer, item.source, item.section, item.reason)
+        print("flagged: " + " | ".join(_terminal_safe(field) for field in fields))
+    return report
 
 
 if __name__ == "__main__":
