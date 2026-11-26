@@ -61,9 +61,9 @@ def is_loopback_host(host: object) -> bool:
     :param host: Host as passed to a socket call: ``str``, ``bytes`` or ``None``.
     :return: True for ``None`` and the empty string (a passive lookup), ``localhost`` and
         ``localhost.``, and any address in ``127.0.0.0/8``, ``::1``, ``0.0.0.0`` or ``::``,
-        IPv4-mapped included (Python 3.13 judges the embedded IPv4 address itself). Square
-        brackets are dropped only around an IPv6 address. Nothing else is trimmed, because
-        the value goes to the real resolver as it is, so ``" localhost "`` is not local. An
+        IPv4-mapped included (Python 3.13 judges the embedded IPv4 address itself). Nothing is
+        trimmed, because the value goes to the real resolver as it is, so ``" localhost "``
+        and ``"[::1]"`` are not local; a URL drops its own brackets before it asks. An
         IPv6 ``%scope`` suffix is read by :mod:`ipaddress`; on a name it is part of the name.
     """
     if host is None:
@@ -73,10 +73,6 @@ def is_loopback_host(host: object) -> bool:
     if not isinstance(host, str):
         return False
     name = host.lower()
-    if name.startswith("[") and name.endswith("]"):
-        with contextlib.suppress(ValueError):
-            ipaddress.IPv6Address(name[1:-1])
-            name = name[1:-1]
     if name == "" or name in _LOOPBACK_NAMES:
         return True
     try:

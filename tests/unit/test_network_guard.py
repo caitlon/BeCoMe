@@ -96,9 +96,15 @@ _REFUSALS = [
 
 _LOOPBACK = ["localhost", "localhost.", "LocalHost", "127.0.0.1", "127.8.9.10", "::1", "::1%lo0"]
 _UNSPECIFIED = ["0.0.0.0", "::", "::ffff:0.0.0.0"]  # noqa: S104 - the values under test
-_LOCAL_HOSTS = [None, "", b"localhost", "[::1]", "::ffff:127.0.0.1", *_LOOPBACK, *_UNSPECIFIED]
+_LOCAL_HOSTS = [None, "", b"localhost", "::ffff:127.0.0.1", *_LOOPBACK, *_UNSPECIFIED]
 _OUTSIDE_HOSTS = ["example.com", "10.0.0.1", _OUT, "::ffff:10.0.0.1", "fe80::1%en0"]
-_OUTSIDE_HOSTS += ["localhost.example.com", "localhost%.example.com", "[localhost]", " localhost "]
+_OUTSIDE_HOSTS += [
+    "localhost.example.com",
+    "localhost%.example.com",
+    "[localhost]",
+    " localhost ",
+    "[::1]",
+]
 _OUTSIDE_HOSTS += ["localhost.localdomain", "ip6-localhost", "ip6-loopback", "[127.0.0.1]"]
 _SOCKET_DIR = "/tmp"  # noqa: S108 - a unix socket directory, never created
 
