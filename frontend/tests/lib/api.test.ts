@@ -26,7 +26,7 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 // `headers` out, while a real Response always has one and the client reads the CSRF
 // token off it, so fill an empty Headers in where a case did not supply its own.
 const mockFetch = vi.fn();
-globalThis.fetch = ((...args: Parameters<typeof fetch>) =>
+const fetchWithHeaders = ((...args: Parameters<typeof fetch>) =>
   Promise.resolve(mockFetch(...args)).then((response) =>
     response && typeof response === 'object' && !('headers' in response)
       ? Object.assign(response, { headers: new Headers() })
@@ -51,6 +51,8 @@ describe('ApiClient', () => {
     vi.resetModules();
     localStorageMock.clear();
     mockFetch.mockReset();
+    // Installed per test: tests/setup.ts puts the network guard back after each one.
+    vi.stubGlobal('fetch', fetchWithHeaders);
     // The DOM environment keeps document.cookie for the whole file, so a case that
     // plants one would otherwise decide what the next case reads.
     document.cookie = '__Host-csrf_token=; Path=/; Secure; expires=Thu, 01 Jan 1970 00:00:00 GMT';
