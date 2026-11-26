@@ -513,11 +513,45 @@ class TestExcerptsAreInertText:
 
     def test_remove_angle_brackets_turns_the_two_comparisons_into_symbols(self):
         """
-        GIVEN text with "<=", ">=", a lone "<" and a lone ">"
+        GIVEN text with "<=", ">=", a lone "<" and a lone ">" touching letters
         WHEN the brackets are removed
         THEN the comparisons are U+2264 and U+2265 and the lone brackets are gone
         """
-        assert remove_angle_brackets("a <= b >= c < d > e") == "a \u2264 b \u2265 c  d  e"
+        assert remove_angle_brackets("a <= b >= c<d>e") == "a \u2264 b \u2265 cde"
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("error < 20", "error less than 20"),
+            ("2<3", "2 less than 3"),
+            ("x > 0", "x greater than 0"),
+            ("1 <2", "1 less than 2"),
+            ("1< 2", "1 less than 2"),
+            ("a<b", "ab"),
+            ("a < b", "a less than b"),
+            ("<docs>", "docs"),
+            ("</docs>", "/docs"),
+            ("a <docs> b", "a docs b"),
+        ],
+    )
+    def test_a_strict_comparison_becomes_words_and_a_tag_is_still_removed(self, text, expected):
+        """
+        GIVEN text with a strict comparison, a tag, or a bracket between letters
+        WHEN the brackets are removed
+        THEN a bracket with whitespace or a digit on both sides is written as words, and the
+             rest are removed
+        """
+        assert remove_angle_brackets(text) == expected
+
+    def test_an_excerpt_with_a_strict_comparison_and_tags(self):
+        """
+        GIVEN a chunk that says "error < 20%" and also carries docs tags
+        WHEN the excerpt is formatted
+        THEN the comparison is words, and the tags are removed with no words inserted
+        """
+        chunk = _chunk("error < 20% <docs> and </docs>")
+
+        assert format_excerpt(1, chunk) == "[1] Method - Step 3\nerror less than 20% docs and /docs"
 
     def test_a_clean_text_comparison_keeps_its_meaning(self):
         """
@@ -529,11 +563,11 @@ class TestExcerptsAreInertText:
 
     def test_remove_angle_brackets_leaves_everything_else(self):
         """
-        GIVEN text with angle brackets and other punctuation
+        GIVEN text with angle brackets between letters and other punctuation
         WHEN the brackets are removed
         THEN only the brackets go
         """
-        assert remove_angle_brackets("a < b > c [1] (x) & y") == "a  b  c [1] (x) & y"
+        assert remove_angle_brackets("a<b>c [1] (x) & y") == "abc [1] (x) & y"
 
 
 class TestRenderExcerpts:

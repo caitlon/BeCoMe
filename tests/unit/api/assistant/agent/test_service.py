@@ -1688,6 +1688,24 @@ class TestHistory:
         assert content == _earlier(strip_citations("It is the midpoint [1]."))
         assert "[" not in content
 
+    async def test_a_strict_comparison_of_an_earlier_answer_becomes_words_and_tags_go(self):
+        """
+        GIVEN an earlier answer that says "error < 20%" and carries docs tags
+        WHEN a turn is answered in workflow mode
+        THEN the comparison is words and the tags are removed with no words inserted
+        """
+        model = _model(_say())
+        history = [
+            _turn("user", "Hello"),
+            _turn("assistant", "The error < 20% <docs>x</docs> and 2<3."),
+        ]
+
+        await AssistantService(_settings(), model).answer(_request(history=history), _ctx())
+
+        assert model.seen[0][2].content == _earlier(
+            "The error less than 20% docsx/docs and 2 less than 3."
+        )
+
     async def test_the_two_comparisons_of_an_earlier_answer_become_symbols(self):
         """
         GIVEN an earlier answer that says "<= 20" and ">= 5"

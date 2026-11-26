@@ -1,5 +1,6 @@
 """The assistant's system prompt and the renderer for the per-turn context block."""
 
+import re
 from collections.abc import Sequence
 
 from api.assistant.invisible import strip_invisible
@@ -99,19 +100,42 @@ _BRACKET_LOOKALIKES = str.maketrans(
 )
 
 
+# A strict comparison: a ``<`` or ``>`` with whitespace or a digit on both sides. A tag
+# needs a letter or ``/`` right after its ``<``, so this never matches the start of one.
+_COMPARISON = re.compile(r"(?<=[\s\d])[<>](?=[\s\d])")
+
+
+def _comparison_words(match: re.Match[str]) -> str:
+    """Write a strict comparison as words, with a space on each side that has a digit.
+
+    :param match: A ``<`` or ``>`` found by :data:`_COMPARISON`.
+    :return: ``"less than"`` or ``"greater than"``, padded with a space where the
+        neighbouring character is a digit rather than whitespace.
+    """
+    text, start, end = match.string, match.start(), match.end()
+    words = "less than" if match.group() == "<" else "greater than"
+    before = " " if text[start - 1].isdigit() else ""
+    after = " " if text[end].isdigit() else ""
+    return f"{before}{words}{after}"
+
+
 def remove_angle_brackets(value: str) -> str:
     """Remove the angle brackets, so text cannot open or close a tag of the assistant.
 
     ``<=`` and ``>=`` become the single symbols U+2264 and U+2265 first, so a comparison
     such as "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
-    Every other ``<`` and ``>`` is then removed, with their lookalikes: the fullwidth and
-    small forms and the angle-bracket quotation marks (U+FF1C, U+FF1E, U+FE64, U+FE65,
-    U+2329, U+232A, U+3008, U+3009, U+27E8, U+27E9).
+    A strict ``<`` or ``>`` with whitespace or a digit on both sides is written as the words
+    "less than" or "greater than" ("error < 20" becomes "error less than 20", "2<3" becomes
+    "2 less than 3"). Such a character cannot be part of a tag, which needs a letter or
+    ``/`` right after its ``<``. Every other ``<`` and ``>`` is then removed, with their
+    lookalikes: the fullwidth and small forms and the angle-bracket quotation marks
+    (U+FF1C, U+FF1E, U+FE64, U+FE65, U+2329, U+232A, U+3008, U+3009, U+27E8, U+27E9).
 
     :param value: The text to clean.
     :return: The text without any angle bracket or lookalike.
     """
     text = value.replace("<=", "\u2264").replace(">=", "\u2265")
+    text = _COMPARISON.sub(_comparison_words, text)
     return text.replace("<", "").replace(">", "").translate(_BRACKET_LOOKALIKES)
 
 
