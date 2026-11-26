@@ -552,6 +552,8 @@ class TestExcerptsAreInertText:
             ("x < -5", "x less than -5"),
             ("x<-5", "x less than -5"),
             ("p < .05", "p less than .05"),
+            ("p <\u00a00.05", "p less than\u00a00.05"),
+            ("a\u00a0>\u00a05", "a\u00a0greater than\u00a05"),
             ("x < +.5", "x less than +.5"),
             ("x < --5", "x  --5"),
             ("x < -a", "x  -a"),

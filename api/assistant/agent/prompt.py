@@ -110,10 +110,13 @@ _TAG_SPAN = re.compile(r"<(/?[A-Za-z!?][^<>\n\r\v\f\x85\u2028\u2029]*)>")
 # A bracket that is left after the tag spans.
 _BRACKET = re.compile(r"[<>]")
 
-# What follows a bracket when a number starts its right-hand side: spaces or tabs (never a
-# line break), then an optional single sign or decimal point, then a digit. "-5" and ".05"
+# What follows a bracket when a number starts its right-hand side: blanks of any kind (never
+# a line break), then an optional single sign or decimal point, then a digit. "-5" and ".05"
 # start a number; "--5" and "-a" do not.
-_DIGIT_AHEAD = re.compile(r"[ \t]*[-+]?\.?\d")
+_DIGIT_AHEAD = re.compile(r"[^\S\n\r\v\f\x85\u2028\u2029]*[-+]?\.?\d")
+
+# The characters that end a line, which the search for a number beside a bracket never crosses.
+_LINE_BREAKS = "\n\r\v\f\x85\u2028\u2029"
 
 
 def _beside_digit(text: str, start: int, end: int) -> bool:
@@ -132,7 +135,7 @@ def _beside_digit(text: str, start: int, end: int) -> bool:
     if text[start] == ">" and start > 0 and text[start - 1] in "-=":
         return False
     left = start - 1
-    while left >= 0 and text[left] in " \t":
+    while left >= 0 and text[left].isspace() and text[left] not in _LINE_BREAKS:
         left -= 1
     return (left >= 0 and text[left].isdecimal()) or _DIGIT_AHEAD.match(text, end) is not None
 
@@ -163,8 +166,8 @@ def remove_angle_brackets(value: str) -> str:
     1. ``<=`` and ``>=`` become the single symbols U+2264 and U+2265, so a comparison such as
        "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
     2. A span that looks like a tag (a ``<`` followed by an optional ``/`` and a letter,
-       ``!`` or ``?``, up to the next ``>`` on the same line) has both brackets replaced by single spaces:
-       ``<h2>2024</h2>`` reads `` h2 2024 /h2 ``.
+       ``!`` or ``?``, up to the next ``>`` on the same line) has both brackets replaced by
+       single spaces: ``<h2>2024</h2>`` reads `` h2 2024 /h2 ``.
     3. A ``<`` or ``>`` that is left and has a number beside it on the same line (a digit
        before it, or a digit after it with an optional sign or decimal point) is written as
        the words "less than" or "greater than" with a space on each side: "error < 20"
