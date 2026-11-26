@@ -140,6 +140,48 @@ class TurnDraft:
     trace: RunTree | None
 
 
+class _StreamText:
+    """Turns the raw pieces of a streamed answer into the text the client is sent.
+
+    Each piece loses its invisible characters. A carriage return that ends a piece is held
+    back and put before the next one, so that a ``\\r\\n`` cut in two still gives one line
+    break, exactly as for the whole answer. The text then goes through the citation filter,
+    when there is one.
+
+    :param citation_filter: The filter that removes citations, or None when sources are shown.
+    """
+
+    def __init__(self, citation_filter: CitationStreamFilter | None) -> None:
+        """Start with no text read."""
+        self._filter = citation_filter
+        self._held_return = ""  # A raw carriage return that ended the last piece.
+
+    def feed(self, piece: str) -> str:
+        """Take the next raw piece.
+
+        :param piece: The raw text that arrived.
+        :return: The text that can be shown now, empty while it is held back or invisible.
+        """
+        raw = self._held_return + piece
+        self._held_return = "\r" if raw.endswith("\r") else ""
+        return self._pass(strip_invisible(raw.removesuffix(self._held_return)))
+
+    def finish(self) -> str:
+        """Release what is still held back, once every piece has been fed.
+
+        :return: The held carriage return as a newline, then the rest of the filter's text.
+            A mode that yields no text fed nothing, so it releases nothing here.
+        """
+        text = self._pass("\n") if self._held_return else ""
+        return text + self._filter.finish() if self._filter else text
+
+    def _pass(self, text: str) -> str:
+        """Run text through the citation filter, if there is one, and skip an empty text."""
+        if not text or self._filter is None:
+            return text
+        return self._filter.feed(text)
+
+
 class AssistantService:
     """Answers one chat turn using the mode configured in ``Settings``.
 
@@ -274,9 +316,9 @@ class AssistantService:
 
         The `hybrid` and `agent` modes yield no text, only the final response. The time of the first
         piece is the turn's time to first token. The deadline bounds each wait for the model's
-        next piece, and the turn as a whole, because it is one point in time. Every piece loses
-        its invisible characters before it is shown; a carriage return that ends a piece waits for
-        the next piece, so that a ``\\r\\n`` cut in two still gives one line break.
+        next piece, and the turn as a whole, because it is one point in time. Every piece goes
+        through :class:`_StreamText` before it is shown: it loses its invisible characters, a
+        carriage return that ends it waits for the next piece, and the citation filter reads it.
 
         :param turn: What :meth:`prepare` built.
         :return: Pieces of answer text, then the response as the last item.
@@ -289,8 +331,7 @@ class AssistantService:
         ttft_ms: int | None = None
         generated: Generated | None = None
         empty_reason = "empty"
-        held_return = ""  # A raw carriage return that ended the last piece, not yet read.
-        citation_filter = self._citation_filter(turn)
+        text = _StreamText(self._citation_filter(turn))
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
         with ending_turn(turn.trace):
             try:
@@ -310,20 +351,14 @@ class AssistantService:
                             generated = item
                         elif item:
                             ttft_ms = self._first_token_ms(ttft_ms, loop, model_started)
-                            raw = held_return + item
-                            held_return = "\r" if raw.endswith("\r") else ""
-                            clean = strip_invisible(raw.removesuffix(held_return))
-                            if clean and (shown := self._shown(citation_filter, clean)):
+                            if shown := text.feed(item):
                                 yield shown
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None
             finally:
                 await items.aclose()
             generated = self._complete(generated, mode, empty_reason)
-            if held_return and (shown := self._shown(citation_filter, "\n")):
-                yield shown
-            # A mode that yields no text fed the filter nothing, so it releases nothing here.
-            if citation_filter and (rest := citation_filter.finish()):
+            if rest := text.finish():
                 yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
             # Closed before the yield: the consumer may stop reading once it holds the
@@ -359,11 +394,6 @@ class AssistantService:
     def _first_token_ms(known: int | None, loop: asyncio.AbstractEventLoop, started: float) -> int:
         """Return the time to first token, measured now unless it is known already."""
         return known if known is not None else round((loop.time() - started) * 1000)
-
-    @staticmethod
-    def _shown(citation_filter: CitationStreamFilter | None, piece: str) -> str:
-        """Return the part of a piece that can be shown, which the filter may hold back."""
-        return citation_filter.feed(piece) if citation_filter else piece
 
     def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
         """Return what the generator produced, or refuse a missing or empty answer."""
