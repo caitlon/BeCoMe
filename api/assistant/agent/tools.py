@@ -44,10 +44,11 @@ from api.assistant.agent.masking import (
 )
 from api.assistant.agent.prompt import (
     LABEL_LIMIT,
+    PROJECT_DATA_TAG,
     clean_text,
-    format_excerpt,
     format_number,
     render_context_block,
+    render_excerpts,
     result_values,
 )
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
@@ -120,7 +121,7 @@ def _block(lines: Sequence[str]) -> str:
     :param lines: The block's lines, already cleaned.
     :return: The finished block.
     """
-    return "\n".join(["<project_data>", *lines, "</project_data>"])
+    return "\n".join([f"<{PROJECT_DATA_TAG}>", *lines, f"</{PROJECT_DATA_TAG}>"])
 
 
 def render_project(project: ProjectView) -> str:
@@ -433,8 +434,9 @@ async def search_docs(query: str, runtime: ToolRuntime[AssistantContext]) -> str
 
     :param query: What to search for, in the user's own words.
     :param runtime: Injected request context (hidden from the model).
-    :return: The passages wrapped in ``<docs>...</docs>``, numbered for citation, or
-        the ``no_result:`` or ``unavailable:`` line.
+    :return: The passages as :func:`~api.assistant.agent.prompt.render_excerpts` writes
+        them, wrapped in ``<docs>...</docs>`` and numbered for citation, or the
+        ``no_result:`` or ``unavailable:`` line.
     """
     ctx = runtime.context
     try:
@@ -443,8 +445,7 @@ async def search_docs(query: str, runtime: ToolRuntime[AssistantContext]) -> str
         return _unavailable("search_docs", exc)
     if not chunks:
         return _NO_PASSAGES
-    entries = [format_excerpt(ctx.sources.add(chunk), chunk) for chunk in chunks]
-    return "<docs>\n" + "\n\n".join(entries) + "\n</docs>"
+    return render_excerpts([(ctx.sources.add(chunk), chunk) for chunk in chunks])
 
 
 @tool(description=_LIST_MY_PROJECTS_DESCRIPTION)

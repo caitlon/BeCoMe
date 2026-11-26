@@ -42,8 +42,10 @@ from api.assistant.agent.generation import (
     user_message,
 )
 from api.assistant.agent.prompt import (
+    EARLIER_ANSWER_TAG,
     FORMULA_NUMBERS,
     PINNED_NUMBERS,
+    remove_angle_brackets,
     render_context_block,
     result_values,
 )
@@ -87,25 +89,39 @@ TimeoutLimit = Literal["first_byte", "turn"]
 _ROSTER_FETCH_SECONDS = 5.0
 
 
+def _earlier_answer(content: str) -> str:
+    """Mark an earlier answer of the conversation as reference text for the model.
+
+    :param content: The ``assistant`` entry as the client sent it.
+    :return: The entry without its citation numbers and angle brackets, inside the
+        earlier-answer tags.
+    """
+    text = remove_angle_brackets(strip_citations(content))
+    return f"<{EARLIER_ANSWER_TAG}>\n{text}\n</{EARLIER_ANSWER_TAG}>"
+
+
 def _kept_history(history: list[ChatTurn], max_turns: int) -> list[ChatTurn]:
     """Choose the part of the client's history the model is sent.
 
     The history comes from the client, so an ``assistant`` entry is the user's own input
     like any other: it gives them nothing they could not type directly. Earlier answers
     still go through :func:`~api.assistant.agent.checks.strip_citations`, because their
-    ``[n]`` numbers belong to another turn.
+    ``[n]`` numbers belong to another turn. They also lose their angle brackets and are
+    wrapped in the earlier-answer tags (see :func:`_earlier_answer`), so the model reads
+    them as reference text and not as instructions. User entries are sent as they are.
 
     The last ``2 * max_turns`` entries are considered. The oldest are then dropped until
-    what is left, as it will be sent, fits :data:`_HISTORY_CHAR_BUDGET`; an entry is never
-    cut in the middle, so when even the newest is over the budget nothing is kept. Last,
-    entries at the front that are answers are dropped, so the history starts with the user.
+    what is left, as it will be sent (wrapper included), fits :data:`_HISTORY_CHAR_BUDGET`;
+    an entry is never cut in the middle, so when even the newest is over the budget nothing
+    is kept. Last, entries at the front that are answers are dropped, so the history starts
+    with the user.
 
     :param history: The client's history, oldest first.
     :param max_turns: How many exchanges (a user entry and an assistant entry) to consider.
     :return: The entries to send, oldest first.
     """
     kept = [
-        turn.model_copy(update={"content": strip_citations(turn.content)})
+        turn.model_copy(update={"content": _earlier_answer(turn.content)})
         if turn.role == "assistant"
         else turn
         for turn in history[-2 * max_turns :]

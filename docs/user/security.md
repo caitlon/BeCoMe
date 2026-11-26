@@ -45,7 +45,9 @@ the project that means its name, description, scale and result, and the opinions
 member's first name, last name, position and values. It covers every member of the project, not
 only you. The one exception is a member who turned on **Hide my opinions from other members'
 assistant**: their opinions are left out for everyone else, as [Your data](assistant.md#your-data)
-explains. Your email address, account ID and photo are never sent.
+explains. Your email address, account ID and photo are never sent. The project data, the
+documentation passages and the assistant's earlier answers are marked as reference text, not as
+instructions: the model is told to ignore a request that appears inside them.
 
 The model runs at OVHcloud AI Endpoints in the European Union (Gravelines, France). OVHcloud does
 not store questions or answers and does not use them to train models. The conversation stays in

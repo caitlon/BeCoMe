@@ -766,7 +766,7 @@ class TestAgentGenerator:
             SystemMessage(content=SYSTEM_PROMPT),
             *history,
             HumanMessage(
-                content="Excerpts:\n\n[1] Method - Step 3\nThe compromise is the midpoint."
+                content="<docs>\n[1] Method - Step 3\nThe compromise is the midpoint.\n</docs>"
                 "\n\nno_result: the user is not a member of any project"
                 f"\n\nQuestion: {QUESTION}{ENGLISH_LINE}"
             ),

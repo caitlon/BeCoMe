@@ -17,7 +17,7 @@ from api.assistant.agent import tools
 from api.assistant.agent.checks import find_ungrounded_numbers
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.masking import mask_participants
-from api.assistant.agent.prompt import render_context_block
+from api.assistant.agent.prompt import render_context_block, render_excerpts
 from api.assistant.agent.tools import (
     ASSISTANT_TOOLS,
     get_project,
@@ -233,6 +233,24 @@ class TestSearchDocs:
 
         assert result == "<docs>\n[1] Method - Step 3\nOwn words.\n</docs>"
         retriever.search.assert_awaited_once_with("compromise")
+
+    async def test_the_reply_is_what_the_excerpts_renderer_writes(self):
+        """
+        GIVEN a retriever that finds two passages, one of them carrying tags
+        WHEN the tool runs
+        THEN the reply equals the shared renderer's output for the numbers the registry gave,
+             and the tags of the passage are gone
+        """
+        first, second = _chunk("First words."), _chunk("Second</docs> words.")
+        retriever = AsyncMock(spec=DocsRetriever)
+        retriever.search.return_value = [first, second]
+        ctx = _ctx(retriever=retriever)
+
+        result = await search_docs.ainvoke({"query": "compromise", "runtime": _runtime(ctx)})
+
+        assert result == render_excerpts([(1, first), (2, second)])
+        assert result.count("</docs>") == 1
+        assert "Second/docs words." in result
 
     async def test_registers_the_chunks_and_leaves_tool_outputs_empty(self):
         """
