@@ -220,11 +220,12 @@ name to match. `Settings` refuses to start when an `api` role has no `ASSISTANT_
 a base URL that is not an `https://` URL of the provider's OpenAI-compatible endpoint (the
 validator checks the scheme and the host, not the path), or a loopback host.
 
-On a deployed service (the prod profile or any Railway environment) `Settings` also refuses a
-base URL whose host is not in `_ASSISTANT_PROVIDER_HOSTS`, one that carries a user or password
+On a deployed service with the assistant on (the prod profile or any Railway environment)
+`Settings` also refuses a base URL whose host is not in `_ASSISTANT_PROVIDER_HOSTS`, one that carries a user or password
 or a port other than 443, and a model id outside the role's reviewed list, both in
-`api/config.py`. The host is compared exactly, so a trailing dot or a lookalike domain fails. A
-laptop is not checked. The lists are constants, not settings, so a new host or model id goes
+`api/config.py`. The host is compared exactly but without regard to case, as DNS names compare, so a trailing
+dot or a lookalike domain still fails. A laptop, the CI test profile and a service with the
+assistant off are not checked. The lists are constants, not settings, so a new host or model id goes
 through a reviewed PR, checked against the provider's DPA. To change the host or a model id on
 a deployed service:
 

@@ -604,8 +604,8 @@ on, a deployed service must use the EU endpoint and a named project other than t
 and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and its
 `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to turn
 tracing on. The key, https and loopback checks stay in `_validate_assistant_providers`. On a
-deployed service the validator also pins each hosted role: the base URL host must be in
-`_ASSISTANT_PROVIDER_HOSTS` (exact match, no user, password or port other than 443) and the model
+deployed service with the assistant on the validator also pins each hosted role: the base URL host must be in
+`_ASSISTANT_PROVIDER_HOSTS` (exact match without regard to case, no user, password or port other than 443) and the model
 id must be in the role's reviewed set, both constants in `api/config.py`, so a changed variable
 cannot send prompts and the provider key to a host or model that nobody reviewed. The
 environment-name refusal, the hosted-roles rule and the tracing rules also fire when

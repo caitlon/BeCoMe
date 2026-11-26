@@ -1604,7 +1604,10 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
             Settings()
 
-    @pytest.mark.parametrize(("url", "model", "model_id"), _PINNED_ROLES)
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("dev", "dev"), ("prod", "prod"), ("prod", None)]
+    )
+    @pytest.mark.parametrize("url", [role[0] for role in _PINNED_ROLES])
     @pytest.mark.parametrize(
         "bad_url",
         [
@@ -1619,10 +1622,11 @@ class TestAssistantSettings:
         ],
     )
     def test_rejects_an_unreviewed_provider_url_on_a_deployed_service(
-        self, monkeypatch, tmp_path, url, model, model_id, bad_url
+        self, monkeypatch, tmp_path, profile, railway_name, url, bad_url
     ):
         """
-        GIVEN a deployed dev service with one role's base URL naming a host outside the
+        GIVEN a deployed service (dev, prod, or the prod profile without a Railway marker)
+            with one role's base URL naming a host outside the
             reviewed list: another provider, a lookalike suffix, a trailing dot, a prefix
             lookalike, userinfo, a port other than 443 or a non-numeric port
         WHEN Settings is constructed with assistant_enabled=true
@@ -1630,7 +1634,9 @@ class TestAssistantSettings:
             the URL nor its host nor its credentials
         """
         # GIVEN
-        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
         monkeypatch.setenv(url.upper(), bad_url)
 
         # WHEN/THEN
@@ -1641,28 +1647,55 @@ class TestAssistantSettings:
             assert leaked not in message
         assert _PROVIDER_HOST not in message
 
-    @pytest.mark.parametrize(("url", "model", "model_id"), _PINNED_ROLES)
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"), [("dev", "dev"), ("prod", "prod"), ("prod", None)]
+    )
+    @pytest.mark.parametrize("model", [role[1] for role in _PINNED_ROLES])
     @pytest.mark.parametrize(
         "bad_model",
         ["gpt-5", "qwen3.5-9b", " Qwen3.5-9B", "bge-m3 ", "BGE-M3", ""],
     )
     def test_rejects_an_unreviewed_model_id_on_a_deployed_service(
-        self, monkeypatch, tmp_path, url, model, model_id, bad_model
+        self, monkeypatch, tmp_path, profile, railway_name, model, bad_model
     ):
         """
-        GIVEN a deployed dev service with one role's model id outside its reviewed set: an
+        GIVEN a deployed service (dev, prod, or the prod profile without a Railway marker)
+            with one role's model id outside its reviewed set: an
             unlisted model, a case variant, one with a surrounding space or an empty one
         WHEN Settings is constructed with assistant_enabled=true
         THEN validation fails naming that model setting, and the message carries no id
         """
         # GIVEN
-        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
         monkeypatch.setenv(model.upper(), bad_model)
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id") as e:
             Settings()
-        assert "gpt-5" not in str(e.value)
+        if bad_model.strip():
+            assert bad_model.strip() not in str(e.value)
+
+    @pytest.mark.parametrize("model", [role[1] for role in _PINNED_ROLES])
+    def test_rejects_a_local_default_model_id_on_a_deployed_service(
+        self, monkeypatch, tmp_path, model
+    ):
+        """
+        GIVEN a deployed prod service with one role's model env var removed, so the code
+            default (a local id) applies
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails naming that model setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.delenv(model.upper(), raising=False)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id"):
+            Settings()
 
     @pytest.mark.parametrize(
         ("model", "swapped_id"),
@@ -1686,8 +1719,9 @@ class TestAssistantSettings:
         monkeypatch.setenv(model.upper(), swapped_id)
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id"):
+        with pytest.raises(ValidationError, match=f"{model} must be a reviewed model id") as e:
             Settings()
+        assert swapped_id not in str(e.value)
 
     @pytest.mark.parametrize(("url", "model", "model_id"), _PINNED_ROLES)
     @pytest.mark.parametrize(
@@ -1767,6 +1801,74 @@ class TestAssistantSettings:
             ValidationError, match="assistant_answer_llm_base_url must name a reviewed provider"
         ):
             Settings()
+
+    def test_holds_railway_prod_to_the_model_pins_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 alongside Railway environment prod, with the embedding model id
+            set to one that is not reviewed
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the model pin still refuses it, naming that model setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_EMBEDDING_MODEL", "gpt-5")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_embedding_model must be a reviewed"):
+            Settings()
+
+    def test_does_not_pin_providers_while_the_assistant_is_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed prod service with the assistant off, a base URL on an unreviewed
+            host and an unreviewed model id
+        WHEN Settings is constructed
+        THEN validation passes, since nothing calls the providers
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", "https://api.openai.com/v1")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_MODEL", "gpt-5")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_does_not_pin_providers_in_the_ci_test_profile(self, monkeypatch, tmp_path):
+        """
+        GIVEN APP_ENV=test with TESTING=1 and no Railway marker, the assistant on, every
+            role api with a key, a host outside the reviewed list and model id gpt-5
+        WHEN Settings is constructed
+        THEN validation passes, since the runner is not a deployed service
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-test")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        for provider, url in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "api")
+            monkeypatch.setenv(url.upper(), "https://api.openai.com/v1")
+        for _, model, _ in _PINNED_ROLES:
+            monkeypatch.setenv(model.upper(), "gpt-5")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_llm_model == "gpt-5"
 
     def test_allows_local_roles_in_the_ci_test_profile(self, monkeypatch, tmp_path):
         """
