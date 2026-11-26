@@ -146,7 +146,9 @@ are sent. A member who hid their opinions from other members' assistants is left
 entirely, though the result still counts them. Names, positions and descriptions are typed by
 users, so they are cleaned, shortened, and marked as data that the model must not follow as
 instructions. Nobody has checked them, so the model reports them as what was entered in the
-project, never as verified facts. The full list of what is sent is in
+project, never as verified facts. The documentation passages and the assistant's earlier answers
+in the conversation are marked the same way, as reference text the model must not follow as
+instructions. The full list of what is sent is in
 [What the assistant sends](user/security.md#what-the-assistant-sends).
 
 Your earlier messages go along with the question, up to the last 20 and about 6,000 characters in
