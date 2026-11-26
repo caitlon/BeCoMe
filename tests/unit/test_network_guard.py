@@ -16,6 +16,11 @@ from tests.network_guard import NetworkBlockedError, is_loopback_host, remote_da
 
 pytest_plugins = ["pytester"]
 
+# A made-up remote database URL whose password must never reach a message.
+_REMOTE_URL_WITH_PASSWORD = (
+    "postgresql://user:hunter2@db.example.com/prod"  # pragma: allowlist secret
+)
+
 # TEST-NET-1 (RFC 5737) and the IPv6 documentation prefix (RFC 3849): never routed.
 _OUT = "192.0.2.1"
 _OUT_V6 = "2001:db8::1"
@@ -297,7 +302,7 @@ class TestDatabaseUrlPin:
     def test_a_remote_database_url_stops_the_run_and_names_only_its_host(self, monkeypatch, name):
         """GIVEN a remote URL with a password, WHEN the pin runs, THEN it raises with the host only."""
         monkeypatch.setattr(conftest, "read_test_env", dict)
-        monkeypatch.setenv(name, "postgresql://user:hunter2@db.example.com/prod")
+        monkeypatch.setenv(name, _REMOTE_URL_WITH_PASSWORD)
 
         with pytest.raises(RuntimeError) as refused:
             conftest._pin_environment()
