@@ -13,12 +13,14 @@ quotes such text.
 
 It reads the chunks as `split` returns them, before enrichment adds a caption or a
 heading path to the text. For each chunk it looks at the chunk's own text, its title and
-its section (the `heading_path` metadata), after `strip_invisible`, case folding and
-whitespace collapse, so a zero-width character, a different case or a line break inside a
-phrase does not hide it.
+its section (the `heading_path` metadata), after `strip_invisible`, NFKC
+normalization, case folding and whitespace collapse, so a zero-width character, a
+decomposed letter, a fullwidth bracket, a different case or a line break inside a phrase
+does not hide it.
 """
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -52,22 +54,23 @@ _ROLE_MARKERS: tuple[str, ...] = (
     "</think>",
 )
 
-# Phrases that give the model orders, in English and Czech. Whitespace inside a phrase is
-# matched flexibly, so the text is collapsed before these run.
+# Phrases that give the model orders, in English and Czech: a short heuristic, not a
+# filter. Between words the patterns allow any whitespace or none, so a phrase whose
+# spaces were replaced by zero-width characters (stripped before these run) still matches;
+# the word boundaries at both ends stay.
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
-        r"\bignore (?:all |the |any )?(?:previous|prior|above|earlier) instructions\b",
-        r"\bdisregard (?:all |the )?(?:previous|prior|above) (?:instructions|rules)\b",
-        r"\byou are now\b",
-        r"\bnew instructions\b",
-        r"\bsystem prompt\b",
-        r"\bdo not tell the user\b",
-        r"\bignoruj (?:všechny |předchozí |výše uvedené )*pokyny\b",
-        r"\bzapomeň na (?:všechny |předchozí )*pokyny\b",
-        r"\bnové pokyny\b",
-        r"\bsystémový prompt\b",
-        r"\bneříkej (?:to )?uživateli\b",
+        r"\bignore\s*(?:all\s*|the\s*|any\s*)?(?:previous|prior|above|earlier)\s*instructions\b",
+        r"\bdisregard\s*(?:all\s*|the\s*)?(?:previous|prior|above)\s*(?:instructions|rules)\b",
+        r"\bnew\s*instructions\b",
+        r"\bsystem\s*prompt\b",
+        r"\bdo(?:\s*not|n['\u2019]t)\s*tell\s*the\s*user\b",
+        r"\bignoruj(?:te)?\s*(?:všechny\s*|předchozí\s*|výše\s*uvedené\s*)*(?:pokyny|instrukce)\b",
+        r"\bzapomeň(?:te)?\s*na\s*(?:všechny\s*|předchozí\s*)*(?:pokyny|instrukce)\b",
+        r"\bnové\s*pokyny\b",
+        r"\bsystémový\s*prompt\b",
+        r"\bneříkej(?:te)?\s*(?:to\s*)?uživateli\b",
     )
 )
 
@@ -95,10 +98,12 @@ def _normalize(text: str) -> str:
     """Make a text comparable: no invisible characters, one case, single spaces.
 
     :param text: Chunk text, title or section.
-    :return: The text with invisible characters removed, case folded and every run of
-        whitespace collapsed to one space.
+    :return: The text with invisible characters removed, compatibility-normalized (NFKC,
+        so a decomposed letter or a fullwidth bracket reads as its plain form), case
+        folded and every run of whitespace collapsed to one space.
     """
-    return _WHITESPACE.sub(" ", strip_invisible(text).casefold()).strip()
+    normalized = unicodedata.normalize("NFKC", strip_invisible(text))
+    return _WHITESPACE.sub(" ", normalized.casefold()).strip()
 
 
 def _tag_reason(text: str) -> str | None:
