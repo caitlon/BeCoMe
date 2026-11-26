@@ -75,9 +75,12 @@ fi
 # --- Generate coverage (optional) ---
 if [ "$COVERAGE" = true ]; then
   echo "=== Generating Python coverage ==="
-  SECRET_KEY=test-secret-key TESTING=1 \
-    uv run pytest tests/unit/ tests/integration/ \
-      --cov=src --cov=api --cov-report=xml
+  (
+    . "$PROJECT_ROOT/scripts/ci/test-env.sh"
+    SECRET_KEY=test-secret-key \
+      uv run pytest tests/unit/ tests/integration/ \
+        --cov=src --cov=api --cov-report=xml
+  )
   echo ""
 
   echo "=== Generating JS/TS coverage ==="

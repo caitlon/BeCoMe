@@ -108,6 +108,7 @@ case "${1:-run}" in
     echo ""
     # mutmut run exits 0 when mutants survive. A non-zero exit is a real failure
     # (the unmutated tests fail, pytest cannot start), so set -e stops here.
+    . "$PROJECT_ROOT/scripts/ci/test-env.sh"
     uv run mutmut run
     echo ""
     show_results

@@ -11,6 +11,10 @@ set -euo pipefail
 # Usage:
 #   scripts/ci/start-api.sh
 
+# The shared test environment, so the API reads no live mail provider or tracing key from a
+# .env on the machine. None of the variables the caller sets above is in that list.
+. "$(dirname "$0")/test-env.sh"
+
 # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it the
 # activation link sits in a 8 KiB buffer and the suite times out waiting.
 PYTHONUNBUFFERED=1 uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 \
