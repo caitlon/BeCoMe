@@ -4,7 +4,9 @@ import os
 import re
 from pathlib import Path
 
-from tests.conftest import read_test_env
+import pytest
+
+from tests.conftest import _pin_environment
 
 _TEST_ENV = Path(__file__).parents[1] / "test.env"
 
@@ -29,22 +31,74 @@ class TestTestEnvironmentFile:
             line for line in lines if not re.fullmatch(r"[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:-]*", line)
         ] == []
 
-    def test_the_run_starts_from_the_file(self):
+    def test_the_file_has_unix_line_endings(self):
         """
-        GIVEN the root conftest, loaded before this module
-        WHEN the process environment is compared with tests/test.env
-        THEN every variable of the file holds the file's value, blank ones included
+        GIVEN tests/test.env, sourced by a shell that would keep a carriage return in a value
+        WHEN its raw bytes are read
+        THEN no line ends in a carriage return
         """
-        expected = read_test_env()
+        assert b"\r" not in _TEST_ENV.read_bytes()
 
-        assert expected["EMAIL_PROVIDER"] == "console"
-        assert {name: os.environ.get(name) for name in expected} == expected
-
-    def test_the_tracing_library_variables_are_removed(self):
+    def test_no_variable_is_named_twice(self):
         """
-        GIVEN the LangSmith library, which reads its key and endpoint from the process only
-        WHEN the root conftest has run
+        GIVEN tests/test.env, where the last of two lines for a name wins in one reader only
+        WHEN the names of its assignments are counted
+        THEN each name appears once
+        """
+        names = [
+            line.partition("=")[0]
+            for line in _TEST_ENV.read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")
+        ]
+
+        assert len(names) == len(set(names))
+
+
+class TestPinEnvironment:
+    """The root conftest forces the file's values over whatever the caller has set."""
+
+    def test_the_file_overrides_a_live_configuration(self, monkeypatch: pytest.MonkeyPatch):
+        """
+        GIVEN a process holding a live mail provider, a Sentry DSN, a hosted model provider
+            and a LangSmith key
+        WHEN the root conftest pins the environment
+        THEN the file's values replace them, blank ones included
+        """
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "re_live")
+        monkeypatch.setenv("SENTRY_DSN", "https://k@o1.ingest.sentry.io/1")
+        monkeypatch.setenv("ASSISTANT_LLM_PROVIDER", "api")
+
+        _pin_environment()
+
+        assert os.environ["EMAIL_PROVIDER"] == "console"
+        assert os.environ["EMAIL_API_KEY"] == ""
+        assert os.environ["SENTRY_DSN"] == ""
+        assert os.environ["ASSISTANT_LLM_PROVIDER"] == "local"
+
+    def test_the_tracing_library_variables_are_removed(self, monkeypatch: pytest.MonkeyPatch):
+        """
+        GIVEN the LangSmith library, which reads its key and endpoint from the process only,
+            and a process that holds both
+        WHEN the root conftest pins the environment
         THEN neither variable is in the process environment
         """
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_live")
+        monkeypatch.setenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+        _pin_environment()
+
         assert "LANGSMITH_API_KEY" not in os.environ
         assert "LANGSMITH_ENDPOINT" not in os.environ
+
+    def test_a_database_url_of_the_caller_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """
+        GIVEN an E2E or DAST run that passes its own DATABASE_URL
+        WHEN the root conftest pins the environment
+        THEN that URL stays, because the database is a default and not a forced value
+        """
+        monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost:5432/e2e")
+
+        _pin_environment()
+
+        assert os.environ["DATABASE_URL"] == "postgresql://u:p@localhost:5432/e2e"

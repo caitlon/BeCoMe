@@ -47,8 +47,6 @@ def _pin_environment() -> None:
     # Defaults, not forced: the E2E and DAST runs pass their own local URLs. Each is set
     # in the process, so a database URL in .env never applies.
     os.environ.setdefault("DATABASE_URL", "sqlite://")
-    os.environ.setdefault("MIGRATION_DATABASE_URL", "")
-    os.environ.setdefault("ASSISTANT_VECTOR_DB_URL", "")
 
 
 _pin_environment()

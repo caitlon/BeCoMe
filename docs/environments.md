@@ -58,7 +58,7 @@ uv run uvicorn api.main:app --reload
 
 ### test (the test suite)
 
-The profile the automated suite and the CI jobs run under. It adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. The unit and integration tests mostly use in-memory SQLite, and the end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import. No deployed environment uses it: the `test` environment was retired on 2026-11-22, and promotion goes from `dev` straight to `prod`. Without `TESTING` the profile counts as a deploy. It then meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off.
+The profile the automated suite and the CI jobs run under. It adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. The unit and integration tests mostly use in-memory SQLite, and the end-to-end runs use PostgreSQL. The root `tests/conftest.py` sets both from `tests/test.env` before any `api` import. No deployed environment uses it: the `test` environment was retired on 2026-11-22, and promotion goes from `dev` straight to `prod`. Without `TESTING` the profile counts as a deploy. It then meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off.
 
 ### prod
 
