@@ -220,6 +220,23 @@ name to match. `Settings` refuses to start when an `api` role has no `ASSISTANT_
 a base URL that is not an `https://` URL of the provider's OpenAI-compatible endpoint (the
 validator checks the scheme and the host, not the path), or a loopback host.
 
+On a deployed service (the prod profile or any Railway environment) `Settings` also refuses a
+base URL whose host is not in `_ASSISTANT_PROVIDER_HOSTS`, one that carries a user or password
+or a port other than 443, and a model id outside the role's reviewed list, both in
+`api/config.py`. The host is compared exactly, so a trailing dot or a lookalike domain fails. A
+laptop is not checked. The lists are constants, not settings, so a new host or model id goes
+through a reviewed PR, checked against the provider's DPA. To change the host or a model id on
+a deployed service:
+
+1. Open a PR that adds the new host or id beside the current one. Merge it and promote it to
+   every deployed environment.
+2. Only then change the Railway variable (`--skip-deploys`, then a redeploy). A later PR may
+   drop the old id once no service uses it.
+
+Changing the variable first, or dropping the old id first, makes the pre-deploy step and start-up
+fail. A new embedding model also needs a new collection; see [Refreshing the corpus on a
+deployed service](#refreshing-the-corpus-on-a-deployed-service).
+
 An `api` role sends the question text and the earlier turns of the conversation to the
 provider, together with the documentation
 excerpts retrieved for it, which can come from the private corpus layer as well as the public
