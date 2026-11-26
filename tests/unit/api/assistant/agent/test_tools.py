@@ -1217,6 +1217,14 @@ class TestProjectListValues:
         assert values == ["2", PROJECT_ID, "other-id"]
         assert all(value in render_project_list(projects) for value in values)
 
+    def test_an_empty_list_has_a_count_of_zero(self):
+        """
+        GIVEN no projects
+        WHEN the values are listed
+        THEN the only value is the count, 0
+        """
+        assert project_list_values([]) == ["0"]
+
     def test_an_id_is_cleaned_the_way_the_block_cleans_it(self):
         """
         GIVEN a project whose id holds angle brackets
@@ -1271,6 +1279,14 @@ class TestOpinionValues:
 
         assert values == ["2", *["37.00", "42.00", "47.00", "42.00"] * 2]
         assert all(value in render_opinions(opinions) for value in values)
+
+    def test_an_empty_list_has_a_count_of_zero(self):
+        """
+        GIVEN no opinions
+        WHEN the values are listed
+        THEN the only value is the count, 0, as the block would write it
+        """
+        assert opinion_values([]) == ["0"]
 
     def test_fifty_opinions_have_no_remainder(self):
         """

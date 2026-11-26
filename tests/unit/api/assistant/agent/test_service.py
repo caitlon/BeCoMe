@@ -1860,6 +1860,51 @@ class TestProjectNumbersGroundOnStructuredValues:
 
         assert response.checks.ungrounded_numbers == []
 
+    async def test_a_result_with_no_opinions_does_not_ground_a_zero(self):
+        """
+        GIVEN a workflow turn whose project has a result, a scale starting at 5, and no opinions
+        WHEN the answer says there are 0 opinions
+        THEN the 0 is reported, because an empty opinions list adds no count value
+        """
+        project = _project().model_copy(update={"scale_min": 5.0})
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_project.return_value = project
+        model = _model(_say("There are 0 opinions."))
+
+        response = await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        ctx.client.get_opinions.assert_awaited()
+        assert "0" not in ctx.data_values
+        assert response.checks.ungrounded_numbers == ["0"]
+
+    @pytest.mark.parametrize(
+        ("tool", "field", "structured"),
+        [("get_project", "description", "100.00"), ("get_project_opinions", "position", "42.00")],
+    )
+    async def test_a_tool_fetched_free_text_number_is_ungrounded_in_agent_mode(
+        self, tool, field, structured
+    ):
+        """
+        GIVEN an agent turn whose model calls a project tool and then answers with a number
+              planted in that project's free text and one structured value
+        WHEN the turn is answered
+        THEN the planted number is reported and the structured value is not, though the model
+             was shown the free text
+        """
+        project, opinions = _planted(field)
+        ctx = _ctx(opinions=opinions)
+        ctx.client.get_project.return_value = project
+        model = _model(
+            _call(tool, project_id=PROJECT_ID),
+            _say(f"It is {PLANTED}, and the figure is {structured}."),
+        )
+
+        response = await AssistantService(_settings("agent"), model).answer(_request(), ctx)
+
+        assert response.tools_used == [tool]
+        assert any(PLANTED in block for block in ctx.tool_outputs)
+        assert response.checks.ungrounded_numbers == [PLANTED]
+
     async def test_an_earlier_assistant_answer_does_not_ground_a_number(self):
         """
         GIVEN a turn with a fetched project and an earlier assistant entry that holds 4711
