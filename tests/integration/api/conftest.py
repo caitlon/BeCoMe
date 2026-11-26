@@ -7,8 +7,8 @@ from contextlib import contextmanager
 # that needs the assistant on sets it explicitly with monkeypatch.
 os.environ["ASSISTANT_ENABLED"] = "false"
 # Likewise the model providers: a developer's .env may point a role at a hosted API, which
-# the test servers on loopback URLs would then be refused for.
-os.environ.pop("ASSISTANT_API_KEY_OVH", None)
+# the test servers on loopback URLs would then be refused for. The hosted key itself is
+# blanked by tests/test.env.
 for _role in ("ANSWER", "LLM", "EMBEDDING"):
     os.environ[f"ASSISTANT_{_role}_PROVIDER"] = "local"
 
