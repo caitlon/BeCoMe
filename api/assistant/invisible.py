@@ -11,13 +11,12 @@ space and ``3`` read as two numbers, not as 23). They are removed from the answe
 the model reads and from the user's own input. The line and paragraph separators (U+2028,
 U+2029) and the braille blank (U+2800) are visible space and stay.
 
-The joiners that bind an emoji sequence (U+200D) are removed too, so a family or a flag
-sequence shows as its separate emoji. That is accepted: the loss is cosmetic, and keeping
-the joiner would keep a character that can split a number.
-
-A few Cf characters do draw a mark (the Arabic number signs U+0600 to U+0605, the Egyptian
-hieroglyph format controls); removing them is accepted too, since the app writes English and
-Czech.
+Some visible text changes as a result, and that is accepted, since the app's languages are
+English and Czech. Emoji built with a zero-width joiner (a family, the rainbow flag) show as
+their separate emoji, an emoji loses its presentation selector (U+FE0F), a subdivision flag
+loses its tag characters and shows as a plain black flag, and the few Cf characters that do
+draw a mark (for example the Arabic number signs U+0600 to U+0605) are removed. Regional
+flags such as the Czech one carry none of these characters and stay.
 """
 
 import unicodedata
@@ -66,8 +65,10 @@ def strip_invisible(text: str) -> str:
     U+001C to U+001F and U+0085) becomes a space. Every other control character and every
     character of Unicode category Cf is removed, and so are the combining grapheme joiner,
     the Hangul fillers, the Khmer inherent vowels, the variation selectors, the unassigned
-    default-ignorable code points and the block U+E0000 to U+E0FFF. Visible text, accented
-    letters and emoji included, is unchanged.
+    default-ignorable code points U+2065 and U+FFF0 to U+FFF8, and every code point from
+    U+E0000 to U+E0FFF (the tags, the supplementary variation selectors and unassigned ones).
+    Letters, accented ones included, digits, punctuation and spaces are unchanged; the module
+    docstring says which emoji change.
 
     :param text: The text to clean.
     :return: The text without invisible characters.
