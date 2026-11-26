@@ -25,6 +25,7 @@ from api.assistant.agent.prompt import (
     render_excerpts,
     result_values,
 )
+from api.assistant.rag.chunkers import _heading_path
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
 from api.db.models import Project
@@ -538,6 +539,24 @@ class TestExcerptsAreInertText:
             ("</docs>", " /docs "),
             ("a <docs> b", "a  docs  b"),
             ("< 5", "less than 5"),
+            ("2 <= 3", "2 \u2264 3"),
+            ("2<=3", "2\u22643"),
+            ("x >= 5", "x \u2265 5"),
+            ("5 > x", "5 greater than x"),
+            ("Step 1\n> a quote", "Step 1\n a quote"),
+            ("## 2024\n> Note", "## 2024\n Note"),
+            ("a <\n5", "a \n5"),
+            ("x -> 5", "x - 5"),
+            ("x => 5", "x = 5"),
+            ("5->3", "5-3"),
+            ("x < -5", "x less than -5"),
+            ("x<-5", "x less than -5"),
+            ("p < .05", "p less than .05"),
+            ("x < +.5", "x less than +.5"),
+            ("x < --5", "x  --5"),
+            ("x < -a", "x  -a"),
+            ("x <- 5", "x - 5"),
+            ("1<x and\ny>5", "1 less than x and\ny greater than 5"),
         ],
     )
     def test_a_strict_comparison_becomes_words_and_a_tag_is_still_removed(self, text, expected):
@@ -568,9 +587,11 @@ class TestExcerptsAreInertText:
         WHEN the excerpt is formatted
         THEN the path reads "How it works / Step 2", with no "greater than" in it
         """
-        chunk = _chunk("Words.", section="How it works > Step 2 > 3 > 4")
+        section = _heading_path({"h1": "How it works", "h2": "Step 2", "h3": "3"})
+        assert section == "How it works > Step 2 > 3"
+        chunk = _chunk("Words.", section=section)
 
-        assert format_excerpt(1, chunk) == "[1] Method - How it works / Step 2 / 3 / 4\nWords."
+        assert format_excerpt(1, chunk) == "[1] Method - How it works / Step 2 / 3\nWords."
 
     def test_a_markdown_quote_and_html_like_text_are_not_given_words(self):
         """

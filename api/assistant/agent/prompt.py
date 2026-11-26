@@ -101,28 +101,38 @@ _BRACKET_LOOKALIKES = str.maketrans(
 
 
 # A span that looks like a tag: ``<``, an optional ``/``, a letter, ``!`` or ``?``, and then
-# everything up to the next ``>``, with no ``<`` or ``>`` inside. Both brackets of such a span
-# become spaces, so the name stays readable ("<h2>2024</h2>" reads " h2 2024 /h2 ") and no
-# tag is left.
-_TAG_SPAN = re.compile(r"<(/?[A-Za-z!?][^<>]*)>")
+# everything up to the next ``>`` on the same line, with no ``<`` or ``>`` inside. Both
+# brackets of such a span become spaces, so the name stays readable ("<h2>2024</h2>" reads
+# " h2 2024 /h2 ") and no tag is left. A line break ends the search, so two comparisons on
+# two lines ("1<x and" and "y>5") are not taken for one tag.
+_TAG_SPAN = re.compile(r"<(/?[A-Za-z!?][^<>\n\r\v\f\x85\u2028\u2029]*)>")
 
 # A bracket that is left after the tag spans.
 _BRACKET = re.compile(r"[<>]")
 
-# What follows a bracket when a digit is its nearest non-space neighbour on the right.
-_DIGIT_AHEAD = re.compile(r"\s*\d")
+# What follows a bracket when a number starts its right-hand side: spaces or tabs (never a
+# line break), then an optional single sign or decimal point, then a digit. "-5" and ".05"
+# start a number; "--5" and "-a" do not.
+_DIGIT_AHEAD = re.compile(r"[ \t]*[-+]?\.?\d")
 
 
 def _beside_digit(text: str, start: int, end: int) -> bool:
-    """Tell whether the nearest non-space character on either side of a bracket is a digit.
+    """Tell whether a bracket has a number beside it, on the same line.
+
+    Spaces and tabs are skipped, a line break never is, so a ``>`` that starts a line (a
+    markdown quote) is not a comparison with the number at the end of the line before. A
+    ``>`` right after ``-`` or ``=`` is an arrow ("->", "=>") and never a comparison.
 
     :param text: The text the bracket is in.
     :param start: The bracket's index.
     :param end: The index after the bracket.
-    :return: True when a digit comes right before or right after it, whitespace aside.
+    :return: True when a digit comes right before it, or a number (see :data:`_DIGIT_AHEAD`)
+        right after it, with only spaces or tabs between.
     """
+    if text[start] == ">" and start > 0 and text[start - 1] in "-=":
+        return False
     left = start - 1
-    while left >= 0 and text[left].isspace():
+    while left >= 0 and text[left] in " \t":
         left -= 1
     return (left >= 0 and text[left].isdecimal()) or _DIGIT_AHEAD.match(text, end) is not None
 
@@ -153,12 +163,14 @@ def remove_angle_brackets(value: str) -> str:
     1. ``<=`` and ``>=`` become the single symbols U+2264 and U+2265, so a comparison such as
        "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
     2. A span that looks like a tag (a ``<`` followed by an optional ``/`` and a letter,
-       ``!`` or ``?``, up to the next ``>``) has both brackets replaced by single spaces:
+       ``!`` or ``?``, up to the next ``>`` on the same line) has both brackets replaced by single spaces:
        ``<h2>2024</h2>`` reads `` h2 2024 /h2 ``.
-    3. A ``<`` or ``>`` that is left and has a digit as its nearest non-space neighbour on at
-       least one side is written as the words "less than" or "greater than" with a space on
-       each side: "error < 20" becomes "error less than 20", "2<3" becomes "2 less than 3",
-       "p<0.05" becomes "p less than 0.05".
+    3. A ``<`` or ``>`` that is left and has a number beside it on the same line (a digit
+       before it, or a digit after it with an optional sign or decimal point) is written as
+       the words "less than" or "greater than" with a space on each side: "error < 20"
+       becomes "error less than 20", "2<3" becomes "2 less than 3", "x < -5" becomes
+       "x less than -5". A ``>`` right after ``-`` or ``=`` is an arrow, and a line break
+       between the bracket and the digit means it is not a comparison.
     4. Every other ``<`` and ``>`` is removed, with their lookalikes: the fullwidth and small
        forms and the angle-bracket quotation marks (U+FF1C, U+FF1E, U+FE64, U+FE65, U+2329,
        U+232A, U+3008, U+3009, U+27E8, U+27E9). A ``>`` that only quotes or separates, as in
