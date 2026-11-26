@@ -194,7 +194,7 @@ class TestBuildCollection:
         )
 
         # WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN: query the collection back through a fresh embeddings client pointed
         # at the same fake server - it always returns the same fixed vector
@@ -243,7 +243,7 @@ class TestBuildCollection:
         )
 
         # WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN
         assert chunk_count == 1
@@ -294,7 +294,7 @@ class TestBuildCollectionWithContext:
         )
 
         # WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN: read the stored chunk back and check its text, not only the count
         assert chunk_count == 1
@@ -347,7 +347,7 @@ class TestBuildCollectionWithModelWrittenContext:
         )
 
         # WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN
         assert chunk_count == 1
@@ -418,7 +418,7 @@ class TestBuildCollectionWithCaptions:
         )
 
         # WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN: the captioned chunk's stored text carries its title and caption
         assert chunk_count == 2
@@ -697,7 +697,7 @@ class TestRebuild:
 
         # WHEN
         await build_collection(spec, settings, repo_root=tmp_path)
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN
         assert chunk_count == 1
@@ -781,7 +781,7 @@ class TestRebuild:
         assert await _registry_snapshot(postgresql, spec.name) == before
 
         # AND WHEN
-        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = (await build_collection(spec, settings, repo_root=tmp_path)).chunk_count
 
         # THEN
         assert chunk_count == 1

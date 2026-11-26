@@ -1,4 +1,4 @@
-"""Build one named collection end to end: manifest -> load -> chunk -> embed -> store.
+"""Build one named collection end to end: manifest -> load -> chunk -> screen -> embed -> store.
 
 Used only by scripts/assistant/ingest.py; the running API server never calls this.
 """
@@ -19,6 +19,7 @@ from api.assistant.rag.corpus import build_manifest
 from api.assistant.rag.enrich import ContextMode, chunk_key, enrich
 from api.assistant.rag.loaders import load_source
 from api.assistant.rag.models import make_chat_model, make_embeddings
+from api.assistant.rag.screening import FlaggedChunk, screen_chunks
 from api.assistant.rag.store import (
     create_collection,
     make_engine,
@@ -45,6 +46,19 @@ class CollectionSpec:
     chunker: ChunkerConfig
     context: ContextMode
     wave: int
+
+
+@dataclass(frozen=True)
+class BuildReport:
+    """What one build wrote, and which of its chunks looked like planted instructions.
+
+    :param chunk_count: Number of chunks written to the collection.
+    :param flagged: The chunks screening.py flagged. They are written like any other;
+        the report only tells the owner where to look.
+    """
+
+    chunk_count: int
+    flagged: list[FlaggedChunk]
 
 
 def _corpus_hash(chunks: list[Document]) -> str:
@@ -226,7 +240,9 @@ def load_corpus(settings: Settings, repo_root: Path, wave: int) -> list[Document
     return [doc for source in sources for doc in load_source(source)]
 
 
-async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: Path) -> int:
+async def build_collection(
+    spec: CollectionSpec, settings: Settings, repo_root: Path
+) -> BuildReport:
     """Build one named collection: load the corpus, chunk it, embed it, store it.
 
     Rerunning it with an existing spec.name replaces that collection instead of
@@ -239,7 +255,9 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     :param settings: Application settings (vector DB URL, embedding model, private
         corpus locations).
     :param repo_root: Repository root, passed through to build_manifest.
-    :return: Number of chunks written to the collection.
+    :return: The number of chunks written to the collection and the chunks screening.py
+        flagged as looking like planted instructions. A flagged chunk is still written:
+        the build reports and never blocks.
     :raises FileNotFoundError: If spec.context is "captions" and the configured
         captions file does not exist.
     :raises ValueError: If spec.context is "captions" and load_captions() rejects the
@@ -262,6 +280,16 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     documents = load_corpus(settings, repo_root, spec.wave)
     embeddings = make_embeddings(settings)
     chunks = split(documents, spec.chunker, embeddings=embeddings)
+    flagged = screen_chunks(chunks)
+    if flagged:
+        logger.warning(
+            "chunks that look like planted instructions",
+            extra={
+                "event": "assistant_ingest_flagged_chunks",
+                "count": len(flagged),
+                "collection": spec.name,
+            },
+        )
     llm = make_chat_model(settings) if spec.context in ("llm_context", "doc_summary") else None
     if captions is not None:
         total = len(chunks)
@@ -300,4 +328,4 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
         app_version=app_version,
         corpus_version=corpus_version,
     )
-    return len(chunks)
+    return BuildReport(chunk_count=len(chunks), flagged=flagged)
