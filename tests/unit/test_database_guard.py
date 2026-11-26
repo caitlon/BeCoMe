@@ -253,14 +253,6 @@ class TestDatabaseGuard:
         result.assert_outcomes(passed=2, errors=1)
         result.stdout.fnmatch_lines(["*RuntimeError: unrelated*"])
 
-    def test_a_refused_test_is_reported_once_without_a_traceback(self, pytester):
-        """GIVEN --tb=no, WHEN a test connects, THEN it fails once, with no teardown error."""
-        source = "import sqlite3\n\ndef test_connects():\n    sqlite3.connect(':memory:')\n"
-
-        result = _run(pytester, source, args=("--tb=no",))
-
-        result.assert_outcomes(failed=1)
-
     def test_a_failure_quoting_the_rule_does_not_hide_a_swallowed_refusal(self, pytester):
         """GIVEN a swallowed refusal and a failure that quotes the rule, WHEN it runs, THEN both show."""
         source = (

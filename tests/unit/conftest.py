@@ -144,8 +144,8 @@ def pytest_runtest_makereport(
 ) -> Generator[None, pytest.TestReport, pytest.TestReport]:
     """Mark the records as reported when the phase failed with the guard's own refusal.
 
-    The decision reads ``call.excinfo``, not the rendered report: ``--tb=no`` leaves the report
-    without text, and the text of an unrelated failure may quote the rule.
+    The decision reads ``call.excinfo``, not the rendered report, because the text of an
+    unrelated failure may quote the rule.
 
     :param item: The running item.
     :param call: The phase that just ran.
