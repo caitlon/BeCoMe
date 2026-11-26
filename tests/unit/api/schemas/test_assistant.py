@@ -78,6 +78,42 @@ class TestChatTurn:
         with pytest.raises(ValidationError):
             ChatTurn(role="assistant", content="a" * (MAX_HISTORY_CONTENT_CHARS + 1))
 
+    def test_strips_invisible_characters_from_the_content(self):
+        """
+        GIVEN history content with a bidi override and a zero-width space
+        WHEN a ChatTurn is built
+        THEN the content is stored without them
+        """
+        assert ChatTurn(role="assistant", content="9\u202e1\u200b.4").content == "91.4"
+
+    def test_content_of_only_invisible_characters_becomes_empty(self):
+        """
+        GIVEN history content made only of invisible characters
+        WHEN a ChatTurn is built
+        THEN it is accepted and the content is empty
+        """
+        assert ChatTurn(role="user", content="\u200b\u202e").content == ""
+
+    def test_the_content_limit_applies_to_the_raw_text(self):
+        """
+        GIVEN content at the cap that is padded with one invisible character
+        WHEN a ChatTurn is built
+        THEN validation fails although the stripped text would fit
+        """
+        with pytest.raises(ValidationError):
+            ChatTurn(role="user", content="a" * MAX_HISTORY_CONTENT_CHARS + "\u200b")
+
+    def test_a_non_string_content_is_a_type_error(self):
+        """
+        GIVEN content that is not a string
+        WHEN a ChatTurn is built
+        THEN validation fails with a type error, not an exception from the stripper
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            ChatTurn.model_validate({"role": "user", "content": 5})
+
+        assert exc_info.value.errors()[0]["type"] == "string_type"
+
     def test_rejects_unknown_fields(self):
         """
         GIVEN a history entry with a field of its own
@@ -117,6 +153,57 @@ class TestAssistantChatRequest:
         first.history.append(ChatTurn(role="user", content="x"))
 
         assert second.history == []
+
+    def test_rejects_a_message_of_only_invisible_characters(self):
+        """
+        GIVEN a message of zero-width spaces, and one of a space and a bidi override
+        WHEN the request is built
+        THEN validation fails
+        """
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(message="\u200b\u200b")
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(message=" \u202e\n")
+
+    def test_strips_invisible_characters_from_the_message(self):
+        """
+        GIVEN a message with a bidi override
+        WHEN the request is built
+        THEN the message is stored without it
+        """
+        assert AssistantChatRequest(message="What is 9\u202e1.4?").message == "What is 91.4?"
+
+    def test_the_message_limit_applies_to_the_raw_text(self):
+        """
+        GIVEN a message at the cap that is padded with one invisible character
+        WHEN the request is built
+        THEN validation fails although the stripped text would fit
+        """
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(message="a" * MAX_MESSAGE_CHARS + "\u200b")
+
+    def test_a_non_string_message_is_a_type_error(self):
+        """
+        GIVEN a message that is not a string
+        WHEN the request is built
+        THEN validation fails with a type error, not an exception from the stripper
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            AssistantChatRequest.model_validate({"message": 5})
+
+        assert exc_info.value.errors()[0]["type"] == "string_type"
+
+    def test_strips_invisible_characters_from_the_history(self):
+        """
+        GIVEN a history entry with a zero-width space
+        WHEN the request is built
+        THEN the entry is stored without it
+        """
+        request = AssistantChatRequest(
+            message="hi", history=[ChatTurn(role="user", content="2\u200b3")]
+        )
+
+        assert request.history[0].content == "23"
 
     def test_rejects_an_empty_message(self):
         """

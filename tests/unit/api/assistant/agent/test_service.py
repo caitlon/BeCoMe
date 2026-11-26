@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import unicodedata
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -18,6 +19,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from api.assistant.agent import service as service_module
 from api.assistant.agent.checks import find_ungrounded_numbers, strip_citations
 from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.generation import Generated
 from api.assistant.agent.masking import mask_participants
 from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
@@ -2600,3 +2602,157 @@ class TestShowSourcesSetting:
 
         assert pieces == []
         assert response.answer == "It is the midpoint."
+
+
+class _PiecesService(AssistantService):
+    """A workflow service whose generator streams the given pieces, then the given text."""
+
+    def __init__(self, pieces: list[str], text: str) -> None:
+        super().__init__(_settings(), _model())
+        self._generator = _PieceGenerator(pieces, text)
+
+
+class _PieceGenerator:
+    """Streams fixed pieces and the final text, with no model behind it."""
+
+    def __init__(self, pieces: list[str], text: str) -> None:
+        self._pieces = pieces
+        self._text = text
+
+    async def stream(self, messages, ctx, question):
+        for piece in self._pieces:
+            yield piece
+        yield Generated(
+            self._text,
+            [],
+            TurnUsage(input_tokens=1, output_tokens=1, total_tokens=2, llm_calls=1, complete=True),
+        )
+
+
+def _has_formatting_character(text: str) -> bool:
+    return any(unicodedata.category(char) in {"Cc", "Cf"} and char not in "\n\t" for char in text)
+
+
+@pytest.mark.asyncio
+class TestInvisibleCharacters:
+    """What the model writes is shown, checked and returned without invisible characters."""
+
+    async def test_an_answer_loses_its_invisible_characters(self):
+        """
+        GIVEN a model whose answer holds a zero-width space and a bidi override
+        WHEN a turn is answered
+        THEN the response's answer has neither
+        """
+        model = _model(_say("The mid\u200bpoint\u202e is 14.19."))
+
+        response = await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert response.answer == "The midpoint is 14.19."
+
+    async def test_an_answer_of_only_invisible_characters_is_refused_as_empty(self):
+        """
+        GIVEN a model whose answer is a zero-width space and a bidi override
+        WHEN a turn is answered
+        THEN the answer is refused as empty
+        """
+        model = _model(_say("\u200b\u202e"))
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert [r.event for r in records] == ["assistant_empty_answer"]
+
+    async def test_a_streamed_answer_reaches_the_client_without_invisible_characters(self):
+        """
+        GIVEN a streamed answer whose pieces hold a zero-width space, a bidi override and a
+            soft hyphen
+        WHEN the turn is streamed
+        THEN no piece and not the final answer holds a formatting character, and the pieces
+            join to the answer
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("The mid\u200bpoint \u202eis 14\u00ad.19.")],
+            stream_chunks=["The mid\u200b", "point ", "\u202e", "is 14\u00ad", ".19."],
+        )
+
+        pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
+
+        assert not any(_has_formatting_character(piece) for piece in pieces)
+        assert "\u202e" not in "".join(pieces)
+        assert "".join(pieces) == response.answer == "The midpoint is 14.19."
+
+    async def test_a_line_break_cut_in_two_pieces_is_one_newline(self):
+        """
+        GIVEN a generator that yields a carriage return and its line feed in two pieces
+        WHEN the turn is streamed
+        THEN the pieces join to one newline, equal to the final answer
+        """
+        service = _PiecesService(["One\r", "\nTwo"], "One\r\nTwo")
+
+        pieces, response = await _drain(service, _request(), _ctx())
+
+        assert "".join(pieces) == response.answer == "One\nTwo"
+
+    async def test_a_carriage_return_that_ends_the_stream_is_let_out_as_a_newline(self):
+        """
+        GIVEN a generator whose last piece ends with a carriage return
+        WHEN the turn is streamed
+        THEN the held carriage return is let out as a newline at the end, as stripping the
+             whole answer makes it
+        """
+        service = _PiecesService(["One", "\r"], "One\r")
+
+        pieces, response = await _drain(service, _request(), _ctx())
+
+        assert pieces == ["One", "\n"]
+        assert response.answer == "One\n"
+
+    async def test_two_carriage_returns_across_pieces_match_the_whole_answer(self):
+        """
+        GIVEN a generator that cuts a carriage return, a carriage return and a line feed
+            after the first carriage return
+        WHEN the turn is streamed
+        THEN the pieces join to what stripping the whole answer gives
+        """
+        service = _PiecesService(["a\r", "\r\nb"], "a\r\r\nb")
+
+        pieces, response = await _drain(service, _request(), _ctx())
+
+        assert "".join(pieces) == response.answer == "a\n\nb"
+
+    async def test_a_streamed_answer_of_only_invisible_characters_is_refused_as_empty(self):
+        """
+        GIVEN a streamed answer made only of invisible characters
+        WHEN the turn is streamed
+        THEN no text is sent and the answer is refused as empty
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("\u200b\u202e")], stream_chunks=["\u200b", "\u202e"]
+        )
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+
+        with pytest.raises(AssistantUnavailableError):
+            async for item in service.stream(turn):
+                assert isinstance(item, str)
+                pieces.append(item)
+
+        assert pieces == []
+
+    async def test_the_first_token_time_is_measured_on_the_first_raw_piece(self):
+        """
+        GIVEN a streamed answer whose first piece is invisible characters only
+        WHEN the turn is streamed
+        THEN the time to first token is still recorded
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("\u200bYes.")], stream_chunks=["\u200b", "Yes."]
+        )
+
+        _pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
+
+        assert response.timing.ttft_ms is not None

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from api.assistant.agent.masking import TurnRoster
 from api.assistant.client import UserApiClient
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.schemas.assistant import SourceRef
 
@@ -70,16 +71,18 @@ class SourceRegistry:
 
         A local-layer source never carries a url: the layer is private, and whatever
         the index holds in that field must not reach a browser. It still carries a short
-        excerpt of its own words in ``snippet``; only the url is withheld.
+        excerpt of its own words in ``snippet``; only the url is withheld. The title, the
+        section and the snippet lose their invisible characters (see
+        :func:`~api.assistant.invisible.strip_invisible`).
 
         :return: One reference per registered chunk, in registration order.
         """
         return [
             SourceRef(
                 n=number,
-                title=chunk.title,
-                section=chunk.section,
-                snippet=_excerpt(chunk.chunk_text),
+                title=strip_invisible(chunk.title),
+                section=strip_invisible(chunk.section),
+                snippet=_excerpt(strip_invisible(chunk.chunk_text)),
                 url=None if chunk.layer == "local" else chunk.url,
                 layer=chunk.layer,
             )
