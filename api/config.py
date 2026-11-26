@@ -114,13 +114,9 @@ _ASSISTANT_CHAT_MODELS = frozenset({"Qwen3.5-9B"})
 _ASSISTANT_EMBEDDING_MODELS = frozenset({"bge-m3"})
 _ASSISTANT_PROVIDER_PORT = 443
 
-# The assistant modes a deployed service may run. agent and hybrid give the model tools that
-# read any project of the caller, a turn there makes several model calls against a budget that
-# counts messages, the trace mask registers only the current project's roster and /privacy
-# describes workflow alone. A mode joins this set only through a reviewed PR, once those
-# controls exist. A constant and not a setting for the reason the provider pins are: a setting
-# would be one more Railway variable beside ASSISTANT_MODE, changed by the same person with the
-# same lack of review.
+# The assistant modes a deployed service may run. agent and hybrid give the model tools, and
+# their controls for a deployed service are not reviewed yet; a mode joins this set only
+# through a reviewed PR. A constant and not a setting, like the provider pins above.
 _ASSISTANT_DEPLOY_MODES = frozenset({"workflow"})
 
 # Each assistant model role that can run hosted: its provider setting, the base URL setting a
@@ -643,20 +639,20 @@ class Settings(BaseSettings):
         against an allowlist of those two, so an unknown or renamed environment
         (``production``, ``staging``, a preview) is refused. The prod profile is a deploy
         too and is held to every rule below. A deployed service may run only the modes in
-        _ASSISTANT_DEPLOY_MODES, which is workflow today: agent and hybrid give the model tools
-        that read any project of the caller, so they wait for a reviewed PR that adds them. A
-        deployed service has no llama-server to reach, so every model role there must be api; a
-        laptop and a CI runner keep local roles and any mode. The api roles are pinned too: each
-        base URL must name a host in _ASSISTANT_PROVIDER_HOSTS, with no user, password or port
-        other than 443, and each model id must be in the role's reviewed set, so a changed
+        _ASSISTANT_DEPLOY_MODES, which is workflow today: agent and hybrid give the model
+        tools, so they wait for a reviewed PR that adds them. A deployed service has no
+        llama-server to reach, so every model role there must be api; a laptop and a CI
+        runner keep local roles and any mode. The api roles are pinned too: each base URL
+        must name a host in _ASSISTANT_PROVIDER_HOSTS, with no user, password or port other
+        than 443, and each model id must be in the role's reviewed set, so a changed
         variable cannot send project text and the provider key to a host or a model nobody
-        reviewed. A zero
-        message limit switches that cap off, so a deployed service may set none of the per-user, the
-        per-address and the global limit to zero, and the per-address limit must stay below the
-        global one, since an address that could spend the whole ceiling would not be capped by
-        it. Neither check applies to a laptop. LangSmith tracing
-        sends the text of questions, tool replies and answers, which is project data read
-        as the signed-in user, to a third-party endpoint, so a deployed service may trace
+        reviewed. A zero message limit switches that cap off, so a deployed service may set
+        none of the per-user, the per-address and the global limit to zero, and the
+        per-address limit must stay below the global one, since an address that could spend
+        the whole ceiling would not be capped by it. Neither check applies to a laptop.
+        LangSmith tracing sends the text of questions, tool replies and answers, which is
+        project data read as the signed-in user, to a third-party endpoint, so a deployed
+        service may trace
         only to the EU endpoint, into a named project other than the local default, and only
         through assistant_langsmith_enabled: the library's own switches (``LANGSMITH_TRACING``
         and its variants) and its ``RUNS_ENDPOINTS`` lists are refused there. The corpus
@@ -680,15 +676,15 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true on a Railway environment outside
             the allowlist, or on a deployed service while assistant_mode is outside
-            _ASSISTANT_DEPLOY_MODES,
-            assistant_rate_limit_per_hour, assistant_address_turns_per_hour or
-            assistant_global_turns_per_hour is 0, the per-address limit is not below the global
-            one, a model role is still local, a role's base URL names a host outside the
-            reviewed list or carries a user, password or port other than 443, a role's model
-            id is outside its reviewed set, assistant_langsmith_enabled is true with an
-            endpoint other than the EU one or a blank or local-default project, a library tracing
-            switch is on, a ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty,
-            not a ``postgresql+psycopg`` URL, without a database or a single host, carrying a
+            _ASSISTANT_DEPLOY_MODES, assistant_rate_limit_per_hour,
+            assistant_address_turns_per_hour or assistant_global_turns_per_hour is 0, the
+            per-address limit is not below the global one, a model role is still local, a
+            role's base URL names a host outside the reviewed list or carries a user,
+            password or port other than 443, a role's model id is outside its reviewed set,
+            assistant_langsmith_enabled is true with an endpoint other than the EU one or a
+            blank or local-default project, a library tracing switch is on, a
+            ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty, not a
+            ``postgresql+psycopg`` URL, without a database or a single host, carrying a
             host, hostaddr, port, dbname or service override, naming the same database as
             database_url or migration_database_url, or without a single sslmode of require,
             verify-ca or verify-full.
@@ -707,8 +703,8 @@ class Settings(BaseSettings):
             if self.assistant_mode not in _ASSISTANT_DEPLOY_MODES:
                 raise ValueError(
                     f"assistant_mode must be {' or '.join(sorted(_ASSISTANT_DEPLOY_MODES))} on a "
-                    "deployed service until the tool modes have their controls; a mode is added "
-                    "to _ASSISTANT_DEPLOY_MODES in api/config.py"
+                    "deployed service; a mode is added to _ASSISTANT_DEPLOY_MODES in api/config.py "
+                    "after a review of its controls"
                 )
             for limit_name in (
                 "assistant_rate_limit_per_hour",

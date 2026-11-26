@@ -608,8 +608,8 @@ deployed service with the assistant on the validator also pins each hosted role:
 `_ASSISTANT_PROVIDER_HOSTS` (exact match without regard to case, no user, password or port other than 443) and the model
 id must be in the role's reviewed set, both constants in `api/config.py`, so a changed variable
 cannot send prompts and the provider key to a host or model that nobody reviewed. It also refuses
-a mode outside `_ASSISTANT_DEPLOY_MODES` (`workflow` only), because the tool modes read any project
-of the caller. The
+a mode outside `_ASSISTANT_DEPLOY_MODES` (`workflow` only): the tool modes wait for a review of
+their controls. The
 environment-name refusal, the hosted-roles rule and the tracing rules also fire when
 `RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
 `is_deploy` is still held to them. The assistant router is registered only when the setting is on,
