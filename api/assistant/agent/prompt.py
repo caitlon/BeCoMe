@@ -122,9 +122,10 @@ _LINE_BREAKS = "\n\r\v\f\x85\u2028\u2029"
 def _beside_digit(text: str, start: int, end: int) -> bool:
     """Tell whether a bracket has a number beside it, on the same line.
 
-    Blanks of any kind (a non-breaking space too) are skipped, a line break never is, so a ``>`` that starts a line (a
-    markdown quote) is not a comparison with the number at the end of the line before. A
-    ``>`` right after ``-`` or ``=`` is an arrow ("->", "=>") and never a comparison.
+    Blanks of any kind (a non-breaking space too) are skipped, a line break never is, so a
+    ``>`` that starts a line (a markdown quote) is not a comparison with the number at the
+    end of the line before. A ``>`` right after ``-`` or ``=`` is an arrow ("->", "=>") and
+    never a comparison.
 
     :param text: The text the bracket is in.
     :param start: The bracket's index.
