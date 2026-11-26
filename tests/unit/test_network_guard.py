@@ -5,6 +5,7 @@ import importlib.util
 import json
 import re
 import socket
+import tempfile
 from collections.abc import Callable, Iterator
 from functools import partial
 from typing import Any
@@ -12,7 +13,12 @@ from typing import Any
 import pytest
 
 from tests import conftest, network_guard
-from tests.network_guard import NetworkBlockedError, is_loopback_host, remote_database_host
+from tests.network_guard import (
+    NetworkBlockedError,
+    is_loopback_host,
+    remote_database_host,
+    remote_libpq_environment,
+)
 
 pytest_plugins = ["pytester"]
 
@@ -88,12 +94,12 @@ _REFUSALS = [
     ),
 ]
 
-_LOOPBACK = ["localhost", "localhost.", "localhost.localdomain", "ip6-localhost", "ip6-loopback"]
-_LOOPBACK += ["127.0.0.1", "127.8.9.10", "::1", "::1%lo0"]
+_LOOPBACK = ["localhost", "localhost.", "LocalHost", "127.0.0.1", "127.8.9.10", "::1", "::1%lo0"]
 _UNSPECIFIED = ["0.0.0.0", "::", "::ffff:0.0.0.0"]  # noqa: S104 - the values under test
 _LOCAL_HOSTS = [None, "", b"localhost", "[::1]", "::ffff:127.0.0.1", *_LOOPBACK, *_UNSPECIFIED]
 _OUTSIDE_HOSTS = ["example.com", "10.0.0.1", _OUT, "::ffff:10.0.0.1", "fe80::1%en0"]
-_OUTSIDE_HOSTS += ["localhost.example.com", "localhost%.example.com"]
+_OUTSIDE_HOSTS += ["localhost.example.com", "localhost%.example.com", "[localhost]", " localhost "]
+_OUTSIDE_HOSTS += ["localhost.localdomain", "ip6-localhost", "ip6-loopback", "[127.0.0.1]"]
 _SOCKET_DIR = "/tmp"  # noqa: S108 - a unix socket directory, never created
 
 
@@ -142,6 +148,13 @@ class TestRefusedConnections:
         assert (record["operation"], record["target"]) == ("connect", f"{_OUT}:443")
         assert "test_a_refusal_is_appended_to_the_log_file" in record["test"]
 
+    def test_an_unwritable_log_path_does_not_replace_the_refusal(self, monkeypatch, tmp_path):
+        """GIVEN a log path in a missing folder, WHEN a connect is refused, THEN the guard's error still raises."""
+        monkeypatch.setenv(network_guard.LOG_ENV, str(tmp_path / "missing" / "guard.jsonl"))
+
+        with pytest.raises(NetworkBlockedError):
+            _on_socket(_TCP, "connect", (_OUT, 443))
+
     def test_the_machines_own_name_is_not_looked_up(self, monkeypatch):
         """GIVEN a non-loopback host name, WHEN getfqdn or make_msgid asks, THEN both are refused."""
         monkeypatch.setattr(socket, "gethostname", lambda: "my-laptop.example")
@@ -169,6 +182,7 @@ class TestAllowedTraffic:
     def test_a_local_server_accepts_a_loopback_client(self):
         """GIVEN a listening loopback server, WHEN a client connects, THEN it reads the line sent."""
         with socket.socket(*_TCP) as server:
+            server.settimeout(1)
             server.bind(("127.0.0.1", 0))
             server.listen(1)
             with socket.create_connection(server.getsockname(), timeout=2) as client:
@@ -191,16 +205,39 @@ class TestAllowedTraffic:
         """GIVEN a UDP socket on 127.0.0.1, WHEN another sends to it, THEN the datagram arrives."""
         with socket.socket(*_UDP) as receiver, socket.socket(*_UDP) as sender:
             receiver.bind(("127.0.0.1", 0))
-            receiver.settimeout(2)
+            receiver.settimeout(1)
+            sender.settimeout(1)
             sender.sendto(b"ping", receiver.getsockname())
             data, _ = receiver.recvfrom(16)
 
         assert data == b"ping"
 
+    def test_a_unix_socket_connect_goes_through_the_guard(self):
+        """GIVEN a unix socket server, WHEN a client connects by path, THEN a byte gets through."""
+        with (
+            tempfile.TemporaryDirectory(dir=_SOCKET_DIR) as folder,  # short: macOS caps the path
+            socket.socket(socket.AF_UNIX) as server,
+            socket.socket(socket.AF_UNIX) as client,
+        ):
+            server.settimeout(1)
+            client.settimeout(1)
+            server.bind(f"{folder}/s")
+            server.listen(1)
+            client.connect(f"{folder}/s")
+            client.sendall(b"x")
+            connection, _ = server.accept()
+            with connection:
+                connection.settimeout(1)
+                received = connection.recv(1)
+
+        assert received == b"x"
+
     def test_a_unix_socket_pair_is_allowed(self):
         """GIVEN a unix socket pair, WHEN one sends bytes, THEN the other receives them."""
         left, right = socket.socketpair()
         with left, right:
+            left.settimeout(1)
+            right.settimeout(1)
             left.sendall(b"ping")
             assert right.recv(4) == b"ping"
 
@@ -229,50 +266,57 @@ class TestRemoteDatabaseHost:
     """A database URL that leaves the machine is found, whichever way it names the host."""
 
     @pytest.mark.parametrize(
-        ("url", "env", "expected"),
+        ("url", "expected"),
         [
             # Local, or never connecting.
-            ("", {}, None),
-            ("sqlite://", {}, None),
-            ("sqlite:///./local.db", {}, None),
-            ("postgresql://u:p@localhost/db", {}, None),
-            ("postgresql://u:p@127.0.0.1:5432/db", {}, None),
-            ("postgresql://u:p@[::1]:5432/db", {}, None),
-            ("postgresql:///db", {}, None),
-            (f"postgresql:///db?host={_SOCKET_DIR}", {}, None),
-            ("postgresql://localhost,127.0.0.1/db", {}, None),
-            ("postgresql:///db?host=localhost&hostaddr=127.0.0.1", {}, None),
+            ("", None),
+            ("sqlite://", None),
+            ("sqlite:///./local.db", None),
+            ("postgresql://u:p@localhost/db", None),
+            ("postgresql://u:p@127.0.0.1:5432/db", None),
+            ("postgresql://u:p@[::1]:5432/db", None),
+            ("postgresql:///db", None),
+            (f"postgresql:///db?host={_SOCKET_DIR}", None),
+            ("postgresql://u@%2Ftmp%2Fpg/db", None),
+            ("postgresql://localhost,127.0.0.1/db", None),
+            ("postgresql:///db?host=localhost&hostaddr=127.0.0.1", None),
             # Remote: the host is reported, never the URL.
-            ("postgresql://u:p@db.example.com/db", {}, "db.example.com"),
-            ("postgresql+psycopg://u:p@db.example.com:5432/db", {}, "db.example.com"),
-            ("postgresql://u:p@[2001:db8::1]:5432/db", {}, "2001:db8::1"),
-            ("postgresql:///db?host=remote.example", {}, "remote.example"),
-            ("postgresql://u:p@localhost/db?hostaddr=192.0.2.1", {}, "192.0.2.1"),
-            ("postgresql://u:p@localhost,db.example.com/db", {}, "db.example.com"),
-            ("postgresql:///db?host=localhost,remote.example", {}, "remote.example"),
-            # No host in the URL: libpq falls back to its environment.
-            ("postgresql:///db", {"PGHOST": "db.example.com"}, "db.example.com"),
-            ("postgresql:///db", {"PGHOST": "localhost,db.example.com"}, "db.example.com"),
-            ("postgresql:///db", {"PGHOSTADDR": _OUT}, _OUT),
-            ("postgresql:///db", {"PGSERVICE": "production"}, "service=production"),
-            ("postgresql:///db", {"PGHOST": _SOCKET_DIR}, None),
-            ("postgresql:///db", {"PGHOST": "localhost"}, None),
-            ("postgresql:///db", {"PGHOSTADDR": "127.0.0.1"}, None),
-            # A host in the URL, or no connection at all, makes the environment irrelevant.
-            ("postgresql://u:p@localhost/db", {"PGHOST": "db.example.com"}, None),
-            (f"postgresql:///db?host={_SOCKET_DIR}", {"PGHOST": "db.example.com"}, None),
-            ("sqlite://", {"PGHOST": "db.example.com"}, None),
-            ("", {"PGSERVICE": "production"}, None),
+            ("postgresql://u:p@db.example.com/db", "db.example.com"),
+            ("postgresql+psycopg://u:p@db.example.com:5432/db", "db.example.com"),
+            ("postgresql://u:p@[2001:db8::1]:5432/db", "2001:db8::1"),
+            ("postgresql:///db?host=remote.example", "remote.example"),
+            ("postgresql://u:p@localhost/db?hostaddr=192.0.2.1", "192.0.2.1"),
+            ("postgresql://u:p@localhost,db.example.com/db", "db.example.com"),
+            ("postgresql:///db?host=localhost,remote.example", "remote.example"),
+            ("postgresql://u:p@db%2Eexample.com/db", "db.example.com"),
+            # A service file cannot be read here, so a service counts as remote.
+            ("postgresql:///db?service=prod", "service=prod"),
         ],
     )
-    def test_the_host_outside_this_machine_is_reported_alone(self, monkeypatch, url, env, expected):
-        """GIVEN a database URL and a libpq environment, WHEN checked, THEN only a remote host is returned."""
+    def test_the_host_outside_this_machine_is_reported_alone(self, url, expected):
+        """GIVEN a database URL, WHEN checked, THEN only a host outside this machine is returned."""
+        assert remote_database_host(url) == expected
+
+    @pytest.mark.parametrize(
+        ("env", "expected"),
+        [
+            ({}, None),
+            ({"PGHOST": "db.example.com"}, ("PGHOST", "db.example.com")),
+            ({"PGHOST": "localhost,db.example.com"}, ("PGHOST", "db.example.com")),
+            ({"PGHOSTADDR": _OUT}, ("PGHOSTADDR", _OUT)),
+            ({"PGSERVICE": "production"}, ("PGSERVICE", "service=production")),
+            ({"PGHOST": _SOCKET_DIR, "PGHOSTADDR": "127.0.0.1"}, None),
+            ({"PGHOST": "localhost,::1"}, None),
+        ],
+    )
+    def test_a_libpq_variable_that_leaves_the_machine_is_reported(self, monkeypatch, env, expected):
+        """GIVEN libpq variables, WHEN checked, THEN the variable and its remote host are returned."""
         for name in ("PGHOST", "PGHOSTADDR", "PGSERVICE"):
             monkeypatch.delenv(name, raising=False)
         for name, value in env.items():
             monkeypatch.setenv(name, value)
 
-        assert remote_database_host(url) == expected
+        assert remote_libpq_environment() == expected
 
 
 class TestInstall:
@@ -294,23 +338,29 @@ class TestInstall:
 
 
 class TestDatabaseUrlPin:
-    """The root conftest refuses a database URL that leaves the machine, before any test runs."""
+    """The root conftest refuses a database that leaves the machine, before any test runs."""
 
     @pytest.mark.parametrize(
-        "name", ["DATABASE_URL", "MIGRATION_DATABASE_URL", "ASSISTANT_VECTOR_DB_URL"]
+        ("url", "env", "culprit", "host"),
+        [
+            (_REMOTE_URL_WITH_PASSWORD, {}, "DATABASE_URL", "db.example.com"),
+            ("sqlite://", {"PGHOST": "db.example.com"}, "PGHOST", "db.example.com"),
+        ],
     )
-    def test_a_remote_database_url_stops_the_run_and_names_only_its_host(self, monkeypatch, name):
-        """GIVEN a remote URL with a password, WHEN the pin runs, THEN it raises with the host only."""
+    def test_a_remote_database_stops_the_run_and_names_only_its_host(
+        self, monkeypatch, url, env, culprit, host
+    ):
+        """GIVEN a remote URL or libpq variable, WHEN the pin runs, THEN it raises with the host only."""
         monkeypatch.setattr(conftest, "read_test_env", dict)
-        monkeypatch.setenv(name, _REMOTE_URL_WITH_PASSWORD)
+        for name in ("PGHOST", "PGHOSTADDR", "PGSERVICE"):
+            monkeypatch.delenv(name, raising=False)
+        for name, value in {"DATABASE_URL": url, **env}.items():
+            monkeypatch.setenv(name, value)
 
         with pytest.raises(RuntimeError) as refused:
             conftest._pin_environment()
 
-        assert (
-            str(refused.value)
-            == f"{name} must point at this machine in tests, not 'db.example.com'"
-        )
+        assert str(refused.value) == f"{culprit} must point at this machine in tests, not {host!r}"
 
 
 class TestSwallowedRefusal:
@@ -320,7 +370,10 @@ class TestSwallowedRefusal:
         ("statement", "reported"),
         [
             (f"socket.create_connection(({_OUT!r}, 443), timeout=1)", "name lookup to 192.0.2.1"),
-            (f"socket.socket().connect(({_OUT!r}, 443))", "connect to 192.0.2.1:443"),
+            (
+                f"sock = socket.socket(); sock.settimeout(1); sock.connect(({_OUT!r}, 443))",
+                "connect to 192.0.2.1:443",
+            ),
         ],
     )
     def test_a_test_that_swallows_a_refusal_is_reported_as_an_error(
@@ -361,6 +414,29 @@ class TestSwallowedRefusal:
         result.stdout.fnmatch_lines(
             ["*connect to 192.0.2.1:443 (first recorded under test_earlier.py::test_started_a_*"]
         )
+
+    def test_an_attempt_landing_while_the_fixture_reports_is_still_reported(
+        self, pytester, monkeypatch
+    ):
+        """GIVEN a thread's attempt landing after the snapshot, WHEN the run ends, THEN it is reported."""
+        late = {"test": "late.py::t (call)", "operation": "connect", "target": "192.0.2.2:80"}
+
+        class RacyList(list):
+            """Gains the late attempt right after its first slice, as a background thread would."""
+
+            def __getitem__(self, key):
+                result = super().__getitem__(key)
+                if isinstance(key, slice) and late not in self:
+                    self.append(late)
+                return result
+
+        monkeypatch.setattr(network_guard, "attempts", RacyList())
+
+        result = _run(pytester, _SESSION_CONFTEST, "def test_nothing(): pass")
+
+        result.assert_outcomes(passed=1)
+        assert result.ret == pytest.ExitCode.TESTS_FAILED
+        result.stdout.fnmatch_lines(["*outside a test: connect to 192.0.2.2:80*"])
 
 
 class TestRefusalOutsideATest:
@@ -403,7 +479,9 @@ class TestRefusalOutsideATest:
 
             def test_swallows_the_refusal():
                 try:
-                    socket.socket().connect(({_OUT!r}, 443))
+                    sock = socket.socket()
+                    sock.settimeout(1)
+                    sock.connect(({_OUT!r}, 443))
                 except Exception:
                     pass
             """

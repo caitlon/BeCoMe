@@ -18,18 +18,19 @@ JSON line with the test id, the operation and the target.
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import json
 import os
 import socket
+from collections.abc import Iterable
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 LOG_ENV = "NETWORK_GUARD_LOG"
 
-_LOOPBACK_NAMES = frozenset(
-    {"localhost", "localhost.", "localhost.localdomain", "ip6-localhost", "ip6-loopback"}
-)
+# The only names every resolver answers locally (RFC 6761); others may go to DNS.
+_LOOPBACK_NAMES = frozenset({"localhost", "localhost."})
 _INET_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6})
 # Set on the socket module by install(), so a second copy of this module loaded under
 # another name leaves the first one's patches (and its attempts list) in charge.
@@ -58,9 +59,11 @@ def is_loopback_host(host: object) -> bool:
     """Tell whether a host name or address stays on this machine.
 
     :param host: Host as passed to a socket call: ``str``, ``bytes`` or ``None``.
-    :return: True for ``None`` and the empty string (a passive lookup), the loopback
-        names, and any address in ``127.0.0.0/8``, ``::1``, ``0.0.0.0`` or ``::``,
-        IPv4-mapped included (Python 3.13 judges the embedded IPv4 address itself). An
+    :return: True for ``None`` and the empty string (a passive lookup), ``localhost`` and
+        ``localhost.``, and any address in ``127.0.0.0/8``, ``::1``, ``0.0.0.0`` or ``::``,
+        IPv4-mapped included (Python 3.13 judges the embedded IPv4 address itself). Square
+        brackets are dropped only around an IPv6 address. Nothing else is trimmed, because
+        the value goes to the real resolver as it is, so ``" localhost "`` is not local. An
         IPv6 ``%scope`` suffix is read by :mod:`ipaddress`; on a name it is part of the name.
     """
     if host is None:
@@ -69,7 +72,11 @@ def is_loopback_host(host: object) -> bool:
         host = host.decode("ascii", errors="replace")
     if not isinstance(host, str):
         return False
-    name = host.strip().strip("[]").lower()
+    name = host.lower()
+    if name.startswith("[") and name.endswith("]"):
+        with contextlib.suppress(ValueError):
+            ipaddress.IPv6Address(name[1:-1])
+            name = name[1:-1]
     if name == "" or name in _LOOPBACK_NAMES:
         return True
     try:
@@ -79,14 +86,22 @@ def is_loopback_host(host: object) -> bool:
     return address.is_loopback or address.is_unspecified
 
 
+def _first_remote(hosts: Iterable[str]) -> str | None:
+    """Return the first host that is not this machine; a ``/`` prefix is a local socket directory."""
+    for host in hosts:
+        if not host.startswith("/") and not is_loopback_host(host):
+            return host
+    return None
+
+
 def remote_database_host(url: str) -> str | None:
     """Find a database host in a URL that is not this machine.
 
-    libpq takes hosts from the authority (one or several, comma-separated) and from the
-    ``host`` and ``hostaddr`` query parameters. A value starting with ``/`` is a unix
-    socket directory, and an empty one means the default local socket. When the URL names
-    no host at all, libpq falls back to ``PGHOST`` and ``PGHOSTADDR``, or to a service
-    file when ``PGSERVICE`` is set, which this function cannot read and so counts as remote.
+    libpq takes hosts from the authority (one or several, comma-separated, percent-encoded)
+    and from the ``host`` and ``hostaddr`` query parameters. A value starting with ``/`` is
+    a unix socket directory, and an empty one means the default local socket. A ``service``
+    parameter names a service file that cannot be read here, so it counts as remote. The
+    environment fallbacks are in :func:`remote_libpq_environment`.
 
     :param url: A database URL; an empty one and ``sqlite`` URLs have no host.
     :return: The first host outside this machine (``service=<name>`` for a service), or
@@ -98,19 +113,31 @@ def remote_database_host(url: str) -> str | None:
     parts = urlsplit(url)
     hosts = []
     for item in parts.netloc.rpartition("@")[2].split(","):
-        hosts.append(item[1 : item.find("]")] if item.startswith("[") else item.partition(":")[0])
+        hosts.append(
+            unquote(item[1 : item.find("]")] if item.startswith("[") else item.partition(":")[0])
+        )
     query = parse_qs(parts.query)
     for key in ("host", "hostaddr"):
         for value in query.get(key, []):
             hosts.extend(value.split(","))
-    if not any(hosts):
-        if service := os.environ.get("PGSERVICE"):
-            return f"service={service}"
-        for key in ("PGHOST", "PGHOSTADDR"):
-            hosts.extend(os.environ.get(key, "").split(","))
-    for host in hosts:
-        if not host.startswith("/") and not is_loopback_host(host):
-            return host
+    if host := _first_remote(hosts):
+        return host
+    return f"service={query['service'][0]}" if "service" in query else None
+
+
+def remote_libpq_environment() -> tuple[str, str] | None:
+    """Find a libpq environment variable that points a database connection off this machine.
+
+    libpq reads these whatever the URL says: ``PGHOST`` and ``PGHOSTADDR`` fill in a missing
+    host, and ``PGSERVICE`` names a service file that cannot be read here.
+
+    :return: The variable and its host (``service=<name>`` for ``PGSERVICE``), or None.
+    """
+    if service := os.environ.get("PGSERVICE"):
+        return "PGSERVICE", f"service={service}"
+    for name in ("PGHOST", "PGHOSTADDR"):
+        if host := _first_remote(os.environ.get(name, "").split(",")):
+            return name, host
     return None
 
 
@@ -127,7 +154,8 @@ def _refuse(operation: str, host: object, port: object = None) -> None:
     attempts.append(record)
     log_path = os.environ.get(LOG_ENV)
     if log_path:
-        with open(log_path, "a", encoding="utf-8") as log:
+        # A bad log path must not replace the refusal below.
+        with contextlib.suppress(OSError), open(log_path, "a", encoding="utf-8") as log:
             log.write(json.dumps(record) + "\n")
     raise NetworkBlockedError(
         f"network access is blocked in tests: {operation} to {target}. "

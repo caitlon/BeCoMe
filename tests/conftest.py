@@ -33,10 +33,6 @@ _REMOVED = (
     "LANGCHAIN_PROJECT",
 )
 
-# The database drivers open their sockets in C (libpq), below the socket guard, so a
-# database URL is checked here instead. The E2E and DAST runs pass their own local URL.
-_DATABASE_URLS = ("DATABASE_URL", "MIGRATION_DATABASE_URL", "ASSISTANT_VECTOR_DB_URL")
-
 
 def read_test_env() -> dict[str, str]:
     """Parse the ``KEY=VALUE`` lines of the shared test environment.
@@ -60,10 +56,16 @@ def _pin_environment() -> None:
     # A default, not forced: the E2E and DAST runs pass their own local URL. Each is set in
     # the process, so a remote URL in .env never applies.
     os.environ.setdefault("DATABASE_URL", "sqlite://")
-    for name in _DATABASE_URLS:
-        host = network_guard.remote_database_host(os.environ.get(name, ""))
-        if host is not None:
-            raise RuntimeError(f"{name} must point at this machine in tests, not {host!r}")
+    # The database drivers open their sockets in C (libpq), below the socket guard, so the
+    # URL and libpq's own variables are checked here. MIGRATION_DATABASE_URL and
+    # ASSISTANT_VECTOR_DB_URL are blanked by test.env, so only DATABASE_URL (which the E2E
+    # and DAST runs set) can still carry a host.
+    remote = network_guard.remote_database_host(os.environ["DATABASE_URL"])
+    name = "DATABASE_URL"
+    if remote is None and (variable := network_guard.remote_libpq_environment()):
+        name, remote = variable
+    if remote is not None:
+        raise RuntimeError(f"{name} must point at this machine in tests, not {remote!r}")
 
 
 _pin_environment()
@@ -82,14 +84,15 @@ def _no_swallowed_network_attempt(request: pytest.FixtureRequest) -> Iterator[No
     """
     seen = len(network_guard.attempts)
     yield
-    found: dict[str, str] = {}
-    for attempt in network_guard.attempts[seen:]:
+    new = network_guard.attempts[seen:]
+    found: set[str] = set()
+    for attempt in new:
         owner = attempt["test"].rpartition(" (")[0] or attempt["test"]
         label = f"{attempt['operation']} to {attempt['target']}"
         if owner != request.node.nodeid:
             label += f" (first recorded under {owner})"
-        found.setdefault(label, owner)
-    for attempt in network_guard.attempts[seen:]:
+        found.add(label)
+    for attempt in new:
         attempt["reported"] = True
     if found:
         targets = ", ".join(sorted(found))
