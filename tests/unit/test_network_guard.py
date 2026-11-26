@@ -92,6 +92,11 @@ _REFUSALS = [
     ("gethostbyaddr-unspecified", partial(socket.gethostbyaddr, _ANY), "reverse lookup", _ANY),
     ("getnameinfo-loopback", partial(socket.getnameinfo, ("127.8.9.10", 80), 0), *_REVERSE_LOCAL),
     (
+        "getnameinfo-numericserv",
+        partial(socket.getnameinfo, ("127.8.9.10", 80), socket.NI_NUMERICSERV),
+        *_REVERSE_LOCAL,
+    ),
+    (
         "bytes-host",
         partial(socket.getaddrinfo, b"api.resend.com", 443),
         "name lookup",
@@ -212,9 +217,7 @@ class TestAllowedTraffic:
         assert socket.getaddrinfo("localhost", 80)
         assert socket.getnameinfo(("127.0.0.1", 80), flags) == ("127.0.0.1", "80")
 
-    @pytest.mark.parametrize(
-        "host", ["127.0.0.1", "::1", "localhost", "localhost.", "LocalHost", b"127.0.0.1"]
-    )
+    @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "LocalHost", b"127.0.0.1"])
     def test_a_reverse_lookup_of_a_hosts_file_entry_reaches_the_resolver(self, monkeypatch, host):
         """GIVEN a stubbed resolver, WHEN a hosts file entry is looked up, THEN the guard passes it on."""
         monkeypatch.setitem(network_guard._real, "gethostbyaddr", lambda h: ("stub", [], [h]))

@@ -35,6 +35,8 @@ LOG_ENV = "NETWORK_GUARD_LOG"
 _LOOPBACK_NAMES = frozenset({"localhost", "localhost."})
 # Mapped by every hosts file, so a reverse lookup of them never leaves the machine.
 _HOSTS_FILE_ADDRESSES = frozenset({"127.0.0.1", "::1"})
+# The one name every hosts file lists; the trailing-dot form is a resolver convention.
+_HOSTS_FILE_NAMES = frozenset({"localhost"})
 _INET_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6})
 # Set on the socket module by install(), so a second copy of this module loaded under
 # another name leaves the first one's patches (and its attempts list) in charge.
@@ -200,7 +202,7 @@ def _guarded_lookup(name: str, operation: str) -> Any:
     """Build the guarded version of one lookup function of the socket module.
 
     :param name: Attribute of ``socket`` to wrap; its first argument is the host.
-    :param operation: How a refusal is recorded: ``name lookup`` or ``reverse lookup``.
+    :param operation: How a refusal is recorded (``name lookup``).
     :return: A function that refuses a host outside this machine, else calls the original.
     """
 
@@ -221,7 +223,7 @@ def _in_hosts_file(host: object, names: frozenset[str]) -> bool:
 
 
 def _gethostbyaddr(host: Any) -> Any:
-    if not _in_hosts_file(host, _HOSTS_FILE_ADDRESSES | _LOOPBACK_NAMES):
+    if not _in_hosts_file(host, _HOSTS_FILE_ADDRESSES | _HOSTS_FILE_NAMES):
         _refuse("reverse lookup", host)
     return _real["gethostbyaddr"](host)
 
