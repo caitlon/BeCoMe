@@ -1,7 +1,9 @@
 """Unit tests for the body of the streaming chat route, driven without the HTTP stack."""
 
 import asyncio
+import json
 import time
+import unicodedata
 from unittest.mock import AsyncMock
 
 import pytest
@@ -128,3 +130,47 @@ class TestEndOfStream:
         # THEN
         assert blocks[-1].startswith("event: done")
         assert time.monotonic() - started < 5
+
+
+@pytest.mark.asyncio
+class TestInvisibleCharactersOnTheWire:
+    """No event of the stream carries a character that renders as nothing."""
+
+    async def test_no_token_and_no_final_answer_holds_a_formatting_character(self):
+        """
+        GIVEN a model that streams a zero-width space, a bidi override and a soft hyphen
+        WHEN the whole body is read
+        THEN no token event and not the done event's answer holds one, and the tokens join
+            to the answer
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+        )
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One\u200btwo \u202ethree\u00ad four")],
+            stream_chunks=["One\u200b", "two ", "\u202e", "three\u00ad", " four"],
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
+
+        # WHEN
+        blocks = [block async for block in response.body_iterator]
+
+        # THEN
+        events = [
+            (lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: ")))
+            for block in blocks
+            if (lines := block.strip().split("\n"))[0].startswith("event: ")
+        ]
+        texts = [payload["text"] for name, payload in events if name == "token"]
+        (answer,) = [payload["answer"] for name, payload in events if name == "done"]
+        assert "".join(texts) == answer == "Onetwo three four"
+        assert not any(
+            unicodedata.category(char) in {"Cc", "Cf"} for text in [*texts, answer] for char in text
+        )

@@ -1,5 +1,6 @@
 """The assistant's system prompt and the renderer for the per-turn context block."""
 
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
 
@@ -79,9 +80,11 @@ LABEL_LIMIT = 40
 def clean_text(value: str, limit: int) -> str:
     """Make text written by a user safe to put inside a ``<project_data>`` block.
 
-    Angle brackets are removed, so the text cannot open or close a tag. Every run of
-    whitespace, newlines included, becomes one space, so it cannot start a line of its
-    own that reads as an instruction. Text longer than the limit is cut and ends with
+    Characters that render as nothing are removed first (see
+    :func:`~api.assistant.invisible.strip_invisible`), so they cannot hide text or split a
+    word or a number. Angle brackets are removed, so the text cannot open or close a tag.
+    Every run of whitespace, newlines included, becomes one space, so it cannot start a line
+    of its own that reads as an instruction. Text longer than the limit is cut and ends with
     ``...``.
 
     :param value: The text to clean.
@@ -89,7 +92,7 @@ def clean_text(value: str, limit: int) -> str:
         included. At least 3.
     :return: The cleaned text, one line, at most ``limit`` characters.
     """
-    text = " ".join(value.replace("<", "").replace(">", "").split())
+    text = " ".join(strip_invisible(value).replace("<", "").replace(">", "").split())
     if len(text) > limit:
         text = text[: limit - 3].rstrip() + "..."
     return text
@@ -100,17 +103,18 @@ def format_excerpt(number: int, chunk: RetrievedChunk) -> str:
 
     The entry is the marker, the title, the section when there is one, and the chunk's
     own words (``chunk_text``): the indexed text carries a caption written by another
-    model, which is not the source.
+    model, which is not the source. Characters that render as nothing are removed from all
+    three, and a section made only of them counts as empty.
 
     :param number: The ``[n]`` number the source registry assigned to the chunk.
     :param chunk: The retrieved chunk.
     :return: ``"[n] Title - Section\\nchunk_text"``, without `` - Section`` when the
         section is empty.
     """
-    heading = f"[{number}] {chunk.title}"
-    if chunk.section:
-        heading += f" - {chunk.section}"
-    return f"{heading}\n{chunk.chunk_text}"
+    heading = f"[{number}] {strip_invisible(chunk.title)}"
+    if section := strip_invisible(chunk.section):
+        heading += f" - {section}"
+    return f"{heading}\n{strip_invisible(chunk.chunk_text)}"
 
 
 def _fuzzy(label: str, value: FuzzyView) -> str:

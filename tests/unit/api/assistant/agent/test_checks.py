@@ -1650,3 +1650,39 @@ class TestUnicodeDigits:
         assert find_ungrounded_numbers(f"It is {five}{five}", [f"value {five}{five}"]) == []
         assert find_ungrounded_numbers(f"It is {five}{five}", ["value 55"]) == []
         assert find_ungrounded_numbers("It is 55", [f"value {five}{five}"]) == []
+
+
+class TestInvisibleCharacters:
+    """Characters that render as nothing neither hide a number nor split one."""
+
+    def test_a_number_split_by_a_zero_width_space_is_read_whole(self):
+        """
+        GIVEN an answer whose 23 is split by a zero-width space, and grounding with 2 and 3
+        WHEN the numbers are checked
+        THEN 23 is read whole and reported, though 2 and 3 are grounded
+        """
+        assert find_ungrounded_numbers("It is 2\u200b3.", ["2 and 3"]) == ["23"]
+
+    def test_a_soft_hyphen_inside_a_source_number_still_grounds_it(self):
+        """
+        GIVEN grounding whose 14.19 holds a soft hyphen
+        WHEN an answer that says 14.19 is checked
+        THEN nothing is reported
+        """
+        assert find_ungrounded_numbers("It is 14.19.", ["value 14\u00ad.19"]) == []
+
+    def test_a_bidi_override_does_not_hide_a_number(self):
+        """
+        GIVEN an answer whose number follows a right-to-left override
+        WHEN the numbers are checked
+        THEN the number is read and reported
+        """
+        assert find_ungrounded_numbers("It is \u202e14.19", ["nothing"]) == ["14.19"]
+
+    def test_a_number_split_by_a_control_character_is_read_whole(self):
+        """
+        GIVEN an answer whose 23 is split by a null character
+        WHEN the numbers are checked
+        THEN 23 is reported
+        """
+        assert find_ungrounded_numbers("It is 2\x003.", ["2 and 3"]) == ["23"]

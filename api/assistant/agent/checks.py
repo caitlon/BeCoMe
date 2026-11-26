@@ -10,6 +10,8 @@ from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 
+from api.assistant.invisible import strip_invisible
+
 # A bracket group: square brackets, or the full-width lenticular ones some models emit.
 _BRACKET = re.compile(r"\[([^\[\]]*)\]|\u3010([^\u3010\u3011]*)\u3011")
 
@@ -688,12 +690,15 @@ def _drop_words(text: str) -> str:
 def _strip_answer(answer: str) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
-    The drops run in this order: the target of every markdown link, bare URLs,
-    citation-like brackets, dates, the digits of identifiers and names (see
-    :func:`_drop_words`: a word that mixes letters and digits stays, only its digit tail
-    goes, and a capitalised name before a hyphen and digits goes whole), list numbering
-    (``1.``, ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and
-    URLs go first so that a digit in an address is never read; citations go before the
+    The drops run in this order: first the characters that render as nothing (see
+    :func:`~api.assistant.invisible.strip_invisible`), so that none can hide a digit or
+    split a number; then the target of every markdown link, bare URLs, citation-like
+    brackets, dates, the digits of identifiers and names (see :func:`_drop_words`: a word
+    that mixes letters and digits stays, only its digit tail goes, and a capitalised name
+    before a hyphen and digits goes whole), list numbering (``1.``, ``2)``, ``(3)``, behind
+    markdown decoration), and last ordinals. Invisible characters go before everything else
+    so that no pattern is cut by one. Links and URLs go next so that a digit in an address
+    is never read; citations go before the
     words because ``[doc1]`` is a citation; dates and words go before numbering and
     ordinals because those match on a number and a dot. A URL, a citation, a date, a
     name and a digit tail are each replaced by a filler that is not whitespace, so a
@@ -703,7 +708,7 @@ def _strip_answer(answer: str) -> str:
     :param answer: The model's final answer text.
     :return: The cleaned text.
     """
-    text = _LINK_TARGET.sub("]", answer)
+    text = _LINK_TARGET.sub("]", strip_invisible(answer))
     text = _BARE_URL.sub(_DROPPED, text)
     text = _replace_citations(text, _DROPPED)
     text = _DATE_ISO.sub(_DROPPED, text)
@@ -741,12 +746,13 @@ class _Grounding:
     def __init__(self, texts: Iterable[str]) -> None:
         """Read every number of every reading of every token in the texts.
 
-        :param texts: The grounding texts, scanned as they are.
+        :param texts: The grounding texts, scanned after their invisible characters are
+            removed.
         """
         self._values = {
             number
             for text in texts
-            for token in _scan_numbers(text)
+            for token in _scan_numbers(strip_invisible(text))
             for reading in token.readings
             for number in reading
         }
@@ -773,11 +779,14 @@ class _Grounding:
 def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str]:
     """Return the numbers in the answer that no grounding text supports.
 
-    Before scanning, the answer loses the target of markdown links, bare URLs,
-    citation-like brackets (see :func:`strip_citations`), dates, the dot- or comma-joined
-    digit tail of an identifier (``v1.2.3``, ``Qwen3,5``), names that start with a
-    capital of any script before a hyphen and digits (``COVID-19``), list numbering and
-    ordinals; the order is in ``_strip_answer``. A number is then a digit run, with a
+    Before scanning, the answer and every grounding text lose the characters that render as
+    nothing (see :func:`~api.assistant.invisible.strip_invisible`): a bidirectional override
+    cannot hide a number, a zero-width space cannot split one, and a soft hyphen inside a
+    source number does not stop it grounding. The answer then loses the target of markdown
+    links, bare URLs, citation-like brackets (see :func:`strip_citations`), dates, the dot-
+    or comma-joined digit tail of an identifier (``v1.2.3``, ``Qwen3,5``), names that start
+    with a capital of any script before a hyphen and digits (``COVID-19``), list numbering
+    and ordinals; the order is in ``_strip_answer``. A number is then a digit run, with a
     sign when a minus opens the text or follows whitespace, an opening bracket, an
     equals sign or a separator (comma, semicolon, colon), and never one that sits next
     to a letter or an underscore, so a number glued to a unit (``8mm``, ``5 000km``,

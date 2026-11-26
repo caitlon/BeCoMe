@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.corpus import Layer
 
 # Hard ceilings on what one request may carry. Kept equal to
@@ -47,6 +48,18 @@ class ChatTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(max_length=MAX_HISTORY_CONTENT_CHARS)
 
+    @field_validator("content", mode="after")
+    @classmethod
+    def _strip_invisible_content(cls, value: str) -> str:
+        """Remove the characters that render as nothing from the entry.
+
+        The length limit has already been applied to the raw text.
+
+        :param value: The submitted content.
+        :return: The content without invisible characters.
+        """
+        return strip_invisible(value)
+
 
 class AssistantChatRequest(BaseModel):
     """A chat turn, with the recent history the tab is holding."""
@@ -58,15 +71,19 @@ class AssistantChatRequest(BaseModel):
     project_id: UUID | None = None
     locale: Literal["en", "cs"] = "en"
 
-    @field_validator("message")
+    @field_validator("message", mode="after")
     @classmethod
     def _reject_blank_message(cls, value: str) -> str:
-        """Refuse a message that is nothing but whitespace, returning any other unchanged.
+        """Remove the characters that render as nothing, and refuse a message left blank.
+
+        The length limits have already been applied to the raw text. A message of nothing
+        but whitespace or invisible characters is refused.
 
         :param value: The submitted message.
-        :return: The same message, untouched.
-        :raises ValueError: If the message holds only whitespace.
+        :return: The message without invisible characters.
+        :raises ValueError: If nothing but whitespace is left.
         """
+        value = strip_invisible(value)
         if not value.strip():
             raise ValueError("message must not be blank")
         return value

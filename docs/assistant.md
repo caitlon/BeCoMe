@@ -215,6 +215,10 @@ without calling any model.
   name or position does not count. A rounded or shortened value counts as found: if the data says
   14.19, an answer that says 14.2 passes.
 
+Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
+removed from the answer before the checks and before it is shown, and from the passages and the
+project data the model reads, so that they cannot hide a number or split one in two.
+
 A failed check does not block the answer and does not regenerate it. The answer arrives with a
 flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
 invalid. With sources hidden, as on production, only the number warning can appear. Answering

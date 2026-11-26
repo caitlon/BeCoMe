@@ -60,6 +60,7 @@ from api.assistant.agent.tracing import (
     tracing_scope,
 )
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
+from api.assistant.invisible import strip_invisible
 from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
@@ -236,7 +237,8 @@ class AssistantService:
         :raises AssistantUpstreamError: If the API answers something unusable while the
             project is fetched.
         :raises AssistantUnavailableError: If a model or data server is down, the answer
-            is empty, or the turn outlives its deadline.
+            is empty (an answer of invisible characters only is empty), or the turn outlives
+            its deadline.
         """
         turn = await self.prepare(request, ctx)
         mode = self._settings.assistant_mode
@@ -252,6 +254,7 @@ class AssistantService:
                             )
                         except CutOffAnswerError:
                             text, tools_used, empty_reason = "", [], "cut_off"
+                    text = strip_invisible(text)
                     if not text:
                         raise self._empty_answer(mode, empty_reason)
             except TimeoutError:
@@ -271,7 +274,9 @@ class AssistantService:
 
         The `hybrid` and `agent` modes yield no text, only the final response. The time of the first
         piece is the turn's time to first token. The deadline bounds each wait for the model's
-        next piece, and the turn as a whole, because it is one point in time.
+        next piece, and the turn as a whole, because it is one point in time. Every piece loses
+        its invisible characters before it is shown; a carriage return that ends a piece waits for
+        the next piece, so that a ``\\r\\n`` cut in two still gives one line break.
 
         :param turn: What :meth:`prepare` built.
         :return: Pieces of answer text, then the response as the last item.
@@ -284,6 +289,7 @@ class AssistantService:
         ttft_ms: int | None = None
         generated: Generated | None = None
         empty_reason = "empty"
+        held_return = ""  # A raw carriage return that ended the last piece, not yet read.
         citation_filter = self._citation_filter(turn)
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
         with ending_turn(turn.trace):
@@ -304,13 +310,18 @@ class AssistantService:
                             generated = item
                         elif item:
                             ttft_ms = self._first_token_ms(ttft_ms, loop, model_started)
-                            if shown := self._shown(citation_filter, item):
+                            raw = held_return + item
+                            held_return = "\r" if raw.endswith("\r") else ""
+                            clean = strip_invisible(raw.removesuffix(held_return))
+                            if shown := self._shown(citation_filter, clean):
                                 yield shown
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None
             finally:
                 await items.aclose()
             generated = self._complete(generated, mode, empty_reason)
+            if held_return and (shown := self._shown(citation_filter, "\n")):
+                yield shown
             # A mode that yields no text fed the filter nothing, so it releases nothing here.
             if citation_filter and (rest := citation_filter.finish()):
                 yield rest
@@ -356,7 +367,7 @@ class AssistantService:
 
     def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
         """Return what the generator produced, or refuse a missing or empty answer."""
-        if generated is None or not generated.text:
+        if generated is None or not strip_invisible(generated.text):
             raise self._empty_answer(mode, empty_reason)
         return generated
 
@@ -371,7 +382,7 @@ class AssistantService:
         :param streamed: Whether the answer was delivered piece by piece.
         :return: The response.
         """
-        ctx, text, usage = turn.ctx, generated.text, generated.usage
+        ctx, text, usage = turn.ctx, strip_invisible(generated.text), generated.usage
         sources = ctx.sources.refs()
         cited = cited_numbers(text)
         source_numbers = {source.n for source in sources}
