@@ -32,9 +32,12 @@ def _isolated_tracing(monkeypatch, tmp_path):
     """Keep every test away from the repository's .env, the shell and the shared client.
 
     The library reads its environment variables through a cache, so it is cleared
-    before and after each test: a value set by one test must not outlive it.
+    before and after each test: a value set by one test must not outlive it. A client
+    the code under test builds is the offline one; a test that patches ``_new_client``
+    itself replaces it.
     """
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tracing, "_new_client", _offline_client)
     for name in (
         "ASSISTANT_LANGSMITH_ENABLED",
         "ASSISTANT_LANGSMITH_API_KEY",
@@ -64,6 +67,19 @@ def _settings(**overrides) -> Settings:
     }
     base.update(overrides)
     return Settings(**base)
+
+
+def _offline_client(**kwargs) -> tracing.MaskingClient:
+    """Build a real client that cannot reach LangSmith, with no background batch thread.
+
+    The library asks its endpoint for ``/info`` the first time it needs it, and sends
+    batches from a thread, so a real client built from the settings would look the host
+    up during some later test. The adapter fails such a request before it leaves.
+    """
+    session = requests.Session()
+    session.mount("http://", NoNetworkAdapter())
+    session.mount("https://", NoNetworkAdapter())
+    return tracing.MaskingClient(session=session, auto_batch_tracing=False, **kwargs)
 
 
 def _opinion(name: str) -> OpinionView:
@@ -952,7 +968,7 @@ class TestReleaseWorker:
         WHEN it is asked to hold a trace whose id is not a UUID
         THEN it refuses
         """
-        client = tracing.MaskingClient(api_key=_API_KEY, api_url=_ENDPOINT)
+        client = _offline_client(api_key=_API_KEY, api_url=_ENDPOINT)
 
         with pytest.raises(ValueError, match="badly formed"):
             client.hold("not-a-uuid", TurnRoster())
