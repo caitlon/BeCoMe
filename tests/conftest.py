@@ -44,8 +44,8 @@ def _pin_environment() -> None:
     for name in _REMOVED:
         os.environ.pop(name, None)
     os.environ.setdefault("SECRET_KEY", "test-secret-key")
-    # Defaults, not forced: the E2E and DAST runs pass their own local URLs. Each is set
-    # in the process, so a database URL in .env never applies.
+    # A default, not forced: the E2E and DAST runs pass their own local URL. It is set in
+    # the process, so a database URL in .env never applies.
     os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 

@@ -2,11 +2,13 @@
 
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import _pin_environment
+from tests.conftest import _pin_environment, read_test_env
 
 _TEST_ENV = Path(__file__).parents[1] / "test.env"
 
@@ -59,8 +61,7 @@ class TestPinEnvironment:
 
     def test_the_file_overrides_a_live_configuration(self, monkeypatch: pytest.MonkeyPatch):
         """
-        GIVEN a process holding a live mail provider, a Sentry DSN, a hosted model provider
-            and a LangSmith key
+        GIVEN a process holding a live mail provider, a Sentry DSN and a hosted model provider
         WHEN the root conftest pins the environment
         THEN the file's values replace them, blank ones included
         """
@@ -102,3 +103,40 @@ class TestPinEnvironment:
         _pin_environment()
 
         assert os.environ["DATABASE_URL"] == "postgresql://u:p@localhost:5432/e2e"
+
+    def test_every_variable_of_the_file_wins(self, monkeypatch: pytest.MonkeyPatch):
+        """
+        GIVEN a process where every variable of tests/test.env holds another value
+        WHEN the root conftest pins the environment
+        THEN each holds the file's value again
+        """
+        expected = read_test_env()
+        for name in expected:
+            monkeypatch.setenv(name, "from-the-caller")
+
+        _pin_environment()
+
+        assert {name: os.environ[name] for name in expected} == expected
+
+    def test_loading_the_conftest_pins_the_environment(self):
+        """
+        GIVEN a fresh interpreter with a live mail provider in its environment
+        WHEN it only imports the root conftest, as pytest does before anything else
+        THEN the mail provider is the console one and the migration database URL is blank
+        """
+        env = {**os.environ, "EMAIL_PROVIDER": "http", "MIGRATION_DATABASE_URL": "x"}
+        code = (
+            "import os, tests.conftest;"
+            "print(os.environ['EMAIL_PROVIDER'], repr(os.environ['MIGRATION_DATABASE_URL']))"
+        )
+
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell; sys.executable is trusted
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).parents[2],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        assert result.stdout.split() == ["console", "''"]
