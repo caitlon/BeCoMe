@@ -17,7 +17,7 @@ and CI fails the run below 98%.
 
 ## Overview
 
-Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and drive the API routes against a database. That database is in-memory SQLite. The engine fixture turns on `PRAGMA foreign_keys`, so the `ondelete` rules declared on the models are enforced here too. A broken CASCADE or a missing RESTRICT goes red on this tier rather than waiting for Postgres. A smaller tier runs against a real PostgreSQL and covers what SQLite cannot express: `tests/integration/api/db/test_postgres_integration.py` and `test_migrations.py` beside it, and `test_assistant_store.py`, `test_assistant_pipeline.py` and `test_assistant_retrieval.py` in `tests/integration/api/`, which also need pgvector. All five skip when `pg_ctl` is not on `PATH`. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
+Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. A unit test never opens a database, in a test or in its fixtures: `tests/unit/conftest.py` fails a connection checked out of a SQLAlchemy pool or opened with `sqlite3`, `psycopg` or `psycopg2`, and fails the test at teardown when the code under test swallowed the refusal. A unit test may still build an engine, which does not connect. One that needs a database goes in `tests/integration`. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and drive the API routes against a database. That database is in-memory SQLite. The engine fixture turns on `PRAGMA foreign_keys`, so the `ondelete` rules declared on the models are enforced here too. A broken CASCADE or a missing RESTRICT goes red on this tier rather than waiting for Postgres. A smaller tier runs against a real PostgreSQL and covers what SQLite cannot express: `tests/integration/api/db/test_postgres_integration.py` and `test_migrations.py` beside it, and `test_assistant_store.py`, `test_assistant_pipeline.py` and `test_assistant_retrieval.py` in `tests/integration/api/`, which also need pgvector. All five skip when `pg_ctl` is not on `PATH`. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
 
 ## Running tests
 
@@ -123,6 +123,7 @@ in-process coverage cannot see.
 ```
 tests/
 ├── unit/
+│   ├── conftest.py      # fails a unit test that opens a database connection
 │   ├── strategies.py    # Hypothesis strategies for the property tests
 │   ├── models/          # FuzzyTriangleNumber, ExpertOpinion, BeCoMeResult
 │   ├── calculators/     # arithmetic mean, median, centroid sort, compromise
@@ -135,7 +136,7 @@ tests/
 │       │   └── rag/             # chunkers, corpus, loaders, retrieval, store
 │       ├── auth/            # JWT, password hashing, token blacklist
 │       ├── data/            # example project seeding
-│       ├── db/              # example columns, demo expert pool
+│       ├── db/              # example columns, error text
 │       ├── middleware/      # rate limiting, security headers, exceptions
 │       ├── schemas/         # request/response validation
 │       ├── services/        # business logic (users, projects, opinions)
@@ -144,13 +145,14 @@ tests/
 │   ├── test_excel_reference.py   # validates against Excel (3 case studies)
 │   ├── test_data_loading.py      # text file parsing
 │   ├── test_frontend_*.py        # frontend build args, CSP, case-study numbers
+│   ├── scripts/assistant/        # the evaluation fixture seeder
 │   └── api/                      # API integration tests
 │       ├── test_assistant_*.py   # assistant chat, client, config and RAG
 │       ├── auth/            # authentication flows
 │       ├── db/              # database models, relationships, cascades, migrations
 │       ├── middleware/      # request logging wiring
 │       ├── routes/          # HTTP endpoint integration tests
-│       └── services/        # user cache invalidation
+│       └── services/        # user cache, account tokens, the example project
 ├── e2e/                 # end-to-end API workflow tests
 ├── performance/         # Locust load test, not collected by pytest
 ├── shared/
@@ -225,7 +227,7 @@ Each test runs in isolation: no shared state, fresh fixtures, and deterministic 
 
 ## Keeping tests on this machine
 
-No test may reach another host. Two guards in the root `tests/conftest.py` enforce it.
+No test may reach another host, and no unit test opens a database. The root `tests/conftest.py` enforces the first with the environment file and the socket guard; `tests/unit/conftest.py` enforces the second.
 
 **The environment.** `tests/test.env` lists the variables every run starts from: the test profile, the console mail sender, blank keys and hosts for Sentry, Better Stack, the bucket, Redis, LangSmith and the hosted model, blank `MIGRATION_DATABASE_URL` and `ASSISTANT_VECTOR_DB_URL`, and the assistant's answer, LLM and embedding providers set to `local` with their base URLs on `127.0.0.1`. The file is read before anything imports `api`, and a process variable beats `.env`, so a developer's `.env` cannot select a live service. A blank value overrides `.env`; a missing one would not. `scripts/ci/test-env.sh` exports the same file for the scripts that start the tests or the API, and the CI jobs append it to `$GITHUB_ENV`. A test of a default that the file blanks removes the variable itself (`monkeypatch.delenv`) and runs from `tmp_path`, as `tests/unit/api/test_config.py` does.
 
@@ -235,6 +237,8 @@ No test may reach another host. Two guards in the root `tests/conftest.py` enfor
 - A test that reaches an outside client (a mail provider, LangSmith, a model host) mocks it. A real client object may be built, but its transport must not connect, as `_offline_client` in `tests/unit/api/assistant/agent/test_tracing.py` does.
 - `NETWORK_GUARD_LOG=<file>` appends every refused attempt to that file as a JSON line with the test, the operation and the target, which is the quick way to find the test behind a failure.
 - `tests/unit/test_network_guard.py` triggers the guard on purpose and removes what it recorded.
+
+**The database guard.** `tests/unit/conftest.py` wraps `Pool.connect` (so `Engine.connect`, `raw_connection`, `Session` and `create_all` are caught), `sqlite3.connect`, `sqlite3.dbapi2.connect`, `psycopg.connect`, `psycopg.Connection.connect`, `psycopg.AsyncConnection.connect` and `psycopg2.connect` once, when the file is imported. While an item under `tests/unit` runs, from the setup of its fixtures to their teardown, a wrapper fails with "unit tests use mocks; a test that needs a database belongs in tests/integration"; for every other item it calls the original, which keeps an xdist worker that mixes both tiers correct. The wrappers are never undone, so a fixture or test that mocks one of these functions replaces the wrapper and the mock is honoured. A refusal the code swallowed (a thread, an `except BaseException`) fails the teardown of the item that met it, naming the entry points, and one recorded after that check fails the run when the session ends. Two things are outside it: a connection made while pytest imports or collects a module, and the teardown of the last item of the run, where the guard is off because pytest tears down the session fixtures of every tree there and an integration fixture may close its database (a session fixture of a unit item torn down after a last item outside `tests/unit` is unguarded for the same reason). `create_engine` is not guarded, because settings and config tests build engines without connecting; `tests/unit/test_database_guard.py` shows both sides. A unit test that needs a connection moves to `tests/integration`, where the in-memory SQLite engine fixtures live.
 
 ## Related documentation
 

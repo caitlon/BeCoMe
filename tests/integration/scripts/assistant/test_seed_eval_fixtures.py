@@ -1,4 +1,4 @@
-"""Unit tests for the evaluation fixture seeder (in-memory SQLite, no network)."""
+"""Tests for the evaluation fixture seeder (in-memory SQLite, no network)."""
 
 import importlib.util
 import json
