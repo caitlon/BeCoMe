@@ -69,6 +69,8 @@ def _on_socket(kind: tuple[int, int], method: str, *args: Any) -> Any:
 
 _tcp, _udp = partial(_on_socket, _TCP), partial(_on_socket, _UDP)
 _NAME = ("name lookup", "example.com")
+_ANY = "0.0.0.0"  # noqa: S104 - the unspecified address, the value under test
+_REVERSE_LOCAL = ("reverse lookup", "127.8.9.10")  # loopback, but not in a hosts file
 # Label, the call to make, the operation the guard records and the target it names.
 _REFUSALS = [
     ("connect", partial(_tcp, "connect", (_OUT, 443)), "connect", f"{_OUT}:443"),
@@ -86,6 +88,9 @@ _REFUSALS = [
     ("gethostbyname_ex", partial(socket.gethostbyname_ex, "example.com"), *_NAME),
     ("gethostbyaddr", partial(socket.gethostbyaddr, _OUT), "reverse lookup", _OUT),
     ("getnameinfo", partial(socket.getnameinfo, (_OUT, 53), 0), "reverse lookup", _OUT),
+    ("gethostbyaddr-loopback", partial(socket.gethostbyaddr, "127.8.9.10"), *_REVERSE_LOCAL),
+    ("gethostbyaddr-unspecified", partial(socket.gethostbyaddr, _ANY), "reverse lookup", _ANY),
+    ("getnameinfo-loopback", partial(socket.getnameinfo, ("127.8.9.10", 80), 0), *_REVERSE_LOCAL),
     (
         "bytes-host",
         partial(socket.getaddrinfo, b"api.resend.com", 443),
@@ -206,6 +211,44 @@ class TestAllowedTraffic:
 
         assert socket.getaddrinfo("localhost", 80)
         assert socket.getnameinfo(("127.0.0.1", 80), flags) == ("127.0.0.1", "80")
+
+    @pytest.mark.parametrize(
+        "host", ["127.0.0.1", "::1", "localhost", "localhost.", "LocalHost", b"127.0.0.1"]
+    )
+    def test_a_reverse_lookup_of_a_hosts_file_entry_reaches_the_resolver(self, monkeypatch, host):
+        """GIVEN a stubbed resolver, WHEN a hosts file entry is looked up, THEN the guard passes it on."""
+        monkeypatch.setitem(network_guard._real, "gethostbyaddr", lambda h: ("stub", [], [h]))
+        before = len(network_guard.attempts)
+
+        assert socket.gethostbyaddr(host) == ("stub", [], [host])
+        assert len(network_guard.attempts) == before
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+    def test_a_name_lookup_by_getnameinfo_of_a_hosts_file_address_reaches_the_resolver(
+        self, monkeypatch, host
+    ):
+        """GIVEN a stubbed resolver, WHEN getnameinfo has no NI_NUMERICHOST, THEN 127.0.0.1 and ::1 pass."""
+        monkeypatch.setitem(network_guard._real, "getnameinfo", lambda a, f: ("stub", "80"))
+        before = len(network_guard.attempts)
+
+        assert socket.getnameinfo((host, 80), 0) == ("stub", "80")
+        assert len(network_guard.attempts) == before
+
+    @pytest.mark.parametrize("host", ["127.8.9.10", "0.0.0.0", "::"])  # noqa: S104
+    def test_a_numeric_getnameinfo_of_a_local_address_is_allowed(self, host):
+        """GIVEN NI_NUMERICHOST, WHEN a loopback or unspecified address is formatted, THEN no lookup happens."""
+        flags = socket.NI_NUMERICHOST | socket.NI_NUMERICSERV
+        before = len(network_guard.attempts)
+
+        assert socket.getnameinfo((host, 80), flags)[1] == "80"
+        assert len(network_guard.attempts) == before
+
+    def test_a_numeric_getnameinfo_of_an_outside_address_is_still_refused(self):
+        """GIVEN NI_NUMERICHOST, WHEN an outside address is formatted, THEN the guard refuses it."""
+        flags = socket.NI_NUMERICHOST | socket.NI_NUMERICSERV
+
+        with pytest.raises(NetworkBlockedError, match=re.escape(_OUT)):
+            socket.getnameinfo((_OUT, 80), flags)
 
     def test_udp_between_loopback_sockets_is_allowed(self):
         """GIVEN a UDP socket on 127.0.0.1, WHEN another sends to it, THEN the datagram arrives."""

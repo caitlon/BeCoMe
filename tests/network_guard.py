@@ -7,7 +7,9 @@ and listen stay allowed: the assistant tests start HTTP stubs on ``127.0.0.1``, 
 uses a socket pair for its self-pipe and pytest-postgresql talks to its server over a unix
 socket. This machine's own host name is not allowed, because resolving it goes to the
 system resolver and can send a real DNS or reverse query: ``socket.getfqdn()`` and
-``email.utils.make_msgid()`` are refused, and a test that needs them mocks them.
+``email.utils.make_msgid()`` are refused, and a test that needs them mocks them. A reverse
+lookup is allowed only for what every hosts file maps (``localhost``, ``127.0.0.1``, ``::1``),
+since the resolver may ask an outside DNS server for any other address, even a loopback one.
 Everything else is refused with :class:`NetworkBlockedError` and recorded, because several
 clients (the MX check, Sentry, LangSmith, the Better Stack handler) swallow their own
 errors, so a refusal alone can pass unnoticed.
@@ -31,6 +33,8 @@ LOG_ENV = "NETWORK_GUARD_LOG"
 
 # The only names every resolver answers locally (RFC 6761); others may go to DNS.
 _LOOPBACK_NAMES = frozenset({"localhost", "localhost."})
+# Mapped by every hosts file, so a reverse lookup of them never leaves the machine.
+_HOSTS_FILE_ADDRESSES = frozenset({"127.0.0.1", "::1"})
 _INET_FAMILIES = frozenset({socket.AF_INET, socket.AF_INET6})
 # Set on the socket module by install(), so a second copy of this module loaded under
 # another name leaves the first one's patches (and its attempts list) in charge.
@@ -209,9 +213,28 @@ def _guarded_lookup(name: str, operation: str) -> Any:
     return guarded
 
 
+def _in_hosts_file(host: object, names: frozenset[str]) -> bool:
+    """Tell whether ``host`` is one of ``names``, which every hosts file maps locally."""
+    if isinstance(host, bytes):
+        host = host.decode("ascii", errors="replace")
+    return isinstance(host, str) and host.lower() in names
+
+
+def _gethostbyaddr(host: Any) -> Any:
+    if not _in_hosts_file(host, _HOSTS_FILE_ADDRESSES | _LOOPBACK_NAMES):
+        _refuse("reverse lookup", host)
+    return _real["gethostbyaddr"](host)
+
+
 def _getnameinfo(sockaddr: Any, flags: int) -> Any:
-    if isinstance(sockaddr, tuple) and sockaddr and not is_loopback_host(sockaddr[0]):
-        _refuse("reverse lookup", sockaddr[0])
+    if isinstance(sockaddr, tuple) and sockaddr:
+        # NI_NUMERICHOST asks for no host lookup, so a local address cannot reach a resolver.
+        if flags & socket.NI_NUMERICHOST:
+            local = is_loopback_host(sockaddr[0])
+        else:
+            local = _in_hosts_file(sockaddr[0], _HOSTS_FILE_ADDRESSES)
+        if not local:
+            _refuse("reverse lookup", sockaddr[0])
     return _real["getnameinfo"](sockaddr, flags)
 
 
@@ -219,7 +242,6 @@ _GUARDED_LOOKUPS = {
     "getaddrinfo": "name lookup",
     "gethostbyname": "name lookup",
     "gethostbyname_ex": "name lookup",
-    "gethostbyaddr": "reverse lookup",
 }
 
 
@@ -234,4 +256,5 @@ def install() -> None:
     socket.socket.sendmsg = _sendmsg  # type: ignore[method-assign,assignment]
     for name, operation in _GUARDED_LOOKUPS.items():
         setattr(socket, name, _guarded_lookup(name, operation))
+    socket.gethostbyaddr = _gethostbyaddr
     socket.getnameinfo = _getnameinfo
