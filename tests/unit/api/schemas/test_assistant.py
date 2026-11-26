@@ -86,6 +86,14 @@ class TestChatTurn:
         """
         assert ChatTurn(role="assistant", content="9\u202e1\u200b.4").content == "91.4"
 
+    def test_content_of_only_invisible_characters_becomes_empty(self):
+        """
+        GIVEN history content made only of invisible characters
+        WHEN a ChatTurn is built
+        THEN it is accepted and the content is empty
+        """
+        assert ChatTurn(role="user", content="\u200b\u202e").content == ""
+
     def test_the_content_limit_applies_to_the_raw_text(self):
         """
         GIVEN content at the cap that is padded with one invisible character

@@ -53,7 +53,8 @@ class ChatTurn(BaseModel):
     def _strip_invisible_content(cls, value: str) -> str:
         """Remove the characters that render as nothing from the entry.
 
-        The length limit has already been applied to the raw text.
+        The length limit has already been applied to the raw text. An entry made only of
+        invisible characters is accepted and becomes the empty string.
 
         :param value: The submitted content.
         :return: The content without invisible characters.

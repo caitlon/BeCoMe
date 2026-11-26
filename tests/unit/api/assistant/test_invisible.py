@@ -33,14 +33,20 @@ _EXTRAS = [
     0x034F,
     0x115F,
     0x1160,
-    0x3164,
-    0xFFA0,
+    0x17B4,
+    0x17B5,
     0x180B,
     0x180C,
     0x180D,
     0x180F,
+    0x2065,
+    0x3164,
     *range(0xFE00, 0xFE10),
+    0xFFA0,
+    *range(0xFFF0, 0xFFF9),
     *range(0xE0100, 0xE01F0),
+    0xE0000,
+    0xE0FFF,
 ]
 
 
@@ -132,6 +138,19 @@ class TestFormattingCharacters:
         assert strip_invisible("".join(everything)) == ""
 
 
+class TestVisibleSpaceStays:
+    """The separators and the braille blank are drawn as space, so they are kept."""
+
+    @pytest.mark.parametrize("char", ["\u2028", "\u2029", "\u2800"])
+    def test_is_unchanged(self, char):
+        """
+        GIVEN a line separator, a paragraph separator or the braille blank between two words
+        WHEN invisible characters are stripped
+        THEN it is still there
+        """
+        assert strip_invisible(f"one{char}two") == f"one{char}two"
+
+
 class TestVisibleText:
     """Text a reader can see is returned as it is."""
 
@@ -151,3 +170,13 @@ class TestVisibleText:
         THEN it is returned unchanged
         """
         assert strip_invisible(text) == text
+
+    def test_non_ascii_letters_stay_and_only_the_invisible_ones_go(self):
+        """
+        GIVEN Czech text with a zero-width space and a bidi override inside it
+        WHEN invisible characters are stripped
+        THEN every letter is kept and the two are removed
+        """
+        assert strip_invisible(
+            "P\u0159\u00ed\u200bli\u0161 \u017elu\u202e\u0165ou\u010dk\u00fd"
+        ) == ("P\u0159\u00edli\u0161 \u017elu\u0165ou\u010dk\u00fd")

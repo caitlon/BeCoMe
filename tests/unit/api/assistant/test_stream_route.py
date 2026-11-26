@@ -172,5 +172,7 @@ class TestInvisibleCharactersOnTheWire:
         (answer,) = [payload["answer"] for name, payload in events if name == "done"]
         assert "".join(texts) == answer == "Onetwo three four"
         assert not any(
-            unicodedata.category(char) in {"Cc", "Cf"} for text in [*texts, answer] for char in text
+            unicodedata.category(char) in {"Cc", "Cf"} and char not in "\n\t"
+            for text in [*texts, answer]
+            for char in text
         )

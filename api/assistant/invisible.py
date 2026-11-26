@@ -3,8 +3,10 @@
 Some characters draw no glyph or change how the text around them is drawn: control
 characters, the formatting characters of Unicode category Cf (zero-width spaces and joiners,
 the soft hyphen, bidirectional overrides and isolates, the byte order mark, the tag
-characters), the variation selectors, the combining grapheme joiner and the Hangul fillers.
-A reader does not see them, but the model and the number check do, so they can hide text
+characters), the variation selectors, the combining grapheme joiner, the Hangul fillers and
+the Khmer inherent vowels. The set follows the characters that are drawn as nothing. The line
+and paragraph separators (U+2028, U+2029) and the braille blank (U+2800) are visible space
+and stay. A reader does not see them, but the model and the number check do, so they can hide text
 from the reader (a right-to-left override makes ``14.19`` display as ``91.41``), or split
 a number so that its parts ground on their own (``2``, a zero-width space and ``3`` read as
 two numbers, not as 23). They are removed from the answer, from what the model reads and
@@ -20,20 +22,23 @@ import unicodedata
 # What stays of the control characters: the line break and the tab.
 _KEPT_CONTROLS = "\n\t"
 
-# Not Cc or Cf, yet drawn as nothing: the combining grapheme joiner, the Hangul fillers and
-# the variation selectors (the Mongolian ones, the standard ones and the supplementary ones).
+# Not Cc or Cf, yet drawn as nothing: the combining grapheme joiner, the Hangul fillers, the
+# Khmer inherent vowels, the variation selectors (the Mongolian ones, the standard ones), the
+# unassigned default-ignorable code points (U+2065, U+FFF0 to U+FFF8) and the whole block of
+# the tag characters, the supplementary variation selectors and the unassigned rest.
 _EXTRA_INVISIBLE = (
     0x034F,
-    0x115F,
-    0x1160,
-    0x3164,
-    0xFFA0,
-    0x180B,
-    0x180C,
-    0x180D,
+    *range(0x115F, 0x1161),
+    0x17B4,
+    0x17B5,
+    *range(0x180B, 0x180E),
     0x180F,
+    0x2065,
+    0x3164,
     *range(0xFE00, 0xFE10),
-    *range(0xE0100, 0xE01F0),
+    0xFFA0,
+    *range(0xFFF0, 0xFFF9),
+    *range(0xE0000, 0xE1000),
 )
 
 # The fixed part of the work, for ``str.translate``: a control character that Python calls

@@ -131,6 +131,20 @@ class TestSourceRegistry:
         assert ref.title == "Method"
         assert ref.section == "Overview"
 
+    def test_refs_strip_invisible_characters_from_the_snippet(self):
+        """
+        GIVEN a chunk whose text holds a combining joiner, a Hangul filler, a variation
+            selector and a supplementary variation selector
+        WHEN the references are built
+        THEN the snippet has none of them
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("The\u034f mean\u3164 and\ufe0f the\U000e0100 median."))
+
+        (ref,) = registry.refs()
+
+        assert ref.snippet == "The mean and the median."
+
     def test_refs_carries_a_snippet_of_the_passage(self):
         """
         GIVEN a public chunk and a local chunk, one of them with untidy whitespace

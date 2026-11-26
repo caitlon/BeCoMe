@@ -1679,6 +1679,22 @@ class TestInvisibleCharacters:
         """
         assert find_ungrounded_numbers("It is \u202e14.19", ["nothing"]) == ["14.19"]
 
+    def test_an_invisible_character_inside_a_citation_is_handled_as_absent(self):
+        """
+        GIVEN a citation with a zero-width space inside its bracket
+        WHEN the numbers are checked
+        THEN the citation is dropped as if the character were absent, and 1 is not read
+        """
+        assert find_ungrounded_numbers("See [1\u200b] for it.", ["nothing"]) == []
+
+    def test_an_invisible_character_before_a_minus_sign_is_handled_as_absent(self):
+        """
+        GIVEN a minus sign that follows a zero-width space after a space
+        WHEN the numbers are checked
+        THEN the number is read with its sign
+        """
+        assert find_ungrounded_numbers("It is \u200b-5.", ["nothing"]) == ["-5"]
+
     def test_a_number_split_by_a_control_character_is_read_whole(self):
         """
         GIVEN an answer whose 23 is split by a null character

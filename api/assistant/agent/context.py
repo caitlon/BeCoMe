@@ -71,9 +71,9 @@ class SourceRegistry:
 
         A local-layer source never carries a url: the layer is private, and whatever
         the index holds in that field must not reach a browser. It still carries a short
-        excerpt of its own words in ``snippet``; only the url is withheld. The title and the
-        section lose their invisible characters (see
-        :func:`~api.assistant.invisible.strip_invisible`), as the snippet does.
+        excerpt of its own words in ``snippet``; only the url is withheld. The title, the
+        section and the snippet lose their invisible characters (see
+        :func:`~api.assistant.invisible.strip_invisible`).
 
         :return: One reference per registered chunk, in registration order.
         """
@@ -82,7 +82,7 @@ class SourceRegistry:
                 n=number,
                 title=strip_invisible(chunk.title),
                 section=strip_invisible(chunk.section),
-                snippet=_excerpt(chunk.chunk_text),
+                snippet=_excerpt(strip_invisible(chunk.chunk_text)),
                 url=None if chunk.layer == "local" else chunk.url,
                 layer=chunk.layer,
             )

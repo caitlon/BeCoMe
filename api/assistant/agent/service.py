@@ -313,7 +313,7 @@ class AssistantService:
                             raw = held_return + item
                             held_return = "\r" if raw.endswith("\r") else ""
                             clean = strip_invisible(raw.removesuffix(held_return))
-                            if shown := self._shown(citation_filter, clean):
+                            if clean and (shown := self._shown(citation_filter, clean)):
                                 yield shown
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None

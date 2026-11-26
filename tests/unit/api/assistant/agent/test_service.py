@@ -2643,7 +2643,7 @@ class TestInvisibleCharacters:
         WHEN a turn is answered
         THEN the response's answer has neither
         """
-        model = _model(_say("The mid​point‮ is 14.19."))
+        model = _model(_say("The mid\u200bpoint\u202e is 14.19."))
 
         response = await AssistantService(_settings(), model).answer(_request(), _ctx())
 
@@ -2655,7 +2655,7 @@ class TestInvisibleCharacters:
         WHEN a turn is answered
         THEN the answer is refused as empty
         """
-        model = _model(_say("​‮"))
+        model = _model(_say("\u200b\u202e"))
 
         with (
             captured_log_records(SERVICE_LOGGER) as records,
@@ -2674,14 +2674,14 @@ class TestInvisibleCharacters:
             join to the answer
         """
         model = ScriptedToolCallingModel(
-            responses=[_say("The mid​point ‮is 14­.19.")],
-            stream_chunks=["The mid​", "point ", "‮", "is 14­", ".19."],
+            responses=[_say("The mid\u200bpoint \u202eis 14\u00ad.19.")],
+            stream_chunks=["The mid\u200b", "point ", "\u202e", "is 14\u00ad", ".19."],
         )
 
         pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
 
         assert not any(_has_formatting_character(piece) for piece in pieces)
-        assert "‮" not in "".join(pieces)
+        assert "\u202e" not in "".join(pieces)
         assert "".join(pieces) == response.answer == "The midpoint is 14.19."
 
     async def test_a_line_break_cut_in_two_pieces_is_one_newline(self):
@@ -2729,7 +2729,9 @@ class TestInvisibleCharacters:
         WHEN the turn is streamed
         THEN no text is sent and the answer is refused as empty
         """
-        model = ScriptedToolCallingModel(responses=[_say("​‮")], stream_chunks=["​", "‮"])
+        model = ScriptedToolCallingModel(
+            responses=[_say("\u200b\u202e")], stream_chunks=["\u200b", "\u202e"]
+        )
         service = AssistantService(_settings(), model)
         turn = await service.prepare(_request(), _ctx())
         pieces: list[str] = []
@@ -2747,7 +2749,9 @@ class TestInvisibleCharacters:
         WHEN the turn is streamed
         THEN the time to first token is still recorded
         """
-        model = ScriptedToolCallingModel(responses=[_say("​Yes.")], stream_chunks=["​", "Yes."])
+        model = ScriptedToolCallingModel(
+            responses=[_say("\u200bYes.")], stream_chunks=["\u200b", "Yes."]
+        )
 
         _pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
 
