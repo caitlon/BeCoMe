@@ -16,6 +16,7 @@ from api.assistant.agent.prompt import (
     format_excerpt,
     format_number,
     render_context_block,
+    result_values,
 )
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
@@ -461,3 +462,58 @@ class TestRenderContextBlock:
 
         assert block.index("Excerpts:") < block.index("<project_data>")
         assert "words\n\n<project_data>" in block
+
+
+class TestResultValues:
+    """The numbers of a result, written as the block writes them."""
+
+    def test_lists_the_nine_fuzzy_numbers_the_error_and_the_expert_count(self):
+        """
+        GIVEN a result with no Likert reading
+        WHEN its values are listed
+        THEN they are the twelve numbers of the three fuzzy numbers in the block's order,
+             then the maximum error and the number of experts, as the block writes them
+        """
+        assert result_values(_result()) == [
+            "11.54", "14.19", "17.19", "14.31",
+            "17.08", "20.38", "23.38", "20.28",
+            "6.00", "8.00", "11.00", "8.33",
+            "5.97", "13",
+        ]  # fmt: skip
+
+    def test_every_value_is_written_in_the_block(self):
+        """
+        GIVEN a result with a Likert reading
+        WHEN its values are checked against the rendered block
+        THEN each value appears in the block
+        """
+        result = _result(likert_value=4, likert_decision="agree")
+        block = render_context_block([], result)
+
+        assert all(value in block for value in result_values(result))
+
+    def test_free_text_is_never_a_value(self):
+        """
+        GIVEN a result whose agreement level and Likert decision carry digits
+        WHEN its values are listed
+        THEN those digits are not among them
+        """
+        result = _result(likert_value=4, likert_decision="agree 7351").model_copy(
+            update={"agreement_level": "high 9482"}
+        )
+
+        values = result_values(result)
+
+        assert not any("7351" in value or "9482" in value for value in values)
+
+    def test_the_likert_value_is_listed_only_with_a_value_and_a_decision(self):
+        """
+        GIVEN results with both Likert fields, with neither, and with only one of them
+        WHEN their values are listed
+        THEN only the first has the Likert value, as the block shows the reading only then
+        """
+        base = result_values(_result())
+
+        assert result_values(_result(likert_value=4, likert_decision="agree")) == [*base, "4"]
+        assert result_values(_result(likert_value=4)) == base
+        assert result_values(_result(likert_decision="agree")) == base

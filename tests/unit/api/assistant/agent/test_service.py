@@ -1739,9 +1739,9 @@ class TestChecks:
         """
         GIVEN a turn with a source, a fetched project and a history of both roles
         WHEN the answer is checked
-        THEN the grounding texts are the registry's texts, the tool outputs, the message,
-             the user's own history entries, the pinned numbers and the formula divisors,
-             and never the system prompt or an assistant entry
+        THEN the grounding texts are the registry's texts, the project's structured values,
+             the message, the user's own history entries, the pinned numbers and the formula
+             divisors, and never the system prompt, an assistant entry or a project block
         """
         model = _model(_say("Fine."))
         ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
@@ -1756,14 +1756,168 @@ class TestChecks:
         assert sorted(texts) == sorted(
             [
                 *ctx.sources.texts(),
-                *ctx.tool_outputs,
+                *ctx.data_values,
                 QUESTION,
                 "earlier question",
                 *PINNED_NUMBERS,
                 *FORMULA_NUMBERS,
             ]
         )
+        assert ctx.data_values
         assert SYSTEM_PROMPT not in texts
+        assert not set(ctx.tool_outputs) & set(texts)
+
+
+PLANTED = "7351"
+
+
+def _planted(field: str) -> tuple[ProjectView, list[OpinionView]]:
+    """Build a project and opinions that carry the planted number in one free-text field."""
+    project_fields: dict[str, Any] = {}
+    opinion_fields: dict[str, Any] = {"expert_name": "Jana Novakova", "position": "Hydrologist"}
+    match field:
+        case "name":
+            project_fields["name"] = f"Plan {PLANTED}"
+        case "description":
+            project_fields["description"] = f"The budget is {PLANTED}"
+        case "unit":
+            project_fields["scale_unit"] = f"{PLANTED} units"
+        case "expert_name":
+            opinion_fields["expert_name"] = f"Jana {PLANTED}"
+        case "position":
+            opinion_fields["position"] = f"Hydrologist {PLANTED}"
+    project = _project().model_copy(update=project_fields)
+    opinion = OpinionView(
+        lower_bound=37.0, peak=42.0, upper_bound=47.0, centroid=42.0, **opinion_fields
+    )
+    return project, [opinion]
+
+
+@pytest.mark.asyncio
+class TestProjectNumbersGroundOnStructuredValues:
+    """A project's numbers ground an answer only as calculated or entered values."""
+
+    @pytest.mark.parametrize("field", ["name", "description", "unit", "expert_name", "position"])
+    async def test_a_number_only_in_a_free_text_field_is_ungrounded_in_workflow_mode(self, field):
+        """
+        GIVEN a project, in workflow mode, that carries a number in one free-text field
+        WHEN the answer quotes that number
+        THEN it is reported as ungrounded, though the model was shown the field
+        """
+        project, opinions = _planted(field)
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=opinions)
+        ctx.client.get_project.return_value = project
+        model = _model(_say(f"The figure is {PLANTED}."))
+
+        response = await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        assert response.checks.ungrounded_numbers == [PLANTED]
+        assert response.checks.numbers_grounded is False
+        assert any(PLANTED in block for block in ctx.tool_outputs)
+
+    async def test_the_scale_a_result_and_an_opinion_value_are_grounded(self):
+        """
+        GIVEN a project with a result and an opinion, in workflow mode
+        WHEN the answer quotes the scale bounds, the best compromise peak and an opinion value
+        THEN none is reported
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
+        model = _model(
+            _say("The scale runs from 0.00 to 100.00, the peak is 14.19 and one expert gave 42.00.")
+        )
+
+        response = await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        assert response.checks.ungrounded_numbers == []
+
+    async def test_a_number_only_in_the_description_is_ungrounded_in_hybrid_mode(self):
+        """
+        GIVEN a project, in hybrid mode, whose description carries a number
+        WHEN the answer quotes that number
+        THEN it is reported as ungrounded
+        """
+        project, _opinions = _planted("description")
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_project.return_value = project
+        model = _model(_say(f"The figure is {PLANTED}."))
+
+        response = await AssistantService(_settings("hybrid"), model).answer(_request(), ctx)
+
+        assert response.checks.ungrounded_numbers == [PLANTED]
+
+    async def test_a_result_value_is_grounded_in_hybrid_mode(self):
+        """
+        GIVEN a project with a result, in hybrid mode, whose description carries a number
+        WHEN the answer quotes a result value
+        THEN it is grounded
+        """
+        project, _opinions = _planted("description")
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_project.return_value = project
+        model = _model(_say("The best compromise peak is 14.19."))
+
+        response = await AssistantService(_settings("hybrid"), model).answer(_request(), ctx)
+
+        assert response.checks.ungrounded_numbers == []
+
+    async def test_a_result_with_no_opinions_does_not_ground_a_zero(self):
+        """
+        GIVEN a workflow turn whose project has a result, a scale starting at 5, and no opinions
+        WHEN the answer says there are 0 opinions
+        THEN the 0 is reported, because an empty opinions list adds no count value
+        """
+        project = _project().model_copy(update={"scale_min": 5.0})
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_project.return_value = project
+        model = _model(_say("There are 0 opinions."))
+
+        response = await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        ctx.client.get_opinions.assert_awaited()
+        assert "0" not in ctx.data_values
+        assert response.checks.ungrounded_numbers == ["0"]
+
+    @pytest.mark.parametrize(
+        ("tool", "field", "structured"),
+        [("get_project", "description", "100.00"), ("get_project_opinions", "position", "42.00")],
+    )
+    async def test_a_tool_fetched_free_text_number_is_ungrounded_in_agent_mode(
+        self, tool, field, structured
+    ):
+        """
+        GIVEN an agent turn whose model calls a project tool and then answers with a number
+              planted in that project's free text and one structured value
+        WHEN the turn is answered
+        THEN the planted number is reported and the structured value is not, though the model
+             was shown the free text
+        """
+        project, opinions = _planted(field)
+        ctx = _ctx(opinions=opinions)
+        ctx.client.get_project.return_value = project
+        model = _model(
+            _call(tool, project_id=PROJECT_ID),
+            _say(f"It is {PLANTED}, and the figure is {structured}."),
+        )
+
+        response = await AssistantService(_settings("agent"), model).answer(_request(), ctx)
+
+        assert response.tools_used == [tool]
+        assert any(PLANTED in block for block in ctx.tool_outputs)
+        assert response.checks.ungrounded_numbers == [PLANTED]
+
+    async def test_an_earlier_assistant_answer_does_not_ground_a_number(self):
+        """
+        GIVEN a turn with a fetched project and an earlier assistant entry that holds 4711
+        WHEN the new answer repeats 4711 and a result value
+        THEN only 4711 is reported
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        history = [_turn("user", "Hello"), _turn("assistant", "It was 4711.")]
+        model = _model(_say("It is 4711 and the peak is 14.19."))
+
+        response = await AssistantService(_settings(), model).answer(_request(history=history), ctx)
+
+        assert response.checks.ungrounded_numbers == ["4711"]
 
 
 @pytest.mark.asyncio

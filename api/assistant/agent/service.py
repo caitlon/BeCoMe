@@ -45,8 +45,14 @@ from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
     PINNED_NUMBERS,
     render_context_block,
+    result_values,
 )
-from api.assistant.agent.tools import render_opinions, render_project
+from api.assistant.agent.tools import (
+    opinion_values,
+    project_values,
+    render_opinions,
+    render_project,
+)
 from api.assistant.agent.tracing import (
     end_turn,
     ending_turn,
@@ -374,7 +380,7 @@ class AssistantService:
             text,
             [
                 *ctx.sources.texts(),
-                *ctx.tool_outputs,
+                *ctx.data_values,
                 turn.request.message,
                 *(turn_.content for turn_ in turn.kept if turn_.role == "user"),
                 *PINNED_NUMBERS,
@@ -525,8 +531,9 @@ class AssistantService:
         request names a project, its details and its result are fetched, and in workflow
         mode, which has no tools, its opinions too. A project with no result yet, or with
         no opinions, simply has no such block. The project blocks are written by the same
-        functions the tools use, and are kept in ``ctx.tool_outputs`` as grounding for the
-        numbers check.
+        functions the tools use. They are kept in ``ctx.tool_outputs``, which the fallback call
+        shows the model again, and their structured values in ``ctx.data_values``, which
+        ground the numbers check.
 
         :param request: The chat request; its message is the search query.
         :param ctx: The turn's context.
@@ -547,11 +554,14 @@ class AssistantService:
             except AssistantNotFoundError as exc:
                 raise ProjectNotFoundError(f"Project {project_id} not found") from exc
             project_blocks.append(render_project(project))
+            ctx.data_values.extend(project_values(project))
             if result is not None:
                 project_blocks.append(render_context_block([], result))
+                ctx.data_values.extend(result_values(result))
             ctx.roster.add(opinions)
             if opinions:
                 project_blocks.append(render_opinions(opinions))
+                ctx.data_values.extend(opinion_values(opinions))
             ctx.tool_outputs.extend(project_blocks)
         # Embeddings are not LangChain runnables and emit no callbacks, so the search is
         # traced here, as a child of the turn's run.

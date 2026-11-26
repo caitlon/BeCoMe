@@ -122,10 +122,14 @@ class AssistantContext:
     :ivar client: API client acting as the current user (GET-only).
     :ivar retriever: Documentation retriever for the search tool and any prefetch.
     :ivar sources: Registry assigning ``[n]`` numbers to retrieved chunks.
-    :ivar tool_outputs: Every string a tool has produced so far this turn, kept as
-        grounding for :func:`~api.assistant.agent.checks.find_ungrounded_numbers`.
+    :ivar tool_outputs: Every string a tool has produced so far this turn, which the agent's
+        fallback call shows the model again. It does not ground numbers.
     :ivar current_project_id: The project the user is viewing, if any.
     :ivar locale: The UI locale the request carried (``en`` or ``cs``).
+    :ivar data_values: The numbers of structured project data (result and opinion values,
+        scale bounds, counts, project ids), written as the data blocks write them. They are
+        the only project data that
+        :func:`~api.assistant.agent.checks.find_ungrounded_numbers` grounds on.
     :ivar roster: The experts of every opinions list this turn fetched, with their labels.
         The trace of the turn is masked with it.
     :ivar prepared: True once :meth:`~api.assistant.agent.service.AssistantService.prepare` has
@@ -139,5 +143,6 @@ class AssistantContext:
     tool_outputs: list[str]
     current_project_id: str | None
     locale: str
+    data_values: list[str] = field(default_factory=list)
     roster: TurnRoster = field(default_factory=TurnRoster)
     prepared: bool = False

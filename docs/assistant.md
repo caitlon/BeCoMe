@@ -207,10 +207,13 @@ without calling any model.
 
 - **Citations.** Every `[n]` must point at a passage the model was given. A citation to a passage
   that does not exist fails the check.
-- **Numbers.** Every number in the answer must appear in the passages, in the project data, in
-  your own messages, or among the few constants the instructions pin (the 20% and 40% thresholds
-  and the divisors of the formulas). A rounded or shortened value counts as found: if the data
-  says 14.19, an answer that says 14.2 passes.
+- **Numbers.** Every number in the answer must appear in the passages, in your own messages, or
+  among the few constants the instructions pin (the 20% and 40% thresholds and the divisors of the
+  formulas). A project number counts only when it is one of the project's calculated or entered
+  values: the result, the opinions' values, the scale bounds and the counts the assistant is
+  shown. A number that appears only in the project's name, description, unit, or in an expert's
+  name or position does not count. A rounded or shortened value counts as found: if the data says
+  14.19, an answer that says 14.2 passes.
 
 A failed check does not block the answer and does not regenerate it. The answer arrives with a
 flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is

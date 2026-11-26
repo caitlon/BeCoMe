@@ -815,9 +815,11 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
 
     :param answer: The model's final answer text.
     :param grounding_texts: Everything the answer may legitimately quote: the source
-        registry's chunk texts, the tool outputs, the rendered project block, the
-        user's question and the user's own earlier turns, and the pinned numbers. Never
-        the system prompt, whose citation example would ground a digit.
+        registry's chunk texts, the structured values of the project data (result and
+        opinion values, scale bounds, counts), the user's question and the user's own
+        earlier turns, and the pinned numbers. Never the free text of a project (name,
+        description, unit, expert names, positions), never earlier answers, and never the
+        system prompt, whose citation example would ground a digit.
     :return: Each ungrounded number as written in the answer, sign included, once, in
         order of first appearance.
     """
