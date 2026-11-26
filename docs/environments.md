@@ -40,7 +40,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
 - **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it, all from `tests/test.env`: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-The pytest suite takes `APP_ENV=test` together with `TESTING=1` from `tests/test.env`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL. The guard treats a `test` process that runs without `TESTING` as a deploy, so the profile name alone never switches it off.
+The pytest suite takes `APP_ENV=test` together with `TESTING=1` from `tests/test.env`, which keeps tests fast. The integration suite mostly builds its own in-memory SQLite engines (the unit suite opens no database), and the end-to-end runs use PostgreSQL. The guard treats a `test` process that runs without `TESTING` as a deploy, so the profile name alone never switches it off.
 
 ## Profiles in detail
 
@@ -58,7 +58,7 @@ uv run uvicorn api.main:app --reload
 
 ### test (the test suite)
 
-The profile the automated suite and the CI jobs run under. It adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. The unit and integration tests mostly use in-memory SQLite, and the end-to-end runs use PostgreSQL. The root `tests/conftest.py` sets both from `tests/test.env` before any `api` import. No deployed environment uses it: the `test` environment was retired on 2026-11-22, and promotion goes from `dev` straight to `prod`. Without `TESTING` the profile counts as a deploy. It then meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off.
+The profile the automated suite and the CI jobs run under. It adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. The integration tests mostly use in-memory SQLite (the unit tests open no database), and the end-to-end runs use PostgreSQL. The root `tests/conftest.py` sets both from `tests/test.env` before any `api` import. No deployed environment uses it: the `test` environment was retired on 2026-11-22, and promotion goes from `dev` straight to `prod`. Without `TESTING` the profile counts as a deploy. It then meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off.
 
 ### prod
 
