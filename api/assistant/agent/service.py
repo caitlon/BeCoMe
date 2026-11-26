@@ -93,10 +93,11 @@ def _earlier_answer(content: str) -> str:
     """Mark an earlier answer of the conversation as reference text for the model.
 
     :param content: The ``assistant`` entry as the client sent it.
-    :return: The entry without its citation numbers and angle brackets, inside the
-        earlier-answer tags.
+    :return: The entry without its angle brackets and citation numbers, inside the
+        earlier-answer tags. The brackets go first, so ``[<1>]`` cannot become a ``[1]``
+        that survives the citation strip.
     """
-    text = remove_angle_brackets(strip_citations(content))
+    text = strip_citations(remove_angle_brackets(content))
     return f"<{EARLIER_ANSWER_TAG}>\n{text}\n</{EARLIER_ANSWER_TAG}>"
 
 

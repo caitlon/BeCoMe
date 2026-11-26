@@ -92,13 +92,27 @@ def format_number(value: float) -> str:
 LABEL_LIMIT = 40
 
 
+# The brackets removed besides ``<`` and ``>``: the lookalikes a model may read as tag
+# delimiters (fullwidth, small, and the angle-bracket quotation marks of CJK and math text).
+_BRACKET_LOOKALIKES = str.maketrans(
+    "", "", "\uff1c\uff1e\ufe64\ufe65\u2329\u232a\u3008\u3009\u27e8\u27e9"
+)
+
+
 def remove_angle_brackets(value: str) -> str:
-    """Remove ``<`` and ``>``, so text cannot open or close a tag of the assistant.
+    """Remove the angle brackets, so text cannot open or close a tag of the assistant.
+
+    ``<=`` and ``>=`` become the single symbols U+2264 and U+2265 first, so a comparison
+    such as "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
+    Every other ``<`` and ``>`` is then removed, with their lookalikes: the fullwidth and
+    small forms and the angle-bracket quotation marks (U+FF1C, U+FF1E, U+FE64, U+FE65,
+    U+2329, U+232A, U+3008, U+3009, U+27E8, U+27E9).
 
     :param value: The text to clean.
-    :return: The text without any angle bracket.
+    :return: The text without any angle bracket or lookalike.
     """
-    return value.replace("<", "").replace(">", "")
+    text = value.replace("<=", "\u2264").replace(">=", "\u2265")
+    return text.replace("<", "").replace(">", "").translate(_BRACKET_LOOKALIKES)
 
 
 def clean_text(value: str, limit: int) -> str:
@@ -106,7 +120,8 @@ def clean_text(value: str, limit: int) -> str:
 
     Characters that render as nothing are removed first (see
     :func:`~api.assistant.invisible.strip_invisible`), so they cannot hide text or split a
-    word or a number. Angle brackets are removed, so the text cannot open or close a tag.
+    word or a number. Angle brackets are removed (see :func:`remove_angle_brackets`), so the
+    text cannot open or close a tag.
     Every run of whitespace, newlines included, becomes one space, so it cannot start a line
     of its own that reads as an instruction. Text longer than the limit is cut and ends with
     ``...``.
