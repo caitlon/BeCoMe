@@ -100,43 +100,77 @@ _BRACKET_LOOKALIKES = str.maketrans(
 )
 
 
-# A strict comparison: a ``<`` or ``>`` with whitespace or a digit on both sides. A tag
-# needs a letter or ``/`` right after its ``<``, so this never matches the start of one.
-_COMPARISON = re.compile(r"(?<=[\s\d])[<>](?=[\s\d])")
+# A span that looks like a tag: ``<``, an optional ``/``, a letter, ``!`` or ``?``, and then
+# everything up to the next ``>``, with no ``<`` or ``>`` inside. Both brackets of such a span
+# become spaces, so the name stays readable ("<h2>2024</h2>" reads " h2 2024 /h2 ") and no
+# tag is left.
+_TAG_SPAN = re.compile(r"<(/?[A-Za-z!?][^<>]*)>")
+
+# A bracket that is left after the tag spans.
+_BRACKET = re.compile(r"[<>]")
+
+# What follows a bracket when a digit is its nearest non-space neighbour on the right.
+_DIGIT_AHEAD = re.compile(r"\s*\d")
 
 
-def _comparison_words(match: re.Match[str]) -> str:
-    """Write a strict comparison as words, with a space on each side that has a digit.
+def _beside_digit(text: str, start: int, end: int) -> bool:
+    """Tell whether the nearest non-space character on either side of a bracket is a digit.
 
-    :param match: A ``<`` or ``>`` found by :data:`_COMPARISON`.
-    :return: ``"less than"`` or ``"greater than"``, padded with a space where the
-        neighbouring character is a digit rather than whitespace.
+    :param text: The text the bracket is in.
+    :param start: The bracket's index.
+    :param end: The index after the bracket.
+    :return: True when a digit comes right before or right after it, whitespace aside.
+    """
+    left = start - 1
+    while left >= 0 and text[left].isspace():
+        left -= 1
+    return (left >= 0 and text[left].isdecimal()) or _DIGIT_AHEAD.match(text, end) is not None
+
+
+def _comparison_or_nothing(match: re.Match[str]) -> str:
+    """Write a leftover bracket as "less than" or "greater than" beside a digit, else drop it.
+
+    A space is added on a side only when the neighbouring character is not whitespace or the
+    edge of the text, so the words never double an existing space.
+
+    :param match: A ``<`` or ``>`` found by :data:`_BRACKET`.
+    :return: The words with one space on each side, or an empty string.
     """
     text, start, end = match.string, match.start(), match.end()
+    if not _beside_digit(text, start, end):
+        return ""
     words = "less than" if match.group() == "<" else "greater than"
-    before = " " if text[start - 1].isdigit() else ""
-    after = " " if text[end].isdigit() else ""
+    before = " " if start > 0 and not text[start - 1].isspace() else ""
+    after = " " if end < len(text) and not text[end].isspace() else ""
     return f"{before}{words}{after}"
 
 
 def remove_angle_brackets(value: str) -> str:
     """Remove the angle brackets, so text cannot open or close a tag of the assistant.
 
-    ``<=`` and ``>=`` become the single symbols U+2264 and U+2265 first, so a comparison
-    such as "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
-    A strict ``<`` or ``>`` with whitespace or a digit on both sides is written as the words
-    "less than" or "greater than" ("error < 20" becomes "error less than 20", "2<3" becomes
-    "2 less than 3"). Such a character cannot be part of a tag, which needs a letter or
-    ``/`` right after its ``<``. Every other ``<`` and ``>`` is then removed, with their
-    lookalikes: the fullwidth and small forms and the angle-bracket quotation marks
-    (U+FF1C, U+FF1E, U+FE64, U+FE65, U+2329, U+232A, U+3008, U+3009, U+27E8, U+27E9).
+    The steps run in this order:
+
+    1. ``<=`` and ``>=`` become the single symbols U+2264 and U+2265, so a comparison such as
+       "max error <= 20%" keeps its meaning instead of reading "max error = 20%".
+    2. A span that looks like a tag (a ``<`` followed by an optional ``/`` and a letter,
+       ``!`` or ``?``, up to the next ``>``) has both brackets replaced by single spaces:
+       ``<h2>2024</h2>`` reads `` h2 2024 /h2 ``.
+    3. A ``<`` or ``>`` that is left and has a digit as its nearest non-space neighbour on at
+       least one side is written as the words "less than" or "greater than" with a space on
+       each side: "error < 20" becomes "error less than 20", "2<3" becomes "2 less than 3",
+       "p<0.05" becomes "p less than 0.05".
+    4. Every other ``<`` and ``>`` is removed, with their lookalikes: the fullwidth and small
+       forms and the angle-bracket quotation marks (U+FF1C, U+FF1E, U+FE64, U+FE65, U+2329,
+       U+232A, U+3008, U+3009, U+27E8, U+27E9). A ``>`` that only quotes or separates, as in
+       "How it works > Step 2" or a markdown quote line, is dropped and leaves its spaces.
 
     :param value: The text to clean.
     :return: The text without any angle bracket or lookalike.
     """
     text = value.replace("<=", "\u2264").replace(">=", "\u2265")
-    text = _COMPARISON.sub(_comparison_words, text)
-    return text.replace("<", "").replace(">", "").translate(_BRACKET_LOOKALIKES)
+    text = _TAG_SPAN.sub(lambda match: f" {match.group(1)} ", text)
+    text = _BRACKET.sub(_comparison_or_nothing, text)
+    return text.translate(_BRACKET_LOOKALIKES)
 
 
 def clean_text(value: str, limit: int) -> str:
@@ -161,6 +195,10 @@ def clean_text(value: str, limit: int) -> str:
     return text
 
 
+# What the chunker puts between the levels of a heading path (``api/assistant/rag/chunkers.py``).
+_HEADING_SEPARATOR = " > "
+
+
 def _clean_excerpt_part(value: str) -> str:
     """Strip the invisible characters and the angle brackets of one part of an excerpt.
 
@@ -177,7 +215,9 @@ def format_excerpt(number: int, chunk: RetrievedChunk) -> str:
     own words (``chunk_text``): the indexed text carries a caption written by another
     model, which is not the source. Characters that render as nothing are removed from all
     three, then angle brackets (see :func:`remove_angle_brackets`), so a chunk cannot open
-    or close a tag. A section made only of such characters counts as empty.
+    or close a tag. The heading path of a section is joined with `` > `` by the chunker; that
+    separator is written `` / `` here, before the cleaning, so the path stays readable
+    ("How it works / Step 2"). A section made only of such characters counts as empty.
 
     :param number: The ``[n]`` number the source registry assigned to the chunk.
     :param chunk: The retrieved chunk.
@@ -185,7 +225,7 @@ def format_excerpt(number: int, chunk: RetrievedChunk) -> str:
         section is empty.
     """
     heading = f"[{number}] {_clean_excerpt_part(chunk.title)}"
-    if section := _clean_excerpt_part(chunk.section):
+    if section := _clean_excerpt_part(chunk.section.replace(_HEADING_SEPARATOR, " / ")):
         heading += f" - {section}"
     return f"{heading}\n{_clean_excerpt_part(chunk.chunk_text)}"
 

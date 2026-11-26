@@ -250,7 +250,7 @@ class TestSearchDocs:
 
         assert result == render_excerpts([(1, first), (2, second)])
         assert result.count("</docs>") == 1
-        assert "Second/docs words." in result
+        assert "Second /docs  words." in result
 
     async def test_registers_the_chunks_and_leaves_tool_outputs_empty(self):
         """
@@ -1251,7 +1251,7 @@ class TestProjectListValues:
         """
         project = ProjectBrief(id="<a>b1", name="P", role="admin", is_example=False)
 
-        assert project_list_values([project]) == ["1", "ab1"]
+        assert project_list_values([project]) == ["1", "a b1"]
 
     def test_fifty_projects_have_no_remainder(self):
         """
