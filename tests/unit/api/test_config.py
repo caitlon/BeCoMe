@@ -1046,6 +1046,18 @@ class TestStagingInvariants:
 class TestLoggingSettings:
     """Tests for logging-related settings."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_logging_env(self, monkeypatch, tmp_path):
+        """Isolate from the local .env file and any sink variables of the process.
+
+        The test environment blanks the Sentry and Better Stack variables to keep a
+        developer's .env out of the suite, and a blank value is not the default the
+        tests below look for.
+        """
+        monkeypatch.chdir(tmp_path)
+        for var in ("SENTRY_DSN", "BETTERSTACK_SOURCE_TOKEN", "BETTERSTACK_INGESTING_HOST"):
+            monkeypatch.delenv(var, raising=False)
+
     def test_log_level_defaults_to_info(self):
         """
         GIVEN Settings without an explicit log level
