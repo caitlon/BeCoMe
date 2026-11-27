@@ -157,8 +157,11 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     const channel = openAuthBroadcast((type) => {
       if (type === 'signed-out') {
         epochRef.current += 1;
-        updateUser(null);
-        setStatus('unauthenticated');
+        // A transition, like the probe's: this can arrive while a lazy page hydrates.
+        startTransition(() => {
+          updateUser(null);
+          setStatus('unauthenticated');
+        });
         queryClient.clear();
         notifySignOutListeners();
       } else {

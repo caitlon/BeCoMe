@@ -6,7 +6,7 @@ import { I18nextProvider } from 'react-i18next'
 import { AuthProvider, useAuth, registerSignOutListener } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
-import { ForbiddenError, UnauthorizedError } from '@/lib/errors'
+import { ForbiddenError, RateLimitError, UnauthorizedError } from '@/lib/errors'
 import i18n from '@/i18n'
 import type { User } from '@/types/api'
 import { createUser } from '@tests/factories/user'
@@ -145,6 +145,19 @@ describe('AuthContext across tabs', () => {
 
       expect(tab.result.current.auth.status).toBe('unauthenticated')
       expect(other.received).toEqual([{ type: 'signed-out' }])
+    })
+
+    it('posts nothing and shows the service as unavailable when a probe is throttled with 429', async () => {
+      const tab = await signedInTab()
+      const other = otherTab()
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new RateLimitError('Too many requests', 30))
+
+      await act(async () => {
+        await tab.result.current.auth.refreshUser()
+      })
+
+      expect(tab.result.current.auth.status).toBe('serviceUnavailable')
+      expect(other.received).toEqual([])
     })
 
     it('posts nothing when an anonymous tab is told so by its first probe', async () => {
