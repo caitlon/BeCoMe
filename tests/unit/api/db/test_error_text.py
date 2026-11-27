@@ -528,7 +528,10 @@ _SERVER = "\tThis probably means the server terminated abnormally\n"
 # The psycopg2 texts and psycopg 3's refused text were captured on 2026-11-27 from psycopg2
 # 2.9.13 (libpq 16) and psycopg 3.3.9 against fake servers on loopback; the other psycopg 3 texts
 # add psycopg 3's ``connection failed: `` prefix to them (the form psycopg 3 printed for every
-# server FATAL); the dns text and the OS-level reasons follow libpq's format strings.
+# server FATAL). The pg_hba "rejects" row, the pre-14 ``could not connect to server`` row, the
+# socket row, the dns text and the OS-level reasons are written by hand in libpq's format (the
+# "rejects" form was confirmed against a local PostgreSQL 16, which reports ``no encryption``
+# over plain TCP).
 _CONNECT_FAILURES = [
     ("refused", f"{_LIBPQ}Connection refused\n\tIs the server running on that host?\n"),
     ("timeout", f"{_LIBPQ}timeout expired\n"),
@@ -551,6 +554,12 @@ _CONNECT_FAILURES = [
         "could not connect to server: Connection refused\n"
         '\tIs the server running on host "db.internal" (10.0.0.5) and accepting\n'
         "\tTCP/IP connections on port 5432?\n",
+    ),
+    (
+        "refused",
+        'connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: '
+        "Connection refused\n"
+        "\tIs the server running locally and accepting connections on that socket?\n",
     ),
     ("unknown_database", f'{_LIBPQ}FATAL:  database "become" does not exist\n'),
     ("too_many_connections", f"{_LIBPQ}FATAL:  sorry, too many clients already\n"),
@@ -675,10 +684,10 @@ class TestConnectionFailureLabel:
     )
     def test_psycopg3_only_errors_are_labelled(self, exc, label):
         """
-        GIVEN psycopg 3's own timeout error, and its message after several failed attempts
+        GIVEN psycopg 3's own timeout error, its message after several failed attempts, and
+            its message after a single refused attempt
         WHEN their labels are read
-        THEN the timeout class is ``timeout`` and the last attempt on the first line decides
-            the other
+        THEN the timeout class is ``timeout`` and the first line decides the others
         AND the lines that name each host are gone from the reduced text
         """
         assert connection_failure_label(exc) == label
@@ -715,7 +724,8 @@ class TestConnectionFailureLabel:
 
     def test_a_lost_connection_keeps_its_plain_text(self):
         """
-        GIVEN libpq's ``connection to server was lost``, a mid-query error
+        GIVEN ``connection to server was lost``, a synthetic negative control for the narrowed
+            prefix (not a libpq message)
         WHEN its text is reduced
         THEN it is the plain reduced text, with no label
         """
