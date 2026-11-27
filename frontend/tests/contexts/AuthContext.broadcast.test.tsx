@@ -381,6 +381,37 @@ describe('AuthContext across tabs', () => {
     })
   })
 
+  describe('losing the session without a logout', () => {
+    it('clears the query cache when the session expires in a tab that held a user', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+
+      act(() => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.queryClient.getQueryData(['projects'])).toBeUndefined()
+    })
+
+    it.each([
+      ['401', () => new UnauthorizedError()],
+      ['403', () => new ForbiddenError('nope')],
+    ])('clears the query cache when a probe is refused with %s in a tab that held a user', async (_label, makeError) => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(makeError())
+
+      await act(async () => {
+        await tab.result.current.auth.refreshUser()
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.queryClient.getQueryData(['projects'])).toBeUndefined()
+    })
+  })
+
   describe('overlapping probes', () => {
     it('keeps a tab signed in when its anonymous mount probe is refused after a signed-in probe succeeded', async () => {
       const mountProbe = deferred<User>()

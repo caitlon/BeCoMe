@@ -130,6 +130,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
           updateUser(null);
           setStatus('unauthenticated');
         });
+        // The next sign-in in this tab may be another account's: nothing of this one stays.
+        if (hadUser) {
+          queryClient.clear();
+        }
         notifySignOutListeners();
         // An anonymous tab's probe changes nothing for the other tabs, and posting it could
         // sign out a tab that has just signed in.
@@ -189,6 +193,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       epochRef.current += 1;
       updateUser(null);
       setStatus('unauthenticated');
+      if (hadUser) {
+        queryClient.clear();
+      }
       notifySignOutListeners();
       if (hadUser) {
         channelRef.current?.post('signed-out');
@@ -200,7 +207,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       });
     });
     return () => api.setOnSessionExpired(null);
-  }, [toast, tCommon, updateUser]);
+  }, [toast, tCommon, updateUser, queryClient]);
 
   // The Turnstile token is the sign-in form's, not this context's: it is minted by the
   // widget on that page and passed straight through to the transport.
