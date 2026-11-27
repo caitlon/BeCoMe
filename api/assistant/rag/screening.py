@@ -16,10 +16,11 @@ heading path to the text. For each chunk it looks at the chunk's own text, its t
 section (the `heading_path` metadata) and its `url` metadata, after `strip_invisible`, NFKC
 normalization, case folding and whitespace collapse, so a zero-width character, a
 decomposed letter, a fullwidth bracket, a different case or a line break inside a phrase
-does not hide it. The URL is read as written, decoded (percent escapes resolved), and decoded
-and normalized with every run of punctuation other than colons and commas read as a space, so
-a slug, a path or an escaped phrase in it matches too. The phrase patterns also run on a copy
-with the diacritics folded away, so Czech typed without them matches too.
+does not hide it. The URL is read as written, decoded, and twice more decoded with its
+diacritics folded and its punctuation read as spaces (once keeping colons, commas and
+apostrophes, once not), so a slug, a path or an escaped phrase in it matches too. The phrase
+patterns also run on a copy with the diacritics folded away, so Czech typed without them
+matches too.
 """
 
 import hashlib
@@ -128,9 +129,11 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 _WHITESPACE = re.compile(r"\s+")
-# Every run of characters other than letters, digits, colons and commas, so the colon and comma
-# the phrase patterns need survive.
-_URL_SEPARATORS = re.compile(r"(?:[^\w:,]|_)+")
+# Every run of characters other than letters, digits and the colon, comma and apostrophes the
+# phrase patterns need.
+_URL_PUNCTUATION_KEPT = re.compile(r"(?:[^\w:,'\u2019]|_)+")
+# Every run of characters other than letters and digits.
+_URL_PUNCTUATION = re.compile(r"[\W_]+")
 
 
 @dataclass(frozen=True)
@@ -195,17 +198,25 @@ def _fold(text: str) -> str:
 
 
 def _url_readings(url: str) -> list[str]:
-    """Read a URL the three ways a planted phrase could hide in it.
+    """Read a URL the four ways a planted phrase could hide in it.
 
     :param url: The chunk's url metadata, non-empty.
-    :return: The URL as written, decoded (percent escapes resolved, nothing else changed),
-        and decoded, normalized, with every run of characters other than letters, digits,
-        colons and commas read as one space. The first two keep tags, role markers and colons
-        whole; the third lets a slug, a path or an escaped phrase match and keeps the colon
-        and comma the phrase patterns need.
+    :return: The URL as written; decoded and normalized; decoded, normalized and with
+        diacritics folded, with every run of punctuation other than colons, commas and
+        apostrophes read as one space; and the same with every run of punctuation read as
+        one space. The first two keep tags, role markers and colons whole; the last two let
+        a slug, a path or an escaped phrase match, the third keeping the punctuation the
+        phrase patterns need, the fourth catching a phrase whose words are joined by colons
+        or commas.
     """
     normalized = _normalize(unquote(url))
-    return [_normalize(url), normalized, _URL_SEPARATORS.sub(" ", normalized)]
+    folded = _fold(normalized)
+    return [
+        _normalize(url),
+        normalized,
+        _URL_PUNCTUATION_KEPT.sub(" ", folded),
+        _URL_PUNCTUATION.sub(" ", folded),
+    ]
 
 
 def _tag_reason(text: str) -> str | None:
@@ -253,8 +264,8 @@ def screen_chunks(chunks: Sequence[Document]) -> list[FlaggedChunk]:
     :param chunks: Chunks as `split` returns them, with the loaders' metadata.
     :return: One FlaggedChunk per flagged chunk, in the order of `chunks`, carrying the
         first reason found: an assistant tag before a role marker before a phrase,
-        looking at the text, then the title, then the section, then the URL (as written,
-        decoded, then decoded with its punctuation read as spaces) for each.
+        looking at the text, then the title, then the section, then the URL (its
+        four readings, see `_url_readings`) for each.
     """
     flagged = []
     for chunk in chunks:
