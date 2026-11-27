@@ -103,17 +103,54 @@ describe('AuthContext across tabs', () => {
       expect(other.received).toEqual([{ type: 'signed-out' }])
     })
 
-    it('posts signed-out when the session expires', async () => {
+    it('posts signed-out when the session expires and the check of it is refused', async () => {
       const tab = await signedInTab()
       const other = otherTab()
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
+
+      await act(async () => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(other.received).toEqual([{ type: 'signed-out' }])
+    })
+
+    it('neither signs out nor posts nor warns when an old expiry fires and the session is valid', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      const other = otherTab()
+      const toastsBefore = tab.result.current.toasts.length
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+      vi.mocked(api.getCurrentUser).mockResolvedValueOnce(createUser({ id: '1' }))
+
+      await act(async () => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(tab.result.current.auth.user?.id).toBe('1')
+      expect(tab.queryClient.getQueryData(['projects'])).toEqual([{ id: 'p1' }])
+      expect(other.received).toEqual([])
+      expect(tab.result.current.toasts).toHaveLength(toastsBefore)
+    })
+
+    it('shows the page, not a loader, while the check of an expiry is out', async () => {
+      const tab = await signedInTab()
+      const check = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(check.promise)
       const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
 
       act(() => {
         onSessionExpired?.()
       })
 
-      expect(tab.result.current.auth.status).toBe('unauthenticated')
-      expect(other.received).toEqual([{ type: 'signed-out' }])
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      await act(async () => {
+        check.resolve(createUser({ id: '1' }))
+      })
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
     })
 
     it('posts nothing when the session expires in a tab that holds no user', async () => {
@@ -123,7 +160,7 @@ describe('AuthContext across tabs', () => {
       const other = otherTab()
       const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
 
-      act(() => {
+      await act(async () => {
         onSessionExpired?.()
       })
 
@@ -386,8 +423,9 @@ describe('AuthContext across tabs', () => {
       const tab = await signedInTab()
       tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
       const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
 
-      act(() => {
+      await act(async () => {
         onSessionExpired?.()
       })
 
@@ -595,6 +633,27 @@ describe('AuthContext across tabs', () => {
       expect(tab.result.current.auth.status).toBe('authenticated')
     })
 
+    it('switches to the other account when a profile save returns before its session check', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      const check = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(check.promise)
+
+      act(() => {
+        otherTab().channel.postMessage({ type: 'signed-in' })
+      })
+      act(() => {
+        tab.result.current.auth.setCurrentUser(createUser({ id: '1', first_name: 'Saved' }))
+      })
+      await act(async () => {
+        check.resolve(createUser({ id: '2', first_name: 'Second' }))
+      })
+
+      expect(tab.result.current.auth.user?.id).toBe('2')
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(tab.queryClient.getQueryData(['projects'])).toBeUndefined()
+    })
+
     it('keeps the new account when a late profile write for the previous one arrives', async () => {
       const tab = await signedInTab()
       const other = otherTab()
@@ -667,7 +726,8 @@ describe('AuthContext across tabs', () => {
       act(() => {
         void tab.result.current.auth.refreshUser()
       })
-      act(() => {
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
+      await act(async () => {
         onSessionExpired?.()
       })
       await act(async () => {

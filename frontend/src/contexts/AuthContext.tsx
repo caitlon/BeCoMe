@@ -93,20 +93,32 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   // finds it equal to the current epoch is about to invalidate a probe that was still
   // current, and must settle the tab itself, because that probe's answer will be discarded.
   const activeProbeEpochRef = useRef<number | null>(null);
+  // Counts the profile writes setCurrentUser accepted. A write is no session event, so it does
+  // not move the epoch: a probe that settles with the same user after one keeps the newer profile,
+  // and one that settles with another account still switches to it.
+  const profileWriteSeqRef = useRef(0);
   const updateUser = useCallback((next: User | null) => {
     userRef.current = next;
     setUser(next);
   }, []);
 
   // announceSignOut is false for a probe another tab asked for: that tab already knows, and a
-  // tab never answers a message by posting one.
-  const probeSession = useCallback(async (announceSignOut: boolean) => {
+  // tab never answers a message by posting one. A quiet probe leaves the status alone while it
+  // runs, so a check that may find the session fine does not swap the page for a loader.
+  // onRefused runs once the probe was refused with 401/403 and the tab is signed out.
+  const probeSession = useCallback(async (
+    announceSignOut: boolean,
+    { quiet = false, onRefused }: { quiet?: boolean; onRefused?: () => void } = {}
+  ) => {
     const epoch = ++epochRef.current;
     // Read before the request: by the time it settles the user may be another event's.
     const hadUser = userRef.current !== null;
+    const writeSeq = profileWriteSeqRef.current;
     activeProbeEpochRef.current = epoch;
     try {
-      setStatus('loading');
+      if (!quiet) {
+        setStatus('loading');
+      }
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
       // visitor on a public page is not treated as a session failure.
       const userData = await api.getCurrentUser(true);
@@ -123,7 +135,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       // is still hydrating. A transition keeps React from answering a plain update
       // by discarding the server HTML of a boundary that has not hydrated yet.
       startTransition(() => {
-        updateUser(userData);
+        // A profile saved while the request was out is newer than this copy of the same user.
+        if (held === null || held.id !== userData.id || profileWriteSeqRef.current === writeSeq) {
+          updateUser(userData);
+        }
         setStatus('authenticated');
       });
     } catch (err) {
@@ -145,6 +160,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
         if (announceSignOut && hadUser) {
           channelRef.current?.post('signed-out');
         }
+        onRefused?.();
       } else {
         // Network/server trouble, not "not logged in": keep the distinction so the
         // UI can offer a retry instead of bouncing an authenticated user to /login.
@@ -193,30 +209,24 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     refreshUser();
   }, [refreshUser]);
 
-  // Bridges the ApiClient's session-expiry signal (fired after a silent refresh
-  // fails on a non-probe request) into auth state and a user-visible toast.
+  // Bridges the ApiClient's session-expiry signal (fired after a silent refresh fails on a
+  // non-probe request) into auth state and a user-visible toast. The failed refresh may have
+  // been sent with a cookie another tab has since replaced, so the signal only asks for a
+  // check: the tab signs out, and says so, when the session itself is refused.
   useEffect(() => {
     api.setOnSessionExpired(() => {
-      // An anonymous tab's expiry changes nothing for the other tabs.
-      const hadUser = userRef.current !== null;
-      epochRef.current += 1;
-      updateUser(null);
-      setStatus('unauthenticated');
-      if (hadUser) {
-        queryClient.clear();
-      }
-      notifySignOutListeners();
-      if (hadUser) {
-        channelRef.current?.post('signed-out');
-      }
-      toast({
-        title: tCommon('errors.sessionExpiredTitle'),
-        description: tCommon('errors.sessionExpired'),
-        variant: 'destructive',
+      void probeSession(true, {
+        quiet: true,
+        onRefused: () =>
+          toast({
+            title: tCommon('errors.sessionExpiredTitle'),
+            description: tCommon('errors.sessionExpired'),
+            variant: 'destructive',
+          }),
       });
     });
     return () => api.setOnSessionExpired(null);
-  }, [toast, tCommon, updateUser, queryClient]);
+  }, [toast, tCommon, probeSession]);
 
   // The Turnstile token is the sign-in form's, not this context's: it is minted by the
   // widget on that page and passed straight through to the transport.
@@ -274,15 +284,16 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
   }, [queryClient, updateUser]);
 
-  // A profile update the caller already holds is newer than any probe still in flight, and a
-  // successful write proves the session was valid, so a status a probe left at 'loading'
+  // A successful write proves the session was valid, so a status a probe left at 'loading'
   // settles here. A tab that holds no user, or another account's, ignores it: the write's
   // response arrived after a sign-out or a switch of account, and it must not undo either.
+  // The epoch stays: a profile write must not discard a session check in flight, which may
+  // be about to show another account.
   const setCurrentUser = useCallback((next: User) => {
     if (userRef.current === null || userRef.current.id !== next.id) {
       return;
     }
-    epochRef.current += 1;
+    profileWriteSeqRef.current += 1;
     updateUser(next);
     setStatus((current) => (current === 'loading' ? 'authenticated' : current));
   }, [updateUser]);
