@@ -17,9 +17,9 @@ section (the `heading_path` metadata) and its `url` metadata, after `strip_invis
 normalization, case folding and whitespace collapse, so a zero-width character, a
 decomposed letter, a fullwidth bracket, a different case or a line break inside a phrase
 does not hide it. The URL is read as written, decoded (percent escapes resolved), and decoded
-with every run of punctuation read as a space, so a slug, a path or an escaped phrase in it
-matches too. The phrase patterns also run on a copy with the diacritics folded away,
-so Czech typed without them matches too.
+and normalized with every run of punctuation other than colons and commas read as a space, so
+a slug, a path or an escaped phrase in it matches too. The phrase patterns also run on a copy
+with the diacritics folded away, so Czech typed without them matches too.
 """
 
 import hashlib
@@ -128,7 +128,9 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 _WHITESPACE = re.compile(r"\s+")
-_URL_SEPARATORS = re.compile(r"[\W_]+")
+# Every run of characters other than letters, digits, colons and commas, so the colon and comma
+# the phrase patterns need survive.
+_URL_SEPARATORS = re.compile(r"(?:[^\w:,]|_)+")
 
 
 @dataclass(frozen=True)
@@ -197,12 +199,13 @@ def _url_readings(url: str) -> list[str]:
 
     :param url: The chunk's url metadata, non-empty.
     :return: The URL as written, decoded (percent escapes resolved, nothing else changed),
-        and decoded with every run of characters that are not letters or digits read as one
-        space, each normalized. The first two keep tags, role markers and colons whole; the
-        third lets a slug, a path or an escaped phrase match.
+        and decoded, normalized, with every run of characters other than letters, digits,
+        colons and commas read as one space. The first two keep tags, role markers and colons
+        whole; the third lets a slug, a path or an escaped phrase match and keeps the colon
+        and comma the phrase patterns need.
     """
-    decoded = unquote(url)
-    return [_normalize(url), _normalize(decoded), _normalize(_URL_SEPARATORS.sub(" ", decoded))]
+    normalized = _normalize(unquote(url))
+    return [_normalize(url), normalized, _URL_SEPARATORS.sub(" ", normalized)]
 
 
 def _tag_reason(text: str) -> str | None:
