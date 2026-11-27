@@ -66,10 +66,10 @@ class TestTagsNestedTooDeep:
 
     def test_deeply_nested_tags_are_a_validation_error(self):
         """
-        GIVEN a name whose tags are nested five levels deep
+        GIVEN a description whose tags are nested five levels deep
         WHEN ProjectCreate is built
         THEN ValidationError is raised, which the API answers with 422 and not 500
         """
         # WHEN / THEN
-        with pytest.raises(ValidationError):
-            ProjectCreate(name="<" * 5 + "b>" * 5)
+        with pytest.raises(ValidationError, match="could not be sanitized"):
+            ProjectCreate(name="P", description="<" * 5 + "b>" * 5)
