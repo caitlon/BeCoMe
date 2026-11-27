@@ -308,7 +308,8 @@ and nothing else, so the answer says it found nothing. Should such a project's e
 route anyway, it is answered `404` with `Project not found`, and an assistant error with no
 handler of its own `500` with `Internal server error`; neither body carries the error's text. A
 failing model server, embedding server, vector database or application answers `503` with a fixed
-message. On any request until the retriever has been built once, that covers a vector database
+message, and so does a throttle store that cannot be reached. On any request until the
+retriever has been built once, that covers a vector database
 that is down, a URL that is not set, and a collection that is missing or that the role cannot
 read. Requests that arrive together on a cold process each open an engine and fail or succeed on
 their own, so a database that is down does not queue them; one retriever is kept and the other
@@ -460,27 +461,29 @@ logged at WARNING with the exception's class in `reason`.
   model call. A refused message is given back: in memory it is never stored, and in Redis its
   increment is given back by a guarded script (if that give-back fails with a store error,
   `assistant_throttle_giveback_unavailable` is logged and the counter stays above the budget until
-  the window closes). A Redis error does not lift it: each process then counts in its own memory
-  with the same budget, and the record `assistant_throttle_unavailable` is logged at ERROR. Set it
-  to `0` to switch it off, for a measurement run that sends many questions from one account; a
-  deployed service refuses `0`. A turn that fails while it is prepared, before the answer model is
+  the window closes). A Redis error does not lift it and is not counted in memory either: the
+  turn is refused with `503` and the body of an unreachable model server, at most one message stays
+  counted until the window closes, and the record `assistant_throttle_unavailable` is logged at
+  ERROR. Set it to `0` to switch it off,
+  for a measurement run that sends many questions from one account; a deployed service refuses
+  `0`. A turn that fails while it is prepared, before the answer model is
   called (an unknown project, a retrieval error, a timeout), gives back all its messages, the
   user's, the ceiling's and the address's; in the `agent` mode a project is looked up only when the
   model calls a tool, so an unknown project there keeps them. A failure of the answer model, and a
   client that goes away, keep them.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
-  set and in memory otherwise, with the same per-process fallback as the message limit. It is
-  spent after the user's own budget, so an account whose budget is spent cannot drain it; a turn
-  the ceiling refuses gives the user's message back, so it spends none of the user's own budget. A
-  turn over the ceiling is `503`, the same body as an unreachable model server, with
+  set and in memory otherwise, and refuses a turn when the store errors, as the message limit
+  does. It is spent after the user's own budget, so an account whose budget is spent cannot drain
+  it; a turn the ceiling refuses gives the user's message back, so it spends none of the user's
+  own budget. A turn over the ceiling is `503`, the same body as an unreachable model server, with
   `Retry-After` set to the seconds until the window closes; the record
   `assistant_global_cap_reached` carries `reason: global` and no user. Set it to `0` to switch it
   off on a laptop; a deployed service refuses `0`. A Better Stack alert on that record, one each
   for dev and prod, opens one incident when the ceiling refuses a turn and sends an e-mail; the
   incident closes after an hour without a refusal.
 - **Per-address cap.** `ASSISTANT_ADDRESS_TURNS_PER_HOUR` messages per client address in a fixed
-  hour (default 240), counted with the same backends, fallback and window as the
+  hour (default 240), counted with the same backends, store-error refusal and window as the
   message limit. The key is the keyed hash of the address from `get_client_ip` (an HMAC under
   `LOG_HASH_KEY`, or `SECRET_KEY` when that is unset), an IPv6 address cut to its /64 network and
   an IPv4-mapped one counted as its IPv4 address, so the Redis key is `assistant:chat:addr:<hash>`
@@ -529,7 +532,8 @@ logged at WARNING with the exception's class in `reason`.
   refused by any step before the budget spends no message, and one refused after the address cap
   has charged gives that charge back: that covers `422` for an invalid body or a message that is
   too long, and `503` for a retriever that cannot be built (the vector database is down or not
-  configured). The retriever
+  configured). A `503` also comes from a throttle store that cannot be reached, at the address
+  cap or at the budget. The retriever
   is built once per process, so once it exists a request pays nothing for it. A failed build is
   not cached: on a process whose vector database is down, a caller over budget drives one
   retriever build attempt per request, bounded by the per-address limits and the turn slots, and

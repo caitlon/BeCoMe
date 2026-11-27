@@ -846,16 +846,21 @@ WARNING these records were a breadcrumb on some later event, which meant the bru
 lockout could stay off for the length of an outage with nothing raised anywhere, since the
 request it happened during returns normally, so there is no other symptom to notice. The
 accepted risk is unchanged. What changed is that it now announces itself. The assistant's
-hourly cap does not fail open. On a Redis error each process counts in its own memory with the
-same budget, so a store outage leaves a cap per process, not none, and the record
+hourly cap does not fail open: on a Redis error the turn is refused with `503` and the body of
+an unreachable model server, and nothing is counted in memory (a read timeout after Redis ran
+the count can leave at most one message counted until the window closes), since a per-process
+count that
+starts at zero would give a user who had spent the hour in Redis a second budget. The record
 `assistant_throttle_unavailable` goes out at ERROR. Where the assistant runs
 in production, the alert rule below fires for it as for the other throttles; on the dev
 service the record is for whoever reads its log.
 
 The level alone is not the whole alert, because the Sentry project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
-dedicated rule, **"Fail-open throttle: store unavailable"** on the `python-fastapi` project,
-matches any event whose message contains `throttle store unavailable` and notifies on a new
+dedicated rule, **"Fail-open throttle: store unavailable"** on the `python-fastapi` project
+(the name stays from when the throttles only failed open), matches any event whose message
+contains `throttle store unavailable`. For the assistant's cap it now fires when a turn is
+refused, not when a fallback count starts. It notifies on a new
 issue, a regression, **or** five events in an hour. That last condition is what covers a
 second outage weeks later: by then the issue is neither new nor a regression, and a rule
 without it would stay silent exactly when the lockout is off again.

@@ -14,6 +14,7 @@ import pytest
 import redis
 
 from api.assistant import rate_limit
+from api.assistant.errors import AssistantUnavailableError
 from api.assistant.rate_limit import (
     AssistantThrottle,
     InMemoryAssistantThrottle,
@@ -486,7 +487,7 @@ def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
 
 
 class TestRedisAssistantThrottle:
-    """The Redis throttle shares the cap across processes, or counts per process when it is down."""
+    """The Redis throttle shares the cap across processes, and refuses every turn when it is down."""
 
     def test_allows_up_to_the_limit_then_blocks(self):
         """
@@ -642,10 +643,9 @@ class TestRedisAssistantThrottle:
         # THEN
         assert seconds == 3600
 
-    def test_retry_after_is_the_full_window_and_logs_without_a_fallback_entry(self, caplog):
+    def test_retry_after_is_the_full_window_and_logs_when_the_store_is_down(self, caplog):
         """
-        GIVEN a store whose TTL lookup raises a Redis error and a user the process has
-            never counted, so there is no fallback entry
+        GIVEN a store whose TTL lookup raises a Redis error
         WHEN retry_after is asked
         THEN it is the full window, since one second would understate it, and a record
              names the event without the digest
@@ -687,12 +687,23 @@ class TestRedisAssistantThrottle:
         assert outcomes == [True] * 5
         assert client.mock_calls == []
 
-    def test_counts_per_process_and_logs_when_the_store_is_unavailable(self, caplog):
+    @pytest.mark.parametrize(
+        "charge",
+        [
+            lambda throttle, user_id: throttle.charge(user_id),
+            lambda throttle, user_id: throttle.hit(user_id),
+            lambda throttle, user_id: throttle.charge_key(rate_limit.GLOBAL_KEY),
+            lambda throttle, user_id: throttle.hit_key(rate_limit.GLOBAL_KEY),
+            lambda throttle, user_id: throttle.charge_key(rate_limit.address_key("203.0.113.5")),
+        ],
+        ids=["charge", "hit", "global key", "global key hit", "address key"],
+    )
+    def test_a_store_error_refuses_the_turn_as_unavailable_and_logs(self, caplog, charge):
         """
         GIVEN a store whose transaction raises a Redis error and a budget of two
-        WHEN one user sends three messages
-        THEN the process-local count still refuses the third, and each failed hit writes
-             an ERROR record that says the cap is counted per process
+        WHEN a user, the global key or an address is charged
+        THEN AssistantUnavailableError is raised each time and each failure writes an ERROR
+             record that says the turn was refused
         """
         # GIVEN
         client = MagicMock()
@@ -702,10 +713,11 @@ class TestRedisAssistantThrottle:
 
         # WHEN
         with caplog.at_level(logging.ERROR, logger="api.security"):
-            outcomes = [throttle.hit(user_id) for _ in range(3)]
+            for _ in range(3):
+                with pytest.raises(AssistantUnavailableError):
+                    charge(throttle, user_id)
 
         # THEN
-        assert outcomes == [True, True, False]
         records = [
             r
             for r in caplog.records
@@ -713,30 +725,31 @@ class TestRedisAssistantThrottle:
         ]
         assert len(records) == 3
         assert all(r.levelno == logging.ERROR for r in records)
-        assert all("per process" in r.getMessage() for r in records)
+        assert all("turn refused" in r.getMessage() for r in records)
+        assert all(r.exc_info is not None for r in records)
 
-    def test_the_fallback_counts_users_apart(self):
+    def test_no_second_budget_is_granted_when_the_store_comes_back_mid_hour(self):
         """
-        GIVEN a store that is down and a budget of one
-        WHEN two users each send two messages, interleaved
-        THEN each user's first message is allowed and each user's second is refused
+        GIVEN a budget of five, spent by one user in the store
+        WHEN the store fails on the next five messages and then recovers for five more
+        THEN the failed ones are refused as unavailable and the recovered ones are refused by
+             the budget the store still holds, so the user got five messages in all, not ten
         """
         # GIVEN
-        client = MagicMock()
-        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
-        throttle = RedisAssistantThrottle(client, max_per_hour=1)
-        first, second = uuid4(), uuid4()
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=5, window_seconds=3600)
+        user_id = uuid4()
+        allowed = [throttle.hit(user_id) for _ in range(5)]
 
         # WHEN
-        outcomes = [
-            throttle.hit(first),
-            throttle.hit(second),
-            throttle.hit(first),
-            throttle.hit(second),
-        ]
+        with patch.object(fake, "pipeline", side_effect=redis.RedisError("down")):
+            for _ in range(5):
+                with pytest.raises(AssistantUnavailableError):
+                    throttle.hit(user_id)
+        allowed += [throttle.hit(user_id) for _ in range(5)]
 
         # THEN
-        assert outcomes == [True, True, False, False]
+        assert allowed == [True] * 5 + [False] * 5
 
     def test_zero_means_no_limit_even_when_the_store_is_down(self):
         """
@@ -758,34 +771,12 @@ class TestRedisAssistantThrottle:
         assert outcomes == [True] * 5
         client.pipeline.assert_not_called()
 
-    def test_retry_after_uses_the_fallback_window_when_the_store_is_down(self):
+    def test_a_message_refused_as_unavailable_leaves_no_count_to_shorten_the_wait(self):
         """
-        GIVEN a store that is down and a user refused by the process-local count
-        WHEN 600 seconds into the window the user asks how long to wait
-        THEN the answer is the fallback's remaining time, not the full window
-        """
-        # GIVEN
-        client = MagicMock()
-        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
-        client.ttl.side_effect = redis.RedisError("down")
-        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
-        user_id = uuid4()
-        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
-            throttle.hit(user_id)
-            assert throttle.hit(user_id) is False
-
-        # WHEN
-        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
-            seconds = throttle.retry_after(user_id)
-
-        # THEN
-        assert seconds == 3000
-
-    def test_retry_after_is_the_full_window_once_the_fallback_window_has_closed(self):
-        """
-        GIVEN a store that is down and a user counted at t=0
-        WHEN retry_after is asked at t=7200, past the one-hour window
-        THEN the closed fallback entry is ignored and the answer is the full window
+        GIVEN a store that is down for the charge and for the TTL lookup, and a user whose
+            message was refused as unavailable
+        WHEN the user asks how long to wait
+        THEN the answer is the full window, since nothing in the process holds a shorter one
         """
         # GIVEN
         client = MagicMock()
@@ -793,12 +784,11 @@ class TestRedisAssistantThrottle:
         client.ttl.side_effect = redis.RedisError("down")
         throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
         user_id = uuid4()
-        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+        with pytest.raises(AssistantUnavailableError):
             throttle.hit(user_id)
 
         # WHEN
-        with patch.object(rate_limit.time, "monotonic", return_value=7200.0):
-            seconds = throttle.retry_after(user_id)
+        seconds = throttle.retry_after(user_id)
 
         # THEN
         assert seconds == 3600
@@ -817,10 +807,16 @@ class TestRedisAssistantThrottle:
         digest = rate_limit._digest(user_id)
 
         # WHEN
-        with caplog.at_level(logging.ERROR, logger="api.security"):
+        with (
+            caplog.at_level(logging.ERROR, logger="api.security"),
+            pytest.raises(AssistantUnavailableError) as caught,
+        ):
             throttle.hit(user_id)
 
         # THEN
+        assert str(user_id) not in str(caught.value)
+        assert digest not in str(caught.value)
+        assert caplog.records
         for record in caplog.records:
             assert str(user_id) not in str(record.__dict__)
             assert digest not in str(record.__dict__)
@@ -866,12 +862,11 @@ class TestRedisAssistantThrottle:
         # WHEN/THEN
         assert throttle.retry_after_key(rate_limit.GLOBAL_KEY) == 100
 
-    def test_the_global_key_is_counted_per_process_when_the_store_is_down(self):
+    def test_the_global_key_is_refused_as_unavailable_when_the_store_is_down(self):
         """
-        GIVEN a store that is down, a budget of one and 600 seconds into the window
-        WHEN the global key is hit twice and its refusal asks how long to wait
-        THEN the second hit is refused by the process-local count, and the wait is the
-             fallback's remaining window
+        GIVEN a store that is down, a budget of one and a refusal that asks how long to wait
+        WHEN the global key is hit and its wait is asked
+        THEN the hit raises AssistantUnavailableError, and the wait is the full window
         """
         # GIVEN
         client = MagicMock()
@@ -880,14 +875,12 @@ class TestRedisAssistantThrottle:
         throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
 
         # WHEN
-        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
-            outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(2)]
-        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
-            seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
+        with pytest.raises(AssistantUnavailableError):
+            throttle.hit_key(rate_limit.GLOBAL_KEY)
+        seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
 
         # THEN
-        assert outcomes == [True, False]
-        assert seconds == 3000
+        assert seconds == 3600
 
     def test_zero_means_no_limit_for_a_key_and_never_touches_redis(self):
         """
@@ -1012,33 +1005,11 @@ class TestRedisAssistantThrottle:
         assert int(fake.get(_key(fake))) == 1
         assert client.mock_calls == []
 
-    def test_a_charge_taken_by_the_fallback_is_refunded_to_the_fallback(self):
-        """
-        GIVEN a store that is down for the charge and up again for the refund
-        WHEN the fallback's charge is refunded
-        THEN the fallback's count drops, and the store is not asked
-        """
-        # GIVEN
-        client = MagicMock()
-        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
-        throttle = RedisAssistantThrottle(client, max_per_hour=1)
-        user_id = uuid4()
-        charge = throttle.charge(user_id)
-        assert charge.in_store is False
-
-        # WHEN
-        throttle.refund(charge)
-
-        # THEN
-        client.eval.assert_not_called()
-        assert throttle._fallback.hit(user_id) is True
-
     def test_a_store_error_during_a_refund_is_logged_and_not_raised(self, caplog):
         """
         GIVEN a charge Redis took and a store that now raises on the refund
         WHEN the charge is refunded
-        THEN nothing is raised, a WARNING record names the event without the key or digest,
-             and the fallback is not touched
+        THEN nothing is raised and a WARNING record names the event without the key or digest
         """
         # GIVEN
         fake = fakeredis.FakeStrictRedis()
@@ -1063,7 +1034,6 @@ class TestRedisAssistantThrottle:
         assert records[0].levelno == logging.WARNING
         assert records[0].exc_info is not None
         assert rate_limit._digest(user_id) not in str(records[0].__dict__)
-        assert throttle._fallback._counts == {}
 
     def test_a_refund_works_for_the_global_key(self):
         """
@@ -1185,7 +1155,6 @@ class TestRedisAssistantThrottle:
         assert records[0].levelno == logging.WARNING
         assert records[0].exc_info is not None
         assert rate_limit._digest(user_id) not in str(records[0].__dict__)
-        assert throttle._fallback._counts == {}
 
     def test_close_closes_the_redis_client(self):
         """

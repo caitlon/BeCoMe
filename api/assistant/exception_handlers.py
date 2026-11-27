@@ -121,7 +121,7 @@ def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONRes
 
 
 def assistant_unavailable_handler(request: Request, exc: AssistantUnavailableError) -> JSONResponse:
-    """Answer 503 when a local model server cannot be reached.
+    """Answer 503 when a local model server or the throttle store cannot be reached.
 
     :param request: FastAPI request.
     :param exc: The raised error.

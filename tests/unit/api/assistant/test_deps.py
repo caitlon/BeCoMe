@@ -10,10 +10,12 @@ from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID, uuid4
 
+import fakeredis
 import httpx
 import openai
 import pytest
-from fastapi import FastAPI, Request
+import redis
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
@@ -25,6 +27,7 @@ from api.assistant.errors import (
     AssistantRateLimitedError,
     AssistantUnavailableError,
 )
+from api.assistant.exception_handlers import UNAVAILABLE_DETAIL, assistant_unavailable_handler
 from api.assistant.rag.models import make_answer_model, make_chat_model
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.rag.store import CollectionUnavailableError
@@ -32,6 +35,7 @@ from api.assistant.rate_limit import (
     GLOBAL_KEY,
     Charge,
     InMemoryAssistantThrottle,
+    RedisAssistantThrottle,
     get_assistant_address_throttle,
     get_assistant_global_throttle,
     get_assistant_throttle,
@@ -901,6 +905,85 @@ class TestEnforceMessageLimit:
         assert len(threads) == 2
         assert threading.get_ident() not in threads
 
+    @pytest.mark.asyncio
+    async def test_an_unreachable_user_store_raises_unavailable_and_spends_nothing(self):
+        """
+        GIVEN a user throttle whose store cannot be reached
+        WHEN the limit dependency runs
+        THEN AssistantUnavailableError is raised, the ceiling is never charged and no retry
+             time is asked, since the refusal is not a spent budget
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge.side_effect = AssistantUnavailableError("store down")
+        ceiling = _open_ceiling()
+
+        # WHEN
+        with pytest.raises(AssistantUnavailableError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+
+        # THEN
+        ceiling.charge_key.assert_not_called()
+        throttle.retry_after.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_ceiling_store_gives_the_users_message_back_and_raises(self):
+        """
+        GIVEN a user with a budget of three and one message already spent, and a global
+              throttle whose store cannot be reached
+        WHEN the limit dependency runs
+        THEN AssistantUnavailableError is raised and the user's count is what it was before
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=3)
+        ceiling = MagicMock()
+        ceiling.charge_key.side_effect = AssistantUnavailableError("store down")
+        user = MagicMock(id=uuid4())
+        assert throttle.hit(user.id) is True
+        key = rate_limit._digest(user.id)
+
+        # WHEN
+        with pytest.raises(AssistantUnavailableError):
+            await deps.enforce_message_limit(
+                user, throttle, ceiling, data=MagicMock(), retriever=MagicMock()
+            )
+
+        # THEN
+        assert throttle._counts[key][0] == 1
+        ceiling.retry_after_key.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failing_give_back_does_not_replace_the_unavailable_error(self):
+        """
+        GIVEN an unreachable global throttle and a user throttle whose refund raises
+        WHEN the limit dependency runs
+        THEN AssistantUnavailableError still propagates and the failure is logged
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge.return_value = Charge("user", allowed=True)
+        throttle.refund.side_effect = RuntimeError("refund broke")
+        ceiling = MagicMock()
+        ceiling.charge_key.side_effect = AssistantUnavailableError("store down")
+
+        # WHEN
+        with (
+            captured_log_records("api.security") as records,
+            pytest.raises(AssistantUnavailableError, match="store down"),
+        ):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()),
+                throttle,
+                ceiling,
+                data=MagicMock(),
+                retriever=MagicMock(),
+            )
+
+        # THEN
+        assert [r.event for r in records if hasattr(r, "event")] == ["assistant_refund_failed"]
+
 
 class TestTurnSlots:
     """The slot table counts turns in the process and per user, and never waits."""
@@ -1333,6 +1416,28 @@ class TestChargeAddressTurn:
         # THEN
         async with self._charge(throttle, _request("2001:db8:1:3::1")):
             pass
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_store_raises_unavailable_and_never_runs_the_body(self):
+        """
+        GIVEN an address throttle whose store cannot be reached
+        WHEN the dependency runs
+        THEN AssistantUnavailableError is raised, the body never runs and no retry time is asked
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.charge_key.side_effect = AssistantUnavailableError("store down")
+        ran: list[str] = []
+
+        # WHEN
+        with pytest.raises(AssistantUnavailableError):
+            async with self._charge(throttle):
+                ran.append("body")
+
+        # THEN
+        assert ran == []
+        throttle.retry_after_key.assert_not_called()
+        throttle.refund.assert_not_called()
 
 
 class TestOpenChatTurn:
@@ -2152,3 +2257,94 @@ class TestPreparedTurnThroughFastAPI:
         # THEN
         assert response.status_code == 401
         assert fake_client.instances == []
+
+
+def _store_down_throttle() -> RedisAssistantThrottle:
+    """Return a Redis throttle whose count fails with a store error, with a budget of five."""
+    client = MagicMock()
+    client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+    return RedisAssistantThrottle(client, max_per_hour=5)
+
+
+def _spent(throttle: InMemoryAssistantThrottle) -> int:
+    """Return how many messages an in-memory throttle holds across all its keys."""
+    return sum(count for count, _ in throttle._counts.values())
+
+
+def _throttled_app(user: Any, ceiling: Any, address: Any) -> tuple[FastAPI, list[str]]:
+    """Build an app whose route takes the address charge and the message limit, as the chat does."""
+    app = FastAPI()
+    ran: list[str] = []
+    app.dependency_overrides[deps.get_docs_retriever] = lambda: MagicMock()
+    app.dependency_overrides[deps.get_assistant_user] = lambda: MagicMock(id=uuid4())
+    app.dependency_overrides[get_assistant_throttle] = lambda: user
+    app.dependency_overrides[get_assistant_global_throttle] = lambda: ceiling
+    app.dependency_overrides[get_assistant_address_throttle] = lambda: address
+    app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
+
+    @app.post("/turn", dependencies=[Depends(deps.charge_address_turn)])
+    async def turn_route(counted: deps.CountedChatRequestDep) -> dict[str, str]:
+        ran.append("body")
+        return {"message": counted.request.message}
+
+    return app, ran
+
+
+class TestThrottleStoreFailureThroughFastAPI:
+    """A store error on any of the three throttles refuses the turn as unavailable."""
+
+    @pytest.mark.parametrize("down", ["user", "ceiling", "address"])
+    def test_the_refusal_is_the_fixed_503_and_earlier_charges_are_given_back(self, down):
+        """
+        GIVEN one of the three throttles with a Redis store that fails on the count and two
+              in-memory throttles that count the other charges of the request
+        WHEN a valid chat request is posted
+        THEN the answer is the 503 with the fixed unavailable body and no Retry-After, the
+             route never ran, and every charge taken before the failing one is back to zero
+        """
+        # GIVEN
+        user = _store_down_throttle() if down == "user" else InMemoryAssistantThrottle(5)
+        ceiling = _store_down_throttle() if down == "ceiling" else InMemoryAssistantThrottle(5)
+        address = _store_down_throttle() if down == "address" else InMemoryAssistantThrottle(5)
+        app, ran = _throttled_app(user, ceiling, address)
+
+        # WHEN
+        response = TestClient(app).post("/turn", json={"message": "hi"})
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == {"detail": UNAVAILABLE_DETAIL}
+        assert "Retry-After" not in response.headers
+        assert ran == []
+        for throttle in (user, ceiling, address):
+            if isinstance(throttle, InMemoryAssistantThrottle):
+                assert _spent(throttle) == 0
+
+    def test_a_give_back_that_hits_a_store_error_is_only_logged(self):
+        """
+        GIVEN a global throttle whose store fails on the count, and a user throttle in Redis
+              whose give-back script also fails
+        WHEN a valid chat request is posted
+        THEN the answer is still the fixed 503, the failed give-back is logged at WARNING, and
+             the user's message stays spent in the store until its window closes
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        user = RedisAssistantThrottle(fake, max_per_hour=5)
+        app, ran = _throttled_app(user, _store_down_throttle(), InMemoryAssistantThrottle(5))
+
+        # WHEN
+        with (
+            patch.object(fake, "eval", side_effect=redis.RedisError("down")),
+            captured_log_records("api.security") as records,
+        ):
+            response = TestClient(app).post("/turn", json={"message": "hi"})
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == {"detail": UNAVAILABLE_DETAIL}
+        assert ran == []
+        events = [getattr(r, "event", None) for r in records]
+        assert "assistant_throttle_refund_unavailable" in events
+        (key,) = fake.keys("*")
+        assert int(fake.get(key)) == 1

@@ -1,10 +1,11 @@
 """Hourly caps on assistant chat messages: per user, per client address and across all users.
 
-Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
-keyed on a hash of the identifier so no raw id sits in the store, and counted per process
-when Redis errors. Unlike the login throttle this is a fixed-window counter, not a lockout:
-the window opens with a user's first message and closes an hour later however many
-messages follow, because a later message never moves the expiry. A refused message is not
+Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured and
+keyed on a hash of the identifier so no raw id sits in the store. It does not share that
+module's failure rule: the login throttle fails open, while this one fails closed and
+refuses the turn when Redis errors. Unlike the login throttle this is a fixed-window counter,
+not a lockout: the window opens with a user's first message and closes an hour later however
+many messages follow, because a later message never moves the expiry. A refused message is not
 counted: like the login throttle's reservation, a caller past the budget is refused and its
 increment is given back. In memory the refused message is never stored. In Redis the increment
 sits one above the budget until the guarded script gives it back a moment later, and if that
@@ -18,7 +19,7 @@ expiry, and that user would stay locked out for good.
 The global ceiling is the same counter under one fixed key, :data:`GLOBAL_KEY`, with its own
 budget, so it bounds what all users together can spend in an hour. Both backends count any key:
 ``hit``, ``charge`` and ``retry_after`` are the per-user forms and pass the user's digest to
-``hit_key``, ``charge_key`` and ``retry_after_key``, so the fallback, the zero limit and the
+``hit_key``, ``charge_key`` and ``retry_after_key``, so the store failure, the zero limit and the
 remaining window apply to the global key as well. Its Redis key is ``assistant:chat:all``, which
 no user digest can equal.
 
@@ -48,17 +49,18 @@ A limit of zero switches the cap off; both backends then allow everything withou
 touching their store. A deployed service refuses a zero limit at startup
 (``Settings._validate_assistant_deploy``), so that is for a laptop only.
 
-A Redis error does not open the cap. The Redis backend owns an in-memory throttle with the
-same budget and window and counts there for as long as the store is down, so each process
-enforces the cap on its own: with several processes the real ceiling is their number times
-the budget, which is still a bound, where an open cap is none. That count restarts with the
-process and is lost when Redis comes back; the window of the shared counter is unaffected.
+A Redis error does not open the cap and is not counted anywhere else: ``charge_key`` raises
+:class:`~api.assistant.errors.AssistantUnavailableError`, so the turn is refused with the fixed
+503 of an unreachable backend, not with a 429 that blames the caller. A per-process count
+that starts at zero would give a user who spent the hour in Redis a second budget as soon as
+the store failed on writes (a read-only replica, a full memory) while it still answered
+reads. The in-memory throttle used when no store is configured is unaffected. Charges the
+request already took are given back by the callers in :mod:`api.assistant.deps`, as for any
+later refusal.
 
 A refused message also learns how long the refusal lasts: ``retry_after`` reports the
 seconds until the window closes, for the ``Retry-After`` header of the refusal. When the
-store cannot be read, it answers with this process's own remaining window if it holds one
-for the key, otherwise the full window, the longest the wait can be; a window left from an
-earlier outage can understate the wait, which only makes the client retry early.
+store cannot be read, it answers with the full window, the longest the wait can be.
 
 The Redis key holds an unkeyed digest of the user id. Never log it: anyone holding the
 logs could hash a known id and confirm it appears.
@@ -78,6 +80,7 @@ from uuid import UUID
 
 import redis
 
+from api.assistant.errors import AssistantUnavailableError
 from api.config import get_settings
 
 logger = logging.getLogger("api.security")
@@ -114,8 +117,8 @@ class Charge:
     :param key: What the message was counted under: a user's digest, :data:`GLOBAL_KEY` or an
         :func:`address_key`. Never log it.
     :param allowed: Whether the message was within budget.
-    :param in_store: True when Redis took the charge, False when an in-memory table did,
-        including the Redis backend's own fallback while the store is down.
+    :param in_store: True when Redis took the charge, False when an in-memory table did or the
+        limit is zero and nothing was stored.
     :param window_opened: The monotonic time the in-memory window opened at, or None for a
         charge Redis took or a zero-limit one, which stores nothing and has no window. An
         in-memory refund does nothing once that window has closed or been replaced.
@@ -178,16 +181,16 @@ def address_key(address: str) -> str:
 
 
 def _log_store_unavailable(exc: redis.RedisError) -> None:
-    """Record a throttle store that could not be reached.
+    """Record a throttle store that could not be reached, before the turn is refused.
 
-    ERROR, not WARNING, for the reason the login throttle's own record is: nothing else
-    marks the outage, and a lower level would let the cap stay on its weaker per-process
-    count for as long as Redis is down without anyone seeing it.
+    ERROR, not WARNING, like the login throttle's own record: it marks the outage, and a lower
+    level would let every assistant turn be refused for as long as Redis is down without anyone
+    seeing it.
 
-    :param exc: The Redis error that caused the fallback.
+    :param exc: The Redis error that refused the turn.
     """
     logger.error(
-        "Assistant throttle store unavailable, hourly cap counted per process",
+        "Assistant throttle store unavailable, turn refused",
         extra={"event": "assistant_throttle_unavailable"},
         exc_info=exc,
     )
@@ -336,7 +339,7 @@ class InMemoryAssistantThrottle:
 
 
 class RedisAssistantThrottle:
-    """Redis-backed throttle shared across processes; counts per process on a store outage.
+    """Redis-backed throttle shared across processes; refuses every turn on a store outage.
 
     :param client: Redis client for the shared store.
     :param max_per_hour: Messages allowed per key (one user, one address, or everyone for the
@@ -350,8 +353,6 @@ class RedisAssistantThrottle:
         self._client = client
         self._max = max_per_hour
         self._window = window_seconds
-        # Counts in place of the store while it is down: same budget, this process only.
-        self._fallback = InMemoryAssistantThrottle(max_per_hour, window_seconds)
 
     def close(self) -> None:
         """Close the Redis client, for application shutdown."""
@@ -361,8 +362,8 @@ class RedisAssistantThrottle:
         """Count one message and report whether the user is within budget.
 
         :param user_id: The user sending the message.
-        :return: True when this message is allowed, False when the budget is spent. While
-            the store is down, the answer comes from this process's own count.
+        :return: True when this message is allowed, False when the budget is spent.
+        :raises AssistantUnavailableError: When the store cannot be reached.
         """
         return self.charge(user_id).allowed
 
@@ -371,8 +372,8 @@ class RedisAssistantThrottle:
 
         :param key: What the message is counted under: a user's digest,
             :data:`GLOBAL_KEY` or an :func:`address_key`.
-        :return: True when this message is allowed, False when the budget is spent. While
-            the store is down, the answer comes from this process's own count.
+        :return: True when this message is allowed, False when the budget is spent.
+        :raises AssistantUnavailableError: When the store cannot be reached.
         """
         return self.charge_key(key).allowed
 
@@ -380,8 +381,8 @@ class RedisAssistantThrottle:
         """Count one message and return the charge, so it can be given back.
 
         :param user_id: The user sending the message.
-        :return: The charge; ``allowed`` is False when the budget is spent. While the store is
-            down, it comes from this process's own count.
+        :return: The charge; ``allowed`` is False when the budget is spent.
+        :raises AssistantUnavailableError: When the store cannot be reached.
         """
         return self.charge_key(_digest(user_id))
 
@@ -390,12 +391,15 @@ class RedisAssistantThrottle:
 
         A refused message is not counted: its increment is given back by the same guarded script
         a refund uses, so the key never creates itself or loses its TTL. When that give-back
-        fails, the error is logged and not raised, and the message is still refused.
+        fails, the error is logged and not raised, and the message is still refused. A store
+        error on the count itself is logged and raised as :class:`AssistantUnavailableError`:
+        a read timeout after Redis ran the count can leave at most one message counted until the
+        window closes, and no count is kept anywhere else.
 
         :param key: What the message is counted under: a user's digest,
             :data:`GLOBAL_KEY` or an :func:`address_key`.
-        :return: The charge; ``allowed`` is False when the budget is spent. While the store is
-            down, it comes from this process's own count.
+        :return: The charge; ``allowed`` is False when the budget is spent.
+        :raises AssistantUnavailableError: When the store cannot be reached.
         """
         if self._max == 0:
             return Charge(key, allowed=True)
@@ -407,7 +411,7 @@ class RedisAssistantThrottle:
             results = pipe.execute()
         except redis.RedisError as e:
             _log_store_unavailable(e)
-            return self._fallback.charge_key(key)
+            raise AssistantUnavailableError("the assistant's throttle store is unavailable") from e
         if int(results[1]) <= self._max:
             return Charge(key, allowed=True, in_store=True)
         try:
@@ -423,19 +427,15 @@ class RedisAssistantThrottle:
     def refund(self, charge: Charge) -> None:
         """Give back a message on the backend that took it.
 
-        Does nothing for a charge that was refused, which was never counted. A charge the
-        fallback took, a zero-limit one included, goes back to the fallback, which ignores it
-        when it opened no window. A charge Redis took is undone by one script that decrements
-        the key only while it exists and is above zero, so an expired window is never recreated.
-        A store error is logged and not raised, and not redirected to the fallback: the charge
-        is in Redis, and the message stays spent there until its window closes.
+        Does nothing for a charge that was refused, which was never counted, or for one Redis
+        did not take, a zero-limit one. A charge Redis took is undone by one script that
+        decrements the key only while it exists and is above zero, so an expired window is
+        never recreated. A store error is logged and not raised: the charge is in Redis, and
+        the message stays spent there until its window closes.
 
         :param charge: The charge to undo.
         """
-        if not charge.allowed:
-            return
-        if not charge.in_store:
-            self._fallback.refund(charge)
+        if not charge.allowed or not charge.in_store:
             return
         try:
             self._client.eval(_REFUND_SCRIPT, 1, f"{KEY_PREFIX}:{charge.key}")
@@ -451,8 +451,7 @@ class RedisAssistantThrottle:
 
         A key that is gone means the window closed just now, so the wait is one second.
         A key with no expiry cannot be told apart from a fresh window, so it gets the
-        full window. An unreachable store gets the process-local window when this process
-        holds one for the key, and the full window otherwise.
+        full window. An unreachable store gets the full window too, the longest the wait can be.
 
         :param user_id: The user whose message was refused.
         :return: Whole seconds until the window closes, at least 1.
@@ -475,8 +474,7 @@ class RedisAssistantThrottle:
                 extra={"event": "assistant_throttle_retry_unavailable"},
                 exc_info=e,
             )
-            remaining = self._fallback.remaining(key)
-            return self._window if remaining is None else remaining
+            return self._window
         if ttl == -2:
             return 1
         if ttl == -1:

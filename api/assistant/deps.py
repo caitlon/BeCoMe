@@ -522,7 +522,8 @@ async def enforce_message_limit(
     limits and the turn slots, and gets ``503`` where ``429`` came before. The user's own budget
     comes before the ceiling, so an account with a spent budget cannot drain the shared one.
     A message the ceiling refuses is given back: the user's charge is refunded before the refusal
-    is raised, so a ceiling the user did not reach does not spend the user's own budget.
+    is raised, so a ceiling the user did not reach does not spend the user's own budget. The same
+    holds when the ceiling's store cannot be reached: the turn is refused as unavailable.
     ``charge`` is synchronous and may talk to Redis, so it runs in a worker thread, as do
     ``retry_after``, the refund and the ceiling's calls, which are asked only after a refusal.
 
@@ -540,6 +541,9 @@ async def enforce_message_limit(
     :raises AssistantBusyError: When the global ceiling is already reached; it carries the
         seconds until its window closes and the reason ``"global"``. The user's message is
         given back first.
+    :raises AssistantUnavailableError: When the throttle store of the user's budget or of the
+        ceiling cannot be reached. The user's message is given back first when the ceiling's
+        store failed.
     """
     user_charge = await run_in_threadpool(throttle.charge, current_user.id)
     if not user_charge.allowed:
@@ -547,7 +551,11 @@ async def enforce_message_limit(
         raise AssistantRateLimitedError(
             "the hourly assistant message budget is spent", retry_after=retry_after
         )
-    ceiling_charge = await run_in_threadpool(global_throttle.charge_key, GLOBAL_KEY)
+    try:
+        ceiling_charge = await run_in_threadpool(global_throttle.charge_key, GLOBAL_KEY)
+    except AssistantUnavailableError:
+        await _give_back(throttle, user_charge)
+        raise
     if not ceiling_charge.allowed:
         await run_in_threadpool(throttle.refund, user_charge)
         retry_after = await run_in_threadpool(global_throttle.retry_after_key, GLOBAL_KEY)
@@ -620,6 +628,8 @@ async def charge_address_turn(
     :return: The charge, for :func:`open_chat_turn` to take over.
     :raises AssistantRateLimitedError: When this address's hour is already spent; it carries
         the seconds until the window closes and the reason ``"address"``.
+    :raises AssistantUnavailableError: When the throttle store cannot be reached; at most one
+        message stays counted until the window closes, so nothing is given back.
     """
     key = address_key(get_client_ip(request))
     charge = await run_in_threadpool(throttle.charge_key, key)
