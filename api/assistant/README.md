@@ -304,7 +304,8 @@ A tag that removal assembles from the text around it, as in `<do<docs>cs>`, goes
 not look at code spans, so a tag inside backticks goes as well, and other angle brackets (`<h2>`,
 `x < 5`, `<docs source="x">`) stay. The tags are removed before the checks, so that a tag cannot
 hide a number from them (`2<docs>3` is checked as 23). With sources hidden they are removed once
-more after the citation removal, which can join the two halves of a tag. The stream holds back what
+more after the citation removal, which can join the two halves of a tag, and the number check also
+reads the text as shown (`2[1]3` shows 23). The stream holds back what
 may still become a tag. An answer left with nothing but blanks and tags is refused as empty.
 
 The assistant reads project data through the application's own API, with the caller's own

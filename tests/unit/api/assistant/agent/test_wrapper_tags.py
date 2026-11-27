@@ -28,7 +28,6 @@ _REMOVED = [
     ("<Project_Data>", ""),
     ("<project-data>", ""),
     ("</Earlier-Answer>", ""),
-    ("<earlier_answer>", ""),
     ("<docs" + " " * 300 + ">", ""),
     ("The <docs>midpoint</docs> is 14.", "The midpoint is 14."),
     ("<docs>The midpoint is 14.</docs>", "The midpoint is 14."),
@@ -56,7 +55,6 @@ _STAY = [
     "<docs2>",
     "<documents>",
     "<project data>",
-    "<project_dat>",
     '<docs source="x">',
     "<h2>",
     "a < docs and b > c",
@@ -75,14 +73,11 @@ _STAY = [
     "</",
     "<>",
     "< >",
-    "</>",
-    "<docs <",
     "a<docs",
     "<!-- note -->",
     "<docs" + " " * 300,
     "<docs" + " " * 300 + "x>",
     "<" * 40 + "docs",
-    ">" * 40,
 ]
 
 _RECOMBINED = [

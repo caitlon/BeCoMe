@@ -15,7 +15,7 @@ language (see :func:`~api.assistant.agent.generation.user_message`).
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -90,13 +90,28 @@ TimeoutLimit = Literal["first_byte", "turn"]
 _ROSTER_FETCH_SECONDS = 5.0
 
 
-def _is_blank_answer(text: str) -> bool:
-    """Tell whether an answer shows nothing once its invisible characters and tags are gone.
+def _shown_text(text: str, source_numbers: Collection[int] | None) -> str:
+    """Return an answer as the client is shown it.
 
     :param text: The answer as the generator wrote it.
-    :return: True when it is empty, or holds only blanks and wrapper tags.
+    :param source_numbers: The source numbers of the turn when sources are hidden, else None.
+    :return: The text without invisible characters and wrapper tags and, when sources are
+        hidden, without citations, and without the tags that removing them joined.
     """
-    return not remove_wrapper_tags(strip_invisible(text)).strip()
+    tagless = remove_wrapper_tags(strip_invisible(text))
+    if source_numbers is None:
+        return tagless
+    return remove_wrapper_tags(remove_citations(tagless, source_numbers))
+
+
+def _is_blank_answer(text: str, source_numbers: Collection[int] | None = None) -> bool:
+    """Tell whether an answer shows nothing, as :func:`_shown_text` reads it.
+
+    :param text: The answer as the generator wrote it.
+    :param source_numbers: The source numbers of the turn when sources are hidden, else None.
+    :return: True when what is shown is empty or only blanks.
+    """
+    return not _shown_text(text, source_numbers).strip()
 
 
 def _earlier_answer(content: str) -> str:
@@ -338,7 +353,7 @@ class AssistantService:
                         except CutOffAnswerError:
                             text, tools_used, empty_reason = "", [], "cut_off"
                     text = strip_invisible(text)
-                    if _is_blank_answer(text):
+                    if _is_blank_answer(text, self._hidden_numbers(ctx)):
                         raise self._empty_answer(mode, empty_reason)
             except TimeoutError:
                 if not deadline.expired():
@@ -399,7 +414,7 @@ class AssistantService:
                 raise self._unavailable(exc, mode) from None
             finally:
                 await items.aclose()
-            generated = self._complete(generated, mode, empty_reason)
+            generated = self._complete(generated, mode, empty_reason, turn.ctx)
             if rest := text.finish():
                 yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
@@ -437,9 +452,17 @@ class AssistantService:
         """Return the time to first token, measured now unless it is known already."""
         return known if known is not None else round((loop.time() - started) * 1000)
 
-    def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
-        """Return what the generator produced, or refuse a missing or empty answer."""
-        if generated is None or _is_blank_answer(generated.text):
+    def _hidden_numbers(self, ctx: AssistantContext) -> set[int] | None:
+        """Return the source numbers of the turn when sources are hidden, else None."""
+        if self._settings.assistant_show_sources:
+            return None
+        return {number for number, _chunk in ctx.sources.numbered()}
+
+    def _complete(
+        self, generated: Generated | None, mode: str, empty_reason: str, ctx: AssistantContext
+    ) -> Generated:
+        """Return what the generator produced, or refuse a missing answer or an empty one."""
+        if generated is None or _is_blank_answer(generated.text, self._hidden_numbers(ctx)):
             raise self._empty_answer(mode, empty_reason)
         return generated
 
@@ -461,17 +484,24 @@ class AssistantService:
         cited = cited_numbers(text)
         source_numbers = {source.n for source in sources}
         citations_valid = check_citations(text, source_numbers)
-        ungrounded = find_ungrounded_numbers(
-            text,
-            [
-                *ctx.sources.texts(),
-                *ctx.data_values,
-                turn.request.message,
-                *(turn_.content for turn_ in turn.kept if turn_.role == "user"),
-                *PINNED_NUMBERS,
-                *FORMULA_NUMBERS,
-            ],
-        )
+        grounds = [
+            *ctx.sources.texts(),
+            *ctx.data_values,
+            turn.request.message,
+            *(turn_.content for turn_ in turn.kept if turn_.role == "user"),
+            *PINNED_NUMBERS,
+            *FORMULA_NUMBERS,
+        ]
+        ungrounded = find_ungrounded_numbers(text, grounds)
+        shown = _shown_text(generated.text, self._hidden_numbers(ctx))
+        if shown != text:
+            # Removing a citation can join two numbers (``2[1]3`` shows 23), so the number
+            # check also reads the text as shown.
+            ungrounded += [
+                number
+                for number in find_ungrounded_numbers(shown, grounds)
+                if number not in ungrounded
+            ]
         duration_ms = round((asyncio.get_running_loop().time() - turn.started) * 1000)
         logger.info(
             "Assistant turn answered",
@@ -508,11 +538,9 @@ class AssistantService:
         if not self._settings.assistant_show_sources:
             # The client sees no citation, so a warning about one would mean nothing to it;
             # the turn record above keeps the real value.
-            text, sources, citations_valid = remove_citations(text, source_numbers), [], True
-            # Removing a citation can join the two halves of a tag (``<d[1]ocs>``).
-            text = remove_wrapper_tags(text)
+            sources, citations_valid = [], True
         return AssistantChatResponse(
-            answer=text,
+            answer=shown,
             sources=sources,
             tools_used=generated.tools_used,
             checks=AnswerChecks(

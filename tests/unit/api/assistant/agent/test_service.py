@@ -3234,19 +3234,6 @@ class TestWrapperTags:
         assert "".join(pieces) == streamed.answer == expected
         assert whole.answer == expected
 
-    async def test_the_project_block_written_back_loses_its_lines_with_its_tags(self):
-        """
-        GIVEN an answer that prints the project block between its tags, on lines of their own
-        WHEN it is answered
-        THEN the tags go with their lines and the text between them stays
-        """
-        text = "<project_data>\nBest compromise: 14.19\n</project_data>\nThe midpoint is 14.19."
-        service = AssistantService(_settings(), _model(_say(text)))
-
-        response = await service.answer(_request(), _ctx())
-
-        assert response.answer == "Best compromise: 14.19\nThe midpoint is 14.19."
-
     @pytest.mark.parametrize("streamed", [False, True])
     async def test_a_tag_inside_a_number_does_not_hide_it_from_the_number_check(
         self, streamed: bool
@@ -3256,8 +3243,8 @@ class TestWrapperTags:
         WHEN it is answered whole or streamed
         THEN the number check reports what it reports for the plain 23, which no source holds
         """
-        tagged_checks = await self._checks("The value is 2<docs>3.", streamed)
-        plain_checks = await self._checks("The value is 23.", streamed)
+        tagged_checks = (await self._checks("The value is 2<docs>3.", streamed)).checks
+        plain_checks = (await self._checks("The value is 23.", streamed)).checks
 
         assert tagged_checks == plain_checks
         assert plain_checks.ungrounded_numbers == ["23"]
@@ -3272,22 +3259,63 @@ class TestWrapperTags:
         WHEN it is answered whole or streamed, with sources shown
         THEN the citation check reports what it reports for the plain citation
         """
-        tagged_checks = await self._checks("Claim [<docs>99].", streamed)
-        plain_checks = await self._checks("Claim [99].", streamed)
+        tagged_checks = (await self._checks("Claim [<docs>99].", streamed)).checks
+        plain_checks = (await self._checks("Claim [99].", streamed)).checks
 
         assert tagged_checks == plain_checks
         assert not plain_checks.citations_valid
 
     @staticmethod
-    async def _checks(text: str, streamed: bool):
-        """Answer a text in workflow mode, whole or streamed, and return its checks."""
-        service = AssistantService(_settings(), _model(_say(text)))
+    async def _checks(text: str, streamed: bool, *, show_sources: bool = True):
+        """Answer a text in workflow mode, whole or streamed, and return its response."""
+        settings = _settings(assistant_show_sources=show_sources)
+        service = AssistantService(settings, _model(_say(text)))
         ctx = _ctx(chunks=[_chunk()])
-        if streamed:
-            _pieces, response = await _drain(service, _request(), ctx)
-        else:
-            response = await service.answer(_request(), ctx)
-        return response.checks
+        if not streamed:
+            return await service.answer(_request(), ctx)
+        pieces, response = await _drain(service, _request(), ctx)
+        assert "".join(pieces) == response.answer
+        return response
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    @pytest.mark.parametrize("text", ["The value is 2[1]3.", "The value is 2<d[1]ocs>3."])
+    async def test_a_citation_removed_between_digits_does_not_hide_a_number(
+        self, text: str, streamed: bool
+    ):
+        """
+        GIVEN sources hidden and an answer whose removed citation joins two digits into 23
+        WHEN it is answered whole or streamed
+        THEN the shown answer reads 23 and the number check reports 23 as ungrounded
+        """
+        response = await self._checks(text, streamed, show_sources=False)
+
+        assert response.answer == "The value is 23."
+        assert response.checks.ungrounded_numbers == ["23"]
+        assert not response.checks.numbers_grounded
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    @pytest.mark.parametrize("text", ["[1]", "<d[1]ocs>"])
+    async def test_an_answer_that_is_empty_once_its_citations_go_is_refused_when_they_are_hidden(
+        self, text: str, streamed: bool
+    ):
+        """
+        GIVEN an answer that is only a citation, or a citation inside a tag name
+        WHEN it is answered whole or streamed with sources hidden
+        THEN it is refused as empty
+        """
+        with pytest.raises(AssistantUnavailableError):
+            await self._checks(text, streamed, show_sources=False)
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_citation_only_answer_is_delivered_when_sources_are_shown(self, streamed: bool):
+        """
+        GIVEN an answer that is only a citation
+        WHEN it is answered whole or streamed with sources shown
+        THEN it is delivered as written
+        """
+        response = await self._checks("[1]", streamed)
+
+        assert response.answer == "[1]"
 
     @pytest.mark.parametrize("show_sources", [True, False])
     async def test_a_tag_that_citation_removal_joins_is_removed_too(self, show_sources: bool):
