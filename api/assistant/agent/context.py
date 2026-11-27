@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 
 from api.assistant.agent.masking import TurnRoster
 from api.assistant.client import UserApiClient
-from api.assistant.invisible import strip_invisible
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.schemas.assistant import SourceRef
+from api.utils.invisible import strip_invisible
 
 # The longest excerpt of a passage a source reference carries, ellipsis included.
 SNIPPET_CHARS = 240
@@ -73,7 +73,7 @@ class SourceRegistry:
         the index holds in that field must not reach a browser. It still carries a short
         excerpt of its own words in ``snippet``; only the url is withheld. The title, the
         section and the snippet lose their invisible characters (see
-        :func:`~api.assistant.invisible.strip_invisible`).
+        :func:`~api.utils.invisible.strip_invisible`).
 
         :return: One reference per registered chunk, in registration order.
         """

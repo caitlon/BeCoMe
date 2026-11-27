@@ -43,7 +43,6 @@ from api.assistant.errors import (
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
-from api.assistant.invisible import strip_invisible
 from api.assistant.rag.models import MalformedModelResponseError, make_answer_model
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
@@ -55,6 +54,7 @@ from api.schemas.assistant import (
     ChatTurn,
     TurnUsage,
 )
+from api.utils.invisible import strip_invisible
 from tests.shared.assistant_fakes import WRAPPER_TAG_PATTERN, ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 

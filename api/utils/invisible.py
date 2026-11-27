@@ -1,4 +1,7 @@
-"""Removal of the characters that render as nothing, from every text the assistant handles.
+"""Removal of the characters that render as nothing, from text the app stores or shows.
+
+The assistant runs it over every text it handles, and ``sanitize_text`` runs it over the user
+text that project and opinion schemas store.
 
 Some characters draw no glyph or change how the text around them is drawn: control
 characters, the formatting characters of Unicode category Cf (zero-width spaces and joiners,

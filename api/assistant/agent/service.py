@@ -63,7 +63,6 @@ from api.assistant.agent.tracing import (
 )
 from api.assistant.agent.wrapper_tags import WrapperTagStreamFilter, remove_wrapper_tags
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
-from api.assistant.invisible import strip_invisible
 from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
@@ -74,6 +73,7 @@ from api.schemas.assistant import (
     ChatTurn,
     TurnTiming,
 )
+from api.utils.invisible import strip_invisible
 
 logger = logging.getLogger(__name__)
 

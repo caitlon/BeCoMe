@@ -3,9 +3,9 @@
 import re
 from collections.abc import Sequence
 
-from api.assistant.invisible import strip_invisible
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
+from api.utils.invisible import strip_invisible
 
 _OPENING = (
     "You are the BeCoMe assistant. You answer two kinds of questions: how the BeCoMe "
@@ -193,7 +193,7 @@ def clean_text(value: str, limit: int) -> str:
     """Make text written by a user safe to put inside a ``<project_data>`` block.
 
     Characters that render as nothing are removed first (see
-    :func:`~api.assistant.invisible.strip_invisible`), so they cannot hide text or split a
+    :func:`~api.utils.invisible.strip_invisible`), so they cannot hide text or split a
     word or a number. Angle brackets are removed (see :func:`remove_angle_brackets`), so the
     text cannot open or close a tag.
     Every run of whitespace, newlines included, becomes one space, so it cannot start a line
