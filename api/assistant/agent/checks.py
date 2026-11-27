@@ -83,6 +83,20 @@ _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
 _MINUS_SIGNS = "-\u2212"
 _SIGN_PREFIXES = "([{=,;:"
 
+# What a number can run on through: the spaces, dots, commas, slashes, colons and dashes that
+# join the parts of a longer number, a date or a range. A copy never starts or ends in the
+# middle of such a run, so ``7 500 CZK`` is not a copy of ``500 CZK``.
+_NUMBER_JOINERS = "[ \u00a0\u202f.,/:\\-\u2013\u2212]"
+# A copy is a whole word sequence: no letter or digit right before or after it (an underscore
+# counts as a boundary, so ``_Budget 2027_`` is a copy), no digit and joiner before it, no
+# joiner and digit after it, and no percent or per-mille sign after it (``Budget 2027%``).
+_COPY_BEFORE = rf"(?<![^\W_])(?<!\d{_NUMBER_JOINERS})"
+_COPY_AFTER = rf"(?![^\W_])(?!{_NUMBER_JOINERS}\d)(?!\s*[%\u2030])"
+# A field is a name, and its digits part of the name, only when it has this many characters
+# and a letter: ``Budget 2027``, ``7351 CZK``. A bare number (``2027``, ``12.5``) is never a copy.
+_COPY_MIN_LENGTH = 4
+_CUT_MARK = "..."
+
 
 def _cited_numbers(content: str) -> set[int] | None:
     """Read the integers a bracket names, if the bracket is citation-like.
@@ -681,7 +695,87 @@ def _drop_words(text: str) -> str:
     return _WORD.sub(replace, text)
 
 
-def _strip_answer(answer: str) -> str:
+def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> str:
+    """Replace every verbatim copy of a free-text field in a text by a filler.
+
+    A copy is a field as the model was shown it, matched case-sensitively and as a whole
+    word sequence (see ``_COPY_BEFORE`` and ``_COPY_AFTER``); any run of whitespace in the
+    field matches any run of whitespace in the text. A field that ends in ``...`` was cut
+    to its limit and is matched without the dots. A field is a copy only when, after that,
+    it has at least 4 characters and a letter. The longest copy is tried first. The pattern
+    is built from escaped literals only, so matching is linear in the text.
+
+    The kept fields are matched the same way, among the others and longest first, but their
+    matches stay as written: they decide which copy covers an occurrence, and a shorter
+    copy inside a kept one masks nothing. A field in both lists is kept.
+
+    The filler starts with a lowercase letter when the copy does, so that an ordinal before
+    it (``2. pilot 2027``) is read as before; the boundaries keep that letter off any number.
+    A copy that starts with a URL is the exception: the plain scan drops a URL to the bare
+    filler, and so does this.
+
+    :param text: The answer, with the invisible characters already removed.
+    :param copies: The fields the model was shown, as it was shown them.
+    :param kept: Fields to find but not to mask.
+    :return: The text with each copy replaced by the filler of a dropped token.
+    """
+    held = _copy_prefixes(kept)
+    found = sorted(_copy_prefixes(copies) | held, key=len, reverse=True)
+    if not found:
+        return text
+
+    def replace(match: re.Match[str]) -> str:
+        if " ".join(match[0].split()) in held:
+            return match[0]
+        lowercase = match[0][0].islower() and not _BARE_URL.match(match[0])
+        return ("a" if lowercase else "") + _DROPPED
+
+    return _copy_pattern(found).sub(replace, text)
+
+
+def _copy_prefixes(fields: Iterable[str]) -> set[str]:
+    """Reduce fields to what a copy of each looks like: cut dots off, whitespace to a space.
+
+    :param fields: Free-text fields as the model was shown them.
+    :return: The reduced fields that are names: at least 4 characters and a letter.
+    """
+    cut = {" ".join(field.removesuffix(_CUT_MARK).split()) for field in fields}
+    return {
+        field
+        for field in cut
+        if len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
+    }
+
+
+def _copy_pattern(prefixes: list[str]) -> re.Pattern[str]:
+    """Build the pattern that finds copies, the longest of the given prefixes first.
+
+    :param prefixes: Reduced fields, longest first (see :func:`_copy_prefixes`).
+    :return: A pattern whose match is one copy, with its boundaries checked.
+    """
+    alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in prefixes)
+    return re.compile(f"{_COPY_BEFORE}(?:{alternatives}){_COPY_AFTER}")
+
+
+def repeated_names(answer: str, names: Iterable[str]) -> list[str]:
+    """List the names that an answer repeats as a copy, matched as :func:`_mask_copies` does.
+
+    :param answer: The model's final answer text.
+    :param names: Names as the model was shown them; every name of the turn, whatever its
+        kind, so that the longest copy covers an occurrence as it does when masking.
+    :return: The given names that have a copy in the answer, in the given order.
+    """
+    names = list(names)
+    found = sorted(_copy_prefixes(names), key=len, reverse=True)
+    if not found:
+        return []
+    matched = {
+        " ".join(m[0].split()) for m in _copy_pattern(found).finditer(strip_invisible(answer))
+    }
+    return [name for name in names if _copy_prefixes([name]) & matched]
+
+
+def _strip_answer(answer: str, copies: Iterable[str] = (), kept: Iterable[str] = ()) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
     The drops run in this order: first the characters that render as nothing (see
@@ -697,12 +791,15 @@ def _strip_answer(answer: str) -> str:
     ordinals because those match on a number and a dot. A URL, a citation, a date, a
     name and a digit tail are each replaced by a filler that is not whitespace, so a
     hyphen right after one (``[1]-5``) is not read as a minus sign and the digits around
-    it do not run together.
+    it do not run together. Verbatim copies of the fields the model was shown go right after
+    the invisible characters (see :func:`_mask_copies`), ahead of the other drops.
 
     :param answer: The model's final answer text.
+    :param copies: The free-text fields whose digits are part of a copy.
+    :param kept: Fields found like the copies but left as written (see :func:`_mask_copies`).
     :return: The cleaned text.
     """
-    text = _LINK_TARGET.sub("]", strip_invisible(answer))
+    text = _LINK_TARGET.sub("]", _mask_copies(strip_invisible(answer), copies, kept))
     text = _BARE_URL.sub(_DROPPED, text)
     text = _replace_citations(text, _DROPPED)
     text = _DATE_ISO.sub(_DROPPED, text)
@@ -770,7 +867,13 @@ class _Grounding:
         return number in self._by_places[places]
 
 
-def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str]:
+def find_ungrounded_numbers(
+    answer: str,
+    grounding_texts: list[str],
+    *,
+    copies: Iterable[str] = (),
+    kept: Iterable[str] = (),
+) -> list[str]:
     """Return the numbers in the answer that no grounding text supports.
 
     Before scanning, the answer and every grounding text lose the characters that render as
@@ -816,6 +919,19 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     :func:`check_citations`; and a link target that holds a bracket or a parenthesis is
     not recognised as a target (a bare ``http`` address in it is still dropped).
 
+    ``copies`` lists the names the model was shown (the names of the projects and of the
+    experts, as the data blocks write them): an answer that repeats one verbatim, as a whole
+    word sequence and in the same case, is not scanned for the digits inside it (see
+    :func:`_mask_copies` for what counts as a repeat and as a name). The caller decides what
+    to say about those digits: the assistant service reports them on a line of their own,
+    so a name written as a claim (a project called ``is 7351``) hides nothing, and only when
+    a name the answer repeats holds the number (see :func:`numbers_in` and
+    :func:`repeated_names`), because the masked and the plain scan can read a neighbouring
+    number differently (``42. https://x.y/z`` with a project named for the URL). A copy
+    grounds nothing: the same number written anywhere else in the answer is checked as
+    usual. A masked copy becomes a filler like any other dropped token, so a minus right
+    after it is not read as a sign.
+
     :param answer: The model's final answer text.
     :param grounding_texts: Everything the answer may legitimately quote: the source
         registry's chunk texts, the structured values of the project data (result and
@@ -823,12 +939,17 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
         earlier turns, and the pinned numbers. Never the free text of a project (name,
         description, unit, expert names, positions), never earlier answers, and never the
         system prompt, whose citation example would ground a digit.
+    :param copies: The names the model was shown, as written in the data blocks: the names of
+        the projects and of the experts. Never the description, the unit or a position, and
+        never part of the grounding.
+    :param kept: Names found like the copies, among them and longest first, but whose digits
+        stay in the scan. They tell a caller which copy covers an occurrence.
     :return: Each ungrounded number as written in the answer, sign included, once, in
         order of first appearance.
     """
     grounding = _Grounding(grounding_texts)
     ungrounded: list[str] = []
-    for token in _scan_numbers(_strip_answer(answer)):
+    for token in _scan_numbers(_strip_answer(answer, copies, kept)):
         if token.written in ungrounded:
             continue
         if not any(
@@ -836,3 +957,51 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
         ):
             ungrounded.append(token.written)
     return ungrounded
+
+
+def numbers_in(names: Iterable[str]) -> set[str]:
+    """Read the numbers that names hold, each name on its own, with the answer's drops.
+
+    :param names: Names as the model was shown them.
+    :return: The numbers the scan finds in them, as written.
+    """
+    return {token.written for name in names for token in _scan_numbers(_strip_answer(name))}
+
+
+@dataclass(frozen=True)
+class NumberCheck:
+    """What the number check found in one answer, with no number in two lists.
+
+    :ivar ungrounded: The numbers no grounding text supports and no copy of a name explains.
+    :ivar project_name: The numbers whose every unsupported occurrence lies inside a copy of
+        a name, at least one of them a copy of a project name, and that a project name the
+        answer repeats holds.
+    :ivar expert_name: The numbers whose every unsupported occurrence lies inside a copy of an
+        expert name, and that an expert name the answer repeats holds.
+    """
+
+    ungrounded: list[str]
+    project_name: list[str]
+    expert_name: list[str]
+
+    def merge(self, other: "NumberCheck") -> "NumberCheck":
+        """Join the checks of two readings of one answer into one.
+
+        A number that is ungrounded in either reading is ungrounded, and so in no name list;
+        a number named by a project in either reading is the project's.
+
+        :param other: The check of the second reading.
+        :return: The union of both, each number in one list, first appearance first.
+        """
+        ungrounded = list(dict.fromkeys([*self.ungrounded, *other.ungrounded]))
+        project = [
+            number
+            for number in dict.fromkeys([*self.project_name, *other.project_name])
+            if number not in ungrounded
+        ]
+        expert = [
+            number
+            for number in dict.fromkeys([*self.expert_name, *other.expert_name])
+            if number not in ungrounded and number not in project
+        ]
+        return NumberCheck(ungrounded, project, expert)

@@ -23,7 +23,11 @@ fetches ahead of the model, so a fact is written one way wherever the model meet
 Each has a companion (``project_values``, ``project_list_values``, ``opinion_values``, and
 ``result_values`` in the prompt module) that lists only the numbers of the data, written
 the way the block writes them. Those values, and not the blocks, ground the number check,
-so a number typed into a name or a description grounds nothing.
+so a number typed into a name or a description grounds nothing. A second companion per
+block (``project_copies``, ``project_list_copies``, ``opinion_copies``) lists the names the
+block shows, as it shows them: the digits of one an answer repeats verbatim are reported as
+coming from the name, not from the data. The unit, the description and an expert's position
+are not copies.
 """
 
 import logging
@@ -36,6 +40,7 @@ from langchain_core.tools import BaseTool
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.masking import (
     EXPERT_LABEL,
+    EXPERT_LIMIT,
     ROW_HEAD_END,
     ROW_MARK,
     TurnRoster,
@@ -149,9 +154,20 @@ def project_values(project: ProjectView) -> list[str]:
     """List the numbers of a project's structured data, as :func:`render_project` writes them.
 
     :param project: The project's allowlisted details.
-    :return: The scale's lower and upper bound; never the name, description or unit.
+    :return: The scale's lower and upper bound; never the name, description or unit. The
+        name goes through :func:`project_copies`.
     """
     return [format_number(project.scale_min), format_number(project.scale_max)]
+
+
+def project_copies(project: ProjectView) -> list[str]:
+    """List the free text of a project the model may repeat, as :func:`render_project` writes it.
+
+    :param project: The project's allowlisted details.
+    :return: The name, cleaned and cut as the block shows it; never the description, the unit
+        or the role.
+    """
+    return [clean_text(project.name, _NAME_LIMIT)]
 
 
 def render_project_list(projects: Sequence[ProjectBrief]) -> str:
@@ -179,13 +195,23 @@ def project_list_values(projects: Sequence[ProjectBrief]) -> list[str]:
 
     :param projects: The caller's projects.
     :return: The count, the id of each project the block shows and, when the block says
-        so, how many more there are; never a name.
+        so, how many more there are; never a name. The names go through
+        :func:`project_list_copies`.
     """
     values = [str(len(projects))]
     values += [clean_text(project.id, _ID_LIMIT) for project in projects[:_MAX_PROJECTS]]
     if len(projects) > _MAX_PROJECTS:
         values.append(str(len(projects) - _MAX_PROJECTS))
     return values
+
+
+def project_list_copies(projects: Sequence[ProjectBrief]) -> list[str]:
+    """List the names of a project list, as :func:`render_project_list` writes them.
+
+    :param projects: The caller's projects.
+    :return: The name of each project the block shows, cleaned and cut as the block shows it.
+    """
+    return [clean_text(project.name, _NAME_LIMIT) for project in projects[:_MAX_PROJECTS]]
 
 
 # The count line that opens an opinions block, and the shape of one opinion row, written
@@ -235,7 +261,8 @@ def opinion_values(opinions: Sequence[OpinionView]) -> list[str]:
 
     :param opinions: The project's opinions.
     :return: The count, the four numbers of each opinion the block shows and, when the
-        block says so, how many more there are; never a name or a position.
+        block says so, how many more there are; never a name or a position. The names go
+        through :func:`opinion_copies`.
     """
     values = [str(len(opinions))]
     for opinion in opinions[:_MAX_OPINIONS]:
@@ -246,6 +273,16 @@ def opinion_values(opinions: Sequence[OpinionView]) -> list[str]:
     if len(opinions) > _MAX_OPINIONS:
         values.append(str(len(opinions) - _MAX_OPINIONS))
     return values
+
+
+def opinion_copies(opinions: Sequence[OpinionView]) -> list[str]:
+    """List the expert names of an opinions list, as :func:`render_opinions` writes them.
+
+    :param opinions: The project's opinions.
+    :return: The name of each opinion the block shows, cleaned and cut as the row's head
+        cuts it (see :func:`~api.assistant.agent.masking.opinion_head`); never a position.
+    """
+    return [clean_text(opinion.expert_name, EXPERT_LIMIT) for opinion in opinions[:_MAX_OPINIONS]]
 
 
 # What ends a line. A text reaches the mask either as it was written, with real newlines, or
@@ -385,19 +422,31 @@ def mask_opinion_names(text: str) -> str:
     return mask_opinion_rows(text)
 
 
-def _reply(ctx: AssistantContext, text: str, values: Sequence[str] = ()) -> str:
-    """Keep a reply, and the numbers of its structured data, and hand the reply back.
+def _reply(
+    ctx: AssistantContext,
+    text: str,
+    values: Sequence[str] = (),
+    *,
+    project_names: Sequence[str] = (),
+    expert_names: Sequence[str] = (),
+) -> str:
+    """Keep a reply, and the numbers and names of its data, and hand the reply back.
 
     The reply is kept for the fallback call that shows the model what the tools produced.
-    Only ``values`` ground the number check.
+    Only ``values`` ground the number check; the names are the copies whose digits an answer
+    may repeat as part of a name.
 
     :param ctx: The turn's context.
     :param text: The reply.
     :param values: The structured numbers the reply carries; none for an error line.
+    :param project_names: The project names the reply shows; none for an error line.
+    :param expert_names: The expert names the reply shows; none for an error line.
     :return: The same text.
     """
     ctx.tool_outputs.append(text)
     ctx.data_values.extend(values)
+    ctx.project_name_copies.extend(project_names)
+    ctx.expert_name_copies.extend(expert_names)
     return text
 
 
@@ -463,7 +512,12 @@ async def list_my_projects(runtime: ToolRuntime[AssistantContext]) -> str:
         return _reply(ctx, _unavailable("list_my_projects", exc))
     if not projects:
         return _reply(ctx, _NO_PROJECTS)
-    return _reply(ctx, render_project_list(projects), project_list_values(projects))
+    return _reply(
+        ctx,
+        render_project_list(projects),
+        project_list_values(projects),
+        project_names=project_list_copies(projects),
+    )
 
 
 @tool(description=_GET_PROJECT_DESCRIPTION)
@@ -482,7 +536,9 @@ async def get_project(project_id: str, runtime: ToolRuntime[AssistantContext]) -
         return _reply(ctx, _NOT_FOUND)
     except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project", exc))
-    return _reply(ctx, render_project(project), project_values(project))
+    return _reply(
+        ctx, render_project(project), project_values(project), project_names=project_copies(project)
+    )
 
 
 @tool(description=_GET_PROJECT_RESULT_DESCRIPTION)
@@ -525,7 +581,12 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
     ctx.roster.add(opinions)
     if not opinions:
         return _reply(ctx, _NO_OPINIONS)
-    return _reply(ctx, render_opinions(opinions), opinion_values(opinions))
+    return _reply(
+        ctx,
+        render_opinions(opinions),
+        opinion_values(opinions),
+        expert_names=opinion_copies(opinions),
+    )
 
 
 ASSISTANT_TOOLS: list[BaseTool] = [

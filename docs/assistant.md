@@ -215,9 +215,28 @@ without calling any model.
   among the few constants the instructions pin (the 20% and 40% thresholds and the divisors of the
   formulas). A project number counts only when it is one of the project's calculated or entered
   values: the result, the opinions' values, the scale bounds and the counts the assistant is
-  shown. A number that appears only in the project's name, description, unit, or in an expert's
-  name or position does not count. A rounded or shortened value counts as found: if the data says
-  14.19, an answer that says 14.2 passes.
+  shown. A number that appears only in the project's name, description or unit, or in an
+  expert's name or position, does not count (the next point covers a name the answer repeats). A
+  rounded or shortened value counts as found: if the data says 14.19, an answer that says 14.2
+  passes.
+- **Numbers from a name.** The digits of a project name or an expert name that this turn's data
+  showed are part of the name, and the answer may repeat the name. When it repeats a name exactly as
+  shown, a number that appears only inside such a repeat is not reported as unconfirmed. The repeat
+  has the same case and is a whole word sequence. It is not counted when a digit runs into it (a
+  digit right before or after it, or across a space, dot, comma, slash, colon or dash) or when a
+  percent sign follows, while trailing punctuation such as "Budget 2027." is fine. A name cut to its
+  limit is matched without its dots, and a name needs at least 4 characters and a letter. The panel
+  shows such a number on a neutral line of its own instead, "From the project name, not the data:
+  2027" or "From an expert's name, not the data: 41", and nothing is hidden: a project named "is
+  7351" gives that line when the answer says "The best compromise is 7351." A number is shown as
+  from a name only when a name the answer repeats holds it, so a number next to a name stays among
+  the unconfirmed ones, as does a number that is also written anywhere else in the answer. A number
+  from both kinds of name is listed as from the project name. A number that another rule already
+  drops from the check (a date, a name such as "COVID-19", a list ordinal) gets no line. The
+  response's `checks` carries the two lists as `project_name_numbers` and `expert_name_numbers`,
+  empty by default, and `numbers_grounded` stays true while only they are filled. A client that does
+  not read them shows no line for such a number, so the panel that reads them ships before the
+  server that fills them.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the
@@ -227,12 +246,14 @@ The tags that mark reference text for the model (`<docs>`, `<project_data>`, `<e
 are removed from the answer as well, wherever the model wrote them, and the text between them
 stays.
 
-A failed check does not block the answer and does not regenerate it. The answer arrives with a
-flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
-invalid. With sources hidden, as on production, only the number warning can appear. Answering
-again would cost another model call and could fail the same way, while the warning tells you what
-to verify. On the sealed set, 3% of the answers had a number the check
-could not confirm, and 1% cited a passage that did not exist.
+A failed check does not block the answer and does not regenerate it. The answer arrives with a flag,
+and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
+invalid. The numbers from a name are not a failed check: they come on their own neutral line and do
+not raise the warning. With sources hidden, as on production, only the number warning can appear.
+Answering again would cost another model call and could fail the same way, while the warning tells
+you what to verify. On the sealed set, 3% of the answers had a number the check could not confirm,
+and 1% cited a passage that did not exist. That figure was measured before numbers from names got
+their own lines, so later runs are not comparable with it.
 
 The number check has limits. It sees the numbers but not what they belong to, so a real number
 attached to the wrong quantity passes. Numbers written as words are not checked.

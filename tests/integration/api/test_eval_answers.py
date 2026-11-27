@@ -215,7 +215,13 @@ class TestRunEval:
         assert (first["status"], first["answer"]) == ("ok", "It combines two.")
         assert first["question"] == "What does BeCoMe combine?"
         assert (first["lang"], first["project"], first["tool_calls"]) == ("en", None, [])
-        assert set(first["checks"]) == {"citations_valid", "numbers_grounded", "ungrounded_numbers"}
+        assert set(first["checks"]) == {
+            "citations_valid",
+            "numbers_grounded",
+            "ungrounded_numbers",
+            "project_name_numbers",
+            "expert_name_numbers",
+        }
         assert [(s["n"], s["has_url"]) for s in first["sources"]] == [(1, True), (2, False)]
         assert set(first["sources"][0]) == {"n", "title", "section", "layer", "has_url"}
         assert isinstance(first["latency_s"], float)

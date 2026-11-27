@@ -26,10 +26,13 @@ from langsmith.run_trees import RunTree
 
 from api.assistant.agent.checks import (
     CitationStreamFilter,
+    NumberCheck,
     check_citations,
     cited_numbers,
     find_ungrounded_numbers,
+    numbers_in,
     remove_citations,
+    repeated_names,
     strip_citations,
 )
 from api.assistant.agent.context import AssistantContext
@@ -50,7 +53,9 @@ from api.assistant.agent.prompt import (
     result_values,
 )
 from api.assistant.agent.tools import (
+    opinion_copies,
     opinion_values,
+    project_copies,
     project_values,
     render_opinions,
     render_project,
@@ -88,6 +93,49 @@ TimeoutLimit = Literal["first_byte", "turn"]
 
 # The most seconds the fetch of the opinions for the trace mask may take, in every mode.
 _ROSTER_FETCH_SECONDS = 5.0
+
+
+def _check_numbers(text: str, grounds: list[str], ctx: AssistantContext) -> NumberCheck:
+    """Find the numbers of a text that its grounds do not support, and sort out the names.
+
+    A number is ungrounded when it is unsupported even with every name this turn showed read
+    as a copy. A number that is unsupported only because of a copy is from a name: from a
+    project's when at least one occurrence needs a project name to be explained (also when an
+    expert has the same name), otherwise from an expert's. It is shown as from a name only
+    when a name of that kind that the text repeats holds it (see
+    :func:`~api.assistant.agent.checks.numbers_in` and
+    :func:`~api.assistant.agent.checks.repeated_names`); a number that a copy only changed the
+    reading of, such as an ordinal before a URL name, stays ungrounded. Nothing is hidden: a
+    name number goes to a line of its own.
+
+    :param text: The answer, as written or as shown.
+    :param grounds: The texts that support a number.
+    :param ctx: The turn's context, with the names the model was shown.
+    :return: The three lists, which share no number. Each is in order of first appearance,
+        except that an ungrounded number the plain scan did not read comes last.
+    """
+    unsupported = find_ungrounded_numbers(text, grounds)
+    explained = find_ungrounded_numbers(
+        text, grounds, copies=[*ctx.project_name_copies, *ctx.expert_name_copies]
+    )
+    named = [number for number in unsupported if number not in explained]
+    if not named:
+        return NumberCheck(explained, [], [])
+    # The experts' names mask, the projects' only take their place in the longest-first match, so
+    # a number that is still there sits in an occurrence a project name covers.
+    needs_project = find_ungrounded_numbers(
+        text, grounds, copies=ctx.expert_name_copies, kept=ctx.project_name_copies
+    )
+    repeated = set(repeated_names(text, [*ctx.project_name_copies, *ctx.expert_name_copies]))
+    held_by_projects = numbers_in(n for n in ctx.project_name_copies if n in repeated)
+    held_by_experts = numbers_in(n for n in ctx.expert_name_copies if n in repeated)
+    project = [n for n in named if n in needs_project and n in held_by_projects]
+    expert = [n for n in named if n not in needs_project and n in held_by_experts]
+    placed = {*project, *expert}
+    ungrounded = [n for n in unsupported if n not in placed]
+    return NumberCheck(
+        [*ungrounded, *(n for n in explained if n not in unsupported)], project, expert
+    )
 
 
 def _shown_text(text: str, source_numbers: Collection[int] | None) -> str:
@@ -492,16 +540,13 @@ class AssistantService:
             *PINNED_NUMBERS,
             *FORMULA_NUMBERS,
         ]
-        ungrounded = find_ungrounded_numbers(text, grounds)
+        numbers = _check_numbers(text, grounds, ctx)
         shown = _shown_text(generated.text, self._hidden_numbers(ctx))
         if shown != text:
             # Removing a citation can join two numbers (``2[1]3`` shows 23), so the number
             # check also reads the text as shown.
-            ungrounded += [
-                number
-                for number in find_ungrounded_numbers(shown, grounds)
-                if number not in ungrounded
-            ]
+            numbers = numbers.merge(_check_numbers(shown, grounds, ctx))
+        ungrounded = numbers.ungrounded
         duration_ms = round((asyncio.get_running_loop().time() - turn.started) * 1000)
         logger.info(
             "Assistant turn answered",
@@ -525,6 +570,8 @@ class AssistantService:
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
                 "ungrounded_number_count": len(ungrounded),
+                "project_name_number_count": len(numbers.project_name),
+                "expert_name_number_count": len(numbers.expert_name),
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
                 "total_tokens": usage.total_tokens,
@@ -547,6 +594,8 @@ class AssistantService:
                 citations_valid=citations_valid,
                 numbers_grounded=not ungrounded,
                 ungrounded_numbers=ungrounded,
+                project_name_numbers=numbers.project_name,
+                expert_name_numbers=numbers.expert_name,
             ),
             usage=usage,
             timing=TurnTiming(ttft_ms=ttft_ms, total_ms=duration_ms),
@@ -647,8 +696,9 @@ class AssistantService:
         mode, which has no tools, its opinions too. A project with no result yet, or with
         no opinions, simply has no such block. The project blocks are written by the same
         functions the tools use. They are kept in ``ctx.tool_outputs``, which the fallback call
-        shows the model again, and their structured values in ``ctx.data_values``, which
-        ground the numbers check.
+        shows the model again, their structured values in ``ctx.data_values``, which ground
+        the numbers check, and the names they show in ``ctx.project_name_copies`` and
+        ``ctx.expert_name_copies``, whose digits an answer may repeat.
 
         :param request: The chat request; its message is the search query.
         :param ctx: The turn's context.
@@ -670,6 +720,7 @@ class AssistantService:
                 raise ProjectNotFoundError(f"Project {project_id} not found") from exc
             project_blocks.append(render_project(project))
             ctx.data_values.extend(project_values(project))
+            ctx.project_name_copies.extend(project_copies(project))
             if result is not None:
                 project_blocks.append(render_context_block([], result))
                 ctx.data_values.extend(result_values(result))
@@ -677,6 +728,7 @@ class AssistantService:
             if opinions:
                 project_blocks.append(render_opinions(opinions))
                 ctx.data_values.extend(opinion_values(opinions))
+                ctx.expert_name_copies.extend(opinion_copies(opinions))
             ctx.tool_outputs.extend(project_blocks)
         # Embeddings are not LangChain runnables and emit no callbacks, so the search is
         # traced here, as a child of the turn's run.

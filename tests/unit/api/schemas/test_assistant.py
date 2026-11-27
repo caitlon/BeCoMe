@@ -418,6 +418,24 @@ class TestAssistantChatResponse:
             )
 
 
+class TestAnswerChecks:
+    """The checks carry the two lists of numbers that come from a name."""
+
+    def test_the_name_lists_default_to_empty_and_are_not_shared(self):
+        """
+        GIVEN checks built with the three original fields
+        WHEN they are read and dumped
+        THEN both name lists are empty, own to each check, and in the dump
+        """
+        first = AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[])
+        second = AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[])
+
+        first.project_name_numbers.append("7351")
+
+        dumped = second.model_dump()
+        assert (dumped["project_name_numbers"], dumped["expert_name_numbers"]) == ([], [])
+
+
 class TestTurnTiming:
     """A turn's timing says how long it took, and when the first token came."""
 

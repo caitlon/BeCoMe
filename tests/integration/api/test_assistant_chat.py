@@ -560,7 +560,13 @@ class TestModes:
             "answer": "BeCoMe is a fuzzy compromise method.",
             "sources": [],
             "tools_used": [],
-            "checks": {"citations_valid": True, "numbers_grounded": True, "ungrounded_numbers": []},
+            "checks": {
+                "citations_valid": True,
+                "numbers_grounded": True,
+                "ungrounded_numbers": [],
+                "project_name_numbers": [],
+                "expert_name_numbers": [],
+            },
             "usage": {
                 "input_tokens": 10,
                 "output_tokens": 5,

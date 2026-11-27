@@ -133,6 +133,11 @@ class AssistantContext:
         scale bounds, counts, project ids), written as the data blocks write them. They are
         the only project data that
         :func:`~api.assistant.agent.checks.find_ungrounded_numbers` grounds on.
+    :ivar project_name_copies: The names of the projects the model was shown, as the data
+        blocks write them. The digits of one an answer repeats verbatim are reported as
+        coming from the project name (see ``copies`` of ``find_ungrounded_numbers``); they
+        ground nothing.
+    :ivar expert_name_copies: The same for the names of the experts.
     :ivar roster: The experts of every opinions list this turn fetched, with their labels.
         The trace of the turn is masked with it.
     :ivar prepared: True once :meth:`~api.assistant.agent.service.AssistantService.prepare` has
@@ -147,5 +152,7 @@ class AssistantContext:
     current_project_id: str | None
     locale: str
     data_values: list[str] = field(default_factory=list)
+    project_name_copies: list[str] = field(default_factory=list)
+    expert_name_copies: list[str] = field(default_factory=list)
     roster: TurnRoster = field(default_factory=TurnRoster)
     prepared: bool = False
