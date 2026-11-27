@@ -295,6 +295,15 @@ class TestRemoveCitations:
         """
         assert remove_citations(text, SOURCES) == expected
 
+    def test_a_range_goes_only_when_every_number_in_it_is_a_source(self):
+        """
+        GIVEN sources 1 and 3 and a range [1-3], whose middle number is not a source
+        WHEN citations are removed
+        THEN the range stays, and a range of two sources only goes
+        """
+        assert remove_citations("See [1-3].", {1, 3}) == "See [1-3]."
+        assert remove_citations("See [1-3].", {1, 2, 3}) == "See."
+
     def test_a_turn_with_no_sources_keeps_every_number_bracket(self):
         """
         GIVEN a turn that registered no source

@@ -314,7 +314,7 @@ def has_unclosed_think_block(reply: str) -> bool:
     follows it, and a closing tag written in the text with no opening tag before it is
     not a block at all. A reply cut off while the model was still reasoning is such a
     reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is;
-    :func:`text_before_unclosed_think_block` reads what the reply said before it.
+    :func:`answer_outside_reasoning` reads what the reply said outside its reasoning.
 
     :param reply: The model's raw reply text.
     :return: True when the last <think> has no </think> after it.
@@ -323,22 +323,33 @@ def has_unclosed_think_block(reply: str) -> bool:
     return opened != -1 and _THINK_CLOSE not in reply[opened:]
 
 
-def text_before_unclosed_think_block(reply: str) -> str:
-    """Read the text a reply holds outside its reasoning, cutting at a block that never closes.
+def answer_outside_reasoning(reply: str) -> str:
+    """Read the text a reply holds outside its reasoning blocks.
 
-    The unclosed block starts at the first opening tag after the last closing tag, so a
-    second opening tag written inside it does not leak its reasoning. What comes before is
-    read as :func:`strip_think_block` reads a reply. The text after the opening tag is
-    reasoning that stopped halfway and is dropped.
+    Every complete <think>...</think> block is removed, not only the first as
+    :func:`strip_think_block` does, so that no later block shows its reasoning. A block
+    that never closes starts at the first opening tag after the last block, so a second
+    opening tag written inside it does not leak its reasoning, and everything from it on
+    is dropped. A closing tag with no opening tag before it is plain text. Plain
+    substring search, not a regular expression, keeps this linear in the reply's length.
 
     :param reply: The model's raw reply text.
-    :return: The text before the unclosed block, stripped of leading and trailing
-        whitespace; empty when the reply opens with that block. A reply with no unclosed
-        block is read as :func:`strip_think_block` reads it.
+    :return: The text between the blocks, joined and stripped of leading and trailing
+        whitespace; empty when the reply is all reasoning.
     """
-    if not has_unclosed_think_block(reply):
-        return strip_think_block(reply)
-    return strip_think_block(reply[: reply.find(THINK_OPEN, max(reply.rfind(_THINK_CLOSE), 0))])
+    parts: list[str] = []
+    position = 0
+    while True:
+        start = reply.find(THINK_OPEN, position)
+        if start == -1:
+            parts.append(reply[position:])
+            break
+        parts.append(reply[position:start])
+        end = reply.find(_THINK_CLOSE, start + len(THINK_OPEN))
+        if end == -1:
+            break
+        position = end + len(_THINK_CLOSE)
+    return "".join(parts).strip()
 
 
 # The embeddings client sends up to 1000 texts per request by default, and llama-server

@@ -37,11 +37,7 @@ from langchain_core.messages import (
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
 from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
-from api.assistant.rag.models import (
-    THINK_OPEN,
-    has_unclosed_think_block,
-    text_before_unclosed_think_block,
-)
+from api.assistant.rag.models import THINK_OPEN, answer_outside_reasoning, has_unclosed_think_block
 from api.assistant.rag.retrieval import question_language
 from api.schemas.assistant import TurnUsage
 
@@ -136,10 +132,10 @@ def user_message(parts: Sequence[str], question: str) -> str:
 def answer_text(message: BaseMessage) -> str:
     """Read the answer out of a model reply.
 
-    A reply given as a list of content blocks is joined from its text parts, and the
-    reasoning block a model may put in front of its answer is removed. A reply that was
-    cut off inside its reasoning, so that a block opens and never closes, keeps the text
-    written before that block: the half-written thoughts are dropped. The generators tell
+    A reply given as a list of content blocks is joined from its text parts, and every
+    reasoning block a model writes is removed. A reply that was cut off inside its
+    reasoning, so that a block opens and never closes, keeps the text written before that
+    block: the half-written thoughts are dropped. The generators tell
     such a reply with nothing before the block from a blank one with
     :func:`~api.assistant.rag.models.has_unclosed_think_block`.
 
@@ -147,7 +143,7 @@ def answer_text(message: BaseMessage) -> str:
     :return: The answer, stripped; empty when the reply held nothing else, or opened with
         a reasoning block that never closed.
     """
-    return text_before_unclosed_think_block(message.text)
+    return answer_outside_reasoning(message.text)
 
 
 def _answer_of(message: BaseMessage) -> str:
@@ -208,7 +204,7 @@ def _visible(buffer: str) -> str:
     :return: The answer text so far, never ending in a prefix of ``<think>`` unless a
         complete opening tag follows it.
     """
-    shown = text_before_unclosed_think_block(buffer)
+    shown = answer_outside_reasoning(buffer)
     if has_unclosed_think_block(buffer):
         return shown
     for length in range(min(len(THINK_OPEN) - 1, len(shown)), 0, -1):

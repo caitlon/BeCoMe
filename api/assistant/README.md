@@ -371,11 +371,12 @@ Two models take part. The answer model writes every answer; the small chat model
 
 The answer model (`make_answer_model`) asks the server for usage on the last streamed chunk
 (`stream_usage=True`), which a streamed turn needs for its token counts. `DirectGenerator.stream()`
-yields the answer as it arrives, withholding any reasoning block, and its pieces always join to
-the text `generate()` returns. A reply that ends inside a reasoning block that never closes is
-answered with the text before that block, and the turn logs `assistant_reasoning_cut_off` with the
-length of that text, `answer_chars`, once; only when nothing precedes the block is the answer cut
-off, which is the `503` below. `AgentGenerator.stream()` yields the whole answer once, since the
+yields the answer as it arrives, withholding every reasoning block, and its pieces always join to
+the text `generate()` returns. The answer has every complete reasoning block removed, wherever it
+stands in the reply. A reply that ends inside a reasoning block that never closes is answered with
+the text before that block, and the turn logs `assistant_reasoning_cut_off` with the length of that
+text, `answer_chars`, once; only when nothing precedes the block is the answer cut off, which is
+the `503` below. `AgentGenerator.stream()` yields the whole answer once, since the
 `hybrid` and `agent` modes do not stream.
 
 The `usage` field of the response, `input_tokens`, `output_tokens`, `total_tokens`, `llm_calls`
@@ -416,17 +417,17 @@ what `/chat` returns. `error` ends the stream in place of `done`. The events abo
 `ASSISTANT_SHOW_SOURCES` on; with it off the answer has no `[1]` and `sources` is `[]`.
 
 Everything before the model is called is a plain HTTP error, as on `/chat`: retrieval runs before
-the response opens, so a project the caller cannot see is `404`, an outage of the vector database
-or the API, or a project API that answers something unusable, is `503`, a process already
-answering its limit of turns is `503` with `Retry-After`, and a spent budget is `429`. After that
-the status is already 200, so every failure arrives as an `error` event, with or without a token
-before it: a model that is down, an empty answer or one cut off in its reasoning before any text,
-a turn that outlives its deadline (all `503`; the upstream-error branch is only defensive, since
-the tools catch an unusable project API), and any other exception (`500`,
-`Internal server error`, logged as
-`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the `hybrid`
-and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
-start of the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.
+the response opens, so a project the caller cannot see is `404`, an outage of the vector database or
+the API, or a project API that answers something unusable, is `503`, a process already answering its
+limit of turns is `503` with `Retry-After`, and a spent budget is `429`. After that the status is
+already 200, so every failure arrives as an `error` event, with or without a token before it: a
+model that is down, an empty answer or one cut off in its reasoning before any text, a turn that
+outlives its deadline (all `503`; the upstream-error branch is only defensive, since the tools catch
+an unusable project API), and any other exception (`500`, `Internal server error`, logged as
+`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the
+`hybrid` and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
+measured from the start of the model call, so it leaves out retrieval, and in the `hybrid` and
+`agent` modes it is null.
 
 While the stream waits for the model's next piece, which in the `hybrid` and `agent` modes is
 until the final response, it sends the comment block `: keep-alive` every
