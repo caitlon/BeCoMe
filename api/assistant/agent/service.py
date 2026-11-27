@@ -50,7 +50,9 @@ from api.assistant.agent.prompt import (
     result_values,
 )
 from api.assistant.agent.tools import (
+    opinion_copies,
     opinion_values,
+    project_copies,
     project_values,
     render_opinions,
     render_project,
@@ -492,14 +494,14 @@ class AssistantService:
             *PINNED_NUMBERS,
             *FORMULA_NUMBERS,
         ]
-        ungrounded = find_ungrounded_numbers(text, grounds)
+        ungrounded = find_ungrounded_numbers(text, grounds, copies=ctx.text_copies)
         shown = _shown_text(generated.text, self._hidden_numbers(ctx))
         if shown != text:
             # Removing a citation can join two numbers (``2[1]3`` shows 23), so the number
             # check also reads the text as shown.
             ungrounded += [
                 number
-                for number in find_ungrounded_numbers(shown, grounds)
+                for number in find_ungrounded_numbers(shown, grounds, copies=ctx.text_copies)
                 if number not in ungrounded
             ]
         duration_ms = round((asyncio.get_running_loop().time() - turn.started) * 1000)
@@ -647,8 +649,9 @@ class AssistantService:
         mode, which has no tools, its opinions too. A project with no result yet, or with
         no opinions, simply has no such block. The project blocks are written by the same
         functions the tools use. They are kept in ``ctx.tool_outputs``, which the fallback call
-        shows the model again, and their structured values in ``ctx.data_values``, which
-        ground the numbers check.
+        shows the model again, their structured values in ``ctx.data_values``, which ground
+        the numbers check, and the names they show in ``ctx.text_copies``, whose digits an
+        answer may repeat.
 
         :param request: The chat request; its message is the search query.
         :param ctx: The turn's context.
@@ -670,6 +673,7 @@ class AssistantService:
                 raise ProjectNotFoundError(f"Project {project_id} not found") from exc
             project_blocks.append(render_project(project))
             ctx.data_values.extend(project_values(project))
+            ctx.text_copies.extend(project_copies(project))
             if result is not None:
                 project_blocks.append(render_context_block([], result))
                 ctx.data_values.extend(result_values(result))
@@ -677,6 +681,7 @@ class AssistantService:
             if opinions:
                 project_blocks.append(render_opinions(opinions))
                 ctx.data_values.extend(opinion_values(opinions))
+                ctx.text_copies.extend(opinion_copies(opinions))
             ctx.tool_outputs.extend(project_blocks)
         # Embeddings are not LangChain runnables and emit no callbacks, so the search is
         # traced here, as a child of the turn's run.

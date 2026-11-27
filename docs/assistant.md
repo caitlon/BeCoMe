@@ -216,8 +216,11 @@ without calling any model.
   formulas). A project number counts only when it is one of the project's calculated or entered
   values: the result, the opinions' values, the scale bounds and the counts the assistant is
   shown. A number that appears only in the project's name, description, unit, or in an expert's
-  name or position does not count. A rounded or shortened value counts as found: if the data says
-  14.19, an answer that says 14.2 passes.
+  name or position does not count. One case is the exception: the digits of a project name or an
+  expert name are part of the name, so an answer that repeats "Budget 2027" exactly as the
+  assistant was shown it, in the same case and as a whole, is not flagged for the 2027. The same
+  number written anywhere else in the answer is checked as usual. A rounded or shortened value
+  counts as found: if the data says 14.19, an answer that says 14.2 passes.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the
