@@ -8,12 +8,16 @@ import pytest
 
 from api.assistant.errors import (
     AssistantBusyError,
+    AssistantError,
+    AssistantNotFoundError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
 from api.assistant.exception_handlers import (
     assistant_busy_handler,
+    assistant_error_handler,
+    assistant_not_found_handler,
     assistant_rate_limited_handler,
     assistant_unavailable_handler,
     assistant_upstream_handler,
@@ -71,8 +75,22 @@ class TestAssistantExceptionHandlers:
                 "The assistant is temporarily unavailable",
                 "assistant_upstream_error",
             ),
+            (
+                assistant_not_found_handler,
+                AssistantNotFoundError(f"{_PRIVATE_TEXT} returned 404"),
+                404,
+                "Project not found",
+                "assistant_not_found",
+            ),
+            (
+                assistant_error_handler,
+                AssistantError(_PRIVATE_TEXT),
+                500,
+                "Internal server error",
+                "assistant_error",
+            ),
         ],
-        ids=["rate_limited", "address_cap", "busy", "unavailable", "upstream"],
+        ids=["rate_limited", "address_cap", "busy", "unavailable", "upstream", "not_found", "bare"],
     )
     def test_answers_with_the_status_and_detail_body(
         self, caplog, handler, exc, status_code, detail, event
@@ -207,3 +225,55 @@ class TestAssistantExceptionHandlers:
 
         # THEN
         assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+    @pytest.mark.parametrize(
+        ("handler", "exc", "level"),
+        [
+            (assistant_not_found_handler, AssistantNotFoundError(_PRIVATE_TEXT), logging.WARNING),
+            (assistant_error_handler, AssistantError(_PRIVATE_TEXT), logging.ERROR),
+        ],
+        ids=["not_found", "bare"],
+    )
+    def test_the_fallback_handlers_log_the_type_and_never_the_text(
+        self, caplog, handler, exc, level
+    ):
+        """
+        GIVEN an escaped AssistantNotFoundError or bare AssistantError holding private text
+        WHEN its handler runs
+        THEN the body omits the text, and the one record has the level of the fault, names the
+             exception type and carries the text in no field, argument or traceback
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+
+        # WHEN
+        response = handler(_request(), exc)
+
+        # THEN
+        assert _PRIVATE_TEXT.encode() not in bytes(response.body)
+        (record,) = caplog.records
+        assert record.levelno == level
+        assert record.exception_type == type(exc).__name__
+        assert record.exc_info is None
+        assert _PRIVATE_TEXT not in repr(record.__dict__)
+
+    def test_the_bare_error_record_names_where_it_was_raised_and_not_what_it_said(self, caplog):
+        """
+        GIVEN a bare AssistantError raised from a known line, with private text in its message
+        WHEN its handler runs
+        THEN the record's where is the file and line that raised it, and holds no text
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        try:
+            raise AssistantError(_PRIVATE_TEXT)
+        except AssistantError as exc:
+            raised = exc
+
+        # WHEN
+        assistant_error_handler(_request(), raised)
+
+        # THEN
+        (record,) = caplog.records
+        assert record.where.startswith("tests/unit/api/assistant/test_exception_handlers.py:")
+        assert _PRIVATE_TEXT not in record.where

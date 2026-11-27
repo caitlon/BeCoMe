@@ -304,17 +304,19 @@ What a project the caller cannot see does depends on the mode. In `workflow` and
 project named by `project_id` is read ahead of the model, so the request is answered `404`
 exactly as `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the
 request is answered `200`, and a tool asked for such a project tells the model `not_found:`
-and nothing else, so the answer says it found nothing. A failing model server, embedding server,
-vector database or application answers `503` with a fixed message. On any request until the
-retriever has been built once, that covers a vector database that is down, a URL that is not set,
-and a collection that is missing or that the role cannot read. Requests that arrive together on a
-cold process each open an engine and fail or succeed on their own, so a database that is down does
-not queue them; one retriever is kept and the other engines are closed. A model, embedding or rerank
-server that answers `200` with a body that is no reply (an HTML page from a proxy, an `error`
-object, no `choices` or `results`, an item of `data` without a vector or of `results` without
-its `index` and `relevance_score`, a body that is empty or cut off, a stream chunk that is not
-valid JSON, is cut inside a character, or is a JSON object of the wrong shape) is a failing
-server too. A stream chunk that is valid JSON but not an
+and nothing else, so the answer says it found nothing. Should such a project's error escape a
+route anyway, it is answered `404` with `Project not found`, and an assistant error with no
+handler of its own `500` with `Internal server error`; neither body carries the error's text. A
+failing model server, embedding server, vector database or application answers `503` with a fixed
+message. On any request until the retriever has been built once, that covers a vector database
+that is down, a URL that is not set, and a collection that is missing or that the role cannot
+read. Requests that arrive together on a cold process each open an engine and fail or succeed on
+their own, so a database that is down does not queue them; one retriever is kept and the other
+engines are closed. A model, embedding or rerank server that answers `200` with a body that is no
+reply (an HTML page from a proxy, an `error` object, no `choices` or `results`, an item of `data`
+without a vector or of `results` without its `index` and `relevance_score`, a body that is empty
+or cut off, a stream chunk that is not valid JSON, is cut inside a character, or is a JSON object
+of the wrong shape) is a failing server too. A stream chunk that is valid JSON but not an
 object is not caught and ends in a `500`. The warning for such a `503`
 (`assistant_dependency_unavailable`, and `assistant_tool_unavailable` for a tool) carries the
 class of the error as `reason` and the server that failed as `role`: `answer` or `query` for the
@@ -424,10 +426,10 @@ already 200, so every failure arrives as an `error` event, with or without a tok
 model that is down, an empty answer or one cut off in its reasoning before any text, a turn that
 outlives its deadline (all `503`; the upstream-error branch is only defensive, since the tools catch
 an unusable project API), and any other exception (`500`, `Internal server error`, logged as
-`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the
-`hybrid` and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
-measured from the start of the model call, so it leaves out retrieval, and in the `hybrid` and
-`agent` modes it is null.
+`assistant_stream_failed` with the exception type and `where` it was raised, `file:line`; the
+`assistant_error` record of the 500 handler carries `where` too). In the `hybrid` and `agent` modes
+nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the start of
+the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.
 
 While the stream waits for the model's next piece, which in the `hybrid` and `agent` modes is
 until the final response, it sends the comment block `: keep-alive` every
@@ -438,15 +440,16 @@ event, and the frontend's parser skips it. A keep-alive is sent only between who
 
 A client that goes away stops the work its request started. During `/chat` and during the retrieval
 that precedes a stream, the call in flight is cancelled and one `assistant_client_disconnected`
-record at INFO names the route (`chat` or `chat_stream`) and the time in milliseconds; the turn
-slot is given back, and no timeout or failure is logged. The response written for the vanished
-client is an empty `499`, nginx's "client closed request", which nobody receives. Once a stream is
-open the server cancels it when the client disconnects, with no record of this module. This relies
-on the server reporting ASGI spec 2.3 (uvicorn 0.54 does, so Starlette's `StreamingResponse` listens
-for the disconnect); on a server reporting 2.4 the vanished client is noticed at the next write, a
-keep-alive at the latest. If the
-watch for the disconnect itself fails, the turn runs on without it and
-`assistant_disconnect_watch_failed` is logged at WARNING with the exception's class in `reason`.
+record at INFO names the route (`chat` or `chat_stream`) and the time in milliseconds; the turn slot
+is given back, and no timeout or failure is logged. The response written for the vanished client is
+an empty `499`, nginx's "client closed request", which nobody receives. Once a stream is open the
+server cancels it when the client disconnects, with no record of this module. This relies on the
+server reporting ASGI spec 2.3 (uvicorn 0.54 does, so Starlette's `StreamingResponse` listens for
+the disconnect); on a server reporting 2.4 the vanished client is noticed at the next write, a
+keep-alive at the latest. A stream whose body is never read, because the client left before the
+first write, still ends its turn's trace, as a disconnect mid-stream does. If the watch for the
+disconnect itself fails, the turn runs on without it and `assistant_disconnect_watch_failed` is
+logged at WARNING with the exception's class in `reason`.
 
 ### Limits
 
