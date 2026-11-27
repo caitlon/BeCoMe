@@ -69,7 +69,7 @@ How the pipeline is built and why, from the corpus to the streamed answer, is ex
    own markup, one line each that carries the layer, the source, the section, the reason and
    the chunk's key, and prints them after the chunk count. A flagged chunk of the public layer
    is stored like any other: the list is for the owner to read, and a change to those pages goes
-   through pull request review. A flagged chunk of the private layer stops the build before
+   through pull request review. A flagged chunk outside the public layer stops the build before
    enrichment, any chat-model call, the staging table and any database write: the ingest prints
    every flagged line and a stop line, writes nothing, leaves the live collection as it was
    and exits with status 1. Read each flagged chunk, then edit or remove its source, or rerun
@@ -768,10 +768,14 @@ there (`ASSISTANT_PRIVATE_CORPUS_DIRS` is a JSON list, `'["/abs/corpus"]'`).
    ingest builds them with only their title and prints "some chunks have no matching caption". If
    every chunk is missing, the ingest stops with an error and writes nothing.
 3. Reload the environment's corpus database with the ingest command above, as the owner, through
-   the SSH tunnel. If the private layer has a flagged chunk, the ingest exits with status 1 and
-   writes nothing, so the deployed corpus stays as it was; read the chunk, fix its source or
-   add `--accept-flagged <key>` inside the quoted `sh -c '...'` string, next to the other
-   ingest flags. `captions.py` does not screen: only the ingest does. Then query the `assistant_collections` row of the deployed database as the
+   the SSH tunnel.
+
+   If a chunk outside the public layer is flagged, the ingest exits with status 1 and writes
+   nothing, so the deployed corpus stays as it was; read the chunk, fix its source or add
+   `--accept-flagged <key>` inside the quoted `sh -c '...'` string, next to the other ingest
+   flags. `captions.py` does not screen: only the ingest does.
+
+   Then query the `assistant_collections` row of the deployed database as the
    owner, through a tunnel of its own: `scripts/db/tunnel.sh <env> <env>-vector -- sh -c 'psql
    "postgresql://<owner>@localhost:$DB_TUNNEL_PORT/<database>?sslmode=verify-full&sslrootcert=$DB_TUNNEL_ROOT_CERT"
    -c "SELECT name, created_at, chunk_count, corpus_hash, app_version, corpus_version FROM

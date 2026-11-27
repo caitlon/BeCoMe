@@ -61,8 +61,8 @@ def _parse_args() -> argparse.Namespace:
         default=[],
         metavar="KEY",
         help=(
-            "Let a flagged private-layer chunk through, by the key printed on its flagged "
-            "line; repeat for each chunk. Chunks with identical text share a key, and "
+            "Let a flagged chunk outside the public layer through, by the key printed on its "
+            "flagged line; repeat for each chunk. Chunks with identical text share a key, and "
             "editing the source or changing the chunker flags changes it."
         ),
     )
@@ -80,7 +80,7 @@ def _build_spec(args: argparse.Namespace) -> CollectionSpec:
         chunker=ChunkerConfig(strategy=args.strategy, size=args.size, overlap_pct=args.overlap_pct),
         context=args.context,
         wave=args.wave,
-        accepted_flagged=frozenset(args.accept_flagged),
+        accepted_flagged=frozenset(key.strip().lower() for key in args.accept_flagged),
     )
 
 
@@ -123,9 +123,9 @@ async def _main() -> BuildReport:
 
     Prints the chunk count and, one line per chunk, the chunks that look like planted
     instructions (layer | source | section | reason | key). Public-layer chunks and the
-    private-layer ones accepted with --accept-flagged are written all the same. A
-    private-layer chunk that is flagged and not accepted stops the build: nothing is
-    written, the live collection stays, and the process exits with status 1 after
+    ones outside it accepted with --accept-flagged are written all the same. A
+    chunk outside the public layer that is flagged and not accepted stops the build:
+    nothing is written, the live collection stays, and the process exits with status 1 after
     printing every flagged line and how to proceed.
 
     :return: The build's report.
@@ -139,10 +139,10 @@ async def _main() -> BuildReport:
     except FlaggedChunksError as error:
         _print_flagged(error.flagged, spec.accepted_flagged)
         print(
-            f"Build of {spec.name!r} stopped: {len(error.blocking)} flagged chunk(s) in the "
-            "private layer. Nothing was written and the live collection is unchanged. Edit "
-            "or remove the source, or read each chunk and, if it is harmless, rerun with "
-            "--accept-flagged <key> for it."
+            f"Build of {spec.name!r} stopped: {len(error.blocking)} flagged chunk(s) "
+            "outside the public layer. Nothing was written and the live collection is "
+            "unchanged. Edit or remove the source, or read each chunk and, if it is harmless, "
+            "rerun with --accept-flagged <key> for it."
         )
         raise SystemExit(1) from error
     print(f"Built collection {spec.name!r}: {report.chunk_count} chunks")

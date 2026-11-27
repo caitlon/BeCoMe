@@ -40,7 +40,7 @@ class CollectionSpec:
     :param chunker: Chunking strategy and size for this collection.
     :param context: Per-chunk context enrichment mode.
     :param wave: Highest corpus wave to include (see corpus.py::build_manifest).
-    :param accepted_flagged: `chunk_key`s of local-layer chunks the owner read, judged
+    :param accepted_flagged: `chunk_key`s of chunks outside the public layer the owner read, judged
         harmless and let through screening.py's stop.
     """
 
@@ -57,7 +57,7 @@ class BuildReport:
 
     :param chunk_count: Number of chunks written to the collection.
     :param flagged: The chunks screening.py flagged that the build went on with: every
-        public-layer one and the local ones the owner accepted by key. They are written
+        public-layer one and the ones outside it the owner accepted by key. They are written
         like any other; the report only tells the owner where to look.
     """
 
@@ -66,22 +66,22 @@ class BuildReport:
 
 
 class FlaggedChunksError(Exception):
-    """The build stopped because local-layer chunks look like planted instructions.
+    """The build stopped because chunks outside the public layer look like planted instructions.
 
     The message carries counts only, never chunk text.
 
     :param flagged: Every chunk screening.py flagged, in corpus order.
-    :param blocking: The local-layer ones whose key the owner has not accepted.
+    :param blocking: The ones outside the public layer whose key the owner has not accepted.
     """
 
     def __init__(self, flagged: list[FlaggedChunk], blocking: list[FlaggedChunk]) -> None:
         """Keep both lists and describe the stop by their sizes.
 
         :param flagged: Every flagged chunk.
-        :param blocking: The flagged local-layer chunks that are not accepted.
+        :param blocking: The flagged chunks outside the public layer that are not accepted.
         """
         super().__init__(
-            f"{len(blocking)} of {len(flagged)} flagged chunks in the private layer "
+            f"{len(blocking)} of {len(flagged)} flagged chunks outside the public layer "
             "were not accepted; nothing was written"
         )
         self.flagged = flagged
@@ -284,13 +284,13 @@ async def build_collection(
     :param repo_root: Repository root, passed through to build_manifest.
     :return: The number of chunks written to the collection and the chunks screening.py
         flagged as looking like planted instructions. A flagged public-layer chunk, or a
-        local one whose key is in spec.accepted_flagged, is still written and only
+        non-public one whose key is in spec.accepted_flagged, is still written and only
         reported.
-    :raises FlaggedChunksError: If screening.py flags a local-layer chunk whose key is not
-        in spec.accepted_flagged. Raised right after screening, before enrichment, any
-        chat-model call, the staging table and any database write, so the live collection
-        stays as it was. (With the "semantic" chunker, `split` has already called the
-        embedding endpoint by then.)
+    :raises FlaggedChunksError: If screening.py flags a chunk outside the public layer (the
+        private layer, or no layer label) whose key is not in spec.accepted_flagged. Raised
+        right after screening, before enrichment, any chat-model call, the staging table and
+        any database write, so the live collection stays as it was. (With the "semantic"
+        chunker, `split` has already called the embedding endpoint by then.)
     :raises FileNotFoundError: If spec.context is "captions" and the configured
         captions file does not exist.
     :raises ValueError: If spec.context is "captions" and load_captions() rejects the
@@ -324,7 +324,7 @@ async def build_collection(
             },
         )
     blocking = [
-        item for item in flagged if item.layer == "local" and item.key not in spec.accepted_flagged
+        item for item in flagged if item.layer != "public" and item.key not in spec.accepted_flagged
     ]
     if blocking:
         raise FlaggedChunksError(flagged, blocking)

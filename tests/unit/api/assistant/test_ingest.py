@@ -116,6 +116,33 @@ class TestParseArgs:
         assert accepted == frozenset({"k1", "k2"})
         assert by_default == frozenset()
 
+    def test_a_key_in_uppercase_with_spaces_is_normalized(self, monkeypatch):
+        """
+        GIVEN --accept-flagged with a key typed in uppercase and with surrounding spaces
+        WHEN _build_spec converts the parsed arguments
+        THEN the spec carries the key stripped and in lowercase, as chunk_key prints it
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "ingest.py",
+                "--name",
+                "docs_x",
+                "--strategy",
+                "fixed",
+                "--accept-flagged",
+                " AB12Cd ",
+            ],
+        )
+
+        # WHEN
+        accepted = ingest._build_spec(ingest._parse_args()).accepted_flagged
+
+        # THEN
+        assert accepted == frozenset({"ab12cd"})
+
 
 class TestMain:
     """_main prints the build's chunk count and one line per flagged chunk, or the stop."""
@@ -286,3 +313,38 @@ class TestMain:
             "flagged: local | /priv/b.pdf |  | r | k2",
             "note: --accept-flagged gone matches no flagged chunk",
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_stop_also_notes_an_accepted_key_that_matches_no_flagged_chunk(
+        self, monkeypatch, capsys
+    ):
+        """
+        GIVEN a build that stops on an unaccepted chunk while one accepted key matches none
+        WHEN _main runs
+        THEN the stale-key note is printed before the stop line, and the exit status is 1
+        """
+        # GIVEN
+        private = FlaggedChunk("local", "/priv/b.pdf", "", "role marker [inst]", "k2")
+
+        async def _fake_build(spec, settings, repo_root):
+            raise FlaggedChunksError([private], [private])
+
+        monkeypatch.setattr(ingest, "build_collection", _fake_build)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["ingest.py", "--name", "docs_x", "--strategy", "fixed", "--accept-flagged", "gone"],
+        )
+
+        # WHEN
+        with pytest.raises(SystemExit) as caught:
+            await ingest._main()
+
+        # THEN
+        assert caught.value.code == 1
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[:2] == [
+            "flagged: local | /priv/b.pdf |  | role marker [inst] | k2",
+            "note: --accept-flagged gone matches no flagged chunk",
+        ]
+        assert lines[2].startswith("Build of 'docs_x' stopped")

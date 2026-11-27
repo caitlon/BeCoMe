@@ -66,10 +66,13 @@ _ROLE_MARKERS: tuple[str, ...] = (
 #
 # Left out on purpose, because they flag ordinary how-to text: "from now on" and "od ted",
 # "you should answer", "add the text" and "pridejte text", "start every answer with" and
-# "close all messages with", "you must answer" without "always" or "never", and an addressee
-# line without a colon or comma after it ("message to the model owner").
+# "close all messages with" and "ukoncete vsechny zpravy", "you must answer" without "always"
+# or "never", and an addressee line without a colon or comma after it ("message to the model
+# owner"). Also narrowed: a bare "model" as the reader ("the model processing the opinions"),
+# "processing the" (only "this" and "these" count), and the Czech "tell the user", "vzdy
+# odpovidej" and "nikdy rikej", which need the "ze" ("that") after them like the English one.
 _ADDRESSEE = r"(?:(?:ai\s*)?(?:assistant|chatbot|bot|model|llm|language\s*model)|ai)"
-_ADDRESSEE_PLURAL = r"(?:assistant|ai|chatbot|bot|model|llm|language\s*model)s?"
+_ADDRESSEE_READER = r"(?:assistant|ai|chatbot|bot|llm|language\s*model)s?"
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
@@ -83,8 +86,8 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\b(?:note|message|instructions?|reminder)\s*(?:for|to)\s*(?:(?:the|any|an|a)\s*)?"
         + _ADDRESSEE
         + r"\s*[:,]",
-        r"\b" + _ADDRESSEE_PLURAL + r"\s*(?:reading|processing|summari[sz]ing|parsing)"
-        r"\s*(?:this|these|the)\b",
+        r"\b" + _ADDRESSEE_READER + r"\s*(?:reading|processing|summari[sz]ing|parsing)"
+        r"\s*(?:this|these)\b",
         # A rule for what to answer when the user asks something.
         r"\bwhen\s*(?:a|the|any)\s*user\s*asks\b.{0,160}?"
         r"\b(?:answer|reply|respond|say|tell\s*them)\s*(?:that|with)\b",
@@ -102,16 +105,17 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\b(?:poznamka|pokyny?|zprava|vzkaz|instrukce)\s*(?:pro\s*)?"
         r"(?:asistent(?:a|ovi)?|ai|umelou\s*inteligenci|model(?:u)?|chatbot(?:a|ovi)?"
         r"|jazykov(?:y|ou)\s*model(?:u)?)\s*[:,]",
-        r"\b(?:asistent\w*|ai|model\w*|chatbot\w*),?\s*(?:ktery|ktera|jenz)\s*"
+        r"\b(?:asistent\w*|ai|chatbot\w*),?\s*(?:ktery|ktera|jenz)\s*"
         r"(?:ctes?|zpracovava(?:s)?|shrnuje(?:s)?)\b",
         r"\bkdyz\s*(?:se\s*)?(?:te\s*)?(?:uzivatel|nekdo)\s*(?:zepta|pta|bude\s*ptat)\b.{0,160}?"
         r"\b(?:odpovez|odpovezte|odpovidej|odpovidejte|rekni|reknete|tvrd|tvrdte)\b",
         r"\b(?:pridej(?:te)?|pripoj(?:te)?|dopln(?:te)?|vloz(?:te)?)\s*(?:na\s*konec\s*)?"
         r"(?:frazi|vetu)\b",
         r"\b(?:ukonci|ukoncete|zakonci|zakoncete|zacni|zacnete|zacinej|zacinejte)\s*"
-        r"(?:kazdou|vsechny|svou|svoji)\s*(?:odpoved|odpovedi|zpravu|zpravy)\b",
-        r"\b(?:rekni|reknete|sdel|sdelte)\s*uzivateli\b",
-        r"\b(?:vzdy|nikdy)\s*(?:odpovidej(?:te)?|odpovez(?:te)?|rikej(?:te)?|tvrd(?:te)?)\b",
+        r"(?:kazdou|vsechny|svou|svoji)\s*(?:odpoved|odpovedi)\b",
+        r"\b(?:rekni|reknete|sdel|sdelte)\s*uzivateli\s*,?\s*ze\b",
+        r"\b(?:vzdy|nikdy)\s*(?:odpovidej(?:te)?|odpovez(?:te)?|rikej(?:te)?|tvrd(?:te)?)"
+        r"\s*,?\s*ze\b",
     )
 )
 
@@ -127,8 +131,9 @@ class FlaggedChunk:
     :param section: The chunk's heading path, "" when it has none.
     :param reason: What was found, for example "assistant tag <docs>". For a phrase it
         quotes the span matched in the normalized text with its diacritics folded away
-        (case folded, whitespace collapsed, a letter with a caron read as its plain form), so it holds words of the
-        chunk in that folded form; for a tag or a marker it is a fixed string.
+        (case folded, whitespace collapsed, every combining mark dropped after NFKD, so carons,
+        acutes and rings go and Czech typed without diacritics matches), so it holds words of
+        the chunk in that folded form; for a tag or a marker it is a fixed string.
     :param key: The chunk's `chunk_key` (enrich.py): the sha256 of its own text. Chunks
         with identical text share a key, so accepting one accepts them all.
     """
