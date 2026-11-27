@@ -549,8 +549,8 @@ watch for the disconnect itself fails, the turn runs on without it and
   outlives it is answered `503` like any other, and the record `assistant_turn_timeout` names the
   limit that fired in `timeout_limit` (`first_byte` or `turn`). The streamed part of a turn keeps
   the full turn deadline. The setting can only shorten a turn: with a turn timeout below it, the
-  turn timeout fires first. `/chat` fails at 90 seconds by default; set the variable above the turn
-  timeout to restore the turn timeout as the only limit.
+  turn timeout fires first. `/chat` fails at 90 seconds by default, and at most just under 100,
+  where the proxy in front of the API would answer `524` anyway.
 
 ### Tracing
 
