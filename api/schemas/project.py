@@ -55,13 +55,22 @@ class ProjectCreate(BaseModel):
     @field_validator("name", mode="after")
     @classmethod
     def sanitize_name(cls, v: str) -> str:
-        """Remove HTML and invisible characters from the name, which must keep some text."""
+        """Remove HTML and invisible characters from the name, which must keep some text.
+
+        :param v: Name as parsed from the request
+        :return: The name with markup and invisible characters removed
+        :raises ValueError: If nothing but whitespace is left after sanitizing
+        """
         return _require_visible_name(sanitize_text(v))
 
     @field_validator("scale_unit", mode="after")
     @classmethod
     def sanitize_scale_unit(cls, v: str) -> str:
-        """Remove HTML and invisible characters from the scale unit."""
+        """Remove HTML and invisible characters from the scale unit.
+
+        :param v: Scale unit as parsed from the request
+        :return: The scale unit with markup and invisible characters removed
+        """
         return sanitize_text(v)
 
     @field_validator("description", mode="after")
@@ -124,7 +133,12 @@ class ProjectUpdate(BaseModel):
     @field_validator("name", mode="after")
     @classmethod
     def sanitize_name(cls, v: str | None) -> str | None:
-        """Remove HTML and invisible characters from the name, which must keep some text."""
+        """Remove HTML and invisible characters from the name, which must keep some text.
+
+        :param v: Name as parsed from the request, or None when the field is absent
+        :return: The sanitized name, or None when no name was given
+        :raises ValueError: If nothing but whitespace is left after sanitizing
+        """
         sanitized = sanitize_text_or_none(v)
         return None if sanitized is None else _require_visible_name(sanitized)
 
