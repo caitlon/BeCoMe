@@ -122,11 +122,20 @@ class SourceRef(BaseModel):
 
 
 class AnswerChecks(BaseModel):
-    """Post-generation grounding checks run on the answer before it is returned."""
+    """Post-generation grounding checks run on the answer before it is returned.
+
+    ``ungrounded_numbers`` are the numbers no source supports, and ``numbers_grounded`` is
+    true when there are none. The numbers that appear only inside the verbatim name of a
+    project (``project_name_numbers``) or of an expert (``expert_name_numbers``) are not
+    in that list: they come from a name, not from the data, and the client shows them on a
+    line of their own. The three lists share no number.
+    """
 
     citations_valid: bool
     numbers_grounded: bool
     ungrounded_numbers: list[str]
+    project_name_numbers: list[str] = Field(default_factory=list)
+    expert_name_numbers: list[str] = Field(default_factory=list)
 
 
 class TurnUsage(BaseModel):

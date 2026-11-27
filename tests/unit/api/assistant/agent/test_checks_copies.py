@@ -1,10 +1,10 @@
-"""Tests for the number check's treatment of verbatim copies of a project's free text."""
+"""Tests for the number check's treatment of verbatim copies of a name, and for NumberCheck."""
 
 import time
 
 import pytest
 
-from api.assistant.agent.checks import find_ungrounded_numbers
+from api.assistant.agent.checks import NumberCheck, find_ungrounded_numbers
 
 _B = "Budget 2027"
 _GAPS = ("\n", "\t", "   ", " \n ")
@@ -29,11 +29,13 @@ _CASES = [
     _case("emphasis-around", ("The **Budget 2027** is open.", "The _Budget 2027_ is open."), (_B,), []),
     _case("link-text", "See [Budget 2027](https://example.org/a).", (_B,), []),
     _case("citation-bracket", "See [Budget 2027] today.", (_B,), []),
-    # Only a name that reads as a name counts: two words or more, the first of letters only.
-    _case("number-first-word", "The 2027 Budget is open.", ("2027 Budget",), ["2027"]),
-    _case("currency-claim", "The best compromise is 7351 CZK.", ("7351 CZK",), ["7351"]),
-    _case("digit-in-first-word", "It is Q4 2027 now.", ("Q4 2027",), ["2027"]),
-    _case("one-word-field", "The budget-2027 is open.", ("budget-2027",), ["2027"]),
+    # What counts as a name: 4 characters and a letter. The words and their order do not matter,
+    # because nothing is hidden by a copy any more: its digits get a line of their own.
+    _case("number-first-word", "The 2027 Budget is open.", ("2027 Budget",), []),
+    _case("currency-claim", "The best compromise is 7351 CZK.", ("7351 CZK",), []),
+    _case("digit-in-first-word", "It is Q4 2027 now.", ("Q4 2027",), []),
+    _case("one-word-field", "The budget-2027 is open.", ("budget-2027",), []),
+    _case("phrase-name", "The best compromise is 7351.", ("is 7351",), []),
     # A copy must be exact.
     _case("other-case", "The project budget 2027 is open.", (_B,), ["2027"]),
     _case("markdown-inside", ("The **Budget** 2027 is open.", "The Budget **2027** is open."), (_B,), ["2027"]),
@@ -51,6 +53,10 @@ _CASES = [
     _case("after-percent", "Budget 2027% is open.", (_B,), ["2027"]),
     _case("after-spaced-percent", "Budget 2027 % is open.", (_B,), ["2027"]),
     _case("after-per-mille", "Budget 2027\u2030 is open.", (_B,), ["2027"]),
+    _case("after-no-break-space", "Budget 2027\u00a05 is open.", (_B,), ["2027"], ["5"]),
+    _case("after-narrow-no-break-space", "Budget 2027\u202f5 is open.", (_B,), ["2027"], ["5"]),
+    _case("after-en-dash", "Budget 2027\u20135 is open.", (_B,), ["2027"], ["5"]),
+    _case("after-minus", "Budget 2027\u22125 is open.", (_B,), ["2027"], ["5"]),
     # A digit and a joiner right before the copy cancel it; so does a letter or a digit.
     _case("before-space", "It costs 7 Budget 2027.", (_B,), ["2027"], ["7"]),
     _case("before-hyphen", "It is 7-Budget 2027.", (_B,), ["2027"], ["7"]),
@@ -58,6 +64,11 @@ _CASES = [
     _case("before-colon", "It is 7:Budget 2027.", (_B,), ["2027"], ["7"]),
     _case("before-dot", "It is 7.Budget 2027.", (_B,), ["2027"], ["7"]),
     _case("before-comma", "It is 7,Budget 2027.", (_B,), ["2027"], ["7"]),
+    _case("before-no-break-space", "It costs 7\u00a0Budget 2027.", (_B,), ["2027"], ["7"]),
+    _case("before-narrow-no-break-space", "It costs 7\u202fBudget 2027.", (_B,), ["2027"], ["7"]),
+    _case("before-en-dash", "It is 7\u2013Budget 2027.", (_B,), ["2027"], ["7"]),
+    _case("before-minus", "It is 7\u2212Budget 2027.", (_B,), ["2027"], ["7"]),
+    _case("longer-number-before", "It costs 7 500 CZK.", ("500 CZK",), ["7 500"]),
     _case("before-letter", "The XBudget 2027 is open.", (_B,), ["2027"]),
     _case("before-digit", "The 9Budget 2027 is open.", (_B,), ["2027"]),
     # What does not cancel it.
@@ -132,3 +143,43 @@ class TestCopies:
         find_ungrounded_numbers(answer, [], copies=copies)
 
         assert time.perf_counter() - started < 5
+
+
+def _merge(name, first, second, expected):
+    """Build a row from three-list tuples: ungrounded, from a project name, from an expert name."""
+    return pytest.param(NumberCheck(*first), NumberCheck(*second), NumberCheck(*expected), id=name)
+
+
+# fmt: off
+_MERGE_CASES = [
+    _merge("disjoint-join-in-order", (["1"], ["2"], ["3"]), (["4"], ["5"], ["6"]),
+           (["1", "4"], ["2", "5"], ["3", "6"])),
+    _merge("ungrounded-once", (["1"], [], []), (["1", "2"], [], []), (["1", "2"], [], [])),
+    _merge("real-only-in-the-second", ([], ["7"], []), (["7"], [], []), (["7"], [], [])),
+    _merge("real-only-in-the-first", (["7"], [], []), ([], ["7"], []), (["7"], [], [])),
+    _merge("real-leaves-the-expert-list", ([], [], ["7"]), (["7"], [], []), (["7"], [], [])),
+    _merge("project-wins-over-expert", ([], ["7"], []), ([], [], ["7", "8"]), ([], ["7"], ["8"])),
+    _merge("a-name-number-once", ([], ["7", "7"], []), ([], ["7"], []), ([], ["7"], [])),
+]
+# fmt: on
+
+
+class TestNumberCheckMerge:
+    """The two passes of a turn (the text and the text as shown) merge into one check."""
+
+    @pytest.mark.parametrize(("first", "second", "expected"), _MERGE_CASES)
+    def test_the_passes_merge_into_three_disjoint_lists(self, first, second, expected):
+        """
+        GIVEN the checks of two passes (the table above: disjoint lists, a repeat, a number
+              real in only one of the passes, a number named for different sources)
+        WHEN they merge
+        THEN a number real in either pass is reported as ungrounded only, a number named by
+             both a project and an expert is the project's, and no number repeats or sits in
+             two lists
+        """
+        merged = first.merge(second)
+
+        assert merged == expected
+        lists = [merged.ungrounded, merged.project_name, merged.expert_name]
+        flat = [number for numbers in lists for number in numbers]
+        assert len(flat) == len(set(flat))

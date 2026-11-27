@@ -25,9 +25,9 @@ Each has a companion (``project_values``, ``project_list_values``, ``opinion_val
 the way the block writes them. Those values, and not the blocks, ground the number check,
 so a number typed into a name or a description grounds nothing. A second companion per
 block (``project_copies``, ``project_list_copies``, ``opinion_copies``) lists the names the
-block shows, as it shows them: an answer that repeats one verbatim is not checked for the
-digits inside it, because they are part of the name. The unit, the description and an
-expert's position are not copies.
+block shows, as it shows them: the digits of one an answer repeats verbatim are reported as
+coming from the name, not from the data. The unit, the description and an expert's position
+are not copies.
 """
 
 import logging
@@ -423,23 +423,30 @@ def mask_opinion_names(text: str) -> str:
 
 
 def _reply(
-    ctx: AssistantContext, text: str, values: Sequence[str] = (), copies: Sequence[str] = ()
+    ctx: AssistantContext,
+    text: str,
+    values: Sequence[str] = (),
+    *,
+    project_names: Sequence[str] = (),
+    expert_names: Sequence[str] = (),
 ) -> str:
     """Keep a reply, and the numbers and names of its data, and hand the reply back.
 
     The reply is kept for the fallback call that shows the model what the tools produced.
-    Only ``values`` ground the number check; ``copies`` are names whose digits an answer may
-    repeat as part of the name.
+    Only ``values`` ground the number check; the names are the copies whose digits an answer
+    may repeat as part of a name.
 
     :param ctx: The turn's context.
     :param text: The reply.
     :param values: The structured numbers the reply carries; none for an error line.
-    :param copies: The names the reply shows; none for an error line.
+    :param project_names: The project names the reply shows; none for an error line.
+    :param expert_names: The expert names the reply shows; none for an error line.
     :return: The same text.
     """
     ctx.tool_outputs.append(text)
     ctx.data_values.extend(values)
-    ctx.text_copies.extend(copies)
+    ctx.project_name_copies.extend(project_names)
+    ctx.expert_name_copies.extend(expert_names)
     return text
 
 
@@ -509,7 +516,7 @@ async def list_my_projects(runtime: ToolRuntime[AssistantContext]) -> str:
         ctx,
         render_project_list(projects),
         project_list_values(projects),
-        project_list_copies(projects),
+        project_names=project_list_copies(projects),
     )
 
 
@@ -529,7 +536,9 @@ async def get_project(project_id: str, runtime: ToolRuntime[AssistantContext]) -
         return _reply(ctx, _NOT_FOUND)
     except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project", exc))
-    return _reply(ctx, render_project(project), project_values(project), project_copies(project))
+    return _reply(
+        ctx, render_project(project), project_values(project), project_names=project_copies(project)
+    )
 
 
 @tool(description=_GET_PROJECT_RESULT_DESCRIPTION)
@@ -573,7 +582,10 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
     if not opinions:
         return _reply(ctx, _NO_OPINIONS)
     return _reply(
-        ctx, render_opinions(opinions), opinion_values(opinions), opinion_copies(opinions)
+        ctx,
+        render_opinions(opinions),
+        opinion_values(opinions),
+        expert_names=opinion_copies(opinions),
     )
 
 

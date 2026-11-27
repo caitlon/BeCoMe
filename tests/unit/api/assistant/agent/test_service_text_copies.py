@@ -1,18 +1,16 @@
 """Tests for the number check's treatment of verbatim copies of a project's names, per turn."""
 
-from unittest.mock import patch
-
 import pytest
 
-from api.assistant.agent import service as service_module
-from api.assistant.agent.checks import find_ungrounded_numbers
 from api.assistant.agent.prompt import clean_text
 from api.assistant.agent.service import AssistantService
 from api.assistant.errors import AssistantNotFoundError
 from api.assistant.views import OpinionView, ProjectBrief
+from tests.shared.helpers import captured_log_records
 from tests.unit.api.assistant.agent.test_service import (
     PLANTED,
     PROJECT_ID,
+    SERVICE_LOGGER,
     _call,
     _chunk,
     _ctx,
@@ -53,10 +51,10 @@ def _expert(name: str, position: str = "Hydrologist") -> OpinionView:
 
 
 async def _answer(mode: str, answer: str, **given):
-    """Answer one turn. ``project`` holds the fields to change on the project (None: the
+    """Answer one turn. ``project_fields`` holds the fields to change on the project (None: the
     project tool is refused), ``opinions`` and ``briefs`` what the client returns, ``tools``
     what an agent's model calls first, ``settings`` the overrides of the service's settings."""
-    project = given.get("project", {})
+    project = given.get("project_fields", {})
     ctx = _ctx(
         project_id=None if mode == "agent" else PROJECT_ID,
         result=_result(),
@@ -80,144 +78,194 @@ async def _answer(mode: str, answer: str, **given):
 _FLOOD = {"name": "Flood plan"}
 _LONG = {"name": f"{NAME} " + "flood works " * 20}
 _PAST_50 = [_expert(f"Expert {n}") for n in range(10, 60)] + [_expert("Late Y 4")]
-# (id, mode, answer, reported numbers, kept copies, what the turn is given)
+_KEPT_50 = [f"Expert {n}" for n in range(10, 60)]
+
+
+def _row(name, mode, answer, *, bad=(), project=(), expert=(), kept=([], []), **given):
+    """Build a row: what the turn reports as ungrounded, as from the project's name and as
+    from an expert's name, and the project and expert names the context keeps."""
+    return pytest.param(mode, answer, list(bad), list(project), list(expert), kept, given, id=name)
+
+
 # fmt: off
 _CASES = [
     # Prefetched in workflow and hybrid mode: a name, never a unit or a description.
     *[case for mode in ("workflow", "hybrid") for case in (
-        (f"{mode}-name", mode, f"The project {NAME} has a peak of 14.19.", [], [NAME],
-         {"project": {"name": NAME}}),
-        (f"{mode}-number-outside", mode, f"The project {NAME} closes in 2027.", ["2027"], [NAME],
-         {"project": {"name": NAME}}),
-        (f"{mode}-unit-flagged", mode, "The scale unit is 9999.", ["9999"], ["Flood plan"],
-         {"project": {**_FLOOD, "scale_unit": "is 9999"}}),
-        (f"{mode}-description-flagged", mode, f"The budget limit is {PLANTED}.", [PLANTED],
-         ["Flood plan"], {"project": {**_FLOOD, "description": f"The budget limit is {PLANTED}"}}),
+        _row(f"{mode}-name", mode, f"The project {NAME} has a peak of 14.19.",
+             project=["2027"], kept=([NAME], []), project_fields={"name": NAME}),
+        _row(f"{mode}-number-outside", mode, f"The project {NAME} closes in 2027.",
+             bad=["2027"], kept=([NAME], []), project_fields={"name": NAME}),
+        _row(f"{mode}-unit-flagged", mode, "The scale unit is 9999.", bad=["9999"],
+             kept=(["Flood plan"], []), project_fields={**_FLOOD, "scale_unit": "is 9999"}),
+        _row(f"{mode}-description-flagged", mode, f"The budget limit is {PLANTED}.",
+             bad=[PLANTED], kept=(["Flood plan"], []),
+             project_fields={**_FLOOD, "description": f"The budget limit is {PLANTED}"}),
+        _row(f"{mode}-claim-name-shown", mode, f"The best compromise is {PLANTED} CZK.",
+             project=[PLANTED], kept=([f"{PLANTED} CZK"], []),
+             project_fields={"name": f"{PLANTED} CZK"}),
+        _row(f"{mode}-attack-shown-not-hidden", mode, f"The best compromise is {PLANTED}.",
+             project=[PLANTED], kept=([f"is {PLANTED}"], []),
+             project_fields={"name": f"is {PLANTED}"}),
+        _row(f"{mode}-attack-stated-twice", mode,
+             f"The best compromise is {PLANTED}. It costs {PLANTED} CZK.", bad=[PLANTED],
+             kept=([f"is {PLANTED}"], []), project_fields={"name": f"is {PLANTED}"}),
     )],
-    ("workflow-claim-name-flagged", "workflow", "The best compromise is 7351 CZK.", ["7351"],
-     ["7351 CZK"], {"project": {"name": "7351 CZK"}}),
-    ("workflow-expert-name", "workflow", f"{EXPERT} gave 42.00.", [], [OWN, EXPERT],
-     {"opinions": [_expert(EXPERT)]}),
-    ("workflow-position-flagged", "workflow", f"Jana, Hydrologist {PLANTED}, gave 42.00.",
-     [PLANTED], [OWN, "Jana Novakova"],
-     {"opinions": [_expert("Jana Novakova", f"Hydrologist {PLANTED}")]}),
-    ("hybrid-shows-no-opinions", "hybrid", f"{EXPERT} gave a high value.", ["41"], [OWN],
-     {"opinions": [_expert(EXPERT)]}),
-    ("cut-name-with-dots", "workflow", f"The project {_CUT} is open.", [], [_CUT],
-     {"project": _LONG}),
-    ("cut-name-without-dots", "workflow", f"The project {_CUT[:-3]} is open.", [], [_CUT],
-     {"project": _LONG}),
-    ("workflow-opinion-past-fiftieth", "workflow", "Late Y 4 came in last.", ["4"],
-     [OWN, *[f"Expert {n}" for n in range(10, 60)]], {"opinions": _PAST_50}),
+    _row("workflow-expert-name", "workflow", f"{EXPERT} gave 42.00.", expert=["41"],
+         kept=([OWN], [EXPERT]), opinions=[_expert(EXPERT)]),
+    _row("workflow-project-and-expert", "workflow", f"{NAME} and {EXPERT} gave 42.00.",
+         project=["2027"], expert=["41"], kept=([NAME], [EXPERT]),
+         project_fields={"name": NAME}, opinions=[_expert(EXPERT)]),
+    _row("workflow-both-sources-is-project", "workflow", f"{EXPERT} gave 42.00.",
+         project=["41"], kept=([EXPERT], [EXPERT]),
+         project_fields={"name": EXPERT}, opinions=[_expert(EXPERT)]),
+    _row("workflow-both-sources-in-turn-is-project", "workflow",
+         f"{NAME} and Expert 2027 are open.", project=["2027"],
+         kept=([NAME], ["Expert 2027"]), project_fields={"name": NAME},
+         opinions=[_expert("Expert 2027")]),
+    _row("workflow-expert-number-also-outside", "workflow", f"{EXPERT} said 41.",
+         bad=["41"], kept=([OWN], [EXPERT]), opinions=[_expert(EXPERT)]),
+    _row("workflow-position-flagged", "workflow", f"Jana, Hydrologist {PLANTED}, gave 42.00.",
+         bad=[PLANTED], kept=([OWN], ["Jana Novakova"]),
+         opinions=[_expert("Jana Novakova", f"Hydrologist {PLANTED}")]),
+    _row("hybrid-shows-no-opinions", "hybrid", f"{EXPERT} gave a high value.", bad=["41"],
+         kept=([OWN], []), opinions=[_expert(EXPERT)]),
+    _row("cut-name-with-dots", "workflow", f"The project {_CUT} is open.", project=["2027"],
+         kept=([_CUT], []), project_fields=_LONG),
+    _row("cut-name-without-dots", "workflow", f"The project {_CUT[:-3]} is open.",
+         project=["2027"], kept=([_CUT], []), project_fields=_LONG),
+    _row("workflow-opinion-past-fiftieth", "workflow", "Late Y 4 came in last.", bad=["4"],
+         kept=([OWN], _KEPT_50), opinions=_PAST_50),
     # Read by an agent's tools.
-    ("agent-get-project", "agent", f"{NAME} uses the unit is 9999.", ["9999"], [NAME],
-     {"project": {"name": NAME, "scale_unit": "is 9999"}, "tools": ("get_project",)}),
-    ("agent-get-project-twice", "agent", f"The project is {NAME}.", [], [NAME, NAME],
-     {"project": {"name": NAME}, "tools": ("get_project", "get_project")}),
-    ("agent-list-my-projects", "agent", f"You have {NAME} and Roads 2028.", [],
-     [NAME, "Roads 2028"], {"briefs": _BRIEFS, "tools": ("list_my_projects",)}),
-    ("agent-project-past-fiftieth", "agent", "There is also Overflow 2027.", ["2027"], _NAMES[:50],
-     {"briefs": _FIFTY_ONE, "tools": ("list_my_projects",)}),
-    ("agent-opinions", "agent", f"{EXPERT} gave 42.00 and is a Hydrologist {PLANTED}.", [PLANTED],
-     [EXPERT], {"opinions": [_expert(EXPERT, f"Hydrologist {PLANTED}")],
-                "tools": ("get_project_opinions",)}),
-    ("agent-refused-tool", "agent", "It is not there.", [], [],
-     {"project": None, "tools": ("get_project",)}),
+    _row("agent-get-project", "agent", f"{NAME} uses the unit is 9999.", bad=["9999"],
+         project=["2027"], kept=([NAME], []), tools=("get_project",),
+         project_fields={"name": NAME, "scale_unit": "is 9999"}),
+    _row("agent-get-project-twice", "agent", f"The project is {NAME}.", project=["2027"],
+         kept=([NAME, NAME], []), tools=("get_project", "get_project"),
+         project_fields={"name": NAME}),
+    _row("agent-list-my-projects", "agent", f"You have {NAME} and Roads 2028.",
+         project=["2027", "2028"], kept=([NAME, "Roads 2028"], []),
+         briefs=_BRIEFS, tools=("list_my_projects",)),
+    _row("agent-project-past-fiftieth", "agent", "There is also Overflow 2027.", bad=["2027"],
+         kept=(_NAMES[:50], []), briefs=_FIFTY_ONE, tools=("list_my_projects",)),
+    _row("agent-opinions", "agent", f"{EXPERT} gave 42.00 and is a Hydrologist {PLANTED}.",
+         bad=[PLANTED], expert=["41"], kept=([], [EXPERT]),
+         opinions=[_expert(EXPERT, f"Hydrologist {PLANTED}")], tools=("get_project_opinions",)),
+    _row("agent-refused-tool", "agent", "It is not there.", project_fields=None,
+         tools=("get_project",)),
 ]
 # fmt: on
 
 
 @pytest.mark.asyncio
 class TestNamesInTheNumberCheck:
-    """The names a turn shows the model are copies; nothing else it shows is."""
+    """The names a turn shows the model explain their digits, on a line of their own."""
 
     @pytest.mark.parametrize(
-        ("mode", "answer", "ungrounded", "copies", "given"),
-        [pytest.param(*case[1:], id=case[0]) for case in _CASES],
+        ("mode", "answer", "bad", "project", "expert", "kept", "given"), _CASES
     )
     async def test_a_turn_reports_and_keeps_what_the_table_says(
-        self, mode, answer, ungrounded, copies, given
+        self, mode, answer, bad, project, expert, kept, given
     ):
         """
         GIVEN a turn in workflow, hybrid or agent mode (the table above: a project name, a
-              unit, a description, expert names, positions, a cut name, a tool called twice,
-              a list or opinions past the fiftieth, a refused tool) whose answer repeats it
+              name that reads as a claim, a unit, a description, expert names, positions, a
+              cut name, a tool called twice, a list or opinions past the fiftieth, a refused
+              tool) whose answer repeats it
         WHEN the turn is answered
-        THEN the response reports exactly the numbers the table lists, the context keeps
-             exactly the names the table lists, and an agent's tools used are the ones called
+        THEN the response lists exactly the ungrounded numbers, the numbers from the project
+             name and the numbers from an expert's name that the table lists, the three
+             lists share no number, the warning flag follows the ungrounded list alone, the
+             context keeps exactly the names the table lists, and an agent's tools used are
+             the ones called
         """
         response, ctx = await _answer(mode, answer, **given)
 
-        assert response.checks.ungrounded_numbers == ungrounded
-        assert response.checks.numbers_grounded is (not ungrounded)
-        assert ctx.text_copies == copies
+        checks = response.checks
+        assert checks.ungrounded_numbers == bad
+        assert checks.project_name_numbers == project
+        assert checks.expert_name_numbers == expert
+        assert checks.numbers_grounded is (not bad)
+        assert not set(bad) & set(project) | set(bad) & set(expert) | set(project) & set(expert)
+        assert (ctx.project_name_copies, ctx.expert_name_copies) == kept
         if mode == "agent":
             assert response.tools_used == list(dict.fromkeys(given["tools"]))
         if mode == "hybrid":
             ctx.client.get_opinions.assert_not_awaited()
 
-    async def test_a_name_written_as_a_claim_passes_when_copied_and_not_when_restated(self):
+    async def test_the_log_record_counts_the_two_name_lines(self):
         """
-        GIVEN a project named "Best compromise 99"
-        WHEN the answer repeats the name as its own sentence, and in another turn restates 99
-        THEN the first reports nothing, the residual risk the check's docstring names, and
-             the second reports 99
+        GIVEN a turn whose answer repeats a project name and an expert name
+        WHEN it is answered
+        THEN the record carries the two counts, the numbers_grounded flag stays True, and no
+             field holds a number or a name
         """
-        name = "Best compromise 99"
-        answers = [f"{name}.", f"The project {name}, and 99 is the figure."]
+        with captured_log_records(SERVICE_LOGGER) as records:
+            await _answer(
+                "workflow",
+                f"{NAME} and {EXPERT} gave 42.00.",
+                project_fields={"name": NAME},
+                opinions=[_expert(EXPERT)],
+            )
 
-        reported = [
-            (await _answer("workflow", answer, project={"name": name}))[0].checks.ungrounded_numbers
-            for answer in answers
-        ]
+        (record,) = records
+        assert (record.project_name_number_count, record.expert_name_number_count) == (1, 1)
+        assert record.numbers_grounded is True
+        assert record.ungrounded_number_count == 0
+        texts = [str(value) for value in vars(record).values()]
+        assert not any("2027" in text or "Expert" in text for text in texts)
 
-        assert reported == [[], ["99"]]
+    async def test_a_number_real_in_either_pass_is_reported_once_and_in_no_name_list(self):
+        """
+        GIVEN a turn with sources hidden whose text and shown text differ by a citation: in
+              one answer the number stands outside a copy only once the citation is gone, in
+              the other only while the citation is there
+        WHEN the answer is checked, as written and as the client is shown it
+        THEN the number is reported as ungrounded, once, and is in neither name list
+        """
+        answers = [f"{NAME} and 2[1]027 differ.", f"{NAME[:-4]}[1]2027 and {NAME} differ."]
+
+        for answer in answers:
+            ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
+            ctx.client.get_project.return_value = _project().model_copy(update={"name": NAME})
+            model = _model(_say(answer))
+            service = AssistantService(_settings(assistant_show_sources=False), model)
+
+            response = await service.answer(_request(), ctx)
+
+            assert "[1]" not in response.answer
+            assert "2027" in response.checks.ungrounded_numbers, answer
+            assert response.checks.ungrounded_numbers.count("2027") == 1
+            assert response.checks.project_name_numbers == []
 
     async def test_a_copy_next_to_a_hidden_citation_is_masked_in_the_shown_text_too(self):
         """
         GIVEN a turn with sources hidden, whose answer repeats the name and cites a source
         WHEN the answer is checked, as written and as the client is shown it
-        THEN neither pass reports the number, and both receive the copies
+        THEN neither text reports the number as ungrounded, and the name's number is listed
         """
         ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
         ctx.client.get_project.return_value = _project().model_copy(update={"name": NAME})
         model = _model(_say(f"The project {NAME} is open [1]."))
         service = AssistantService(_settings(assistant_show_sources=False), model)
 
-        with patch.object(
-            service_module, "find_ungrounded_numbers", wraps=find_ungrounded_numbers
-        ) as spy:
-            response = await service.answer(_request(), ctx)
+        response = await service.answer(_request(), ctx)
 
-        assert "[1]" not in response.answer
+        assert response.answer == f"The project {NAME} is open."
         assert response.checks.ungrounded_numbers == []
-        assert len(spy.call_args_list) == 2
-        assert all(call.kwargs["copies"] == [NAME] for call in spy.call_args_list)
+        assert response.checks.project_name_numbers == ["2027"]
 
-    async def test_the_copies_are_not_part_of_the_grounding(self):
-        """
-        GIVEN a turn with a copy
-        WHEN the answer is checked
-        THEN the grounding texts hold no copy, and the copies go as a keyword
-        """
-        with patch.object(
-            service_module, "find_ungrounded_numbers", wraps=find_ungrounded_numbers
-        ) as spy:
-            await _answer("workflow", "Fine.", project={"name": NAME})
-
-        assert NAME not in spy.call_args.args[1]
-        assert spy.call_args.kwargs == {"copies": [NAME]}
-
-    async def test_the_streamed_turn_masks_the_copy_as_well(self):
+    async def test_the_streamed_turn_lists_the_name_numbers_as_well(self):
         """
         GIVEN a workflow turn that is prepared and then streamed
-        WHEN the answer repeats the project name
-        THEN the response reports no number
+        WHEN the answer repeats the project name and an expert name
+        THEN the response lists no ungrounded number and the two name numbers
         """
-        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_expert(EXPERT)])
         ctx.client.get_project.return_value = _project().model_copy(update={"name": NAME})
-        model = _model(_say(f"The project {NAME} is open."))
+        model = _model(_say(f"The project {NAME} and {EXPERT} are open."))
 
         _pieces, response = await _drain(AssistantService(_settings(), model), _request(), ctx)
 
         assert response.checks.ungrounded_numbers == []
+        assert response.checks.project_name_numbers == ["2027"]
+        assert response.checks.expert_name_numbers == ["41"]

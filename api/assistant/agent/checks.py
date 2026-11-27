@@ -93,11 +93,8 @@ _NUMBER_JOINERS = "[ \u00a0\u202f.,/:\\-\u2013\u2212]"
 _COPY_BEFORE = rf"(?<![^\W_])(?<!\d{_NUMBER_JOINERS})"
 _COPY_AFTER = rf"(?![^\W_])(?!{_NUMBER_JOINERS}\d)(?!\s*[%\u2030])"
 # A field is a name, and its digits part of the name, only when it has this many characters
-# and at least two words, the first of letters only: ``Budget 2027``, ``Expert 41``. A bare
-# number or a number first (``7351 CZK``, ``2027``, ``Q4 2027``) reads as the model's own
-# claim, so it is never a copy.
+# and a letter: ``Budget 2027``, ``7351 CZK``. A bare number (``2027``, ``12.5``) is never a copy.
 _COPY_MIN_LENGTH = 4
-_COPY_MIN_WORDS = 2
 _CUT_MARK = "..."
 
 
@@ -699,19 +696,12 @@ def _drop_words(text: str) -> str:
 
 
 def _is_name(field: str) -> bool:
-    """Tell whether a field, with its cut dots removed, is a name whose digits a copy may hide.
+    """Tell whether a field, with its cut dots removed, is a name a copy may be made of.
 
     :param field: A free-text field as the model was shown it.
-    :return: True when it has at least 4 characters and two words, and its first word holds
-        a letter and no digit.
+    :return: True when it has at least 4 characters and a letter.
     """
-    words = field.split()
-    return (
-        len(field) >= _COPY_MIN_LENGTH
-        and len(words) >= _COPY_MIN_WORDS
-        and any(char.isalpha() for char in words[0])
-        and not any(char.isdigit() for char in words[0])
-    )
+    return len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
 
 
 def _mask_copies(text: str, copies: Iterable[str]) -> str:
@@ -721,9 +711,9 @@ def _mask_copies(text: str, copies: Iterable[str]) -> str:
     word sequence (see ``_COPY_BEFORE`` and ``_COPY_AFTER``); any run of whitespace in the
     field matches any run of whitespace in the text. A field that ends in ``...`` was cut
     to its limit and is matched without the dots. A field is a copy only when, after that,
-    it has at least 4 characters and two words, and its first word holds a letter and no
-    digit (see ``_COPY_MIN_WORDS``). The longest copy is tried first. The pattern is built
-    from escaped literals only, so matching is linear in the text.
+    it has at least 4 characters and a letter (see :func:`_is_name`). The longest copy is
+    tried first. The pattern is built from escaped literals only, so matching is linear in
+    the text.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
@@ -876,17 +866,14 @@ def find_ungrounded_numbers(
     :func:`check_citations`; and a link target that holds a bracket or a parenthesis is
     not recognised as a target (a bare ``http`` address in it is still dropped).
 
-    The digits of a project name or of an expert name are part of that name: an answer that
-    repeats ``Budget 2027`` as the model was shown it does not carry a number, and ``copies``
-    lists those fields, the names this turn's data blocks showed (see :func:`_mask_copies`
-    for what counts as a repeat). A field counts when it has at least 4 characters and two
-    words, the first of letters only, so ``7351 CZK`` and ``Q4 2027`` never do. The repeat
-    must be exact, in the same case, as a whole word sequence with no digit, joiner or
-    percent sign next to it; a cut name is matched without its dots. A copy grounds nothing:
-    the same number written anywhere else in the answer is checked as usual. The residual
-    risk is a name written as a phrase (a project the admin called ``Compromise is 7351
-    CZK``) and repeated verbatim: it passes, while the same number stated elsewhere is still
-    reported. A masked copy becomes a filler like any other dropped token, so a minus right
+    ``copies`` lists the names the model was shown (the names of the projects and of the
+    experts, as the data blocks write them): an answer that repeats one verbatim, as a whole
+    word sequence and in the same case, is not scanned for the digits inside it (see
+    :func:`_mask_copies` for what counts as a repeat and as a name). The caller decides what
+    to say about those digits: the assistant service reports them on a line of their own,
+    so a name written as a claim (a project called ``is 7351``) hides nothing. A copy
+    grounds nothing: the same number written anywhere else in the answer is checked as
+    usual. A masked copy becomes a filler like any other dropped token, so a minus right
     after it is not read as a sign.
 
     :param answer: The model's final answer text.
@@ -896,9 +883,9 @@ def find_ungrounded_numbers(
         earlier turns, and the pinned numbers. Never the free text of a project (name,
         description, unit, expert names, positions), never earlier answers, and never the
         system prompt, whose citation example would ground a digit.
-    :param copies: The free text the model was shown, whose digits are part of a repeat of
-        it: the names of the projects and of the experts, as written in the data blocks.
-        Never the description, the unit or a position, and never part of the grounding.
+    :param copies: The names the model was shown, as written in the data blocks: the names of
+        the projects and of the experts. Never the description, the unit or a position, and
+        never part of the grounding.
     :return: Each ungrounded number as written in the answer, sign included, once, in
         order of first appearance.
     """
@@ -912,3 +899,41 @@ def find_ungrounded_numbers(
         ):
             ungrounded.append(token.written)
     return ungrounded
+
+
+@dataclass(frozen=True)
+class NumberCheck:
+    """What the number check found in one answer, with no number in two lists.
+
+    :ivar ungrounded: The numbers no grounding text supports and no copy of a name explains.
+    :ivar project_name: The numbers whose every unsupported occurrence lies inside a copy of
+        a name, at least one of them a copy of a project name.
+    :ivar expert_name: The numbers whose every unsupported occurrence lies inside a copy of an
+        expert name.
+    """
+
+    ungrounded: list[str]
+    project_name: list[str]
+    expert_name: list[str]
+
+    def merge(self, other: "NumberCheck") -> "NumberCheck":
+        """Join the checks of two readings of one answer into one.
+
+        A number that is ungrounded in either reading is ungrounded, and so in no name list;
+        a number named by a project in either reading is the project's.
+
+        :param other: The check of the second reading.
+        :return: The union of both, each number in one list, first appearance first.
+        """
+        ungrounded = list(dict.fromkeys([*self.ungrounded, *other.ungrounded]))
+        project = [
+            number
+            for number in dict.fromkeys([*self.project_name, *other.project_name])
+            if number not in ungrounded
+        ]
+        expert = [
+            number
+            for number in dict.fromkeys([*self.expert_name, *other.expert_name])
+            if number not in ungrounded and number not in project
+        ]
+        return NumberCheck(ungrounded, project, expert)

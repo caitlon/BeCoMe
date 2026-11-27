@@ -215,18 +215,25 @@ without calling any model.
   among the few constants the instructions pin (the 20% and 40% thresholds and the divisors of the
   formulas). A project number counts only when it is one of the project's calculated or entered
   values: the result, the opinions' values, the scale bounds and the counts the assistant is
-  shown. A number that appears only in the project's name, description, unit, or in an expert's
-  name or position does not count. One case is the exception: the digits of a project name or an
-  expert name that this turn's data showed are part of the name, so an answer that repeats
-  "Budget 2027" exactly as shown is not flagged for the 2027. A name counts only when it has at
-  least 4 characters and two words, and its first word holds letters only, so "7351 CZK" and
-  "Q4 2027" never count. The repeat must be exact (same case, a whole word sequence, with no
-  digit, separator or percent sign next to it), and a name cut to its limit is matched without
-  its dots. The same number written anywhere else in the answer is checked as usual. The
-  remaining gap: a project name written as a phrase by the project's admin ("Compromise is 7351
-  CZK") and repeated word for word passes, while the same number stated elsewhere is still
-  flagged. A rounded or shortened value counts as found: if the data says 14.19, an answer that
-  says 14.2 passes.
+  shown. A number that appears only in the project's name, description or unit, or in an
+  expert's name or position, does not count (the next point covers a name the answer repeats). A
+  rounded or shortened value counts as found: if the data says 14.19, an answer that says 14.2
+  passes.
+- **Numbers from a name.** The digits of a project name or an expert name that this turn's data
+  showed are part of the name, and the answer may repeat the name. When the answer repeats a name
+  exactly as shown, a number that appears only inside such a repeat is not reported as unconfirmed.
+  The repeat has the same case, is a whole word sequence with no digit, separator or percent sign
+  next to it, and a name cut to its limit is matched without its dots. A name needs at least 4
+  characters and a letter. The panel shows such a number on a neutral line of its own instead, "From
+  the project name, not the data: 2027" or "From an expert's name, not the data: 41", and nothing is
+  hidden: a project named "is 7351" gives that line when the answer says "The best compromise is
+  7351." A number that is also written anywhere else in the answer stays among the unconfirmed ones.
+  A number that comes from both kinds of name is listed as from the project name. A number that
+  another rule already drops from the check (a date, a name such as "COVID-19", a list ordinal) gets
+  no line. The response's `checks` carries the two lists as `project_name_numbers` and
+  `expert_name_numbers`, empty by default, and `numbers_grounded` stays true while only they are
+  filled. A client that does not read them shows no line for such a number, so the panel that reads
+  them ships before the server that fills them.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the
@@ -238,9 +245,10 @@ stays.
 
 A failed check does not block the answer and does not regenerate it. The answer arrives with a
 flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
-invalid. With sources hidden, as on production, only the number warning can appear. Answering
-again would cost another model call and could fail the same way, while the warning tells you what
-to verify. On the sealed set, 3% of the answers had a number the check
+invalid. The numbers from a name are not a failed check: they come on their own neutral line and do
+not raise the warning. With sources hidden, as on production, only the number warning can appear.
+Answering again would cost another model call and could fail the same way, while the warning tells
+you what to verify. On the sealed set, 3% of the answers had a number the check
 could not confirm, and 1% cited a passage that did not exist.
 
 The number check has limits. It sees the numbers but not what they belong to, so a real number
