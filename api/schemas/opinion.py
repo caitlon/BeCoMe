@@ -13,12 +13,18 @@ if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
 
 
+# Field cap on the position.
+OPINION_POSITION_MAX = 255
+
+
 class OpinionCreate(BaseModel):
     """Request to create or update an expert opinion."""
 
     model_config = ConfigDict(extra="forbid")
 
-    position: str = Field(..., min_length=1, max_length=255, description="Expert's position/role")
+    position: str = Field(
+        ..., min_length=1, max_length=OPINION_POSITION_MAX, description="Expert's position/role"
+    )
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")
     peak: float = Field(..., description="Peak value (most preferred)")
     upper_bound: float = Field(..., description="Upper bound (optimistic estimate)")
