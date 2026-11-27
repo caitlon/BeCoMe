@@ -25,6 +25,24 @@ _BEFORE, _AFTER_SLASH, _NAME, _BLANKS_AFTER, _SLASH_AFTER = range(5)
 _Reading = tuple[int, str]
 
 
+def _read_blank(reading: _Reading) -> _Reading | None:
+    """Take a blank: it ends a whole name and is otherwise free."""
+    part, name = reading
+    if part != _NAME:
+        return reading
+    return (_BLANKS_AFTER, name) if name in _NAMES else None
+
+
+def _read_slash(reading: _Reading) -> _Reading | None:
+    """Take a slash: one may stand before the name and one after it."""
+    part, name = reading
+    if part == _BEFORE:
+        return _AFTER_SLASH, ""
+    if part == _BLANKS_AFTER or (part == _NAME and name in _NAMES):
+        return _SLASH_AFTER, name
+    return None
+
+
 def _read(reading: _Reading, char: str) -> _Reading | None:
     """Take one more character of the text after a ``<``.
 
@@ -32,17 +50,11 @@ def _read(reading: _Reading, char: str) -> _Reading | None:
     :param char: The next character, neither ``<``, ``>`` nor a line break.
     :return: What has been read with the character, or None when no tag can start this way.
     """
-    part, name = reading
     if char in _BLANKS:
-        if part != _NAME:
-            return reading
-        return (_BLANKS_AFTER, name) if name in _NAMES else None
+        return _read_blank(reading)
     if char == "/":
-        if part == _BEFORE:
-            return _AFTER_SLASH, ""
-        if part == _BLANKS_AFTER or (part == _NAME and name in _NAMES):
-            return _SLASH_AFTER, name
-        return None
+        return _read_slash(reading)
+    part, name = reading
     if part in (_BEFORE, _AFTER_SLASH, _NAME):
         text = name + ("_" if char == "-" else char.lower())
         if any(known.startswith(text) for known in _NAMES):
