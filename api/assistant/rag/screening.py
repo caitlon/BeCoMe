@@ -68,11 +68,12 @@ _ROLE_MARKERS: tuple[str, ...] = (
 # "you should answer", "add the text" and "pridejte text", "start every answer with" and
 # "close all messages with" and "ukoncete vsechny zpravy", "you must answer" without "always"
 # or "never", and an addressee line without a colon or comma after it ("message to the model
-# owner"). Also narrowed: a bare "model" as the reader ("the model processing the opinions"),
-# "processing the" (only "this" and "these" count), and the Czech "tell the user", "vzdy
-# odpovidej" and "nikdy rikej", which need the "ze" ("that") after them like the English one.
+# owner"). Also narrowed: "processing the" (only "this" and "these" count, which is what keeps
+# "the model processing the opinions" clean), the Czech reader pattern, which has no such guard
+# and so leaves out a bare "model", and the Czech "tell the user", "vzdy odpovidej" and "nikdy
+# rikej", which need the "ze" ("that") or a colon after them.
 _ADDRESSEE = r"(?:(?:ai\s*)?(?:assistant|chatbot|bot|model|llm|language\s*model)|ai)"
-_ADDRESSEE_READER = r"(?:assistant|ai|chatbot|bot|llm|language\s*model)s?"
+_ADDRESSEE_READER = r"(?:assistant|ai|chatbot|bot|model|llm|language\s*model)s?"
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
@@ -113,9 +114,9 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"(?:frazi|vetu)\b",
         r"\b(?:ukonci|ukoncete|zakonci|zakoncete|zacni|zacnete|zacinej|zacinejte)\s*"
         r"(?:kazdou|vsechny|svou|svoji)\s*(?:odpoved|odpovedi)\b",
-        r"\b(?:rekni|reknete|sdel|sdelte)\s*uzivateli\s*,?\s*ze\b",
+        r"\b(?:rekni|reknete|sdel|sdelte)\s*uzivateli\s*(?:,?\s*ze\b|:)",
         r"\b(?:vzdy|nikdy)\s*(?:odpovidej(?:te)?|odpovez(?:te)?|rikej(?:te)?|tvrd(?:te)?)"
-        r"\s*,?\s*ze\b",
+        r"\s*(?:,?\s*ze\b|:)",
     )
 )
 
