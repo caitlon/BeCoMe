@@ -549,6 +549,22 @@ describe('AuthContext across tabs', () => {
       })
 
       expect(tab.result.current.auth.user?.first_name).toBe('Renamed')
+      expect(tab.result.current.auth.status).toBe('authenticated')
+    })
+
+    it('does not sign the tab back in on a late profile write after a received signed-out', async () => {
+      const tab = await signedInTab()
+      const other = otherTab()
+
+      act(() => {
+        other.channel.postMessage({ type: 'signed-out' })
+      })
+      act(() => {
+        tab.result.current.auth.setCurrentUser(createUser({ id: '1', first_name: 'Late' }))
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.result.current.auth.user).toBeNull()
     })
 
     it('ignores a probe refused while the login request is out, then ends up signed in', async () => {

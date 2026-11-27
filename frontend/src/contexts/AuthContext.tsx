@@ -267,10 +267,17 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
   }, [queryClient, updateUser]);
 
-  // A profile update the caller already holds is newer than any probe still in flight.
+  // A profile update the caller already holds is newer than any probe still in flight, and a
+  // successful write proves the session was valid, so a status a probe left at 'loading'
+  // settles here. A tab that holds no user ignores it: the write's response arrived after a
+  // sign-out, and it must not sign the tab back in.
   const setCurrentUser = useCallback((next: User) => {
+    if (userRef.current === null) {
+      return;
+    }
     epochRef.current += 1;
     updateUser(next);
+    setStatus((current) => (current === 'loading' ? 'authenticated' : current));
   }, [updateUser]);
 
   const value = useMemo(() => ({
