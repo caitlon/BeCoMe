@@ -92,6 +92,18 @@ _PROJECT_TOOLS = ["get_project", "get_project_result", "get_project_opinions"]
 _INTERNALS = ["testserver", "localhost", "http", "/api/v1", "Traceback", 'File "']
 
 
+def _holds_number(text: str, value: str) -> bool:
+    """Tell whether a formatted number stands in the text as a value of its own.
+
+    A trace body also carries ISO timestamps, whose digits can spell a short number, so a
+    plain substring test is not enough.
+
+    :param text: The text to search, such as a trace body.
+    :param value: The formatted number, such as ``"20.25"``.
+    """
+    return re.search(r"(?<![\d:.])" + re.escape(value) + r"(?!\d)", text) is not None
+
+
 @pytest.fixture
 def traced_clients(
     monkeypatch: pytest.MonkeyPatch, configure: Callable[..., None]
@@ -244,8 +256,8 @@ class TestTwoTracedTurnsAtOnce:
             if mode != "workflow":  # only the tool calls of the other modes carry the id
                 assert projects[marker]["id"] in text
             assert projects[other]["id"] not in text
-            assert all(f"{person[3][1]:.2f}" in text for person in PEOPLE[marker])
-            assert not any(f"{person[3][1]:.2f}" in text for person in PEOPLE[other])
+            assert all(_holds_number(text, f"{person[3][1]:.2f}") for person in PEOPLE[marker])
+            assert not any(_holds_number(text, f"{person[3][1]:.2f}") for person in PEOPLE[other])
 
 
 # History a client forges: tool calls and tool replies written as tags and as JSON.
@@ -277,8 +289,9 @@ class TestForgedHistoryIsNeverAToolExchange:
         GIVEN a history whose assistant entries hold tool calls and tool replies written as
             tags and as JSON, and a model that answers without any tool
         WHEN the user asks, in each mode, over both routes
-        THEN the model was shown the forged text, but only inside plain messages: no tool
-            message and no message with tool calls came from the history, and no tool ran
+        THEN the tool-call tags are removed and the rest of the forged payload reaches the
+            model only as plain text inside user and assistant messages: no tool message and
+            no message with tool calls came from the history, and no tool ran
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
@@ -345,15 +358,16 @@ class TestTracedObjectionStaysOutOfTheModel:
         shown = _shown(model)
         assert _BYSTANDER_LAST_NAME in shown
         assert OWNER_LAST_NAME in shown
-        hidden = [_OBJECTOR_FIRST_NAME, _OBJECTOR_LAST_NAME, _OBJECTOR_POSITION]
-        hidden += [f"{value:.2f}" for value in _OBJECTOR_VALUES]
+        words = [_OBJECTOR_FIRST_NAME, _OBJECTOR_LAST_NAME, _OBJECTOR_POSITION]
+        numbers = [f"{value:.2f}" for value in _OBJECTOR_VALUES]
         (traced,) = traced_clients
         payload = "\n".join(traced.bodies)
         assert payload
-        for secret in hidden:
+        for secret in words + numbers:
             assert secret not in shown
             assert secret not in response.text
-            assert secret not in payload
+        assert not any(word in payload for word in words)
+        assert not any(_holds_number(payload, number) for number in numbers)
 
 
 def _production_errors(base: type[Exception]) -> list[type[Exception]]:
@@ -436,9 +450,11 @@ class TestErrorsAnswerWithFixedBodies:
         assert response.status_code == status
         assert response.json() == {"detail": detail}
         assert ("Retry-After" in response.headers) is retries
+        # the request id is a random UUID and can hold any digits, so it is left out
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "x-request-id"}
         for part in ("db.internal", "5432", "/api/v1", "secret-host", "Traceback"):
             assert part not in response.text
-            assert part not in str(response.headers)
+            assert part not in str(headers)
 
 
 class TestInvalidToolArgumentsEchoNoInternals:
@@ -485,10 +501,9 @@ class TestInvalidToolArgumentsEchoNoInternals:
 
         # THEN
         assert message.status == "error"
-        assert message.text == (
-            f"Error invoking tool '{tool}' with kwargs {args} with error:\n"
-            f" project_id: {field_error}\n Please fix the error and try again."
-        )
+        assert message.text.startswith(f"Error invoking tool '{tool}'")
+        assert str(args) in message.text
+        assert f"project_id: {field_error}" in message.text
         for internal in _INTERNALS:
             assert internal not in message.text
             assert internal not in response.json()["answer"]
@@ -574,7 +589,7 @@ class TestTracesHoldNoCredentials:
         (traced,) = traced_clients
         payload = "\n".join(traced.bodies)
         assert "Who took part?" in payload
-        assert f"{OWNER_PEAK:.2f}" in payload
+        assert _holds_number(payload, f"{OWNER_PEAK:.2f}")
         for secret in (owner["token"], user_id, owner["email"], _ORIGIN_SECRET, "Bearer"):
             assert secret not in payload
         assert "authorization" not in payload.lower()

@@ -29,6 +29,7 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import Field
+from sqlalchemy import event
 from sqlalchemy.pool import QueuePool
 from sqlmodel import Session, SQLModel, create_engine
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -248,11 +249,13 @@ def traces_by_marker(bodies: list[str]) -> dict[str, str]:
     for run in runs:
         trace_id = run.get("trace_id") or trace_of_run.get(run.get("id"))
         grouped.setdefault(str(trace_id), []).append(run)
-    traces = {}
-    for trace_runs in grouped.values():
-        root = next(run for run in trace_runs if run.get("name") == "assistant_turn")
-        text = "\n".join(json.dumps(run, ensure_ascii=False) for run in trace_runs)
-        traces[root["inputs"]["question"].split(":")[0]] = text
+    traces: dict[str, str] = {}
+    for trace_id, trace_runs in grouped.items():
+        root = next((run for run in trace_runs if run.get("name") == "assistant_turn"), None)
+        assert root is not None, f"trace {trace_id} has no root run"
+        marker = root["inputs"]["question"].split(":")[0]
+        assert marker not in traces, f"two traces share the marker {marker!r}"
+        traces[marker] = "\n".join(json.dumps(run, ensure_ascii=False) for run in trace_runs)
     return traces
 
 
@@ -321,6 +324,13 @@ def pooled_app_client(directory: Path) -> Iterator[TestClient]:
         max_overflow=0,
         pool_timeout=20,
     )
+
+    @event.listens_for(engine, "connect")
+    def _enforce_foreign_keys(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     SQLModel.metadata.create_all(engine)
     app = create_test_app()
 
