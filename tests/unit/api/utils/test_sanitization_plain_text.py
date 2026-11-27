@@ -36,13 +36,15 @@ _TEXT = st.lists(
 def _sanitize_or_reject(text: str) -> str:
     """Sanitize generated text, rejecting the example when the pass limit refuses it.
 
-    The strategy can build tags nested five or more levels deep, which ``sanitize_text``
-    refuses by design (``TestPassLimit``), so such an example says nothing about the
-    properties below.
+    Tags nested five or more levels deep are refused by design (``TestPassLimit``). The
+    strategy rarely builds them, but such an example says nothing about the properties
+    below. Any other ValueError still fails the test.
     """
     try:
         return sanitize_text(text)
-    except ValueError:
+    except ValueError as exc:
+        if "could not be sanitized" not in str(exc):
+            raise
         reject()
 
 
