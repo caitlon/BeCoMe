@@ -268,9 +268,9 @@ class _TurnResponse(StreamingResponse):
         """Send the response, then close the body and the turn's trace however that ends.
 
         A failed write leaves the body suspended at its last piece, and with it the producer
-        task that runs the model. Closing the body first cancels the model's call at once, and
-        ends the children's runs before the root's. Closing a body that never started, or that
-        has finished, does nothing.
+        task that runs the model. Closing the body stops that producer and the model's call.
+        The trace is ended in every case. Closing a body that never started, or that has
+        finished, does nothing.
         """
         with ending_turn(self._trace):
             try:

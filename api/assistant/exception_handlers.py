@@ -172,8 +172,9 @@ def assistant_error_handler(request: Request, exc: AssistantError) -> JSONRespon
     is a missed case in our code, not a model server that is down or full, so it answers like
     any other unhandled fault: 500 with the generic body, not the retryable 503 of
     :data:`UNAVAILABLE_DETAIL`. The record names where it was raised (see
-    :func:`~api.assistant.agent.generation.raised_at`) and never its text. Without this handler the error would reach the app's
-    ``BeCoMeAPIError`` handler, which answers 400 with the error's text as the detail.
+    :func:`~api.assistant.agent.generation.raised_at`) and never its text. Without this
+    handler the error would reach the app's ``BeCoMeAPIError`` handler, which answers 400 with
+    the error's text as the detail.
 
     :param request: FastAPI request.
     :param exc: The raised error.

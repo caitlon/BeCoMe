@@ -461,7 +461,7 @@ class TestTraceOfAResponseThatIsTornDown:
         GIVEN a prepared stream whose trace is held, a server reporting ASGI 2.3 (uvicorn does),
             and a client whose disconnect is the first message
         WHEN the response is run
-        THEN the trace is ended and released exactly once, whether or not the body had started
+        THEN the trace is ended and released exactly once
         """
         # GIVEN
         client, runs = traced
