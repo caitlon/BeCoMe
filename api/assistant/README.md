@@ -492,10 +492,10 @@ watch for the disconnect itself fails, the turn runs on without it and
   fixed, so an address can spend up to twice the cap across a window edge. Set it to `0` to switch
   it off on a laptop; a deployed service refuses `0` and refuses a value that is not below the
   global ceiling. It is separate from the per-minute limit described under "Per-address limit".
-- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero, at most 64) is the most turns
-  one process answers at once, and one user may run at most two of them, so a single account cannot
-  take every slot. A turn that finds no free slot is refused at once, not queued, with `503`, the
-  same body as an unreachable model server and `Retry-After: 5`; the record
+- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero, at most 64) is the
+  most turns one process answers at once, and one user may run at most two of them, so a single
+  account cannot take every slot. A turn that finds no free slot is refused at once, not queued,
+  with `503`, the same body as an unreachable model server and `Retry-After: 5`; the record
   `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user, and a
   refusal writes just that one. The slot is taken after the per-address limit and the address cap
   and before the message limit, so a turn refused for a full process spends no message of the hourly
@@ -539,18 +539,18 @@ watch for the disconnect itself fails, the turn runs on without it and
   over the limit is answered `429`, not `401`. Each route has its own counter, so `/chat` and
   `/chat/stream` each allow `20/minute` per address, while the hourly message limit is shared by
   both.
-- **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180, at most 600) bounds one turn, fetching and
-  generation together; a turn that outlives it is answered `503`.
-- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90, at most 300) bounds the work done
-  before a response's first byte, and is kept under the 100 seconds after which Cloudflare
+- **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180, at most 600) bounds one turn,
+  fetching and generation together; a turn that outlives it is answered `503`.
+- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90, below 100) bounds the
+  work done before a response's first byte, and is kept under the 100 seconds after which Cloudflare
   answers `524` for an origin that has sent nothing. It is counted from the start of the turn's
   preparation, not from the request's arrival. It applies to the retrieval and project fetch that
   precede a stream and to the whole of a `/chat` turn, whose answer is one body. A turn that
   outlives it is answered `503` like any other, and the record `assistant_turn_timeout` names the
   limit that fired in `timeout_limit` (`first_byte` or `turn`). The streamed part of a turn keeps
   the full turn deadline. The setting can only shorten a turn: with a turn timeout below it, the
-  turn timeout fires first. `/chat` fails at 90 seconds by default; set the variable above the
-  turn timeout to restore the turn timeout as the only limit.
+  turn timeout fires first. `/chat` fails at 90 seconds by default; set the variable above the turn
+  timeout to restore the turn timeout as the only limit.
 
 ### Tracing
 

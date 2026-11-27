@@ -491,8 +491,8 @@ class Settings(BaseSettings):
     # of a /chat turn, whose answer is one JSON body. Keep it under the 100 seconds after
     # which Cloudflare answers 524 for an origin that has sent nothing. The streamed part of
     # a turn is not held to it and keeps the full turn timeout above, which this value can
-    # only shorten: a turn timeout below it decides first. At most 300 seconds.
-    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0, le=300)
+    # only shorten: a turn timeout below it decides first. Below 100 seconds.
+    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0, lt=100)
     # How often a waiting /chat/stream sends a keep-alive comment, in seconds, so that
     # a proxy sees bytes while the model is still working (the agent modes send nothing
     # until the final response). Below 100, the idle time after which Cloudflare answers 524.
