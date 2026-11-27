@@ -227,6 +227,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   ) => {
     // A probe in flight now predates the session this login creates, and one that settles
     // while the request is out must not act on the tab as if nothing were happening.
+    // One login at a time per tab: the sign-in form ignores a second submit while one is out
+    // (submittingRef in use-auth-submit), so this read and the epoch below are not raced.
     const probeInvalidated = activeProbeEpochRef.current === epochRef.current;
     const loginEpoch = ++epochRef.current;
     try {
@@ -274,10 +276,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
 
   // A profile update the caller already holds is newer than any probe still in flight, and a
   // successful write proves the session was valid, so a status a probe left at 'loading'
-  // settles here. A tab that holds no user ignores it: the write's response arrived after a
-  // sign-out, and it must not sign the tab back in.
+  // settles here. A tab that holds no user, or another account's, ignores it: the write's
+  // response arrived after a sign-out or a switch of account, and it must not undo either.
   const setCurrentUser = useCallback((next: User) => {
-    if (userRef.current === null) {
+    if (userRef.current === null || userRef.current.id !== next.id) {
       return;
     }
     epochRef.current += 1;

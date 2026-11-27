@@ -595,6 +595,26 @@ describe('AuthContext across tabs', () => {
       expect(tab.result.current.auth.status).toBe('authenticated')
     })
 
+    it('keeps the new account when a late profile write for the previous one arrives', async () => {
+      const tab = await signedInTab()
+      const other = otherTab()
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '2', first_name: 'Second' }))
+
+      act(() => {
+        other.channel.postMessage({ type: 'signed-out' })
+      })
+      await act(async () => {
+        other.channel.postMessage({ type: 'signed-in' })
+      })
+      await waitFor(() => expect(tab.result.current.auth.user?.id).toBe('2'))
+      act(() => {
+        tab.result.current.auth.setCurrentUser(createUser({ id: '1', first_name: 'Late' }))
+      })
+
+      expect(tab.result.current.auth.user?.id).toBe('2')
+      expect(tab.result.current.auth.user?.first_name).toBe('Second')
+    })
+
     it('does not sign the tab back in on a late profile write after a received signed-out', async () => {
       const tab = await signedInTab()
       const other = otherTab()
