@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from api.config import get_settings
-from api.db.models import ExpertOpinion, Invitation, ProjectMember, User
+from api.db.models import CalculationResult, ExpertOpinion, Invitation, ProjectMember, User
 from tests.integration.api.conftest import app_session, create_test_app
 from tests.integration.api.state_snapshot import snapshot
 from tests.shared.helpers import add_project
@@ -51,7 +51,7 @@ NON_PUBLIC_ROUTES = _collect_from_the_test_app()
 
 
 def _seed(client) -> dict[str, str]:
-    """Insert a project with an admin, an expert, an opinion and an invitation.
+    """Insert a project with an admin, an expert, an opinion, a saved result and an invitation.
 
     The rows are real, so a route that skipped authentication would find its target.
 
@@ -76,6 +76,22 @@ def _seed(client) -> dict[str, str]:
                 lower_bound=10.0,
                 peak=20.0,
                 upper_bound=30.0,
+            )
+        )
+        session.add(
+            CalculationResult(
+                project_id=project.id,
+                best_compromise_lower=10.0,
+                best_compromise_peak=20.0,
+                best_compromise_upper=30.0,
+                arithmetic_mean_lower=10.0,
+                arithmetic_mean_peak=20.0,
+                arithmetic_mean_upper=30.0,
+                median_lower=10.0,
+                median_peak=20.0,
+                median_upper=30.0,
+                max_error=0.0,
+                num_experts=1,
             )
         )
         invitation = Invitation(project_id=project.id, invitee_id=invitee.id, inviter_id=admin.id)

@@ -8,7 +8,14 @@ from typing import Any
 
 from sqlmodel import Session, SQLModel, select
 
-from api.db.models import ExpertOpinion, Invitation, Project, ProjectMember, User
+from api.db.models import (
+    CalculationResult,
+    ExpertOpinion,
+    Invitation,
+    Project,
+    ProjectMember,
+    User,
+)
 
 TENANT_TABLES: tuple[type[SQLModel], ...] = (
     User,
@@ -16,11 +23,12 @@ TENANT_TABLES: tuple[type[SQLModel], ...] = (
     ProjectMember,
     ExpertOpinion,
     Invitation,
+    CalculationResult,
 )
 
 
 def snapshot(session: Session) -> dict[str, list[dict[str, Any]]]:
-    """Dump the users, projects, memberships, opinions and invitations.
+    """Dump the users, projects, memberships, opinions, invitations and saved results.
 
     :param session: Session bound to the engine the test app writes through.
     :return: Table name mapped to its rows as JSON-compatible dicts, ordered by id.
