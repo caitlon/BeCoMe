@@ -156,7 +156,7 @@ def screening_key(text: str, title: str, section: str) -> str:
     :param section: The chunk's heading path, "" when it has none.
     :return: The sha256 hex digest of the three raw fields joined unambiguously as JSON.
     """
-    payload = json.dumps([text, title, section], ensure_ascii=False)
+    payload = json.dumps([text, title, section])
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
