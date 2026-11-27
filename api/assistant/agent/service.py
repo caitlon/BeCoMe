@@ -61,6 +61,7 @@ from api.assistant.agent.tracing import (
     start_turn,
     tracing_scope,
 )
+from api.assistant.agent.wrapper_tags import WrapperTagStreamFilter, remove_wrapper_tags
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
 from api.assistant.invisible import strip_invisible
 from api.assistant.upstream import UNAVAILABLE_ERRORS, role_of
@@ -87,6 +88,15 @@ TimeoutLimit = Literal["first_byte", "turn"]
 
 # The most seconds the fetch of the opinions for the trace mask may take, in every mode.
 _ROSTER_FETCH_SECONDS = 5.0
+
+
+def _is_blank_answer(text: str) -> bool:
+    """Tell whether an answer shows nothing once its invisible characters and tags are gone.
+
+    :param text: The answer as the generator wrote it.
+    :return: True when it is empty, or holds only blanks and wrapper tags.
+    """
+    return not remove_wrapper_tags(strip_invisible(text)).strip()
 
 
 def _earlier_answer(content: str) -> str:
@@ -163,7 +173,7 @@ class _StreamText:
     Each piece loses its invisible characters. A carriage return that ends a piece is held
     back and put before the next one, so that a ``\\r\\n`` cut in two still gives one line
     break, exactly as for the whole answer. The text then goes through the citation filter,
-    when there is one.
+    when there is one, and last through the filter that removes the wrapper tags.
 
     :param citation_filter: The filter that removes citations, or None when sources are shown.
     """
@@ -171,6 +181,7 @@ class _StreamText:
     def __init__(self, citation_filter: CitationStreamFilter | None) -> None:
         """Start with no text read."""
         self._filter = citation_filter
+        self._tags = WrapperTagStreamFilter()
         self._held_return = ""  # A raw carriage return that ended the last piece.
 
     def feed(self, piece: str) -> str:
@@ -186,17 +197,21 @@ class _StreamText:
     def finish(self) -> str:
         """Release what is still held back, once every piece has been fed.
 
-        :return: The held carriage return as a newline, then the rest of the filter's text.
-            A mode that yields no text fed nothing, so it releases nothing here.
+        :return: The held carriage return as a newline, then the rest of what the filters
+            hold. A mode that yields no text fed nothing, so it releases nothing here.
         """
         text = self._pass("\n") if self._held_return else ""
-        return text + self._filter.finish() if self._filter else text
+        if self._filter:
+            text += self._tags.feed(self._filter.finish())
+        return text + self._tags.finish()
 
     def _pass(self, text: str) -> str:
-        """Run text through the citation filter, if there is one, and skip an empty text."""
-        if not text or self._filter is None:
+        """Run text through the citation filter, if there is one, then the tag filter."""
+        if not text:
             return text
-        return self._filter.feed(text)
+        if self._filter is not None:
+            text = self._filter.feed(text)
+        return self._tags.feed(text)
 
 
 class AssistantService:
@@ -314,7 +329,7 @@ class AssistantService:
                         except CutOffAnswerError:
                             text, tools_used, empty_reason = "", [], "cut_off"
                     text = strip_invisible(text)
-                    if not text:
+                    if _is_blank_answer(text):
                         raise self._empty_answer(mode, empty_reason)
             except TimeoutError:
                 if not deadline.expired():
@@ -335,7 +350,8 @@ class AssistantService:
         piece is the turn's time to first token. The deadline bounds each wait for the model's
         next piece, and the turn as a whole, because it is one point in time. Every piece goes
         through :class:`_StreamText` before it is shown: it loses its invisible characters, a
-        carriage return that ends it waits for the next piece, and the citation filter reads it.
+        carriage return that ends it waits for the next piece, and the citation filter and the
+        wrapper tag filter read it.
 
         :param turn: What :meth:`prepare` built.
         :return: Pieces of answer text, then the response as the last item.
@@ -414,7 +430,7 @@ class AssistantService:
 
     def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
         """Return what the generator produced, or refuse a missing or empty answer."""
-        if generated is None or not strip_invisible(generated.text):
+        if generated is None or _is_blank_answer(generated.text):
             raise self._empty_answer(mode, empty_reason)
         return generated
 
@@ -482,6 +498,7 @@ class AssistantService:
             # The client sees no citation, so a warning about one would mean nothing to it;
             # the turn record above keeps the real value.
             text, sources, citations_valid = remove_citations(text, source_numbers), [], True
+        text = remove_wrapper_tags(text)
         return AssistantChatResponse(
             answer=text,
             sources=sources,

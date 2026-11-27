@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 import re
 import unicodedata
 from contextlib import contextmanager
@@ -18,7 +19,12 @@ from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import service as service_module
-from api.assistant.agent.checks import find_ungrounded_numbers, strip_citations
+from api.assistant.agent.checks import (
+    CitationStreamFilter,
+    find_ungrounded_numbers,
+    remove_citations,
+    strip_citations,
+)
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import Generated
 from api.assistant.agent.masking import mask_participants
@@ -30,12 +36,14 @@ from api.assistant.agent.prompt import (
 )
 from api.assistant.agent.service import AssistantService
 from api.assistant.agent.tools import ASSISTANT_TOOLS, render_opinions, render_project
+from api.assistant.agent.wrapper_tags import remove_wrapper_tags
 from api.assistant.client import UserApiClient
 from api.assistant.errors import (
     AssistantNotFoundError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.models import MalformedModelResponseError, make_answer_model
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
@@ -3117,6 +3125,150 @@ class TestInvisibleCharacters:
         _pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
 
         assert response.timing.ttft_ms is not None
+
+
+_WRAPPER_TAG = re.compile(
+    r"<[ \t]*/?[ \t]*(?:project[_-]data|docs|earlier[_-]answer)[ \t]*/?[ \t]*>", re.IGNORECASE
+)
+
+
+class TestStreamTextTags:
+    """The stream text cleans citations, then tags, as the whole answer is cleaned."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[1]<docs>",
+            "<docs>[1]",
+            "[<docs>1]",
+            "<d[1]ocs>",
+            "a [1]<docs>\r\n<docs>[2]\r\nb<d",
+            "<docs>\r\n[1] x\r\n</docs>[2]\r",
+            "[<docs\r\n>1] <earlier_answer/> [2]",
+        ],
+    )
+    @pytest.mark.parametrize("with_citations", [True, False])
+    def test_the_stream_text_is_the_whole_text_cleaned_in_the_same_order(
+        self, text: str, with_citations: bool
+    ):
+        """
+        GIVEN an answer with citations next to tags and with carriage returns, cut at every
+              index in two
+        WHEN it goes through the stream text, with and without the citation filter
+        THEN the pieces join to the invisible characters stripped, the citations removed
+             when the filter is there, then the tags removed
+        """
+        expected = strip_invisible(text)
+        if with_citations:
+            expected = remove_citations(expected, {1, 2})
+        expected = remove_wrapper_tags(expected)
+        for index in range(len(text) + 1):
+            stream = service_module._StreamText(
+                CitationStreamFilter({1, 2}) if with_citations else None
+            )
+            shown = stream.feed(text[:index]) + stream.feed(text[index:]) + stream.finish()
+            assert shown == expected, (text, index)
+
+    def test_random_pieces_of_citations_tags_and_line_ends_match_the_whole_text(self):
+        """
+        GIVEN random answers made of citations, tag fragments and line ends, cut in random places
+        WHEN they go through the stream text
+        THEN the pieces join to the whole answer cleaned in the same order, and hold no tag
+        """
+        rng = random.Random(3)
+        alphabet = ["[", "]", "1", "2", "<", ">", "/", " ", "\n", "\r", "\r\n", "x"]
+        alphabet += ["docs", "<docs>", "d", "ocs", "[1]", "</docs>", "\u200b"]
+        for _ in range(3000):
+            text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 20)))
+            cuts = sorted(rng.randint(0, len(text)) for _ in range(rng.randint(0, 4)))
+            pieces = [text[a:b] for a, b in zip([0, *cuts], [*cuts, len(text)], strict=True)]
+            expected = remove_wrapper_tags(remove_citations(strip_invisible(text), {1, 2}))
+            stream = service_module._StreamText(CitationStreamFilter({1, 2}))
+            shown = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
+            assert shown == expected, (text, pieces)
+            assert not _WRAPPER_TAG.search(shown), (text, pieces)
+
+
+@pytest.mark.asyncio
+class TestWrapperTags:
+    """The tags that wrap reference text never reach the client, in any piece or the answer."""
+
+    @pytest.mark.parametrize(
+        ("show_sources", "expected"),
+        [
+            (True, "Before The midpoint [1]."),
+            (False, "Before The midpoint."),
+        ],
+    )
+    async def test_a_tag_split_across_pieces_reaches_the_client_in_none_of_them(
+        self, show_sources: bool, expected: str
+    ):
+        """
+        GIVEN a workflow answer that writes the excerpt tags, cut inside the tag names, with
+              sources shown or hidden
+        WHEN it is streamed, and when it is answered whole
+        THEN no piece and no answer holds a tag, the pieces join to the streamed answer, and
+             the whole answer reads the same
+        """
+        text = "Before <docs>The midpoint</docs> [1]."
+        model = _model(_say(text))
+        model.stream_chunks = ["Before <do", "cs>The mid", "point</d", "ocs> [1", "]."]
+        settings = _settings(assistant_show_sources=show_sources)
+
+        pieces, streamed = await _drain(
+            AssistantService(settings, model), _request(), _ctx(chunks=[_chunk()])
+        )
+        whole = await AssistantService(settings, _model(_say(text))).answer(
+            _request(), _ctx(chunks=[_chunk()])
+        )
+
+        assert not any(_WRAPPER_TAG.search(piece) for piece in pieces)
+        assert "".join(pieces) == streamed.answer == expected
+        assert whole.answer == expected
+
+    async def test_the_project_block_written_back_loses_its_lines_with_its_tags(self):
+        """
+        GIVEN an answer that prints the project block between its tags, on lines of their own
+        WHEN it is answered
+        THEN the tags go with their lines and the text between them stays
+        """
+        text = "<project_data>\nBest compromise: 14.19\n</project_data>\nThe midpoint is 14.19."
+        service = AssistantService(_settings(), _model(_say(text)))
+
+        response = await service.answer(_request(), _ctx())
+
+        assert response.answer == "Best compromise: 14.19\nThe midpoint is 14.19."
+
+    async def test_an_answer_of_only_tags_is_refused_as_empty(self):
+        """
+        GIVEN an answer that holds nothing but wrapper tags
+        WHEN it is answered
+        THEN it is refused as empty
+        """
+        service = AssistantService(_settings(), _model(_say("<docs>\n</docs>")))
+
+        with pytest.raises(AssistantUnavailableError):
+            await service.answer(_request(), _ctx())
+
+    async def test_a_streamed_answer_of_only_tags_is_refused_as_empty(self):
+        """
+        GIVEN a streamed answer that holds nothing but wrapper tags, cut inside a name
+        WHEN the turn is streamed
+        THEN nothing is sent and the answer is refused as empty
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("<docs>\n</docs>")], stream_chunks=["<do", "cs>\n</d", "ocs>"]
+        )
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+
+        with pytest.raises(AssistantUnavailableError):
+            async for item in service.stream(turn):
+                assert isinstance(item, str)
+                pieces.append(item)
+
+        assert pieces == []
 
 
 @pytest.mark.asyncio

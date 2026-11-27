@@ -295,6 +295,16 @@ a marker may still be forming in it, and a bracket that never closes holds the r
 until the end, so a marker is never sent in part. The checks still run on the text the model wrote,
 and the system prompt is the same in both states.
 
+The model reads reference text inside the tags `<docs>`, `<project_data>` and `<earlier_answer>`,
+and sometimes writes them into its answer. Whatever the setting, the tags are removed from the
+answer and from every streamed piece (`api/assistant/agent/wrapper_tags.py`), and the text between
+them stays. A tag may be opening, closing or self-closing, with blanks inside (`< docs >`), in any
+case, with `-` for `_` (`<project-data>`). A line left with only blanks goes with its line break.
+A tag that removal assembles from the text around it, as in `<do<docs>cs>`, goes too. Removal does
+not look at code spans, so a tag inside backticks goes as well, and other angle brackets (`<h2>`,
+`x < 5`, `<docs source="x">`) stay. It runs after the citation removal. The stream holds back what
+may still become a tag, and an answer of nothing but tags is refused as empty.
+
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads
 count against the caller's own rate-limit bucket: when `CLOUDFLARE_ORIGIN_SECRET` is set, the
