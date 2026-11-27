@@ -62,8 +62,9 @@ def _parse_args() -> argparse.Namespace:
         metavar="KEY",
         help=(
             "Let a flagged chunk outside the public layer through, by the key printed on its "
-            "flagged line; repeat for each chunk. Chunks with the same text, title and section share a key, "
-            "and editing any of them or changing the chunker flags changes it."
+            "flagged line; repeat for each chunk. The key covers the text, title and section, plus "
+            "the URL when the chunk has one, so chunks with the same fields share a key, and "
+            "editing any of them or changing the chunker flags changes it."
         ),
     )
     return parser.parse_args()
