@@ -1,11 +1,10 @@
 """Every JSON request body a route accepts rejects unknown fields (extra='forbid').
 
-``test_extra_forbid.py`` checks a hand-kept list of request models, so a body model added
-to a route and left off that list is never looked at. This test derives the set from the
-routes instead: every model a route reads as its JSON body, including models nested inside
-it (the items of a list, an optional member), found in the route's own dependency tree.
-A model that quietly keeps ``extra="ignore"`` would drop a forged field such as
-``admin_id`` without a word instead of refusing the request.
+The set of body models is derived from the routes rather than from a fixed list: every
+model a route reads as its JSON body, including models nested inside it (the items of a
+list, an optional member), found in the route's own dependency tree. A model that kept
+``extra="ignore"`` would drop a forged field such as ``admin_id`` silently instead of
+refusing the request.
 """
 
 import typing

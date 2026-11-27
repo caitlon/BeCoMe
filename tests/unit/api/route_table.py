@@ -5,9 +5,11 @@ and the anonymous-request test in the integration tier: the route walk, and the 
 decision they share, the list of routes a caller may reach without signing in.
 """
 
+import logging
 import os
 import tempfile
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from functools import lru_cache
 from unittest import mock
 
@@ -35,20 +37,60 @@ PUBLIC_ROUTES: dict[str, str] = {
         "the handler decodes and rotates; 401 without a valid one. The access token has "
         "expired by the time it is called, so it takes none."
     ),
-    "POST /api/v1/auth/forgot-password": "Answers 202 for any address; guarded and throttled.",
-    "POST /api/v1/auth/reset-password": "The single-use token mailed to the address is the credential.",
+    "POST /api/v1/auth/forgot-password": (  # pragma: allowlist secret
+        "Answers 202 for any address; guarded and throttled."
+    ),
+    "POST /api/v1/auth/reset-password": (  # pragma: allowlist secret
+        "The single-use token mailed to the address is the credential."
+    ),
     "GET /api/v1/users/{user_id}/photo": (
         "An <img> tag cannot send a header and members render each other's avatars; serves "
         "only the avatar bytes and 404s without one."
     ),
 }
 
+# The routes FastAPI itself registers for the interactive docs and the schema, which are not
+# ``APIRoute`` entries. Production switches all of them off.
+FRAMEWORK_ROUTES: frozenset[str] = frozenset(
+    {"Route /openapi.json", "Route /docs", "Route /docs/oauth2-redirect", "Route /redoc"}
+)
+
 # The ``assistant`` settings the build needs: the router is mounted only when the flag is on.
 _BUILD_ENV = {
     "APP_ENV": "dev",
-    "SECRET_KEY": "a-sufficiently-strong-secret-value",
+    "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
     "ASSISTANT_ENABLED": "true",
 }
+
+
+@contextmanager
+def _logging_state_kept() -> Iterator[None]:
+    """Leave the process-wide loggers as found, whatever the block configures.
+
+    Importing ``api.main`` and calling ``create_app`` run ``setup_logging``, which sets
+    level, handlers and propagation on the ``api`` logger and the third-party loggers it
+    names, and the formatter of the last-resort handler. For the rest of the worker that
+    would change what every other test logs, so all of it is put back.
+    """
+    from api.logging_config import _EXTERNAL_LOG_LEVELS
+
+    saved = {
+        name: (list(log.handlers), log.level, log.propagate)
+        for name in ("api", *_EXTERNAL_LOG_LEVELS)
+        for log in (logging.getLogger(name),)
+    }
+    last_resort = logging.lastResort
+    formatter = last_resort.formatter if last_resort is not None else None
+    try:
+        yield
+    finally:
+        for name, (handlers, level, propagate) in saved.items():
+            log = logging.getLogger(name)
+            log.handlers[:] = handlers
+            log.setLevel(level)
+            log.propagate = propagate
+        if last_resort is not None:
+            last_resort.setFormatter(formatter)
 
 
 def iter_api_routes(routes: Iterable[object]) -> Iterator[APIRoute]:
@@ -138,20 +180,42 @@ def project_access_levels(route: APIRoute) -> set[str]:
     return levels
 
 
+def unaccounted_routes(routes: Iterable[object]) -> list[str]:
+    """List the routes of an app that no guard here can see.
+
+    The walk reads ``APIRoute`` entries only, so a plain ``Route``, a ``Mount`` or a
+    WebSocket route would pass every guard unnoticed. An included router is a container
+    and is searched through; anything else that is not an ``APIRoute`` is reported as
+    ``"<class name> <path>"``.
+
+    :param routes: The app's ``routes`` or a container's.
+    :return: The routes that are neither an ``APIRoute`` nor an included router.
+    """
+    found: list[str] = []
+    for route in routes:
+        if isinstance(route, APIRoute):
+            continue
+        inner = getattr(route, "original_router", None)
+        if inner is not None:
+            found.extend(unaccounted_routes(inner.routes))
+        else:
+            found.append(f"{type(route).__name__} {getattr(route, 'path', '?')}")
+    return found
+
+
 @lru_cache(maxsize=1)
-def api_routes() -> tuple[APIRoute, ...]:
-    """Build the real application once, assistant router included, and list its routes.
+def app_routes() -> tuple[object, ...]:
+    """Build the real application once, assistant router included, and return ``app.routes``.
 
     The flag is raised for the build only, in a scratch working directory so a
     developer's ``.env`` is not read, and the settings cache is cleared on both sides.
     No lifespan starts, so no database is opened and nothing reaches the network.
 
-    :return: Every API route the application exposes with the assistant switched on.
+    :return: The top-level routes and route containers, with the assistant switched on.
     """
     from api.config import get_settings
-    from api.main import create_app
 
-    with tempfile.TemporaryDirectory() as scratch:
+    with tempfile.TemporaryDirectory() as scratch, _logging_state_kept():
         cwd = os.getcwd()
         os.chdir(scratch)
         try:
@@ -159,8 +223,19 @@ def api_routes() -> tuple[APIRoute, ...]:
                 os.environ.pop("RAILWAY_ENVIRONMENT_NAME", None)
                 get_settings.cache_clear()
                 try:
-                    return tuple(iter_api_routes(create_app().routes))
+                    from api.main import create_app
+
+                    return tuple(create_app().routes)
                 finally:
                     get_settings.cache_clear()
         finally:
             os.chdir(cwd)
+
+
+@lru_cache(maxsize=1)
+def api_routes() -> tuple[APIRoute, ...]:
+    """List every ``APIRoute`` of the application built by :func:`app_routes`.
+
+    :return: Every API route the application exposes with the assistant switched on.
+    """
+    return tuple(iter_api_routes(app_routes()))

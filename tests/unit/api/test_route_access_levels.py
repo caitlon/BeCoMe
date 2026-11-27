@@ -1,21 +1,24 @@
 """Structural guard: who may call each route, and at which project level.
 
-``test_route_authorization.py`` checks that routes naming a project carry a project
-access check. Two things a route can still get wrong are pinned here against the real
-application, built with the assistant router mounted (``route_table.api_routes``): a
-route added without an authentication dependency answers anyone, and ``ProjectAdmin``
-swapped for ``ProjectMember`` turns an admin-only action into one every member may run.
-FastAPI's own documentation routes are not ``APIRoute`` entries, and are off in production.
+Two properties are pinned against the real application, built with the assistant router
+mounted (``route_table.api_routes``): every route either needs a signed-in caller or is
+listed as public with a reason, and every project route demands the access level the
+table below records. FastAPI's own documentation routes are not ``APIRoute`` entries;
+they are pinned separately and are off in production.
 """
 
 import pytest
 
+from api.dependencies import AccessLevel, require_project_admin, require_project_member
 from tests.unit.api.route_table import (
+    FRAMEWORK_ROUTES,
     PUBLIC_ROUTES,
     api_routes,
+    app_routes,
     declares_authentication,
     project_access_levels,
     route_key,
+    unaccounted_routes,
 )
 
 # Every route that carries RequireProjectAccess, with the level it demands. An added or
@@ -176,3 +179,41 @@ class TestProjectRoutesDemandThePinnedLevel:
         """
         # THEN
         assert _live_levels().get(key) == level
+
+
+class TestSharedInstancesStoreTheirLevel:
+    """The guard names a route's level by which shared instance it carries, so pin the instances."""
+
+    @pytest.mark.parametrize(
+        ("instance", "level"),
+        [(require_project_member, AccessLevel.MEMBER), (require_project_admin, AccessLevel.ADMIN)],
+        ids=["member", "admin"],
+    )
+    def test_shared_instance_stores_its_level(self, instance, level):
+        """
+        GIVEN the shared member and admin access instances
+        WHEN the level each one enforces is read
+        THEN the member instance stores member and the admin instance stores admin, so
+            the level table above cannot be satisfied by a mislabelled instance
+        """
+        # THEN
+        assert instance._access_level is level
+
+
+class TestEveryRegisteredRouteIsSeen:
+    """A route of any kind other than ``APIRoute`` would be invisible to the guards above."""
+
+    def test_every_route_is_an_api_route_or_a_framework_docs_route(self):
+        """
+        GIVEN the routes the application registers, included routers searched through
+        WHEN those that are not an APIRoute are collected
+        THEN they are exactly the docs and schema routes FastAPI adds itself
+
+        A plain ``Route``, a ``Mount`` or a WebSocket route would carry no dependency
+        tree for the authentication and level guards to read.
+        """
+        # WHEN
+        others = unaccounted_routes(app_routes())
+
+        # THEN
+        assert set(others) == FRAMEWORK_ROUTES, sorted(set(others) ^ FRAMEWORK_ROUTES)
