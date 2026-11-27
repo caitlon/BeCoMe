@@ -12,12 +12,14 @@ over fixed lists, not a filter, and it will miss paraphrases and flag an honest 
 quotes such text.
 
 It reads the chunks as `split` returns them, before enrichment adds a caption or a
-heading path to the text. For each chunk it looks at the chunk's own text, its title and
-its section (the `heading_path` metadata), after `strip_invisible`, NFKC
+heading path to the text. For each chunk it looks at the chunk's own text, its title, its
+section (the `heading_path` metadata) and its `url` metadata, after `strip_invisible`, NFKC
 normalization, case folding and whitespace collapse, so a zero-width character, a
 decomposed letter, a fullwidth bracket, a different case or a line break inside a phrase
-does not hide it. The phrase patterns also run on a copy with the diacritics folded away,
-so Czech typed without them matches too.
+does not hide it. The URL is read as written, decoded, and decoded with its diacritics
+folded and its punctuation read as spaces, keeping colons, commas and apostrophes in every
+combination, so a slug, a path or an escaped phrase in it matches too. The phrase patterns
+also run on a copy with the diacritics folded away, so Czech typed without them matches too.
 """
 
 import hashlib
@@ -26,6 +28,7 @@ import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from urllib.parse import unquote, unquote_plus
 
 from langchain_core.documents import Document
 
@@ -71,8 +74,10 @@ _ROLE_MARKERS: tuple[str, ...] = (
 # or "never", and an addressee line without a colon or comma after it ("message to the model
 # owner"). Also narrowed: "processing the" (only "this" and "these" count, which is what keeps
 # "the model processing the opinions" clean), the Czech reader pattern, which has no such guard
-# and so leaves out a bare "model", and the Czech "tell the user", "vzdy odpovidej" and "nikdy
-# rikej", which need the "ze" ("that") or a colon after them.
+# and so leaves out a bare "model". The English "tell the user" form needs "that" or a colon
+# after it. The English "always/never answer" form, without "you must" or "you have to" before
+# it, needs a colon (a "that" after it is left out, so "Always answer that ..." does not match).
+# The Czech "tell the user", "vzdy odpovidej" and "nikdy rikej" forms need "ze" or a colon.
 _ADDRESSEE = r"(?:(?:ai\s*)?(?:assistant|chatbot|bot|model|llm|language\s*model)|ai)"
 _ADDRESSEE_READER = r"(?:assistant|ai|chatbot|bot|model|llm|language\s*model)s?"
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
@@ -92,13 +97,14 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\s*(?:this|these)\b",
         # A rule for what to answer when the user asks something.
         r"\bwhen\s*(?:a|the|any)\s*user\s*asks\b.{0,160}?"
-        r"\b(?:answer|reply|respond|say|tell\s*them)\s*(?:that|with)\b",
+        r"\b(?:answer|reply|respond|say|tell\s*them)\s*(?:(?:that|with)\b|:)",
         r"\b(?:add|append|include|insert)\s*the\s*(?:phrase|sentence)\b",
         r"\b(?:end|finish|close)\s*(?:every|each|all|your)\s*"
         r"(?:answers?|responses?|repl(?:y|ies))\s*with\b",
-        r"\btell\s*(?:the|every|each|any)\s*users?\s*that\b",
+        r"\btell\s*(?:the|every|each|any)\s*users?\s*(?:that\b|:)",
         r"\byou\s*(?:must|have\s*to)\s*(?:always|never)\s*"
         r"(?:answer|reply|respond|say|state|claim|tell)\b",
+        r"\b(?:always|never)\s*(?:answer|reply|respond|say|state|claim)\s*:",
         r"\bignoruj(?:te)?\s*(?:vsechny\s*|predchozi\s*|vyse\s*uvedene\s*)*(?:pokyny|instrukce)\b",
         r"\bzapomen(?:te)?\s*na\s*(?:vsechny\s*|predchozi\s*)*(?:pokyny|instrukce)\b",
         r"\bnove\s*pokyny\b",
@@ -122,6 +128,13 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 _WHITESPACE = re.compile(r"\s+")
+# The punctuation a URL reading keeps, each combination once: the phrase patterns need a colon
+# or comma after some words and an apostrophe inside "don't", while the same characters can
+# also join the words of a planted phrase, so no single choice reads every URL.
+_URL_KEPT_PUNCTUATION: tuple[str, ...] = ("", ":,", "'\u2019", ":,'\u2019")
+_URL_PUNCTUATION: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(r"(?:[^\w" + re.escape(kept) + r"]|_)+") for kept in _URL_KEPT_PUNCTUATION
+)
 
 
 @dataclass(frozen=True)
@@ -136,9 +149,10 @@ class FlaggedChunk:
         (case folded, whitespace collapsed, every combining mark dropped after NFKD, so carons,
         acutes and rings go and Czech typed without diacritics matches), so it holds words of
         the chunk in that folded form; for a tag or a marker it is a fixed string.
-    :param key: `screening_key` of the chunk's text, title and section. Chunks with the
-        same text, title and section share a key, so accepting one accepts them all;
-        editing any of the three changes it.
+    :param key: `screening_key` of the chunk's text, title and section, plus its URL when it
+        has one. Chunks with the same fields share a key, so accepting one accepts them all;
+        editing any of them changes it. A chunk without a URL keeps the key it had before
+        the URL was screened.
     """
 
     layer: str
@@ -148,15 +162,17 @@ class FlaggedChunk:
     key: str
 
 
-def screening_key(text: str, title: str, section: str) -> str:
-    """Hash the three fields the screening reads, so an accepted key covers all of them.
+def screening_key(text: str, title: str, section: str, url: str = "") -> str:
+    """Hash the fields the screening reads, so an accepted key covers all of them.
 
     :param text: The chunk's own text, as `split` returns it.
     :param title: The chunk's title metadata, "" when it has none.
     :param section: The chunk's heading path, "" when it has none.
-    :return: The sha256 hex digest of the three raw fields joined unambiguously as JSON.
+    :param url: The chunk's url metadata, "" when it has none. An empty URL leaves the
+        payload at the three fields, so a key accepted before the URL was screened stays valid.
+    :return: The sha256 hex digest of the raw fields joined unambiguously as JSON.
     """
-    payload = json.dumps([text, title, section])
+    payload = json.dumps([text, title, section, url] if url else [text, title, section])
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -180,6 +196,27 @@ def _fold(text: str) -> str:
     """
     decomposed = unicodedata.normalize("NFKD", text)
     return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _url_readings(url: str) -> list[str]:
+    """Read a URL the ways a planted phrase could hide in it.
+
+    :param url: The chunk's url metadata, non-empty.
+    :return: The URL as written; decoded and normalized; decoded with "+" read as a space
+        and normalized (keeps a tag such as "< docs >" whole); then the decoded, normalized
+        text with its diacritics folded and every other run of punctuation read as a space,
+        once for each combination of keeping colons and commas and keeping apostrophes (see
+        `_URL_KEPT_PUNCTUATION`). The first three keep tags, role markers and colons whole;
+        the last four let a slug, a path or an escaped phrase match.
+    """
+    normalized = _normalize(unquote(url))
+    folded = _fold(normalized)
+    return [
+        _normalize(url),
+        normalized,
+        _normalize(unquote_plus(url)),
+        *(punctuation.sub(" ", folded) for punctuation in _URL_PUNCTUATION),
+    ]
 
 
 def _tag_reason(text: str) -> str | None:
@@ -222,19 +259,23 @@ def _phrase_reason(text: str) -> str | None:
 
 
 def screen_chunks(chunks: Sequence[Document]) -> list[FlaggedChunk]:
-    """List the chunks whose text, title or section looks like planted instructions.
+    """List the chunks whose text, title, section or URL looks like planted instructions.
 
     :param chunks: Chunks as `split` returns them, with the loaders' metadata.
     :return: One FlaggedChunk per flagged chunk, in the order of `chunks`, carrying the
         first reason found: an assistant tag before a role marker before a phrase,
-        looking at the text, then the title, then the section for each.
+        looking at the text, then the title, then the section, then the URL (its
+        readings, see `_url_readings`) for each.
     """
     flagged = []
     for chunk in chunks:
         metadata = chunk.metadata
         title = str(metadata.get("title") or "")
         section = str(metadata.get("heading_path") or "")
+        url = str(metadata.get("url") or "")
         fields = [_normalize(field) for field in (chunk.page_content, title, section)]
+        if url:
+            fields.extend(_url_readings(url))
         reason = next(
             (
                 found
@@ -251,7 +292,7 @@ def screen_chunks(chunks: Sequence[Document]) -> list[FlaggedChunk]:
                     source=str(metadata.get("source") or title),
                     section=section,
                     reason=reason,
-                    key=screening_key(chunk.page_content, title, section),
+                    key=screening_key(chunk.page_content, title, section, url),
                 )
             )
     return flagged

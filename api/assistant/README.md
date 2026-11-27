@@ -74,8 +74,9 @@ How the pipeline is built and why, from the corpus to the streamed answer, is ex
    every flagged line and a stop line, writes nothing, leaves the live collection as it was
    and exits with status 1. Read each flagged chunk, then edit or remove its source, or rerun
    with `--accept-flagged <key>` for each chunk you judged harmless (the option repeats). The
-   key is the hash of the chunk's text, title and section, so chunks with the same three share a
-   key, and editing any of them or changing the chunker flags changes it. A key that matches no flagged chunk is
+   key is the hash of the chunk's text, title and section, plus its URL when it has one, so chunks
+   with the same fields share a key, and editing any of them or changing the chunker flags
+   changes it. A key that matches no flagged chunk is
    reported as a note and does not stop the build. The check is a short list of phrases, not a
    filter: it misses paraphrases and flags honest text that quotes such phrases.
 5. Evaluate retrieval quality: `uv run python scripts/assistant/eval_retrieval.py --collection
