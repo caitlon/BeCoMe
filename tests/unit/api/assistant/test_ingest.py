@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from api.assistant.rag.chunkers import ChunkerConfig
-from api.assistant.rag.pipeline import BuildReport, CollectionSpec
+from api.assistant.rag.pipeline import BuildReport, CollectionSpec, FlaggedChunksError
 from api.assistant.rag.screening import FlaggedChunk
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -49,6 +49,7 @@ class TestBuildSpec:
             overlap_pct=10,
             context="none",
             wave=1,
+            accept_flagged=["a" * 64],
         )
 
         # WHEN
@@ -60,6 +61,7 @@ class TestBuildSpec:
             chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
             context="none",
             wave=1,
+            accepted_flagged=frozenset({"a" * 64}),
         )
 
 
@@ -93,9 +95,57 @@ class TestParseArgs:
         # THEN
         assert spec.context == "captions"
 
+    def test_accept_flagged_is_repeatable_and_reaches_the_collection_spec(self, monkeypatch):
+        """
+        GIVEN CLI arguments with --accept-flagged twice and one key repeated
+        WHEN _parse_args parses them and _build_spec converts the result
+        THEN the spec carries each key once, and none by default
+        """
+        # GIVEN
+        base = ["ingest.py", "--name", "docs_default", "--strategy", "fixed"]
+        monkeypatch.setattr(
+            sys, "argv", [*base, "--accept-flagged", "k1", "--accept-flagged", "k2"]
+        )
+
+        # WHEN
+        accepted = ingest._build_spec(ingest._parse_args()).accepted_flagged
+        monkeypatch.setattr(sys, "argv", base)
+        by_default = ingest._build_spec(ingest._parse_args()).accepted_flagged
+
+        # THEN
+        assert accepted == frozenset({"k1", "k2"})
+        assert by_default == frozenset()
+
+    def test_a_key_in_uppercase_with_spaces_is_normalized(self, monkeypatch):
+        """
+        GIVEN --accept-flagged with a key typed in uppercase and with surrounding spaces
+        WHEN _build_spec converts the parsed arguments
+        THEN the spec carries the key stripped and in lowercase, as chunk_key prints it
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "ingest.py",
+                "--name",
+                "docs_x",
+                "--strategy",
+                "fixed",
+                "--accept-flagged",
+                " AB12Cd ",
+            ],
+        )
+
+        # WHEN
+        accepted = ingest._build_spec(ingest._parse_args()).accepted_flagged
+
+        # THEN
+        assert accepted == frozenset({"ab12cd"})
+
 
 class TestMain:
-    """_main prints the build's chunk count and one line per flagged chunk."""
+    """_main prints the build's chunk count and one line per flagged chunk, or the stop."""
 
     @pytest.mark.asyncio
     async def test_prints_the_count_and_a_line_per_flagged_chunk(self, monkeypatch, capsys):
@@ -108,8 +158,8 @@ class TestMain:
         report = BuildReport(
             chunk_count=5,
             flagged=[
-                FlaggedChunk("public", "/repo/docs/a.md", "Intro", "assistant tag <docs>"),
-                FlaggedChunk("local", "/priv/b.pdf", "", "role marker [inst]"),
+                FlaggedChunk("public", "/repo/docs/a.md", "Intro", "assistant tag <docs>", "k1"),
+                FlaggedChunk("local", "/priv/b.pdf", "", "role marker [inst]", "k2"),
             ],
         )
 
@@ -126,8 +176,8 @@ class TestMain:
         assert returned == report
         assert capsys.readouterr().out.splitlines() == [
             "Built collection 'docs_x': 5 chunks",
-            "flagged: public | /repo/docs/a.md | Intro | assistant tag <docs>",
-            "flagged: local | /priv/b.pdf |  | role marker [inst]",
+            "flagged: public | /repo/docs/a.md | Intro | assistant tag <docs> | k1",
+            "flagged: local | /priv/b.pdf |  | role marker [inst] | k2",
         ]
 
     @pytest.mark.asyncio
@@ -140,7 +190,9 @@ class TestMain:
         # GIVEN
         report = BuildReport(
             chunk_count=1,
-            flagged=[FlaggedChunk("local", "/priv/b.pdf", "A\x1b[2Jb\nflagged: x", "r")],
+            flagged=[
+                FlaggedChunk("local", "/priv/b.pdf", "A\x1b[2Jb\nflagged: x", "r", "k\x1b[2J")
+            ],
         )
 
         async def _fake_build(spec, settings, repo_root):
@@ -154,7 +206,7 @@ class TestMain:
 
         # THEN
         lines = capsys.readouterr().out.splitlines()
-        assert lines[1:] == ["flagged: local | /priv/b.pdf | A[2Jb flagged: x | r"]
+        assert lines[1:] == ["flagged: local | /priv/b.pdf | A[2Jb flagged: x | r | k[2J"]
 
     @pytest.mark.asyncio
     async def test_prints_only_the_count_when_nothing_is_flagged(self, monkeypatch, capsys):
@@ -176,3 +228,123 @@ class TestMain:
 
         # THEN
         assert capsys.readouterr().out == "Built collection 'docs_x': 3 chunks\n"
+
+    @pytest.mark.asyncio
+    async def test_a_stop_prints_every_flagged_line_and_exits_with_status_1(
+        self, monkeypatch, capsys
+    ):
+        """
+        GIVEN a build that stopped on an unaccepted private chunk next to a public one
+        WHEN _main runs
+        THEN it prints every flagged line with its key, then one stop line saying nothing was
+             written and how to proceed, no "Built" line, and exits with status 1
+        """
+        # GIVEN
+        public = FlaggedChunk("public", "/repo/docs/a.md", "Intro", "assistant tag <docs>", "k1")
+        private = FlaggedChunk("local", "/priv/b.pdf", "", "role marker [inst]", "k2")
+
+        async def _fake_build(spec, settings, repo_root):
+            raise FlaggedChunksError([public, private], [private])
+
+        monkeypatch.setattr(ingest, "build_collection", _fake_build)
+        monkeypatch.setattr(sys, "argv", ["ingest.py", "--name", "docs_x", "--strategy", "fixed"])
+
+        # WHEN
+        with pytest.raises(SystemExit) as caught:
+            await ingest._main()
+
+        # THEN
+        assert caught.value.code == 1
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[:2] == [
+            "flagged: public | /repo/docs/a.md | Intro | assistant tag <docs> | k1",
+            "flagged: local | /priv/b.pdf |  | role marker [inst] | k2",
+        ]
+        assert len(lines) == 3
+        assert lines[2].startswith("Build of 'docs_x' stopped: 1 flagged chunk(s)")
+        assert "Nothing was written and the live collection is unchanged" in lines[2]
+        assert "--accept-flagged <key>" in lines[2]
+
+    @pytest.mark.asyncio
+    async def test_an_accepted_key_reaches_the_build_and_a_stale_one_is_noted(
+        self, monkeypatch, capsys
+    ):
+        """
+        GIVEN --accept-flagged for a key that matches a flagged chunk and one that matches none
+        WHEN _main runs and the build goes on
+        THEN the spec handed to the build carries both keys, the flagged line prints, and a
+             note names the key that matched no flagged chunk, without stopping
+        """
+        # GIVEN
+        seen = {}
+        report = BuildReport(
+            chunk_count=2, flagged=[FlaggedChunk("local", "/priv/b.pdf", "", "r", "k2")]
+        )
+
+        async def _fake_build(spec, settings, repo_root):
+            seen["accepted"] = spec.accepted_flagged
+            return report
+
+        monkeypatch.setattr(ingest, "build_collection", _fake_build)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "ingest.py",
+                "--name",
+                "docs_x",
+                "--strategy",
+                "fixed",
+                "--accept-flagged",
+                "k2",
+                "--accept-flagged",
+                "gone",
+            ],
+        )
+
+        # WHEN
+        returned = await ingest._main()
+
+        # THEN
+        assert returned == report
+        assert seen["accepted"] == frozenset({"k2", "gone"})
+        assert capsys.readouterr().out.splitlines() == [
+            "Built collection 'docs_x': 2 chunks",
+            "flagged: local | /priv/b.pdf |  | r | k2",
+            "note: --accept-flagged gone matches no flagged chunk",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_stop_also_notes_an_accepted_key_that_matches_no_flagged_chunk(
+        self, monkeypatch, capsys
+    ):
+        """
+        GIVEN a build that stops on an unaccepted chunk while one accepted key matches none
+        WHEN _main runs
+        THEN the stale-key note is printed before the stop line, and the exit status is 1
+        """
+        # GIVEN
+        private = FlaggedChunk("local", "/priv/b.pdf", "", "role marker [inst]", "k2")
+
+        async def _fake_build(spec, settings, repo_root):
+            raise FlaggedChunksError([private], [private])
+
+        monkeypatch.setattr(ingest, "build_collection", _fake_build)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["ingest.py", "--name", "docs_x", "--strategy", "fixed", "--accept-flagged", "gone"],
+        )
+
+        # WHEN
+        with pytest.raises(SystemExit) as caught:
+            await ingest._main()
+
+        # THEN
+        assert caught.value.code == 1
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[:2] == [
+            "flagged: local | /priv/b.pdf |  | role marker [inst] | k2",
+            "note: --accept-flagged gone matches no flagged chunk",
+        ]
+        assert lines[2].startswith("Build of 'docs_x' stopped")
