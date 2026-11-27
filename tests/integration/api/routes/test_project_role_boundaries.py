@@ -288,8 +288,9 @@ class TestRightsFollowTheRole:
         # WHEN they send the write
         response = send_route(client, route, team.expert.token, team.project_id)
 
-        # THEN the project looks missing and nothing changed
+        # THEN the access check reports the project missing, and nothing changed
         assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json() == {"detail": "Project not found"}
         assert capture_state(client, team.admin, team.project_id) == before
 
     @staticmethod

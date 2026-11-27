@@ -129,7 +129,8 @@ class TestRouteTable:
         # WHEN they are compared with the table
         in_table = {(method, shape(path)) for method, path, _ in ALL_ROUTES.values()}
 
-        # THEN the two sets are equal
+        # THEN the two sets are equal, and not because both are empty
+        assert in_app
         assert in_table == in_app
 
 
