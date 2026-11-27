@@ -89,9 +89,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   // expired session, a logout and a login. A probe that finds the count moved on when its
   // request settles is stale and applies nothing, so an old answer never undoes a newer one.
   const epochRef = useRef(0);
-  // Probes whose request has not settled yet, stale ones included: a login that invalidates
-  // one must settle the tab itself, because the probe's own answer will be discarded.
-  const probesInFlightRef = useRef(0);
+  // The epoch of the newest probe whose request has not settled, or null. A login that
+  // finds it equal to the current epoch is about to invalidate a probe that was still
+  // current, and must settle the tab itself, because that probe's answer will be discarded.
+  const activeProbeEpochRef = useRef<number | null>(null);
   const updateUser = useCallback((next: User | null) => {
     userRef.current = next;
     setUser(next);
@@ -103,7 +104,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     const epoch = ++epochRef.current;
     // Read before the request: by the time it settles the user may be another event's.
     const hadUser = userRef.current !== null;
-    probesInFlightRef.current += 1;
+    activeProbeEpochRef.current = epoch;
     try {
       setStatus('loading');
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
@@ -153,7 +154,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
         });
       }
     } finally {
-      probesInFlightRef.current -= 1;
+      if (activeProbeEpochRef.current === epoch) {
+        activeProbeEpochRef.current = null;
+      }
     }
   }, [queryClient, updateUser]);
 
@@ -224,13 +227,15 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   ) => {
     // A probe in flight now predates the session this login creates, and one that settles
     // while the request is out must not act on the tab as if nothing were happening.
-    const probeInvalidated = probesInFlightRef.current > 0;
-    epochRef.current += 1;
+    const probeInvalidated = activeProbeEpochRef.current === epochRef.current;
+    const loginEpoch = ++epochRef.current;
     try {
       await api.login(email, password, turnstileToken);
     } catch (err) {
-      // The invalidated probe left the tab in 'loading' and will not say otherwise.
-      if (probeInvalidated) {
+      // The invalidated probe left the tab in 'loading' and will not say otherwise. A newer
+      // event during the request (a logout, an expiry, another login) has settled the tab
+      // already, and a probe now would overwrite what it decided.
+      if (probeInvalidated && epochRef.current === loginEpoch) {
         await probeSession(false);
       }
       throw err;

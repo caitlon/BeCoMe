@@ -497,6 +497,49 @@ describe('AuthContext across tabs', () => {
       expect(other.received).toEqual([])
     })
 
+    it('makes no extra request when a login is refused and the probe in flight was already stale', async () => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      act(() => {
+        otherTab().channel.postMessage({ type: 'signed-out' })
+      })
+      vi.mocked(api.login).mockRejectedValueOnce(new Error('Invalid credentials'))
+
+      await act(async () => {
+        await tab.result.current.auth.login('a@example.com', 'wrong').catch(() => undefined)
+      })
+
+      expect(api.getCurrentUser).toHaveBeenCalledTimes(1)
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+    })
+
+    it('does not re-probe over a newer event that settled the tab during the refused login', async () => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      const loginRequest = deferred<Awaited<ReturnType<typeof api.login>>>()
+      vi.mocked(api.login).mockReturnValueOnce(loginRequest.promise)
+      // What a re-probe would find: a session another tab created. Not a Once, which a test
+      // that makes no second request would leave queued for the next one.
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+
+      let login!: Promise<void>
+      act(() => {
+        login = tab.result.current.auth.login('a@example.com', 'wrong')
+      })
+      act(() => {
+        otherTab().channel.postMessage({ type: 'signed-out' })
+      })
+      await act(async () => {
+        loginRequest.reject(new Error('Invalid credentials'))
+        await login.catch(() => undefined)
+      })
+
+      expect(api.getCurrentUser).toHaveBeenCalledTimes(1)
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+    })
+
     it('makes no extra request when a login is refused and no probe is in flight', async () => {
       vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
       const tab = mountTab()
