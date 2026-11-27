@@ -12,6 +12,7 @@ import logging
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
+from api.assistant.agent.generation import raised_at
 from api.assistant.errors import (
     AssistantBusyError,
     AssistantError,
@@ -170,7 +171,8 @@ def assistant_error_handler(request: Request, exc: AssistantError) -> JSONRespon
     A subclass with a specific handler never reaches here. One that escapes without a handler
     is a missed case in our code, not a model server that is down or full, so it answers like
     any other unhandled fault: 500 with the generic body, not the retryable 503 of
-    :data:`UNAVAILABLE_DETAIL`. Without this handler the error would reach the app's
+    :data:`UNAVAILABLE_DETAIL`. The record names where it was raised (see
+    :func:`~api.assistant.agent.generation.raised_at`) and never its text. Without this handler the error would reach the app's
     ``BeCoMeAPIError`` handler, which answers 400 with the error's text as the detail.
 
     :param request: FastAPI request.
@@ -178,5 +180,12 @@ def assistant_error_handler(request: Request, exc: AssistantError) -> JSONRespon
     :return: A 500 JSON response.
     """
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    _log(request, exc, event="assistant_error", status_code=status_code, level=logging.ERROR)
+    _log(
+        request,
+        exc,
+        event="assistant_error",
+        status_code=status_code,
+        level=logging.ERROR,
+        where=raised_at(exc),
+    )
     return JSONResponse(status_code=status_code, content={"detail": INTERNAL_ERROR_DETAIL})

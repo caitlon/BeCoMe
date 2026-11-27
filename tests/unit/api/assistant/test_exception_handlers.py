@@ -256,3 +256,24 @@ class TestAssistantExceptionHandlers:
         assert record.exception_type == type(exc).__name__
         assert record.exc_info is None
         assert _PRIVATE_TEXT not in repr(record.__dict__)
+
+    def test_the_bare_error_record_names_where_it_was_raised_and_not_what_it_said(self, caplog):
+        """
+        GIVEN a bare AssistantError raised from a known line, with private text in its message
+        WHEN its handler runs
+        THEN the record's where is the file and line that raised it, and holds no text
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        try:
+            raise AssistantError(_PRIVATE_TEXT)
+        except AssistantError as exc:
+            raised = exc
+
+        # WHEN
+        assistant_error_handler(_request(), raised)
+
+        # THEN
+        (record,) = caplog.records
+        assert record.where.startswith("tests/unit/api/assistant/test_exception_handlers.py:")
+        assert _PRIVATE_TEXT not in record.where

@@ -307,17 +307,16 @@ request is answered `200`, and a tool asked for such a project tells the model `
 and nothing else, so the answer says it found nothing. Should such a project's error escape a
 route anyway, it is answered `404` with `Project not found`, and an assistant error with no
 handler of its own `500` with `Internal server error`; neither body carries the error's text. A
-failing model server, embedding server,
-vector database or application answers `503` with a fixed message. On any request until the
-retriever has been built once, that covers a vector database that is down, a URL that is not set,
-and a collection that is missing or that the role cannot read. Requests that arrive together on a
-cold process each open an engine and fail or succeed on their own, so a database that is down does
-not queue them; one retriever is kept and the other engines are closed. A model, embedding or rerank
-server that answers `200` with a body that is no reply (an HTML page from a proxy, an `error`
-object, no `choices` or `results`, an item of `data` without a vector or of `results` without
-its `index` and `relevance_score`, a body that is empty or cut off, a stream chunk that is not
-valid JSON, is cut inside a character, or is a JSON object of the wrong shape) is a failing
-server too. A stream chunk that is valid JSON but not an
+failing model server, embedding server, vector database or application answers `503` with a fixed
+message. On any request until the retriever has been built once, that covers a vector database
+that is down, a URL that is not set, and a collection that is missing or that the role cannot
+read. Requests that arrive together on a cold process each open an engine and fail or succeed on
+their own, so a database that is down does not queue them; one retriever is kept and the other
+engines are closed. A model, embedding or rerank server that answers `200` with a body that is no
+reply (an HTML page from a proxy, an `error` object, no `choices` or `results`, an item of `data`
+without a vector or of `results` without its `index` and `relevance_score`, a body that is empty
+or cut off, a stream chunk that is not valid JSON, is cut inside a character, or is a JSON object
+of the wrong shape) is a failing server too. A stream chunk that is valid JSON but not an
 object is not caught and ends in a `500`. The warning for such a `503`
 (`assistant_dependency_unavailable`, and `assistant_tool_unavailable` for a tool) carries the
 class of the error as `reason` and the server that failed as `role`: `answer` or `query` for the

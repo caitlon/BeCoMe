@@ -410,3 +410,115 @@ class TestTraceOfAResponseThatIsTornDown:
         assert run.outputs == {"answer": "One two"}
         assert run.error is None
         assert client.released == [str(run.trace_id)]
+
+    async def test_a_failed_write_after_the_first_piece_closes_the_body_and_cancels_the_model(
+        self, traced
+    ):
+        """
+        GIVEN a stream whose model waits 30 s, a heartbeat of 50 ms, and a client that takes the
+            headers and the first keep-alive and then fails a write
+        WHEN the response is run
+        THEN the model's call was cancelled before the response returned, and the trace was
+            ended and released once
+        """
+        # GIVEN
+        client, runs = traced
+        settings = _traced_settings().model_copy(
+            update={"assistant_stream_heartbeat_seconds": 0.05}
+        )
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two")], stream_delay_s=30
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
+        (run,) = runs
+        sent: list[dict] = []
+
+        async def second_write_fails(message) -> None:
+            sent.append(message)
+            if len(sent) == 2:
+                raise OSError("client gone")
+
+        # WHEN
+        with pytest.raises(ClientDisconnect):
+            await response(
+                {"type": "http", "asgi": {"spec_version": "2.4"}},
+                _never_disconnects,
+                second_write_fails,
+            )
+
+        # THEN
+        assert model.closed_early
+        assert run.end_time is not None
+        assert client.released == [str(run.trace_id)]
+
+    async def test_the_trace_is_ended_once_when_the_server_reports_spec_2_3(self, traced):
+        """
+        GIVEN a prepared stream whose trace is held, a server reporting ASGI 2.3 (uvicorn does),
+            and a client whose disconnect is the first message
+        WHEN the response is run
+        THEN the trace is ended and released exactly once, whether or not the body had started
+        """
+        # GIVEN
+        client, runs = traced
+        settings = _traced_settings()
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(
+                settings, ScriptedToolCallingModel(responses=[AIMessage(content="a")])
+            ),
+            settings,
+        )
+        (run,) = runs
+
+        async def disconnected():
+            return {"type": "http.disconnect"}
+
+        # WHEN
+        await response(
+            {"type": "http", "asgi": {"spec_version": "2.3"}}, disconnected, _send_nowhere
+        )
+
+        # THEN
+        assert run.end_time is not None
+        assert client.released == [str(run.trace_id)]
+
+    async def test_a_turn_with_tracing_off_streams_as_before(self):
+        """
+        GIVEN a prepared stream with tracing off, so no trace
+        WHEN the response is run to its end
+        THEN it sends the headers, the pieces and a done event, and nothing raises
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(
+                settings, ScriptedToolCallingModel(responses=[AIMessage(content="One two")])
+            ),
+            settings,
+        )
+        sent: list[dict] = []
+
+        async def collect(message) -> None:
+            sent.append(message)
+
+        # WHEN
+        await response(
+            {"type": "http", "asgi": {"spec_version": "2.4"}}, _never_disconnects, collect
+        )
+
+        # THEN
+        assert sent[0]["type"] == "http.response.start"
+        body = b"".join(m["body"] for m in sent[1:])
+        assert b"event: done" in body
+        assert sent[-1] == {"type": "http.response.body", "body": b"", "more_body": False}

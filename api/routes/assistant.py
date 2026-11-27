@@ -27,7 +27,7 @@ from api.assistant.deps import (
     limit_per_address,
 )
 from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
-from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
+from api.assistant.exception_handlers import INTERNAL_ERROR_DETAIL, UNAVAILABLE_DETAIL
 from api.assistant.sse import KEEP_ALIVE, format_event
 from api.auth.dependencies import CurrentUser
 from api.config import Settings, get_settings
@@ -184,7 +184,7 @@ def _error_frame(exc: Exception) -> str:
                 "where": raised_at(exc),
             },
         )
-        code, detail = status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error"
+        code, detail = status.HTTP_500_INTERNAL_SERVER_ERROR, INTERNAL_ERROR_DETAIL
     return format_event("error", {"code": code, "detail": detail})
 
 
@@ -265,9 +265,19 @@ class _TurnResponse(StreamingResponse):
         self._trace = trace
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Send the response, and close the turn's trace however that ends."""
+        """Send the response, then close the body and the turn's trace however that ends.
+
+        A failed write leaves the body suspended at its last piece, and with it the producer
+        task that runs the model. Closing the body first cancels the model's call at once, and
+        ends the children's runs before the root's. Closing a body that never started, or that
+        has finished, does nothing.
+        """
         with ending_turn(self._trace):
-            await super().__call__(scope, receive, send)
+            try:
+                await super().__call__(scope, receive, send)
+            finally:
+                if isinstance(self.body_iterator, AsyncGenerator):
+                    await self.body_iterator.aclose()
 
 
 @router.get("/config", summary="Get the assistant's active configuration")
