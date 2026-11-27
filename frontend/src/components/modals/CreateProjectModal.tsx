@@ -55,6 +55,7 @@ export function CreateProjectModal({
         .object({
           name: z
             .string()
+            .trim()
             .min(1, t("create.validation.nameRequired"))
             .max(255, t("create.validation.nameMaxLength")),
           description: z

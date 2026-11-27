@@ -26,7 +26,7 @@ class OpinionCreate(BaseModel):
     @field_validator("position", mode="after")
     @classmethod
     def sanitize_position(cls, v: str) -> str:
-        """Remove HTML from position field."""
+        """Remove HTML and invisible characters from the position, which must keep some text."""
         sanitized = sanitize_text(v).strip()
         if not sanitized:
             msg = "Position must not be empty after sanitization"

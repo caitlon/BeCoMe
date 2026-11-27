@@ -67,7 +67,7 @@ class ProjectCreate(BaseModel):
     @field_validator("description", mode="after")
     @classmethod
     def sanitize_optional_text(cls, v: str | None) -> str | None:
-        """Remove HTML from optional text fields."""
+        """Remove HTML and invisible characters from optional text fields."""
         return sanitize_text_or_none(v)
 
     @model_validator(mode="after")

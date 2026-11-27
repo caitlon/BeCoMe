@@ -29,6 +29,7 @@ class TestInvisibleCharactersInStoredText:
             },
             headers=headers,
         )
+        assert created.status_code == 201
         project_id = created.json()["id"]
         opinion = client.post(
             f"/api/v1/projects/{project_id}/opinions",
@@ -40,12 +41,11 @@ class TestInvisibleCharactersInStoredText:
             },
             headers=headers,
         )
+        assert opinion.status_code == 201
         project = client.get(f"/api/v1/projects/{project_id}", headers=headers).json()
         opinions = client.get(f"/api/v1/projects/{project_id}/opinions", headers=headers).json()
 
         # THEN
-        assert created.status_code == 201
-        assert opinion.status_code == 201
         assert project["name"] == "Project"
         assert project["description"] == "one\n\ttwo"
         assert project["scale_unit"] == "%"
