@@ -209,3 +209,84 @@ class TestUnescapeStoredTextMigration:
                 assert _project_row(conn, short) == ("R&amp;D", None, "&amp;")
         finally:
             engine.dispose()
+
+    def test_upgrade_leaves_an_ampersand_that_is_not_one_of_the_three_entities(
+        self, unescape_pg, monkeypatch
+    ):
+        """
+        GIVEN a project named `AT&T;`, which bleach kept as it is because it looks like an entity
+        WHEN the migration is applied
+        THEN the value stays unchanged, since only the three exact entities are replaced
+        """
+        # GIVEN
+        config, engine = self._migrated(unescape_pg, monkeypatch)
+
+        try:
+            with engine.begin() as conn:
+                admin_id = _insert_user(conn, "admin")
+                project = _insert_project(conn, admin_id, "AT&T;", None, "kg")
+
+            # WHEN
+            command.upgrade(config, REVISION)
+
+            # THEN
+            with engine.connect() as conn:
+                assert _project_row(conn, project) == ("AT&T;", None, "kg")
+        finally:
+            engine.dispose()
+
+    def test_downgrade_checks_the_scale_unit_limit_at_its_boundary(self, unescape_pg, monkeypatch):
+        """
+        GIVEN a scale unit of 11 ampersands (55 characters escaped) and one of 10 (exactly 50)
+        WHEN the migration is rolled back
+        THEN the first stays as it is, because its escaped form exceeds the limit of 50,
+        and the second is escaped
+        """
+        # GIVEN
+        config, engine = self._migrated(unescape_pg, monkeypatch)
+        command.upgrade(config, REVISION)
+
+        try:
+            with engine.begin() as conn:
+                admin_id = _insert_user(conn, "admin")
+                over = _insert_project(conn, admin_id, "Over", None, "&" * 11)
+                other_id = _insert_user(conn, "other")
+                exact = _insert_project(conn, other_id, "Exact", None, "&" * 10)
+
+            # WHEN
+            command.downgrade(config, BEFORE)
+
+            # THEN
+            with engine.connect() as conn:
+                assert _project_row(conn, over)[2] == "&" * 11
+                assert _project_row(conn, exact)[2] == "&amp;" * 10
+        finally:
+            engine.dispose()
+
+    def test_downgrade_escapes_a_row_with_angle_brackets_and_no_ampersand(
+        self, unescape_pg, monkeypatch
+    ):
+        """
+        GIVEN a position `a>b` and a name `x<y`, stored after the upgrade, with no ampersand
+        WHEN the migration is rolled back
+        THEN they are escaped to `a&gt;b` and `x&lt;y`
+        """
+        # GIVEN
+        config, engine = self._migrated(unescape_pg, monkeypatch)
+        command.upgrade(config, REVISION)
+
+        try:
+            with engine.begin() as conn:
+                admin_id = _insert_user(conn, "admin")
+                project = _insert_project(conn, admin_id, "x<y", None, "kg")
+                _insert_opinion(conn, project, admin_id, "a>b")
+
+            # WHEN
+            command.downgrade(config, BEFORE)
+
+            # THEN
+            with engine.connect() as conn:
+                assert _project_row(conn, project) == ("x&lt;y", None, "kg")
+                assert _position(conn, project) == "a&gt;b"
+        finally:
+            engine.dispose()

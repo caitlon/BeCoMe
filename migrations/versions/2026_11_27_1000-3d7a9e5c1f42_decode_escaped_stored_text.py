@@ -48,9 +48,15 @@ def upgrade() -> None:
     Before the sanitizer stopped HTML-escaping, bleach stored ``&``, ``<`` and ``>`` in
     project names, descriptions and units and in opinion positions as ``&amp;``, ``&lt;``
     and ``&gt;``, and every reader escapes again on output, so "R&D" showed as "R&amp;D".
-    This decodes the three entities once. Bleach's output never held a bare ``&``, ``<``
-    or ``>``, so the decoding is exact for everything it wrote. The text is plain SQL and
-    imports no application code, so it does not change when the sanitizer does.
+    This decodes the three entities once. Bleach's output never held a bare ``<`` or ``>``,
+    and it escaped every ``&`` except one that looked like the start of an entity
+    (``AT&T;``); only the three exact entities are replaced, so such text is left as it is.
+    The text is plain SQL and imports no application code, so it does not change when the
+    sanitizer does.
+
+    A save by the previous application version between this migration and the new version
+    going live stores the old escaped form, which this migration does not see; such a row
+    keeps its entities.
 
     Accepted: an entity a user typed on purpose before the change (``&lt;b&gt;``) is
     decoded too, because bleach's own output looks the same. A decoded value may hold
@@ -61,7 +67,7 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 f"UPDATE {table} SET {column} = {_unescape(column)} "  # noqa: S608
-                f"WHERE {column} LIKE '%&%'"
+                f"WHERE {column} LIKE '%&%' AND {column} <> {_unescape(column)}"
             )
         )
 
