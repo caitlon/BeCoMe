@@ -42,7 +42,9 @@ _MASK = "***"
 # The first line of a failed connection starts with one of these, in lower case. Anything else
 # (``server closed the connection unexpectedly`` in a query) keeps the plain reduced text.
 _CONNECT_FAILURE_PREFIXES = (
-    "connection to server",
+    "connection to server at ",
+    "connection to server on socket ",
+    "could not connect to server",
     "could not translate host name",
     "connection failed:",
     "connection is bad:",
@@ -68,6 +70,7 @@ _CONNECTION_FAILURE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
         _any_of(
             "authentication failed",
             "no pg_hba.conf entry",
+            "pg_hba.conf rejects connection",
             "fe_sendauth",
             'role "" does not exist',
         ),
@@ -201,7 +204,9 @@ def connection_failure_label(exc: BaseException) -> str | None:
 
     The message of a failed connection names the host, address, port, user and database, so only
     the label leaves the process. A server error with a SQLSTATE, and a client error that does
-    not start like a connect failure (a connection dropped mid-query), get no label.
+    not start like a connect failure (a connection dropped mid-query), get no label. Only the
+    first line is read: for libpq trying several addresses that is the first attempt, for
+    psycopg 3's multi-attempt text the last one.
 
     :param exc: A driver error, or a SQLAlchemy error wrapping one.
     :return: One of :data:`CONNECTION_FAILURE_LABELS`, or None when ``exc`` is no connect

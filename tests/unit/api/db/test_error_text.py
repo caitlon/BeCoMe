@@ -525,8 +525,10 @@ _LIBPQ = 'connection to server at "127.0.0.1", port 54199 failed: '
 _PG_HBA = 'no pg_hba.conf entry for host "10.1.2.3", user "becomeuser", database "become", '
 _SERVER = "\tThis probably means the server terminated abnormally\n"
 
-# Captured with psycopg2 2.9.13 on libpq 16 against fake servers on loopback, except the
-# ``dns`` text (libpq's format string) and the OS-level reasons (strerror text on Linux).
+# The psycopg2 texts and psycopg 3's refused text were captured on 2026-11-27 from psycopg2
+# 2.9.13 (libpq 16) and psycopg 3.3.9 against fake servers on loopback; the other psycopg 3 texts
+# add psycopg 3's ``connection failed: `` prefix to them (the form psycopg 3 printed for every
+# server FATAL); the dns text and the OS-level reasons follow libpq's format strings.
 _CONNECT_FAILURES = [
     ("refused", f"{_LIBPQ}Connection refused\n\tIs the server running on that host?\n"),
     ("timeout", f"{_LIBPQ}timeout expired\n"),
@@ -539,10 +541,25 @@ _CONNECT_FAILURES = [
     ("authentication", f"{_LIBPQ}FATAL:  {_PG_HBA}no encryption\n"),
     ("authentication", f"{_LIBPQ}FATAL:  {_PG_HBA}SSL encryption\n"),
     ("authentication", f'{_LIBPQ}FATAL:  role "becomeuser" does not exist\n'),
+    (
+        "authentication",
+        'connection to server at "127.0.0.1", port 5432 failed: FATAL:  pg_hba.conf rejects '
+        'connection for host "10.1.2.3", user "becomeuser", database "become", SSL encryption\n',
+    ),
+    (
+        "refused",
+        "could not connect to server: Connection refused\n"
+        '\tIs the server running on host "db.internal" (10.0.0.5) and accepting\n'
+        "\tTCP/IP connections on port 5432?\n",
+    ),
     ("unknown_database", f'{_LIBPQ}FATAL:  database "become" does not exist\n'),
     ("too_many_connections", f"{_LIBPQ}FATAL:  sorry, too many clients already\n"),
     ("too_many_connections", f'{_LIBPQ}FATAL:  too many connections for role "becomeuser"\n'),
-    ("too_many_connections", f"{_LIBPQ}FATAL:  remaining connection slots are reserved\n"),
+    (
+        "too_many_connections",
+        f"{_LIBPQ}FATAL:  remaining connection slots are reserved for roles with the SUPERUSER "
+        "attribute\n",
+    ),
     ("unavailable", f"{_LIBPQ}FATAL:  the database system is starting up\n"),
     ("unavailable", f"{_LIBPQ}FATAL:  the database system is shutting down\n"),
     ("unavailable", f"{_LIBPQ}FATAL:  terminating connection due to administrator command\n"),
@@ -646,8 +663,15 @@ class TestConnectionFailureLabel:
                 ),
                 "refused",
             ),
+            (
+                psycopg.OperationalError(
+                    'connection failed: connection to server at "127.0.0.1", port 54199 failed: '
+                    "could not receive data from server: Connection refused"
+                ),
+                "refused",
+            ),
         ],
-        ids=["connection-timeout", "several-attempts"],
+        ids=["connection-timeout", "several-attempts", "refused"],
     )
     def test_psycopg3_only_errors_are_labelled(self, exc, label):
         """
@@ -666,6 +690,7 @@ class TestConnectionFailureLabel:
             _ServerShutdown(f"{_LIBPQ}FATAL:  terminating connection due to administrator command"),
             psycopg.errors.AdminShutdown("connection failed: terminating connection"),
             psycopg2.OperationalError("server closed the connection unexpectedly\n" + _SERVER),
+            psycopg2.OperationalError("connection to server was lost\n"),
             psycopg2.ProgrammingError(f"{_LIBPQ}Connection refused"),
             ValueError(f"{_LIBPQ}Connection refused"),
         ],
@@ -673,6 +698,7 @@ class TestConnectionFailureLabel:
             "psycopg2-sqlstate",
             "psycopg3-sqlstate",
             "mid-query",
+            "connection-lost",
             "not-operational",
             "not-a-database-error",
         ],
@@ -686,6 +712,16 @@ class TestConnectionFailureLabel:
         """
         assert connection_failure_label(exc) is None
         assert "connection failure" not in safe_error_text(exc)
+
+    def test_a_lost_connection_keeps_its_plain_text(self):
+        """
+        GIVEN libpq's ``connection to server was lost``, a mid-query error
+        WHEN its text is reduced
+        THEN it is the plain reduced text, with no label
+        """
+        exc = psycopg2.OperationalError("connection to server was lost\n")
+
+        assert safe_error_text(exc) == safe_message_text(str(exc))
 
     def test_a_dropped_connection_keeps_its_plain_text(self):
         """
