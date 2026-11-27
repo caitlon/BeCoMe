@@ -308,7 +308,8 @@ and nothing else, so the answer says it found nothing. Should such a project's e
 route anyway, it is answered `404` with `Project not found`, and an assistant error with no
 handler of its own `500` with `Internal server error`; neither body carries the error's text. A
 failing model server, embedding server, vector database or application answers `503` with a fixed
-message. On any request until the retriever has been built once, that covers a vector database
+message, and so does a throttle store that cannot be reached. On any request until the
+retriever has been built once, that covers a vector database
 that is down, a URL that is not set, and a collection that is missing or that the role cannot
 read. Requests that arrive together on a cold process each open an engine and fail or succeed on
 their own, so a database that is down does not queue them; one retriever is kept and the other
@@ -461,8 +462,9 @@ logged at WARNING with the exception's class in `reason`.
   increment is given back by a guarded script (if that give-back fails with a store error,
   `assistant_throttle_giveback_unavailable` is logged and the counter stays above the budget until
   the window closes). A Redis error does not lift it and is not counted in memory either: the
-  turn is refused with `503` and the body of an unreachable model server, nothing is counted, and
-  the record `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off,
+  turn is refused with `503` and the body of an unreachable model server, at most one message stays
+  counted until the window closes, and the record `assistant_throttle_unavailable` is logged at
+  ERROR. Set it to `0` to switch it off,
   for a measurement run that sends many questions from one account; a deployed service refuses
   `0`. A turn that fails while it is prepared, before the answer model is
   called (an unknown project, a retrieval error, a timeout), gives back all its messages, the
@@ -530,7 +532,8 @@ logged at WARNING with the exception's class in `reason`.
   refused by any step before the budget spends no message, and one refused after the address cap
   has charged gives that charge back: that covers `422` for an invalid body or a message that is
   too long, and `503` for a retriever that cannot be built (the vector database is down or not
-  configured). The retriever
+  configured). A `503` also comes from a throttle store that cannot be reached, at the address
+  cap or at the budget. The retriever
   is built once per process, so once it exists a request pays nothing for it. A failed build is
   not cached: on a process whose vector database is down, a caller over budget drives one
   retriever build attempt per request, bounded by the per-address limits and the turn slots, and

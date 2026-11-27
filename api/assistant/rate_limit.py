@@ -1,10 +1,11 @@
 """Hourly caps on assistant chat messages: per user, per client address and across all users.
 
-Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
-keyed on a hash of the identifier so no raw id sits in the store, and failing closed
-when Redis errors. Unlike the login throttle this is a fixed-window counter, not a lockout:
-the window opens with a user's first message and closes an hour later however many
-messages follow, because a later message never moves the expiry. A refused message is not
+Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured and
+keyed on a hash of the identifier so no raw id sits in the store. It does not share that
+module's failure rule: the login throttle fails open, while this one fails closed and
+refuses the turn when Redis errors. Unlike the login throttle this is a fixed-window counter,
+not a lockout: the window opens with a user's first message and closes an hour later however
+many messages follow, because a later message never moves the expiry. A refused message is not
 counted: like the login throttle's reservation, a caller past the budget is refused and its
 increment is given back. In memory the refused message is never stored. In Redis the increment
 sits one above the budget until the guarded script gives it back a moment later, and if that
@@ -392,7 +393,8 @@ class RedisAssistantThrottle:
         a refund uses, so the key never creates itself or loses its TTL. When that give-back
         fails, the error is logged and not raised, and the message is still refused. A store
         error on the count itself is logged and raised as :class:`AssistantUnavailableError`:
-        nothing was counted, and no count is kept anywhere else.
+        a read timeout after Redis ran the count can leave at most one message counted until the
+        window closes, and no count is kept anywhere else.
 
         :param key: What the message is counted under: a user's digest,
             :data:`GLOBAL_KEY` or an :func:`address_key`.

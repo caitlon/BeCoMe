@@ -628,8 +628,8 @@ async def charge_address_turn(
     :return: The charge, for :func:`open_chat_turn` to take over.
     :raises AssistantRateLimitedError: When this address's hour is already spent; it carries
         the seconds until the window closes and the reason ``"address"``.
-    :raises AssistantUnavailableError: When the throttle store cannot be reached; nothing was
-        counted, so there is nothing to give back.
+    :raises AssistantUnavailableError: When the throttle store cannot be reached; at most one
+        message stays counted until the window closes, so nothing is given back.
     """
     key = address_key(get_client_ip(request))
     charge = await run_in_threadpool(throttle.charge_key, key)

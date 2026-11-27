@@ -24,7 +24,10 @@ class AssistantUpstreamError(AssistantError):
 
 
 class AssistantUnavailableError(AssistantError):
-    """Raised when the local LLM, embedding, or rerank server cannot be reached."""
+    """Raised when the local LLM, embedding, or rerank server cannot be reached.
+
+    It is also raised when the throttle store of the hourly caps cannot be reached.
+    """
 
 
 class AssistantBusyError(AssistantError):
