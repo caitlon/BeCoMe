@@ -205,6 +205,15 @@ export const isServiceUnavailable = (error: unknown): boolean =>
   isNetworkError(error) || isServerError(error);
 
 /**
+ * A silent refresh that failed without saying the session is over: the service is down
+ * (isServiceUnavailable) or the refresh route's per-IP limit answered 429. Neither is an
+ * expiry, so neither may sign the user out. A separate name, because describeError reads
+ * isServiceUnavailable first and would hide a 429's retry-after line behind it.
+ */
+export const isRefreshUnavailable = (error: unknown): boolean =>
+  isServiceUnavailable(error) || isRateLimited(error);
+
+/**
  * Worth retrying automatically: transient network/server failures only.
  *
  * Same predicate as isServiceUnavailable today, kept as a separate name on

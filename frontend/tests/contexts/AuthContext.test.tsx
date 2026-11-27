@@ -383,8 +383,9 @@ describe('AuthContext', () => {
       })
 
       const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.calls[0][0]
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
 
-      act(() => {
+      await act(async () => {
         onSessionExpired?.()
       })
 
@@ -441,7 +442,8 @@ describe('AuthContext', () => {
       })
 
       const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.calls[0][0]
-      act(() => {
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
+      await act(async () => {
         onSessionExpired?.()
       })
 

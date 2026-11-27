@@ -523,6 +523,31 @@ describe('ApiClient', () => {
       expect(onSessionExpired).not.toHaveBeenCalled();
     });
 
+    it('(f2) surfaces a RateLimitError instead of a false logout when refresh is throttled with 429', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          headers: new Headers({ 'Retry-After': '30' }),
+          json: () => Promise.resolve({ detail: 'Too many requests' }),
+        });
+
+      const { RateLimitError } = await import('@/lib/errors');
+      const error = await api.getProjects().catch((e) => e);
+
+      expect(error).toBeInstanceOf(RateLimitError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+
     it('(g) surfaces a NetworkError instead of a false logout when refresh fails at the network level', async () => {
       const onSessionExpired = vi.fn();
       api.setOnSessionExpired(onSessionExpired);
@@ -1937,6 +1962,27 @@ describe('ApiClient', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws a RateLimitError, not a false logout, when the refresh after a 401 is throttled with 429', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Unauthorized' }) })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          headers: new Headers({ 'Retry-After': '30' }),
+          json: () => Promise.resolve({ detail: 'Too many requests' }),
+        });
+
+      const { RateLimitError } = await import('@/lib/errors');
+      await expect(api.requestStream('/some/stream', { method: 'POST' })).rejects.toBeInstanceOf(
+        RateLimitError
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
     });
 
     it('throws a RateLimitError carrying Retry-After for a 429 before the stream starts', async () => {

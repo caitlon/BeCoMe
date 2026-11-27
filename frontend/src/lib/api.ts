@@ -27,7 +27,7 @@ import {
   RateLimitError,
   ServerError,
   isUnauthorized,
-  isServiceUnavailable,
+  isRefreshUnavailable,
 } from '@/lib/errors';
 
 export { HttpError } from '@/lib/errors';
@@ -255,7 +255,7 @@ class ApiClient {
       // A network/5xx refresh failure means the service is down, not that the
       // session is gone, so surface the typed error (letting react-query retry
       // and AuthContext show "service unavailable") instead of a false logout.
-      if (isServiceUnavailable(refreshError)) {
+      if (isRefreshUnavailable(refreshError)) {
         throw refreshError;
       }
       this.handleTerminalUnauthorized(isAuthProbe, endpoint);
@@ -395,7 +395,7 @@ class ApiClient {
     try {
       await this.refreshSession();
     } catch (refreshError) {
-      if (isServiceUnavailable(refreshError)) {
+      if (isRefreshUnavailable(refreshError)) {
         throw refreshError;
       }
       this.handleTerminalUnauthorized(false, input);
