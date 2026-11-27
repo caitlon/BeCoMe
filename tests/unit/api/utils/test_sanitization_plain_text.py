@@ -4,7 +4,7 @@ import html
 
 import bleach
 import pytest
-from hypothesis import given
+from hypothesis import given, reject
 from hypothesis import strategies as st
 
 from api.utils.invisible import strip_invisible
@@ -31,6 +31,19 @@ _TEXT = st.lists(
     ),
     max_size=12,
 ).map("".join)
+
+
+def _sanitize_or_reject(text: str) -> str:
+    """Sanitize generated text, rejecting the example when the pass limit refuses it.
+
+    The strategy can build tags nested five or more levels deep, which ``sanitize_text``
+    refuses by design (``TestPassLimit``), so such an example says nothing about the
+    properties below.
+    """
+    try:
+        return sanitize_text(text)
+    except ValueError:
+        reject()
 
 
 class TestSpecialCharactersKept:
@@ -214,7 +227,7 @@ class TestSanitizedTextProperties:
         THEN bleach finds nothing left to strip in the result, and the result never grew
         """
         # WHEN
-        result = sanitize_text(text)
+        result = _sanitize_or_reject(text)
 
         # THEN
         escaped = bleach.clean(result.replace("&", "&amp;"), tags=[], strip=True)
@@ -229,7 +242,7 @@ class TestSanitizedTextProperties:
         THEN sanitizing the result changes nothing and no invisible character is left
         """
         # WHEN
-        result = sanitize_text(text)
+        result = _sanitize_or_reject(text)
 
         # THEN
         assert sanitize_text(result) == result
