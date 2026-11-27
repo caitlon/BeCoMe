@@ -216,9 +216,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     password: string,
     turnstileToken?: string | null
   ) => {
-    await api.login(email, password, turnstileToken);
-    // An anonymous probe still in flight now predates the session this login created.
+    // A probe in flight now predates the session this login creates, and one that settles
+    // while the request is out must not act on the tab as if nothing were happening.
     epochRef.current += 1;
+    await api.login(email, password, turnstileToken);
     channelRef.current?.post('signed-in');
     await refreshUser();
   }, [refreshUser]);
@@ -251,6 +252,12 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
   }, [queryClient, updateUser]);
 
+  // A profile update the caller already holds is newer than any probe still in flight.
+  const setCurrentUser = useCallback((next: User) => {
+    epochRef.current += 1;
+    updateUser(next);
+  }, [updateUser]);
+
   const value = useMemo(() => ({
     user,
     status,
@@ -260,8 +267,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     login,
     logout,
     refreshUser,
-    setCurrentUser: updateUser,
-  }), [user, status, login, logout, refreshUser, updateUser]);
+    setCurrentUser,
+  }), [user, status, login, logout, refreshUser, setCurrentUser]);
 
   return (
     <AuthContext.Provider value={value}>

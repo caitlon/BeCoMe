@@ -473,6 +473,71 @@ describe('AuthContext across tabs', () => {
       expect(tab.result.current.auth.user).toBeNull()
     })
 
+    it('stays signed out when a probe settles after a logout completed', async () => {
+      const tab = await signedInTab()
+      const probe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(probe.promise)
+
+      act(() => {
+        void tab.result.current.auth.refreshUser()
+      })
+      await act(async () => {
+        await tab.result.current.auth.logout()
+      })
+      await act(async () => {
+        probe.resolve(createUser({ id: '1' }))
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.result.current.auth.user).toBeNull()
+    })
+
+    it('keeps a profile update that was made while a probe was in flight', async () => {
+      const tab = await signedInTab()
+      const probe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(probe.promise)
+
+      act(() => {
+        void tab.result.current.auth.refreshUser()
+      })
+      act(() => {
+        tab.result.current.auth.setCurrentUser(createUser({ id: '1', first_name: 'Renamed' }))
+      })
+      await act(async () => {
+        probe.resolve(createUser({ id: '1', first_name: 'Old' }))
+      })
+
+      expect(tab.result.current.auth.user?.first_name).toBe('Renamed')
+    })
+
+    it('ignores a probe refused while the login request is out, then ends up signed in', async () => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      const other = otherTab()
+      const listener = vi.fn()
+      unsubscribers.push(registerSignOutListener(listener))
+      const loginRequest = deferred<Awaited<ReturnType<typeof api.login>>>()
+      vi.mocked(api.login).mockReturnValueOnce(loginRequest.promise)
+      vi.mocked(api.getCurrentUser).mockResolvedValueOnce(createUser({ id: '1' }))
+
+      let login!: Promise<void>
+      act(() => {
+        login = tab.result.current.auth.login('a@example.com', 'pw')
+      })
+      await act(async () => {
+        mountProbe.reject(new UnauthorizedError())
+      })
+      expect(listener).not.toHaveBeenCalled()
+      await act(async () => {
+        loginRequest.resolve({ access_token: 't', token_type: 'bearer' })
+        await login
+      })
+
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(other.received).toEqual([{ type: 'signed-in' }])
+    })
+
     it('stays signed out when a probe settles after the session expired', async () => {
       const tab = await signedInTab()
       const probe = deferred<User>()
