@@ -154,7 +154,7 @@ def _private_settings(tmp_path, text: str) -> Settings:
         encoding="utf-8",
     )
     return Settings(
-        secret_key="test-secret-key",
+        secret_key="test-secret-key",  # pragma: allowlist secret
         assistant_private_corpus_dirs=[str(corpus)],
         assistant_private_corpus_manifest=str(manifest),
     )
