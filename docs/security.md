@@ -338,10 +338,11 @@ for a page reload. The usual cause is a sign-in in another tab: the first tab st
 token of the session it replaced. The client does not retry on its own, since the other tab may
 have signed in as a different user.
 
-Tabs of one browser also follow each other's sign-out. A sign-out, an expired session or a
-refused session probe in one tab posts a `signed-out` message on a same-origin
-`BroadcastChannel` (`frontend/src/lib/auth-broadcast.ts`), and every other open tab drops its
-user, clears its query cache and the assistant's conversation without a request. A sign-in posts
+Tabs of one browser also follow each other's sign-out. A sign-out, a refused session probe, or
+an expired session once a probe has confirmed that the session ended, posts a `signed-out`
+message in one tab on a same-origin `BroadcastChannel` (`frontend/src/lib/auth-broadcast.ts`),
+and every other open tab drops its user, clears its query cache and the assistant's conversation
+without a request. A sign-in posts
 `signed-in`, and the other tabs re-read the session. A message carries its type and nothing
 else, never a user id, email or token. A browser without `BroadcastChannel` falls back to each
 tab noticing at its own next request.

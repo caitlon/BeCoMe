@@ -6,7 +6,7 @@ import { I18nextProvider } from 'react-i18next'
 import { AuthProvider, useAuth, registerSignOutListener } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
-import { ForbiddenError, RateLimitError, UnauthorizedError } from '@/lib/errors'
+import { ForbiddenError, NetworkError, RateLimitError, ServerError, UnauthorizedError } from '@/lib/errors'
 import i18n from '@/i18n'
 import type { User } from '@/types/api'
 import { createUser } from '@tests/factories/user'
@@ -132,6 +132,68 @@ describe('AuthContext across tabs', () => {
       expect(tab.result.current.auth.isAuthenticated).toBe(true)
       expect(tab.result.current.auth.user?.id).toBe('1')
       expect(tab.queryClient.getQueryData(['projects'])).toEqual([{ id: 'p1' }])
+      expect(other.received).toEqual([])
+      expect(tab.result.current.toasts).toHaveLength(toastsBefore)
+    })
+
+    it('switches account without signing out or warning when the check of an expiry finds another user', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      const other = otherTab()
+      const toastsBefore = tab.result.current.toasts.length
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+      vi.mocked(api.getCurrentUser).mockResolvedValueOnce(createUser({ id: '2' }))
+
+      await act(async () => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.user?.id).toBe('2')
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(tab.queryClient.getQueryData(['projects'])).toBeUndefined()
+      expect(other.received).toEqual([])
+      expect(tab.result.current.toasts).toHaveLength(toastsBefore)
+    })
+
+    it('stays silent when a newer event supersedes the check of an expiry before it settles', async () => {
+      const tab = await signedInTab()
+      const other = otherTab()
+      const toastsBefore = tab.result.current.toasts.length
+      const check = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(check.promise)
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+
+      act(() => {
+        onSessionExpired?.()
+      })
+      // A sign-out heard from another tab settles the tab before the check does.
+      act(() => {
+        other.channel.postMessage({ type: 'signed-out' })
+      })
+      await act(async () => {
+        check.reject(new UnauthorizedError())
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(other.received).toEqual([])
+      expect(tab.result.current.toasts).toHaveLength(toastsBefore)
+    })
+
+    it.each([
+      ['a network error', () => new NetworkError()],
+      ['a 5xx', () => new ServerError()],
+    ])('reports the service unavailable, without a toast or a broadcast, when the check of an expiry gets %s', async (_label, makeError) => {
+      const tab = await signedInTab()
+      const other = otherTab()
+      const toastsBefore = tab.result.current.toasts.length
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(makeError())
+
+      await act(async () => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.status).toBe('serviceUnavailable')
       expect(other.received).toEqual([])
       expect(tab.result.current.toasts).toHaveLength(toastsBefore)
     })

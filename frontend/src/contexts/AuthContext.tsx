@@ -85,8 +85,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   // runs between a change and the next render sees the user the tab holds now.
   const channelRef = useRef<AuthBroadcast | null>(null);
   const userRef = useRef<User | null>(null);
-  // Counts the events that decide who is signed in: every probe, a received sign-out, an
-  // expired session, a logout and a login. A probe that finds the count moved on when its
+  // Counts the events that decide who is signed in: every probe (a session expiry runs one),
+  // a received sign-out, a logout and a login. A probe that finds the count moved on when its
   // request settles is stale and applies nothing, so an old answer never undoes a newer one.
   const epochRef = useRef(0);
   // The epoch of the newest probe whose request has not settled, or null. A login that
@@ -101,6 +101,50 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     userRef.current = next;
     setUser(next);
   }, []);
+
+  // The probe found a signed-in session. Query keys are not scoped to a user, so another
+  // account's cached data must go before this tab shows the new one; the same user keeps the
+  // cache. writeSeq is the profile-write count when the probe started.
+  const settleSignedIn = useCallback((userData: User, writeSeq: number) => {
+    const held = userRef.current;
+    if (held !== null && held.id !== userData.id) {
+      queryClient.clear();
+    }
+    // The probe settles at an arbitrary moment, possibly while a prerendered page
+    // is still hydrating. A transition keeps React from answering a plain update
+    // by discarding the server HTML of a boundary that has not hydrated yet.
+    startTransition(() => {
+      // A profile saved while the request was out is newer than this copy of the same user.
+      if (held === null || held.id !== userData.id || profileWriteSeqRef.current === writeSeq) {
+        updateUser(userData);
+      }
+      setStatus('authenticated');
+    });
+  }, [queryClient, updateUser]);
+
+  // The probe was refused with 401/403: the session is over. hadUser is whether the tab held
+  // a user when the probe started.
+  const settleRefused = useCallback((
+    hadUser: boolean,
+    announceSignOut: boolean,
+    onRefused?: () => void
+  ) => {
+    startTransition(() => {
+      updateUser(null);
+      setStatus('unauthenticated');
+    });
+    // The next sign-in in this tab may be another account's: nothing of this one stays.
+    if (hadUser) {
+      queryClient.clear();
+    }
+    notifySignOutListeners();
+    // An anonymous tab's probe changes nothing for the other tabs, and posting it could
+    // sign out a tab that has just signed in.
+    if (announceSignOut && hadUser) {
+      channelRef.current?.post('signed-out');
+    }
+    onRefused?.();
+  }, [queryClient, updateUser]);
 
   // announceSignOut is false for a probe another tab asked for: that tab already knows, and a
   // tab never answers a message by posting one. A quiet probe leaves the status alone while it
@@ -125,42 +169,13 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       if (epoch !== epochRef.current) {
         return;
       }
-      // Query keys are not scoped to a user, so another account's cached data must go
-      // before this tab shows the new one. The same user keeps the cache.
-      const held = userRef.current;
-      if (held !== null && held.id !== userData.id) {
-        queryClient.clear();
-      }
-      // The probe settles at an arbitrary moment, possibly while a prerendered page
-      // is still hydrating. A transition keeps React from answering a plain update
-      // by discarding the server HTML of a boundary that has not hydrated yet.
-      startTransition(() => {
-        // A profile saved while the request was out is newer than this copy of the same user.
-        if (held === null || held.id !== userData.id || profileWriteSeqRef.current === writeSeq) {
-          updateUser(userData);
-        }
-        setStatus('authenticated');
-      });
+      settleSignedIn(userData, writeSeq);
     } catch (err) {
       if (epoch !== epochRef.current) {
         return;
       }
       if (isUnauthorized(err) || err instanceof ForbiddenError) {
-        startTransition(() => {
-          updateUser(null);
-          setStatus('unauthenticated');
-        });
-        // The next sign-in in this tab may be another account's: nothing of this one stays.
-        if (hadUser) {
-          queryClient.clear();
-        }
-        notifySignOutListeners();
-        // An anonymous tab's probe changes nothing for the other tabs, and posting it could
-        // sign out a tab that has just signed in.
-        if (announceSignOut && hadUser) {
-          channelRef.current?.post('signed-out');
-        }
-        onRefused?.();
+        settleRefused(hadUser, announceSignOut, onRefused);
       } else {
         // Network/server trouble, not "not logged in": keep the distinction so the
         // UI can offer a retry instead of bouncing an authenticated user to /login.
@@ -174,7 +189,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
         activeProbeEpochRef.current = null;
       }
     }
-  }, [queryClient, updateUser]);
+  }, [settleSignedIn, settleRefused]);
 
   const refreshUser = useCallback(() => probeSession(true), [probeSession]);
 
