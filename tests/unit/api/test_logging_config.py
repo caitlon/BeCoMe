@@ -15,7 +15,13 @@ from api.logging_config import (
     setup_logging,
 )
 from api.logging_context import ContextFilter
-from tests.shared.database_errors import SENTINEL, psycopg2_unique_violation, raised
+from tests.shared.database_errors import (
+    CONNECT_NAMES,
+    SENTINEL,
+    psycopg2_connection_refused,
+    psycopg2_unique_violation,
+    raised,
+)
 
 _CONFIGURED_LOGGERS = ("api", *_EXTERNAL_LOG_LEVELS)
 
@@ -321,6 +327,25 @@ class TestDatabaseErrorTextInLogs:
         # THEN
         assert record.exc_text is not None
         self._assert_reduced(record.exc_text)
+
+    @pytest.mark.parametrize("formatter", [JsonLogFormatter(), SafeTextFormatter()])
+    def test_failed_connection_logs_its_reason_and_no_name(self, formatter):
+        """
+        GIVEN a record whose traceback holds a refused connection that names a host, an address
+            and a port
+        WHEN the JSON formatter and the text formatter format it
+        THEN the output holds the reason label
+        AND no host, address, port, user or database name
+        """
+        exc_info = raised(*psycopg2_connection_refused())
+        record = _make_record(
+            name="api.test", level=logging.ERROR, msg="Unhandled exception", exc_info=exc_info
+        )
+
+        output = formatter.format(record)
+
+        assert "(connection failure: refused)" in output
+        assert not [name for name in CONNECT_NAMES if name in output]
 
 
 class TestSetupLogging:

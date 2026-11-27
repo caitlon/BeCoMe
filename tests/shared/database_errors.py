@@ -90,3 +90,36 @@ def bind_processor_error() -> tuple[StatementError, BaseException]:
         f"(builtins.TypeError) {orig}", "SELECT 1", {"flag": SENTINEL}, orig, hide_parameters=True
     )
     return wrapped, orig
+
+
+# What a failed connection names, and what must not reach the tracker or a log handler.
+CONNECT_HOST = "db.internal"
+CONNECT_ADDRESS = "10.0.0.5"
+# The port is not 5432, and no name is "become": a short number can turn up by chance in an event
+# id or a timestamp, and the project name is in every envelope.
+CONNECT_PORT = "54329"
+CONNECT_USER = "sentinel_user"
+CONNECT_DATABASE = "sentinel_db"
+CONNECT_NAMES = (CONNECT_HOST, CONNECT_ADDRESS, CONNECT_PORT, CONNECT_USER, CONNECT_DATABASE)
+
+_CONNECT_PREFIX = (
+    f'connection to server at "{CONNECT_HOST}" ({CONNECT_ADDRESS}), port {CONNECT_PORT}'
+)
+
+
+def psycopg2_connection_refused() -> tuple[DBAPIError, BaseException]:
+    """Return an ``OperationalError`` wrapping a refused psycopg2 connection, and the driver error."""
+    orig = psycopg2.OperationalError(
+        f"{_CONNECT_PREFIX} failed: Connection refused\n"
+        "\tIs the server running on that host and accepting TCP/IP connections?\n"
+    )
+    return wrap(orig, psycopg2.Error), orig
+
+
+def psycopg2_pg_hba_rejection() -> tuple[DBAPIError, BaseException]:
+    """Return an ``OperationalError`` wrapping a pg_hba rejection, and the driver error."""
+    orig = psycopg2.OperationalError(
+        f"{_CONNECT_PREFIX} failed: FATAL:  no pg_hba.conf entry for host "
+        f'"{CONNECT_ADDRESS}", user "{CONNECT_USER}", database "{CONNECT_DATABASE}", no encryption\n'
+    )
+    return wrap(orig, psycopg2.Error), orig
