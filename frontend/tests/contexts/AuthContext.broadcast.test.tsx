@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
 import { ForbiddenError, UnauthorizedError } from '@/lib/errors'
 import i18n from '@/i18n'
+import type { User } from '@/types/api'
 import { createUser } from '@tests/factories/user'
 import { FakeBroadcastChannel } from '@tests/support/fake-broadcast-channel'
 
@@ -34,6 +35,17 @@ function mountTab() {
   )
   const view = renderHook(() => ({ auth: useAuth(), toasts: useToast().toasts }), { wrapper })
   return { ...view, queryClient }
+}
+
+// A request the test settles by hand, to put two probes in flight at once.
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 // A bare channel standing in for another tab: what it posts reaches the tab under test, and
@@ -102,6 +114,21 @@ describe('AuthContext across tabs', () => {
 
       expect(tab.result.current.auth.status).toBe('unauthenticated')
       expect(other.received).toEqual([{ type: 'signed-out' }])
+    })
+
+    it('posts nothing when the session expires in a tab that holds no user', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
+      const tab = mountTab()
+      await waitFor(() => expect(tab.result.current.auth.status).toBe('unauthenticated'))
+      const other = otherTab()
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+
+      act(() => {
+        onSessionExpired?.()
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(other.received).toEqual([])
     })
 
     it.each([
@@ -315,33 +342,182 @@ describe('AuthContext across tabs', () => {
       expect(api.login).toHaveBeenCalledTimes(1)
     })
 
-    it('ignores a message that is not one of the two types', async () => {
+    it.each([
+      ['an unknown type', { type: 'logout', user: 'someone' }],
+      ['no type', { user: 'someone' }],
+      ['null', null],
+      ['a bare string', 'signed-out'],
+    ])('ignores a message with %s and still acts on a known one after it', async (_label, payload) => {
       const tab = await signedInTab()
+      const other = otherTab()
+      vi.mocked(api.getCurrentUser).mockClear()
 
       act(() => {
-        otherTab().channel.postMessage({ type: 'logout', user: 'someone' })
+        other.channel.postMessage(payload)
       })
 
+      // A handler that read any message as "something changed" would re-read the session.
+      expect(api.getCurrentUser).not.toHaveBeenCalled()
       expect(tab.result.current.auth.isAuthenticated).toBe(true)
+
+      act(() => {
+        other.channel.postMessage({ type: 'signed-out' })
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
     })
   })
 
-  describe('where BroadcastChannel is not defined', () => {
-    it('signs in and out as it did before, without a channel', async () => {
-      vi.stubGlobal('BroadcastChannel', undefined)
+  describe('overlapping probes', () => {
+    it('keeps a tab signed in when its anonymous mount probe is refused after a signed-in probe succeeded', async () => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      const other = otherTab()
+      vi.mocked(api.getCurrentUser).mockResolvedValueOnce(createUser({ id: '1' }))
+
+      await act(async () => {
+        other.channel.postMessage({ type: 'signed-in' })
+      })
+      await waitFor(() => expect(tab.result.current.auth.isAuthenticated).toBe(true))
+      await act(async () => {
+        mountProbe.reject(new UnauthorizedError())
+      })
+
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(tab.result.current.auth.user?.id).toBe('1')
+      expect(FakeBroadcastChannel.posted).toEqual([{ type: 'signed-in' }])
+      expect(other.received).toEqual([])
+    })
+
+    it('keeps a tab signed in when its mount probe is refused after its own login', async () => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      const other = otherTab()
       vi.mocked(api.login).mockResolvedValue({ access_token: 't', token_type: 'bearer' })
       vi.mocked(api.getCurrentUser).mockResolvedValueOnce(createUser({ id: '1' }))
+
+      await act(async () => {
+        await tab.result.current.auth.login('a@example.com', 'pw')
+      })
+      await act(async () => {
+        mountProbe.reject(new UnauthorizedError())
+      })
+
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(other.received).toEqual([{ type: 'signed-in' }])
+    })
+
+    it('stays signed out when a signed-in probe settles after a signed-out message', async () => {
+      const tab = await signedInTab()
+      const other = otherTab()
+      const probe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(probe.promise)
+
+      act(() => {
+        other.channel.postMessage({ type: 'signed-in' })
+      })
+      act(() => {
+        other.channel.postMessage({ type: 'signed-out' })
+      })
+      await act(async () => {
+        probe.resolve(createUser({ id: '1' }))
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.result.current.auth.user).toBeNull()
+    })
+
+    it('stays signed out when a probe settles after the session expired', async () => {
+      const tab = await signedInTab()
+      const probe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(probe.promise)
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.lastCall![0]
+
+      act(() => {
+        void tab.result.current.auth.refreshUser()
+      })
+      act(() => {
+        onSessionExpired?.()
+      })
+      await act(async () => {
+        probe.resolve(createUser({ id: '1' }))
+      })
+
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+      expect(tab.result.current.auth.user).toBeNull()
+    })
+  })
+
+  describe('a different user signing in elsewhere', () => {
+    it('clears the query cache before showing the new user', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '2' }))
+
+      await act(async () => {
+        otherTab().channel.postMessage({ type: 'signed-in' })
+      })
+
+      await waitFor(() => expect(tab.result.current.auth.user?.id).toBe('2'))
+      expect(tab.queryClient.getQueryData(['projects'])).toBeUndefined()
+    })
+
+    it('keeps the query cache when the same user signed in again', async () => {
+      const tab = await signedInTab()
+      tab.queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+      vi.mocked(api.getCurrentUser).mockClear()
+
+      await act(async () => {
+        otherTab().channel.postMessage({ type: 'signed-in' })
+      })
+
+      await waitFor(() => expect(api.getCurrentUser).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(tab.result.current.auth.isAuthenticated).toBe(true))
+      expect(tab.result.current.auth.user?.id).toBe('1')
+      expect(tab.queryClient.getQueryData(['projects'])).toEqual([{ id: 'p1' }])
+    })
+  })
+
+  describe('where the channel cannot be opened', () => {
+    async function signInAndOut() {
+      vi.mocked(api.login).mockResolvedValue({ access_token: 't', token_type: 'bearer' })
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
       const tab = mountTab()
       await waitFor(() => expect(tab.result.current.auth.isAuthenticated).toBe(true))
 
       await act(async () => {
         await tab.result.current.auth.login('a@example.com', 'pw')
+      })
+      expect(tab.result.current.auth.isAuthenticated).toBe(true)
+      expect(api.login).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
         await tab.result.current.auth.logout()
       })
-
       expect(tab.result.current.auth.status).toBe('unauthenticated')
-      expect(FakeBroadcastChannel.posted).toEqual([])
-      tab.unmount()
+      expect(api.logout).toHaveBeenCalledTimes(1)
+    }
+
+    it('signs in and out as it did before when BroadcastChannel is not defined', async () => {
+      vi.stubGlobal('BroadcastChannel', undefined)
+      expect(typeof BroadcastChannel).toBe('undefined')
+
+      await signInAndOut()
+
+      expect(FakeBroadcastChannel.openCount(CHANNEL)).toBe(0)
+    })
+
+    it('signs in and out as it did before when the constructor throws', async () => {
+      const constructor = vi.fn(function () {
+        throw new Error('SecurityError')
+      })
+      vi.stubGlobal('BroadcastChannel', constructor)
+
+      await signInAndOut()
+
+      expect(constructor).toHaveBeenCalledWith(CHANNEL)
     })
   })
 })

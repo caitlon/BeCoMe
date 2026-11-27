@@ -81,33 +81,53 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   const [status, setStatus] = useState<AuthStatus>('loading');
   // The channel to the other tabs, open while this provider is mounted, and the user this tab
   // holds, which a probe refused with 401/403 reads to tell a real sign-out from an anonymous
-  // visitor's first probe.
+  // visitor's first probe. The ref changes in the same call as the state, so a reader that
+  // runs between a change and the next render sees the user the tab holds now.
   const channelRef = useRef<AuthBroadcast | null>(null);
   const userRef = useRef<User | null>(null);
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
+  // Counts the events that decide who is signed in: every probe, a received sign-out, an
+  // expired session, a logout and a login. A probe that finds the count moved on when its
+  // request settles is stale and applies nothing, so an old answer never undoes a newer one.
+  const epochRef = useRef(0);
+  const updateUser = useCallback((next: User | null) => {
+    userRef.current = next;
+    setUser(next);
+  }, []);
 
   // announceSignOut is false for a probe another tab asked for: that tab already knows, and a
   // tab never answers a message by posting one.
   const probeSession = useCallback(async (announceSignOut: boolean) => {
+    const epoch = ++epochRef.current;
+    // Read before the request: by the time it settles the user may be another event's.
+    const hadUser = userRef.current !== null;
     try {
       setStatus('loading');
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
       // visitor on a public page is not treated as a session failure.
       const userData = await api.getCurrentUser(true);
+      if (epoch !== epochRef.current) {
+        return;
+      }
+      // Query keys are not scoped to a user, so another account's cached data must go
+      // before this tab shows the new one. The same user keeps the cache.
+      const held = userRef.current;
+      if (held !== null && held.id !== userData.id) {
+        queryClient.clear();
+      }
       // The probe settles at an arbitrary moment, possibly while a prerendered page
       // is still hydrating. A transition keeps React from answering a plain update
       // by discarding the server HTML of a boundary that has not hydrated yet.
       startTransition(() => {
-        setUser(userData);
+        updateUser(userData);
         setStatus('authenticated');
       });
     } catch (err) {
+      if (epoch !== epochRef.current) {
+        return;
+      }
       if (isUnauthorized(err) || err instanceof ForbiddenError) {
-        const hadUser = userRef.current !== null;
         startTransition(() => {
-          setUser(null);
+          updateUser(null);
           setStatus('unauthenticated');
         });
         notifySignOutListeners();
@@ -125,7 +145,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
         });
       }
     }
-  }, []);
+  }, [queryClient, updateUser]);
 
   const refreshUser = useCallback(() => probeSession(true), [probeSession]);
 
@@ -136,7 +156,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   useEffect(() => {
     const channel = openAuthBroadcast((type) => {
       if (type === 'signed-out') {
-        setUser(null);
+        epochRef.current += 1;
+        updateUser(null);
         setStatus('unauthenticated');
         queryClient.clear();
         notifySignOutListeners();
@@ -149,7 +170,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       channel.close();
       channelRef.current = null;
     };
-  }, [queryClient, probeSession]);
+  }, [queryClient, probeSession, updateUser]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial auth load on mount
@@ -160,10 +181,15 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   // fails on a non-probe request) into auth state and a user-visible toast.
   useEffect(() => {
     api.setOnSessionExpired(() => {
-      setUser(null);
+      // An anonymous tab's expiry changes nothing for the other tabs.
+      const hadUser = userRef.current !== null;
+      epochRef.current += 1;
+      updateUser(null);
       setStatus('unauthenticated');
       notifySignOutListeners();
-      channelRef.current?.post('signed-out');
+      if (hadUser) {
+        channelRef.current?.post('signed-out');
+      }
       toast({
         title: tCommon('errors.sessionExpiredTitle'),
         description: tCommon('errors.sessionExpired'),
@@ -171,7 +197,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       });
     });
     return () => api.setOnSessionExpired(null);
-  }, [toast, tCommon]);
+  }, [toast, tCommon, updateUser]);
 
   // The Turnstile token is the sign-in form's, not this context's: it is minted by the
   // widget on that page and passed straight through to the transport.
@@ -181,6 +207,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     turnstileToken?: string | null
   ) => {
     await api.login(email, password, turnstileToken);
+    // An anonymous probe still in flight now predates the session this login created.
+    epochRef.current += 1;
     channelRef.current?.post('signed-in');
     await refreshUser();
   }, [refreshUser]);
@@ -201,7 +229,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       logoutError = err;
       logger.debug('Logout request failed; clearing the local session anyway', { error: err });
     }
-    setUser(null);
+    epochRef.current += 1;
+    updateUser(null);
     setStatus('unauthenticated');
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
@@ -210,7 +239,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     if (logoutFailed) {
       throw logoutError;
     }
-  }, [queryClient]);
+  }, [queryClient, updateUser]);
 
   const value = useMemo(() => ({
     user,
@@ -221,8 +250,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     login,
     logout,
     refreshUser,
-    setCurrentUser: setUser,
-  }), [user, status, login, logout, refreshUser]);
+    setCurrentUser: updateUser,
+  }), [user, status, login, logout, refreshUser, updateUser]);
 
   return (
     <AuthContext.Provider value={value}>
