@@ -16,8 +16,8 @@ heading path to the text. For each chunk it looks at the chunk's own text, its t
 section (the `heading_path` metadata) and its `url` metadata, after `strip_invisible`, NFKC
 normalization, case folding and whitespace collapse, so a zero-width character, a
 decomposed letter, a fullwidth bracket, a different case or a line break inside a phrase
-does not hide it. The URL is read twice, as written and decoded (percent escapes resolved,
-every hyphen, underscore and plus read as a space), so a slug or an escaped phrase in it
+does not hide it. The URL is read as written, decoded (percent escapes resolved), and decoded
+with every run of punctuation read as a space, so a slug, a path or an escaped phrase in it
 matches too. The phrase patterns also run on a copy with the diacritics folded away,
 so Czech typed without them matches too.
 """
@@ -74,10 +74,10 @@ _ROLE_MARKERS: tuple[str, ...] = (
 # or "never", and an addressee line without a colon or comma after it ("message to the model
 # owner"). Also narrowed: "processing the" (only "this" and "these" count, which is what keeps
 # "the model processing the opinions" clean), the Czech reader pattern, which has no such guard
-# and so leaves out a bare "model", and the English "tell the user" and "always/never answer"
-# forms and the Czech "tell the user", "vzdy odpovidej" and "nikdy rikej", which need "that"
-# ("ze" in Czech) or a colon after them; an "always/never" verb with no colon and no "you must"
-# or "you have to" before it is left out.
+# and so leaves out a bare "model". The English "tell the user" form needs "that" or a colon
+# after it. The English "always/never answer" form, without "you must" or "you have to" before
+# it, needs a colon (a "that" after it is left out, so "Always answer that ..." does not match).
+# The Czech "tell the user", "vzdy odpovidej" and "nikdy rikej" forms need "ze" or a colon.
 _ADDRESSEE = r"(?:(?:ai\s*)?(?:assistant|chatbot|bot|model|llm|language\s*model)|ai)"
 _ADDRESSEE_READER = r"(?:assistant|ai|chatbot|bot|model|llm|language\s*model)s?"
 _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
@@ -128,6 +128,7 @@ _PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 _WHITESPACE = re.compile(r"\s+")
+_URL_SEPARATORS = re.compile(r"[\W_]+")
 
 
 @dataclass(frozen=True)
@@ -192,17 +193,16 @@ def _fold(text: str) -> str:
 
 
 def _url_readings(url: str) -> list[str]:
-    """Read a URL the two ways a planted phrase could hide in it.
+    """Read a URL the three ways a planted phrase could hide in it.
 
     :param url: The chunk's url metadata, non-empty.
-    :return: The URL as written, then decoded (percent escapes resolved, every "-", "_" and
-        "+" replaced by a space), each normalized. The first keeps role markers such as
-        "<|im_start|>" whole; the second lets a slug or an escaped phrase match.
+    :return: The URL as written, decoded (percent escapes resolved, nothing else changed),
+        and decoded with every run of characters that are not letters or digits read as one
+        space, each normalized. The first two keep tags, role markers and colons whole; the
+        third lets a slug, a path or an escaped phrase match.
     """
     decoded = unquote(url)
-    for separator in "-_+":
-        decoded = decoded.replace(separator, " ")
-    return [_normalize(url), _normalize(decoded)]
+    return [_normalize(url), _normalize(decoded), _normalize(_URL_SEPARATORS.sub(" ", decoded))]
 
 
 def _tag_reason(text: str) -> str | None:
@@ -251,7 +251,7 @@ def screen_chunks(chunks: Sequence[Document]) -> list[FlaggedChunk]:
     :return: One FlaggedChunk per flagged chunk, in the order of `chunks`, carrying the
         first reason found: an assistant tag before a role marker before a phrase,
         looking at the text, then the title, then the section, then the URL (as written,
-        then decoded) for each.
+        decoded, then decoded with its punctuation read as spaces) for each.
     """
     flagged = []
     for chunk in chunks:
