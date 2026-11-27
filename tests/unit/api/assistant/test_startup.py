@@ -245,7 +245,9 @@ class TestWhenABackendFails:
         """
         # GIVEN
         backends.embeddings.hang = True
-        short = settings.model_copy(update={"assistant_llm_timeout_seconds": 0.05})
+        # Every probe gets this bound; the vector_db probe starts a worker thread, which
+        # takes longer than a few tens of milliseconds on a loaded machine under coverage.
+        short = settings.model_copy(update={"assistant_llm_timeout_seconds": 0.5})
 
         # WHEN
         await asyncio.wait_for(startup.check_assistant_backends(short), timeout=5)
