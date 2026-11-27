@@ -56,8 +56,14 @@ def _drop_breadcrumb_addresses(breadcrumbs: object) -> None:
                 _drop_log_address(crumb.get("data"))
 
 
-def _tag_connection_failure(event: "Event", label: str) -> None:
-    """Set the connection failure tag on an event; an event whose tags are no dict is left alone."""
+def _tag_connection_failure(event: "Event", exc: BaseException) -> None:
+    """Tag an event with the reason label when ``exc`` is a failed database connection.
+
+    An exception that is no connect failure, or an event whose tags are no dict, is left alone.
+    """
+    label = connection_failure_label(exc)
+    if label is None:
+        return
     tags = event.get("tags")
     if tags is None:
         event["tags"] = {CONNECTION_FAILURE_TAG: label}
@@ -119,9 +125,7 @@ def _scrub_database_errors(event: "Event", hint: "Hint") -> None:
             used.add(id(match))
             if id(match) in reduce:
                 entry["value"] = safe_error_text(match)
-                label = connection_failure_label(match)
-                if label is not None:
-                    _tag_connection_failure(event, label)
+                _tag_connection_failure(event, match)
         elif is_database_module(entry.get("module")) and isinstance(entry.get("value"), str):
             entry["value"] = safe_message_text(entry["value"])
 
