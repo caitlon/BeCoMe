@@ -28,7 +28,7 @@ from tests.integration.api.conftest import (
 
 ROLES = ("admin", "expertone", "experttwo")
 # One (lower, peak, upper) per expert. The projects share no value and no expert count.
-ALPHA_OPINIONS = [(10.0, 20.0, 30.0), (11.0, 21.0, 31.0), (12.0, 22.0, 32.0)]
+ALPHA_OPINIONS = [(10.0, 20.0, 30.0), (11.0, 21.0, 31.0), (15.0, 25.0, 35.0)]
 BETA_OPINIONS = [(60.0, 70.0, 80.0), (64.0, 74.0, 84.0)]
 AGGREGATES = ("best_compromise", "arithmetic_mean", "median")
 PLACES = {"csv": 4, "pdf": 2}
@@ -98,10 +98,10 @@ def projects(client) -> dict:
     :param client: Test client.
     :return: ``alpha`` and ``beta`` as built by :func:`_build_project`.
     """
-    return {
-        "alpha": _build_project(client, "Alpha", ALPHA_OPINIONS),
-        "beta": _build_project(client, "Beta", BETA_OPINIONS),
-    }
+    # The other project is built first so that an unfiltered result lookup would return it.
+    beta = _build_project(client, "Beta", BETA_OPINIONS)
+    alpha = _build_project(client, "Alpha", ALPHA_OPINIONS)
+    return {"alpha": alpha, "beta": beta}
 
 
 def _export(client, built: dict, export_format: str) -> tuple[bytes, str]:

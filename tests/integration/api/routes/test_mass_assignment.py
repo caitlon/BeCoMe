@@ -215,7 +215,15 @@ def test_account_deletion_refuses_extra_keys(client, nested):
 
     # THEN
     _assert_extra_forbidden(response, "forged")
-    assert nested == (response.json()["detail"][0]["loc"][1:2] == ["project_dispositions"])
+    forged = next(
+        error
+        for error in response.json()["detail"]
+        if error["type"] == "extra_forbidden" and error["loc"][-1] == "forged"
+    )
+    if nested:
+        assert "project_dispositions" in forged["loc"], forged
+    else:
+        assert "project_dispositions" not in forged["loc"], forged
     assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 200
     with app_session(client) as session:
         assert snapshot(session) == before
