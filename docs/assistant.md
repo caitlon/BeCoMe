@@ -153,7 +153,8 @@ instructions. The full list of what is sent is in
 
 Your earlier messages go along with the question, up to the last 20 and about 6,000 characters in
 total. The server keeps no conversation history to answer from. The conversation lives in your
-browser tab. Each turn is also kept in a trace record for 14 days, as
+browser tab, and a sign-out in any tab of the browser erases it in all of them. Each turn is also
+kept in a trace record for 14 days, as
 [What the assistant sends](user/security.md#what-the-assistant-sends) explains.
 
 ## Why the code fetches the data instead of the model

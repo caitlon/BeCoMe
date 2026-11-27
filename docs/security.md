@@ -338,6 +338,14 @@ for a page reload. The usual cause is a sign-in in another tab: the first tab st
 token of the session it replaced. The client does not retry on its own, since the other tab may
 have signed in as a different user.
 
+Tabs of one browser also follow each other's sign-out. A sign-out, an expired session or a
+refused session probe in one tab posts a `signed-out` message on a same-origin
+`BroadcastChannel` (`frontend/src/lib/auth-broadcast.ts`), and every other open tab drops its
+user, clears its query cache and the assistant's conversation without a request. A sign-in posts
+`signed-in`, and the other tabs re-read the session. A message carries its type and nothing
+else, never a user id, email or token. A browser without `BroadcastChannel` falls back to each
+tab noticing at its own next request.
+
 Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
 (`session_id_from_access_token`). It still verifies the signature, but the rest is the
 authentication layer's job, and checking it here would put three Redis round trips in front

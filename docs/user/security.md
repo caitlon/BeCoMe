@@ -51,7 +51,8 @@ instructions: the model is told to ignore a request that appears inside them.
 
 The model runs at OVHcloud AI Endpoints in the European Union (Gravelines, France). OVHcloud does
 not store questions or answers and does not use them to train models. The conversation stays in
-your browser tab and is erased when you close the tab or sign out.
+your browser tab and is erased when you close the tab or sign out, in this tab or in any other tab
+of the same browser.
 
 For 14 days each turn, the answer included, is also recorded in a trace store in the EU, with
 member names and positions replaced by labels. The store is run by a US company (LangChain), and

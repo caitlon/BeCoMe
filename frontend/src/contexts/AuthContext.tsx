@@ -6,12 +6,14 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { User } from '@/types/api';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { openAuthBroadcast, type AuthBroadcast } from '@/lib/auth-broadcast';
 import { isUnauthorized, ForbiddenError } from '@/lib/errors';
 import { useToast } from '@/hooks/use-toast';
 
@@ -77,8 +79,18 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   const { t: tCommon } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
+  // The channel to the other tabs, open while this provider is mounted, and the user this tab
+  // holds, which a probe refused with 401/403 reads to tell a real sign-out from an anonymous
+  // visitor's first probe.
+  const channelRef = useRef<AuthBroadcast | null>(null);
+  const userRef = useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
-  const refreshUser = useCallback(async () => {
+  // announceSignOut is false for a probe another tab asked for: that tab already knows, and a
+  // tab never answers a message by posting one.
+  const probeSession = useCallback(async (announceSignOut: boolean) => {
     try {
       setStatus('loading');
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
@@ -93,11 +105,17 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       });
     } catch (err) {
       if (isUnauthorized(err) || err instanceof ForbiddenError) {
+        const hadUser = userRef.current !== null;
         startTransition(() => {
           setUser(null);
           setStatus('unauthenticated');
         });
         notifySignOutListeners();
+        // An anonymous tab's probe changes nothing for the other tabs, and posting it could
+        // sign out a tab that has just signed in.
+        if (announceSignOut && hadUser) {
+          channelRef.current?.post('signed-out');
+        }
       } else {
         // Network/server trouble, not "not logged in": keep the distinction so the
         // UI can offer a retry instead of bouncing an authenticated user to /login.
@@ -108,6 +126,30 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       }
     }
   }, []);
+
+  const refreshUser = useCallback(() => probeSession(true), [probeSession]);
+
+  // A sign-out in another tab ends this session too, with no request: the server session is
+  // already gone, and a tab that still showed the account would keep its cached queries and
+  // the assistant's conversation. A sign-in in another tab replaces the session cookie, so
+  // this tab re-reads it; the assistant's user-switch reset then drops another user's history.
+  useEffect(() => {
+    const channel = openAuthBroadcast((type) => {
+      if (type === 'signed-out') {
+        setUser(null);
+        setStatus('unauthenticated');
+        queryClient.clear();
+        notifySignOutListeners();
+      } else {
+        void probeSession(false);
+      }
+    });
+    channelRef.current = channel;
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [queryClient, probeSession]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial auth load on mount
@@ -121,6 +163,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       setUser(null);
       setStatus('unauthenticated');
       notifySignOutListeners();
+      channelRef.current?.post('signed-out');
       toast({
         title: tCommon('errors.sessionExpiredTitle'),
         description: tCommon('errors.sessionExpired'),
@@ -138,6 +181,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     turnstileToken?: string | null
   ) => {
     await api.login(email, password, turnstileToken);
+    channelRef.current?.post('signed-in');
     await refreshUser();
   }, [refreshUser]);
 
@@ -162,6 +206,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
     notifySignOutListeners();
+    channelRef.current?.post('signed-out');
     if (logoutFailed) {
       throw logoutError;
     }
