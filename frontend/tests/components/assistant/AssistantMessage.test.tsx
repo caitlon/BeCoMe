@@ -214,6 +214,33 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('[4]').closest('s')).not.toBeNull();
     });
 
+    it.each([
+      { numbers: [1, 2, 3], known: '[2]', unknown: '[4]' },
+      { numbers: [1], known: '[1]', unknown: '[2]' },
+    ])(
+      'links $known and strikes $unknown when the answer has sources $numbers',
+      ({ numbers, known, unknown }) => {
+        renderMessage({
+          content: `A value ${known} and ${unknown}.`,
+          sources: numbers.map((n) => ({ ...publicSource, n, title: `Source ${n}` })),
+        });
+
+        expect(screen.getByRole('link', { name: known })).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: unknown })).not.toBeInTheDocument();
+        expect(screen.getByText(unknown).closest('s')).not.toBeNull();
+        expect(screen.getAllByText(/No such source/)).toHaveLength(1);
+      },
+    );
+
+    it.each([[[]], [undefined]])('shows every [n] as plain text in a done answer with sources %j', (sources) => {
+      const { container } = renderMessage({ content: 'A value [4] and [1].', sources });
+
+      expect(container.querySelector('s')).toBeNull();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(container).toHaveTextContent('A value [4] and [1].');
+      expect(container).not.toHaveTextContent('No such source');
+    });
+
     it.each(['pending', 'cut', 'cancelled', 'error'] as const)(
       'leaves a [1] in a %s answer as plain text, since its sources are not known',
       (status) => {
