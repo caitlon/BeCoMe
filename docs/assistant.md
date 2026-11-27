@@ -249,15 +249,17 @@ the search and the project data, must finish within 90 seconds, and the whole an
 On the development environment, the answer shows its sources. With sources on, each `[n]`
 becomes a link to a list under the answer, where every source shows its document title and section
 and opens a short excerpt. A source from the local layer is marked as a local copy. No source links
-to its original document yet. A `[n]` that points at no source is shown struck through.
+to its original document yet. When the answer has sources, a `[n]` that points at none of them is
+shown struck through; an answer without sources shows every `[n]` as plain text.
 
 Production does not show sources for now. The setting `ASSISTANT_SHOW_SOURCES` is off there, and it
 works on the server, not only in the panel. The server removes the `[n]` markers that name a source
 of the turn from the answer, also while it streams, and sends an empty list of sources, so no title
 or excerpt reaches the browser at all. A bracket with a number that is no source of the turn, such
-as a range of values, stays as written. The search, the instructions and both checks stay the
-same. The citation flag is always reported as valid there, because a warning about a link you
-cannot see would only confuse. The server log still records which sources each answer used.
+as a range of values, stays as written, and the panel shows it as plain text. The search, the
+instructions and both checks stay the same. The citation flag is always reported as valid there,
+because a warning about a link you cannot see would only confuse. The server log still records
+which sources each answer used.
 
 ## How the panel displays an answer
 

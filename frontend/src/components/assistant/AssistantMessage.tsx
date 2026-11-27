@@ -159,6 +159,7 @@ function AssistantAnswer({ message, onRetry, notFound, projectScoped, announce }
   // A fresh object per citation click, so citing the row that is already open scrolls again.
   const [scrollRequest, setScrollRequest] = useState<{ readonly n: number } | null>(null);
   const sources = useMemo(() => cleanSources(message.sources), [message.sources]);
+  // With no sources (hidden by the server, or none found) a [n] is a value, not a citation: it stays plain.
   const sourceNumbers = useMemo(() => sources.map((source) => source.n), [sources]);
   const tools = cleanToolsUsed(message.toolsUsed);
   const checks = cleanChecks(message.checks);
@@ -196,7 +197,7 @@ function AssistantAnswer({ message, onRetry, notFound, projectScoped, announce }
           <AssistantMarkdown
             content={message.content}
             messageId={message.id}
-            sourceNumbers={status === "done" ? sourceNumbers : undefined}
+            sourceNumbers={status === "done" && sourceNumbers.length > 0 ? sourceNumbers : undefined}
             onCite={handleCite}
           />
         </div>

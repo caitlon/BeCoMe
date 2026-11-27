@@ -214,6 +214,26 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('[4]').closest('s')).not.toBeNull();
     });
 
+    it('links a known citation and strikes an unknown one when the answer has several sources', () => {
+      renderMessage({
+        content: 'A value [2] and [4].',
+        sources: [publicSource, localSource, { ...publicSource, n: 3, title: 'Third' }],
+      });
+
+      expect(screen.getByRole('link', { name: '[2]' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: '[4]' })).not.toBeInTheDocument();
+      expect(screen.getByText('[4]').closest('s')).not.toBeNull();
+    });
+
+    it.each([[[]], [undefined]])('shows every [n] as plain text in a done answer with sources %j', (sources) => {
+      const { container } = renderMessage({ content: 'A value [4] and [1].', sources });
+
+      expect(container.querySelector('s')).toBeNull();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(container).toHaveTextContent('A value [4] and [1].');
+      expect(container).not.toHaveTextContent('No such source');
+    });
+
     it.each(['pending', 'cut', 'cancelled', 'error'] as const)(
       'leaves a [1] in a %s answer as plain text, since its sources are not known',
       (status) => {
