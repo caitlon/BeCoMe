@@ -6,8 +6,9 @@ walk ``create_test_app()``, which includes the routers by hand. A router added t
 cross-tenant request, and nothing would say so. This compares the two route sets, with the
 assistant switched on in both.
 
-The flag-off build has no check of its own: the assistant router is the only conditional one in
-both builds, and ``test_assistant_config.py`` covers the flag-off build.
+Only the assistant router is conditional in both builds, so the comparison runs with the flag on.
+The flag-off route sets are not compared with each other; ``test_assistant_config.py`` checks
+only that the flag-off test app serves no assistant route.
 """
 
 from collections.abc import Iterable
@@ -35,7 +36,7 @@ def test_test_app_serves_the_routes_of_the_real_app(assistant_settings):
     WHEN the (method, path) pairs of each are listed
     THEN the two sets are equal, and the assistant routes are among them
     """
-    # GIVEN
+    # WHEN
     real = _method_path_pairs(app_routes())
     test_app = _method_path_pairs(create_test_app().routes)
 

@@ -21,7 +21,7 @@ from api.db.models import (
     User,
 )
 
-TENANT_TABLES: tuple[type[SQLModel], ...] = (
+SNAPSHOT_TABLES: tuple[type[SQLModel], ...] = (
     User,
     Project,
     ProjectMember,
@@ -44,5 +44,5 @@ def snapshot(session: Session) -> dict[str, list[dict[str, Any]]]:
             (row.model_dump(mode="json") for row in session.exec(select(table)).all()),
             key=lambda row: row["id"],
         )
-        for table in TENANT_TABLES
+        for table in SNAPSHOT_TABLES
     }

@@ -2,8 +2,8 @@
 
 The request models forbid extra fields, so a forged ``admin_id`` or ``user_id`` must reach
 neither the model nor the database. Each case posts the forged field through the real
-route next to otherwise valid data, then compares every row of the users, projects,
-memberships, opinions and invitations tables with a snapshot taken before: no project
+route next to otherwise valid data, then compares every row of every table of the schema
+(the snapshot of ``state_snapshot.py``) with a snapshot taken before: no project
 created, none changed, no opinion or invitation stored, the admin and every role as they
 were. A 422 alone would not show that nothing was written before the refusal.
 """

@@ -15,7 +15,7 @@ from sqlmodel import SQLModel
 from api.db.models import EmailVerificationToken, PasswordResetToken, User
 from api.db.utils import utc_now
 from tests.integration.api.conftest import app_session
-from tests.integration.api.state_snapshot import TENANT_TABLES, snapshot
+from tests.integration.api.state_snapshot import SNAPSHOT_TABLES, snapshot
 
 # Obviously fake: 64 hex characters, the length the token_hash column demands.
 FAKE_TOKEN_HASH = "ab" * 32  # pragma: allowlist secret
@@ -52,13 +52,13 @@ def test_snapshot_covers_every_table_of_the_schema():
     schema = set(SQLModel.metadata.tables)
 
     # WHEN
-    snapshotted = {str(model.__tablename__) for model in TENANT_TABLES}
+    snapshotted = {str(model.__tablename__) for model in SNAPSHOT_TABLES}
 
     # THEN
     assert snapshotted == schema, (
         f"tables missing from the snapshot: {sorted(schema - snapshotted)}; "
         f"listed but not in the schema: {sorted(snapshotted - schema)}. "
-        "Add a new model to TENANT_TABLES in tests/integration/api/state_snapshot.py."
+        "Add a new model to SNAPSHOT_TABLES in tests/integration/api/state_snapshot.py."
     )
 
 
