@@ -40,7 +40,7 @@ class CollectionSpec:
     :param chunker: Chunking strategy and size for this collection.
     :param context: Per-chunk context enrichment mode.
     :param wave: Highest corpus wave to include (see corpus.py::build_manifest).
-    :param accepted_flagged: `chunk_key`s of chunks outside the public layer the owner read, judged
+    :param accepted_flagged: `screening_key`s of chunks outside the public layer the owner read, judged
         harmless and let through screening.py's stop.
     """
 

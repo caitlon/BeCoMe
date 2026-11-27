@@ -20,6 +20,8 @@ does not hide it. The phrase patterns also run on a copy with the diacritics fol
 so Czech typed without them matches too.
 """
 
+import hashlib
+import json
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -28,7 +30,6 @@ from dataclasses import dataclass
 from langchain_core.documents import Document
 
 from api.assistant.agent.prompt import ASSISTANT_TAGS
-from api.assistant.rag.enrich import chunk_key
 from api.utils.invisible import strip_invisible
 
 # The lists below are a short heuristic, not a filter: they catch the obvious forms and
@@ -135,8 +136,9 @@ class FlaggedChunk:
         (case folded, whitespace collapsed, every combining mark dropped after NFKD, so carons,
         acutes and rings go and Czech typed without diacritics matches), so it holds words of
         the chunk in that folded form; for a tag or a marker it is a fixed string.
-    :param key: The chunk's `chunk_key` (enrich.py): the sha256 of its own text. Chunks
-        with identical text share a key, so accepting one accepts them all.
+    :param key: `screening_key` of the chunk's text, title and section. Chunks with the
+        same text, title and section share a key, so accepting one accepts them all;
+        editing any of the three changes it.
     """
 
     layer: str
@@ -144,6 +146,18 @@ class FlaggedChunk:
     section: str
     reason: str
     key: str
+
+
+def screening_key(text: str, title: str, section: str) -> str:
+    """Hash the three fields the screening reads, so an accepted key covers all of them.
+
+    :param text: The chunk's own text, as `split` returns it.
+    :param title: The chunk's title metadata, "" when it has none.
+    :param section: The chunk's heading path, "" when it has none.
+    :return: The sha256 hex digest of the three raw fields joined unambiguously as JSON.
+    """
+    payload = json.dumps([text, title, section])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _normalize(text: str) -> str:
@@ -237,7 +251,7 @@ def screen_chunks(chunks: Sequence[Document]) -> list[FlaggedChunk]:
                     source=str(metadata.get("source") or title),
                     section=section,
                     reason=reason,
-                    key=chunk_key(chunk.page_content),
+                    key=screening_key(chunk.page_content, title, section),
                 )
             )
     return flagged
