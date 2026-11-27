@@ -7,23 +7,19 @@ cannot: a callback before the first reply.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from urllib.parse import parse_qs
 
 import pytest
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    ToolMessage,
-)
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatResult
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from api.assistant import deps
 from api.assistant.client import UserApiClient
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, ToolEchoingModel
+from tests.shared.assistant_fakes import ToolEchoingModel
 
 
 def tool_call_of(name: str, args: dict[str, Any], call_id: str = "call_1") -> AIMessage:
@@ -33,11 +29,6 @@ def tool_call_of(name: str, args: dict[str, Any], call_id: str = "call_1") -> AI
     )
 
 
-def tool_messages(model: ScriptedToolCallingModel | ToolEchoingModel) -> list[ToolMessage]:
-    """Every tool message the model was shown, in the order of its calls."""
-    return [message for call in model.seen for message in call if isinstance(message, ToolMessage)]
-
-
 @dataclass(frozen=True)
 class InnerRequest:
     """One request the assistant's client sent to the application.
@@ -45,15 +36,17 @@ class InnerRequest:
     :ivar method: The HTTP method.
     :ivar path: The request path, without the query string.
     :ivar query: The decoded query string, blank values kept.
+    :ivar status: The HTTP status the application answered with, 0 while no answer started.
     """
 
     method: str
     path: str
     query: dict[str, list[str]]
+    status: int = 0
 
 
 class RecordingApp:
-    """An ASGI application wrapper that records each HTTP request before passing it on.
+    """An ASGI application wrapper that records each HTTP request and the status it gets.
 
     :param app: The wrapped application.
     :param log: Where each request is appended, in the order it arrives.
@@ -65,10 +58,19 @@ class RecordingApp:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Record an HTTP request and hand the call to the wrapped application."""
-        if scope["type"] == "http":
-            query = parse_qs(scope["query_string"].decode(), keep_blank_values=True)
-            self._log.append(InnerRequest(scope["method"], scope["path"], query))
-        await self._app(scope, receive, send)
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        query = parse_qs(scope["query_string"].decode(), keep_blank_values=True)
+        index = len(self._log)
+        self._log.append(InnerRequest(scope["method"], scope["path"], query))
+
+        async def send_and_note_status(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                self._log[index] = replace(self._log[index], status=message["status"])
+            await send(message)
+
+        await self._app(scope, receive, send_and_note_status)
 
 
 def record_inner_requests(monkeypatch: pytest.MonkeyPatch) -> list[InnerRequest]:

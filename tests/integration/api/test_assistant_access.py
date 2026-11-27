@@ -26,6 +26,7 @@ from sqlmodel import Session
 from api.assistant import deps
 from api.assistant.client import UserApiClient
 from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
+from api.auth.cookies import CSRF_COOKIE
 from api.auth.jwt import create_access_token, decode_token
 from api.auth.revocation_store import get_revocation_store
 from api.config import get_settings
@@ -44,6 +45,7 @@ from tests.integration.api.test_assistant_chat import (
     OWNER_SECRETS,
     STREAM,
     UNAVAILABLE_BODY,
+    _events,
     _owner_project,
     _scripted,
     _shown,
@@ -89,6 +91,15 @@ def _send(client: TestClient, method: str, path: str, headers: dict[str, str]) -
     return client.post(path, json={"message": "hi"}, headers=headers)
 
 
+def _answer_of(response: Any, endpoint: str) -> str:
+    """Return the answer text of a chat response, or of the done event of a stream."""
+    if endpoint == CHAT:
+        return str(response.json()["answer"])
+    name, payload = _events(response.text)[-1]
+    assert name == "done"
+    return str(payload["answer"])
+
+
 class _OneHourAhead(datetime):
     """A ``datetime`` whose ``now`` reads one hour later, for PyJWT's expiry check."""
 
@@ -103,6 +114,8 @@ def _let_access_tokens_expire(monkeypatch: pytest.MonkeyPatch) -> Callable[[], N
     PyJWT reads the time in ``jwt.api_jwt``, a module the application's own clock helpers
     do not touch, so only the validation of a token sees the jump: tokens are still minted
     and compared to their database rows on the real clock. The patch lasts for the test.
+    After the jump PyJWT's ``encode`` cannot mint a token (the patched ``datetime`` breaks
+    its ``isinstance`` check), so every token a test needs is minted before the jump.
     """
 
     def jump() -> None:
@@ -186,7 +199,8 @@ class TestCsrfTokenOfAnotherSession:
         """
         GIVEN two signed-in cookie sessions on one application, each with its own CSRF token,
             the second of another account or of the same account
-        WHEN a request carries the first session's cookie and the second session's token
+        WHEN a request carries the first session's cookie and the second session's token,
+            in the header and in the CSRF cookie alike
         THEN the answer is 403 with the code csrf_invalid and no model was asked
             AND the first session's own token is answered (the control)
         """
@@ -202,7 +216,12 @@ class TestCsrfTokenOfAnotherSession:
         _use_model(cookie_client, model)
 
         # WHEN
+        # The CSRF cookie holds the other session's value too, so a check that only compared
+        # the header with the cookie would let this request through.
+        own_cookie = cookie_client.cookies.get(CSRF_COOKIE)
+        cookie_client.cookies.set(CSRF_COOKIE, csrf_b["X-CSRF-Token"])
         refused = cookie_client.post(endpoint, json={"message": "hi"}, headers=csrf_b)
+        cookie_client.cookies.set(CSRF_COOKIE, own_cookie)
         own = cookie_client.post(endpoint, json={"message": "hi"}, headers=csrf_a)
 
         # THEN
@@ -215,8 +234,9 @@ class TestCsrfTokenOfAnotherSession:
 class TestCookieOutranksBearer:
     """When a request carries both a session cookie and a bearer token, the cookie is the caller."""
 
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_the_cookie_owner_is_read_and_charged_and_the_bearer_owner_is_not(
-        self, assistant_settings, cookie_client, configure
+        self, assistant_settings, cookie_client, configure, endpoint
     ):
         """
         GIVEN two accounts with a project each, an hourly budget of one message, and a
@@ -238,26 +258,27 @@ class TestCookieOutranksBearer:
 
         # WHEN
         mixed = cookie_client.post(
-            CHAT,
+            endpoint,
             json={"message": "Which projects?"},
             headers={**csrf_alpha, **auth_header(token_bravo)},
         )
 
         # THEN
         assert mixed.status_code == 200
-        assert _ALPHA_PROJECT in mixed.json()["answer"]
-        assert _BRAVO_PROJECT not in mixed.json()["answer"]
+        mixed_answer = _answer_of(mixed, endpoint)
+        assert _ALPHA_PROJECT in mixed_answer
+        assert _BRAVO_PROJECT not in mixed_answer
         assert _BRAVO_PROJECT not in _shown(model)
 
         # WHEN the two accounts ask on their own
         _use_model(cookie_client, _scripted("Bravo is answered."))
         cookie_client.cookies.clear()
         bravo_alone = cookie_client.post(
-            CHAT, json={"message": "hi"}, headers=auth_header(token_bravo)
+            endpoint, json={"message": "hi"}, headers=auth_header(token_bravo)
         )
         _use_model(cookie_client, _scripted("never used"))
         csrf_alpha = _sign_in_with_cookies_again(cookie_client, _ALPHA_EMAIL)
-        alpha_alone = cookie_client.post(CHAT, json={"message": "hi"}, headers=csrf_alpha)
+        alpha_alone = cookie_client.post(endpoint, json={"message": "hi"}, headers=csrf_alpha)
 
         # THEN
         assert bravo_alone.status_code == 200
@@ -267,16 +288,21 @@ class TestCookieOutranksBearer:
 class TestSessionEndsMidTurn:
     """A session that ends while the model is thinking opens no project data afterwards."""
 
-    @pytest.mark.parametrize("tool", ["get_project", "get_project_result", "get_project_opinions"])
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize(
+        "tool",
+        ["list_my_projects", "get_project", "get_project_result", "get_project_opinions"],
+    )
     @pytest.mark.parametrize("ending", ["none", "jti revoked", "session revoked"])
     def test_a_session_revoked_mid_turn_reads_nothing(
-        self, assistant_settings, client, configure, tool, ending
+        self, assistant_settings, client, configure, tool, ending, endpoint
     ):
         """
         GIVEN the agent mode and a model that, before its first reply, ends the caller's
             session (revokes the token's id, or its whole session), then asks for the
-            caller's own project through a tool; or, as the control, ends nothing
-        WHEN the owner asks
+            caller's own projects or one project through a tool; or, as the control, ends
+            nothing
+        WHEN the owner asks, on the chat route and on the stream route
         THEN the control reads the project, and a revoked session gets the unavailable:
             reply from the tool, with nothing of the owner's project in the answer or in
             anything the model was shown
@@ -293,19 +319,20 @@ class TestSessionEndsMidTurn:
             elif ending == "session revoked":
                 store.revoke_session(payload.sid, 900)
 
-        model = HookedEchoModel(
-            first_call=_tool_call(tool, owner["id"]), before_first_call=end_session
+        first_call = (
+            tool_call_of(tool, {}) if tool == "list_my_projects" else _tool_call(tool, owner["id"])
         )
+        model = HookedEchoModel(first_call=first_call, before_first_call=end_session)
         _use_model(client, model)
 
         # WHEN
         response = client.post(
-            CHAT, json={"message": "Tell me about it"}, headers=auth_header(owner["token"])
+            endpoint, json={"message": "Tell me about it"}, headers=auth_header(owner["token"])
         )
 
         # THEN
         assert response.status_code == 200
-        answer = response.json()["answer"]
+        answer = _answer_of(response, endpoint)
         assert len(model.seen) == 2
         if ending == "none":
             assert not answer.startswith("unavailable:")
@@ -405,7 +432,9 @@ class TestInnerReadsAreGetsOfTheProjectsApi:
         WHEN the owner asks
         THEN the four tools that read the application produced requests, each of the four
             shapes was read, and every request is a GET of /api/v1/projects, of one project,
-            of its result or of its opinions, with a UUID in the path and nothing else
+            of its result or of its opinions, with a UUID in the path and nothing else;
+            the query holds only the paging keys and the opinions flag, and the opinions
+            read asks for the assistant's view
         """
         # GIVEN
         configure(ASSISTANT_MODE="agent", ASSISTANT_MAX_TOOL_CALLS="6")
@@ -441,6 +470,10 @@ class TestInnerReadsAreGetsOfTheProjectsApi:
             f"/api/v1/projects/{project_id}/result",
             f"/api/v1/projects/{project_id}/opinions",
         }
+        assert all(set(request.query) <= {"limit", "offset", "for_assistant"} for request in inner)
+        opinions = [request for request in inner if request.path.endswith("/opinions")]
+        assert opinions
+        assert all(request.query.get("for_assistant") == ["true"] for request in opinions)
 
     def test_the_client_offers_exactly_four_reads_and_a_close(self):
         """
@@ -505,8 +538,8 @@ class TestInnerReadsUnderTheOriginLock:
         GIVEN the same app, and an assistant client that sees no origin secret in its settings
             while the application keeps it
         WHEN the owner asks
-        THEN the outer request is answered, the lock refuses the inner read, the tool replies
-            unavailable: and nothing of the project reaches the model
+        THEN the outer request is answered, the lock refuses the inner read with 403, the tool
+            replies unavailable: and nothing of the project reaches the model
         """
         # GIVEN
         owner = _owner_project(locked_client)
@@ -528,6 +561,7 @@ class TestInnerReadsUnderTheOriginLock:
         assert response.status_code == 200
         assert response.json()["answer"].startswith("unavailable:")
         assert [request.path for request in inner] == [f"/api/v1/projects/{owner['id']}"]
+        assert [request.status for request in inner] == [403]
         for secret in OWNER_SECRETS:
             assert secret not in response.text
             assert secret not in _shown(model)
