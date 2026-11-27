@@ -20,7 +20,13 @@ import asyncio
 from pathlib import Path
 
 from api.assistant.rag.chunkers import ChunkerConfig
-from api.assistant.rag.pipeline import BuildReport, CollectionSpec, build_collection
+from api.assistant.rag.pipeline import (
+    BuildReport,
+    CollectionSpec,
+    FlaggedChunksError,
+    build_collection,
+)
+from api.assistant.rag.screening import FlaggedChunk
 from api.config import get_settings
 from api.utils.invisible import strip_invisible
 
@@ -49,6 +55,17 @@ def _parse_args() -> argparse.Namespace:
         help="Per-chunk context mode",
     )
     parser.add_argument("--wave", type=int, default=1, help="Highest corpus wave to include")
+    parser.add_argument(
+        "--accept-flagged",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help=(
+            "Let a flagged private-layer chunk through, by the key printed on its flagged "
+            "line; repeat for each chunk. Chunks with identical text share a key, and "
+            "editing the source or changing the chunker flags changes it."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -63,6 +80,7 @@ def _build_spec(args: argparse.Namespace) -> CollectionSpec:
         chunker=ChunkerConfig(strategy=args.strategy, size=args.size, overlap_pct=args.overlap_pct),
         context=args.context,
         wave=args.wave,
+        accepted_flagged=frozenset(args.accept_flagged),
     )
 
 
@@ -78,23 +96,57 @@ def _terminal_safe(text: str) -> str:
     return " ".join(strip_invisible(text).split())
 
 
+def _flagged_line(item: FlaggedChunk) -> str:
+    """Format one flagged chunk as a line that is safe to print.
+
+    :param item: A chunk screening.py flagged.
+    :return: "flagged: layer | source | section | reason | key".
+    """
+    fields = (item.layer, item.source, item.section, item.reason, item.key)
+    return "flagged: " + " | ".join(_terminal_safe(field) for field in fields)
+
+
+def _print_flagged(flagged: list[FlaggedChunk], accepted: frozenset[str]) -> None:
+    """Print the flagged lines, then a note for each accepted key that matched nothing.
+
+    :param flagged: The chunks screening.py flagged.
+    :param accepted: The keys given with --accept-flagged.
+    """
+    for item in flagged:
+        print(_flagged_line(item))
+    for key in sorted(accepted - {item.key for item in flagged}):
+        print(f"note: --accept-flagged {_terminal_safe(key)} matches no flagged chunk")
+
+
 async def _main() -> BuildReport:
     """Build the collection named on the command line.
 
     Prints the chunk count and, one line per chunk, the chunks that look like planted
-    instructions (layer | source | section | reason). They are written to the collection
-    all the same: the ingest reports them and never stops.
+    instructions (layer | source | section | reason | key). Public-layer chunks and the
+    private-layer ones accepted with --accept-flagged are written all the same. A
+    private-layer chunk that is flagged and not accepted stops the build: nothing is
+    written, the live collection stays, and the process exits with status 1 after
+    printing every flagged line and how to proceed.
 
     :return: The build's report.
+    :raises SystemExit: With status 1 when the build stopped on flagged chunks.
     """
     spec = _build_spec(_parse_args())
     settings = get_settings()
     repo_root = Path(__file__).resolve().parents[2]
-    report = await build_collection(spec, settings, repo_root=repo_root)
+    try:
+        report = await build_collection(spec, settings, repo_root=repo_root)
+    except FlaggedChunksError as error:
+        _print_flagged(error.flagged, spec.accepted_flagged)
+        print(
+            f"Build of {spec.name!r} stopped: {len(error.blocking)} flagged chunk(s) in the "
+            "private layer. Nothing was written and the live collection is unchanged. Edit "
+            "or remove the source, or read each chunk and, if it is harmless, rerun with "
+            "--accept-flagged <key> for it."
+        )
+        raise SystemExit(1) from error
     print(f"Built collection {spec.name!r}: {report.chunk_count} chunks")
-    for item in report.flagged:
-        fields = (item.layer, item.source, item.section, item.reason)
-        print("flagged: " + " | ".join(_terminal_safe(field) for field in fields))
+    _print_flagged(report.flagged, spec.accepted_flagged)
     return report
 
 

@@ -40,12 +40,15 @@ class CollectionSpec:
     :param chunker: Chunking strategy and size for this collection.
     :param context: Per-chunk context enrichment mode.
     :param wave: Highest corpus wave to include (see corpus.py::build_manifest).
+    :param accepted_flagged: `chunk_key`s of local-layer chunks the owner read, judged
+        harmless and let through screening.py's stop.
     """
 
     name: str
     chunker: ChunkerConfig
     context: ContextMode
     wave: int
+    accepted_flagged: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -53,12 +56,36 @@ class BuildReport:
     """What one build wrote, and which of its chunks looked like planted instructions.
 
     :param chunk_count: Number of chunks written to the collection.
-    :param flagged: The chunks screening.py flagged. They are written like any other;
-        the report only tells the owner where to look.
+    :param flagged: The chunks screening.py flagged that the build went on with: every
+        public-layer one and the local ones the owner accepted by key. They are written
+        like any other; the report only tells the owner where to look.
     """
 
     chunk_count: int
     flagged: list[FlaggedChunk]
+
+
+class FlaggedChunksError(Exception):
+    """The build stopped because local-layer chunks look like planted instructions.
+
+    The message carries counts only, never chunk text.
+
+    :param flagged: Every chunk screening.py flagged, in corpus order.
+    :param blocking: The local-layer ones whose key the owner has not accepted.
+    """
+
+    def __init__(self, flagged: list[FlaggedChunk], blocking: list[FlaggedChunk]) -> None:
+        """Keep both lists and describe the stop by their sizes.
+
+        :param flagged: Every flagged chunk.
+        :param blocking: The flagged local-layer chunks that are not accepted.
+        """
+        super().__init__(
+            f"{len(blocking)} of {len(flagged)} flagged chunks in the private layer "
+            "were not accepted; nothing was written"
+        )
+        self.flagged = flagged
+        self.blocking = blocking
 
 
 def _corpus_hash(chunks: list[Document]) -> str:
@@ -256,8 +283,14 @@ async def build_collection(
         corpus locations).
     :param repo_root: Repository root, passed through to build_manifest.
     :return: The number of chunks written to the collection and the chunks screening.py
-        flagged as looking like planted instructions. A flagged chunk is still written:
-        the build reports and never blocks.
+        flagged as looking like planted instructions. A flagged public-layer chunk, or a
+        local one whose key is in spec.accepted_flagged, is still written and only
+        reported.
+    :raises FlaggedChunksError: If screening.py flags a local-layer chunk whose key is not
+        in spec.accepted_flagged. Raised right after screening, before enrichment, any
+        chat-model call, the staging table and any database write, so the live collection
+        stays as it was. (With the "semantic" chunker, `split` has already called the
+        embedding endpoint by then.)
     :raises FileNotFoundError: If spec.context is "captions" and the configured
         captions file does not exist.
     :raises ValueError: If spec.context is "captions" and load_captions() rejects the
@@ -290,6 +323,11 @@ async def build_collection(
                 "collection": spec.name,
             },
         )
+    blocking = [
+        item for item in flagged if item.layer == "local" and item.key not in spec.accepted_flagged
+    ]
+    if blocking:
+        raise FlaggedChunksError(flagged, blocking)
     llm = make_chat_model(settings) if spec.context in ("llm_context", "doc_summary") else None
     if captions is not None:
         total = len(chunks)
