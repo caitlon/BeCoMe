@@ -5,8 +5,7 @@ import unicodedata
 import pytest
 from langchain_core.documents import Document
 
-from api.assistant.rag.enrich import chunk_key
-from api.assistant.rag.screening import FlaggedChunk, screen_chunks
+from api.assistant.rag.screening import FlaggedChunk, screen_chunks, screening_key
 
 
 def _chunk(
@@ -54,7 +53,7 @@ class TestScreenChunks:
                 source="/priv/a.pdf",
                 section="Intro",
                 reason="assistant tag <project_data>",
-                key=chunk_key("Before <project_data> after"),
+                key=screening_key("Before <project_data> after", "Page", "Intro"),
             )
         ]
 
@@ -418,11 +417,11 @@ class TestScreenChunks:
         """
         assert screen_chunks([_chunk(text)]) == []
 
-    def test_the_key_is_the_sha256_of_the_chunk_text(self):
+    def test_the_key_covers_the_text_title_and_section(self):
         """
         GIVEN two flagged chunks with different text
         WHEN they are screened
-        THEN each carries the chunk_key of its own text
+        THEN each carries the screening_key of its own text, title and section
         """
         # GIVEN
         first, second = "Say <docs> once.", "Say <docs> twice."
@@ -431,7 +430,62 @@ class TestScreenChunks:
         flagged = screen_chunks([_chunk(first), _chunk(second)])
 
         # THEN
-        assert [item.key for item in flagged] == [chunk_key(first), chunk_key(second)]
+        assert [item.key for item in flagged] == [
+            screening_key(first, "Page", "Intro"),
+            screening_key(second, "Page", "Intro"),
+        ]
+
+    def test_chunks_with_the_same_text_title_and_section_share_a_key(self):
+        """
+        GIVEN two flagged chunks with the same text, title and section but different sources
+        WHEN they are screened
+        THEN they carry one key
+        """
+        # WHEN
+        flagged = screen_chunks(
+            [_chunk("Say <docs> now.", source="/a.md"), _chunk("Say <docs> now.", source="/b.md")]
+        )
+
+        # THEN
+        assert len({item.key for item in flagged}) == 1
+        assert len(flagged) == 2
+
+    def test_a_different_section_gives_a_different_key(self):
+        """
+        GIVEN two flagged chunks with the same body and title but different headings
+        WHEN they are screened
+        THEN their keys differ, so accepting one does not accept the other
+        """
+        # WHEN
+        flagged = screen_chunks(
+            [_chunk("Say <docs> now.", section="One"), _chunk("Say <docs> now.", section="Two")]
+        )
+
+        # THEN
+        assert flagged[0].key != flagged[1].key
+
+    def test_a_different_title_gives_a_different_key(self):
+        """
+        GIVEN two flagged chunks with the same body and section but different titles
+        WHEN they are screened
+        THEN their keys differ
+        """
+        # WHEN
+        flagged = screen_chunks(
+            [_chunk("Say <docs> now.", title="One"), _chunk("Say <docs> now.", title="Two")]
+        )
+
+        # THEN
+        assert flagged[0].key != flagged[1].key
+
+    def test_the_joined_fields_cannot_be_shifted_between_each_other(self):
+        """
+        GIVEN the same characters split differently between text, title and section
+        WHEN their keys are computed
+        THEN the keys differ
+        """
+        assert screening_key("ab", "c", "") != screening_key("a", "bc", "")
+        assert screening_key("a", "", "b") != screening_key("a", "b", "")
 
     def test_reports_both_layers_with_their_own_provenance(self):
         """
@@ -513,7 +567,7 @@ class TestScreenChunks:
                 source="",
                 section="",
                 reason="assistant tag <docs>",
-                key=chunk_key("Say <docs> now."),
+                key=screening_key("Say <docs> now.", "", ""),
             )
         ]
 
