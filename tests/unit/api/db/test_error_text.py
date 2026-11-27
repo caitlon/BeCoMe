@@ -647,6 +647,13 @@ class TestConnectionFailureLabel:
             ("authentication", f'{_LIBPQ}FATAL:  role "timed out" does not exist'),
             ("unknown_database", f'{_LIBPQ}FATAL:  database "ssl" does not exist'),
             ("too_many_connections", f'{_LIBPQ}FATAL:  too many connections for role "refused"'),
+            ("unknown_database", f'{_LIBPQ}FATAL:  database "a"ssl" does not exist'),
+            ("authentication", f'{_LIBPQ}FATAL:  role "x"timed out" does not exist'),
+            (
+                "authentication",
+                f'{_LIBPQ}FATAL:  password authentication failed for user "u"ssl"',
+            ),
+            ("too_many_connections", f'{_LIBPQ}FATAL:  too many connections for role "r"refused"'),
             ("other", f'{_LIBPQ}something new "authentication failed'),
             ("other", f"{_LIBPQ}something new 'connection refused"),
         ],
@@ -659,6 +666,34 @@ class TestConnectionFailureLabel:
         THEN only the words outside the quote marks decide it
         """
         assert connection_failure_label(psycopg2.OperationalError(text)) == label
+
+    @pytest.mark.parametrize(
+        ("label", "text", "fragment"),
+        [
+            ("unknown_database", 'FATAL:  database "a"ssl" does not exist', "ssl"),
+            ("authentication", 'FATAL:  role "x"timed out" does not exist', "timed out"),
+            (
+                "authentication",
+                'FATAL:  password authentication failed for user "u"ssl"',
+                "ssl",
+            ),
+            (
+                "too_many_connections",
+                'FATAL:  too many connections for role "r"refused"',
+                "refused",
+            ),
+        ],
+    )
+    def test_a_quote_mark_inside_a_name_does_not_end_it(self, label, text, fragment):
+        """
+        GIVEN a server error naming a role or database that holds a quote mark and a reason word
+        WHEN its label is read and its text reduced
+        THEN the label comes from the message and the part of the name after the mark is gone
+        """
+        exc = psycopg2.OperationalError(f"{_LIBPQ}{text}\n")
+
+        assert connection_failure_label(exc) == label
+        assert fragment not in safe_error_text(exc).replace(f"(connection failure: {label})", "")
 
     @pytest.mark.parametrize(
         ("exc", "label"),

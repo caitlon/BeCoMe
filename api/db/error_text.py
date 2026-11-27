@@ -60,6 +60,17 @@ def _any_of(*phrases: str) -> re.Pattern[str]:
     return re.compile("|".join(re.escape(phrase) for phrase in phrases))
 
 
+# The server messages that end with a quoted name. PostgreSQL does not escape a quote mark inside
+# a name, so blanking the spans would leave ``database ""ssl"`` for a database ``a"ssl``. These
+# are matched on the raw line first, with a greedy name that runs to the closing mark at the
+# end of the line, so an embedded mark cannot end the name early.
+_NAME_LAST_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("authentication", re.compile(r'fatal:\s+role ".*" does not exist$')),
+    ("unknown_database", re.compile(r'fatal:\s+database ".*" does not exist$')),
+    ("authentication", re.compile(r'password authentication failed for user ".*"$')),
+    ("too_many_connections", re.compile(r'too many connections for (?:role|database) ".*"$')),
+)
+
 # The first match wins. ``authentication`` precedes ``ssl`` because a pg_hba rejection ends with
 # "SSL encryption"; ``ssl`` precedes ``closed`` because of "SSL connection has been closed
 # unexpectedly". Names are blanked first (:func:`_classify`), so a host ``ssl-db`` or a role
@@ -192,6 +203,9 @@ def _blank_span(span: re.Match[str]) -> str:
 
 def _classify(line: str) -> str:
     """Pick the reason label for the first line of a connect failure message."""
+    for label, pattern in _NAME_LAST_RULES:
+        if pattern.search(line.rstrip().lower()):
+            return label
     lowered = _QUOTED_SPAN.sub(_blank_span, line).lower()
     for label, pattern in _CONNECTION_FAILURE_RULES:
         if pattern.search(lowered):
