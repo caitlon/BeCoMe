@@ -4460,19 +4460,21 @@ class TestAnswerSourcesSetting:
         self, assistant_settings, client, configure
     ):
         """
-        GIVEN the setting off and a model whose stream splits a citation across its pieces
+        GIVEN the setting off and a model whose stream splits the marker of the one passage
+            it was shown, with a link target, across its pieces, and then writes a bracket
+            with a number that names no source
         WHEN the question is posted to /chat/stream
-        THEN no token event holds a marker, the token texts join to the answer of the done
-            event, the done sources are empty and its citation check is valid though the
-            marker named a source that was never given, the body holds nothing of the passage,
+        THEN no token event holds the marker or its target, the bracket naming no source stays
+            as written, the token texts join to the answer of the done event, the done sources
+            are empty and its citation check is valid, the body holds nothing of the passage,
             and the turn record lists the passage
         """
         # GIVEN
         configure(ASSISTANT_SHOW_SOURCES="false")
         token = register_and_login(client, "hide-stream@example.com")
         _use_hidden_source_retriever(client)
-        model = _scripted("The midpoint [9](https://example.org/a).")
-        model.stream_chunks = ["The midpoint [", "9", "](https://example.org/a)", "."]
+        model = _scripted("The midpoint [1](https://example.org/a) [9].")
+        model.stream_chunks = ["The midpoint [", "1", "](https://example.org/a)", " [9", "]."]
         _use_model(client, model)
 
         # WHEN
@@ -4484,8 +4486,9 @@ class TestAnswerSourcesSetting:
         events = _events(response.text)
         assert events[-1][0] == "done"
         texts = [payload["text"] for name, payload in events if name == "token"]
-        assert not re.search(r"\[\s*\d", "".join(texts))
-        assert "".join(texts) == events[-1][1]["answer"] == "The midpoint."
+        assert "[1]" not in "".join(texts)
+        assert "example.org" not in "".join(texts)
+        assert "".join(texts) == events[-1][1]["answer"] == "The midpoint [9]."
         assert events[-1][1]["sources"] == []
         assert events[-1][1]["checks"]["citations_valid"] is True
         _assert_nothing_of_the_source_in(response.text)

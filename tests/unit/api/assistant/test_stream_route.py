@@ -19,6 +19,7 @@ from api.config import Settings
 from api.routes.assistant import chat_stream
 from api.schemas.assistant import AssistantChatRequest
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.helpers import captured_log_records
 
 
 @pytest.fixture(autouse=True)
@@ -176,3 +177,98 @@ class TestInvisibleCharactersOnTheWire:
             for text in [*texts, answer]
             for char in text
         )
+
+
+@pytest.mark.asyncio
+class TestReasoningThatNeverCloses:
+    """A reply cut off inside its reasoning after some text ends as a normal answer."""
+
+    async def test_the_text_before_the_unclosed_block_is_streamed_and_the_last_event_is_done(
+        self,
+    ):
+        """
+        GIVEN a model that streams an answer and then opens a reasoning block, the tag split
+              across chunks, and is cut off
+        WHEN the whole body is read
+        THEN the tokens join to the answer, nothing of the block is sent, there is no error
+             event, and the last event is done with that answer
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+        )
+        chunks = ["One two ", "<thi", "nk>secret ", "thoughts"]
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
+
+        # WHEN
+        blocks = [block async for block in response.body_iterator]
+
+        # THEN
+        events = [
+            (lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: ")))
+            for block in blocks
+            if (lines := block.strip().split("\n"))[0].startswith("event: ")
+        ]
+        names = [name for name, _ in events]
+        texts = [payload["text"] for name, payload in events if name == "token"]
+        assert "error" not in names
+        assert names[-1] == "done"
+        assert "".join(texts) == events[-1][1]["answer"] == "One two"
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["  \n ", "<thi", "nk>secret ", "thoughts"],
+            ["<think>a</think>", "  \n  ", "<think>b"],
+        ],
+    )
+    async def test_blanks_before_the_unclosed_block_end_the_stream_with_a_503_error_event(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN a model whose reply has only whitespace, or a closed block and whitespace, before
+              a reasoning block that never closes, streamed in pieces
+        WHEN the whole body is read
+        THEN no token and no done event is sent, and the only event is an error with the public
+             503 detail and nothing of the reasoning, and the log gives the reason cut_off
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+        )
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            blocks = [block async for block in response.body_iterator]
+
+        # THEN
+        events = [
+            (lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: ")))
+            for block in blocks
+            if (lines := block.strip().split("\n"))[0].startswith("event: ")
+        ]
+        assert events == [
+            ("error", {"code": 503, "detail": "The assistant is temporarily unavailable"})
+        ]
+        assert "secret" not in "".join(blocks)
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
+        assert record.reason == "cut_off"

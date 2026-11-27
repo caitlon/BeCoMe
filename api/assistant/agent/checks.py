@@ -48,8 +48,6 @@ _CITATION_CONTENT = re.compile(
     rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
 )
 _LABEL_WORD = re.compile(_LABEL, re.IGNORECASE)
-# A bracket's content when it writes exactly one number: one item, no separator, no range.
-_SINGLE_CITATION_ITEM = re.compile(rf"\s*{_CITATION_ITEM}\s*", re.IGNORECASE)
 _CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 
 # What is dropped from an answer before its numbers are scanned. A link's target stops
@@ -429,18 +427,18 @@ def _is_internal_name(content: str) -> bool:
 def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     """Remove citation-like brackets, with the link target and the blanks around them.
 
-    A bracket that writes one number (``[7]``, ``[source 2]``, ``\u30103\u3011``) is a
-    citation and always goes, even when no such source exists. A bracket that writes several
-    numbers or a range (``[1, 2]``, ``[1-3]``) goes only when every number in it is one of
-    ``source_numbers``, so that ``[0, 1]``, ``[1, 5]``, ``[5, 5, 5]`` and the fuzzy number
-    ``[6, 8, 11]`` stay. Brackets are taken innermost first, so ``[[1]2]`` goes whole. Each
+    A bracket that writes numbers (``[2]``, ``[source 2]``, ``\u30103\u3011``, ``[1, 2]``,
+    ``[1-3]``) is a citation and goes only when every number in it is one of
+    ``source_numbers``, so that ``[4]`` with three sources, ``[0, 1]``, ``[1, 5]``,
+    ``[5, 5, 5]`` and the fuzzy number ``[6, 8, 11]`` stay, and so does every number when
+    the turn has no source. Brackets are taken innermost first, so ``[[1]2]`` goes whole. Each
     citation goes together with the spaces and tabs before it and with a markdown link target
     right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
     opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
     whose whole content is one of a fixed set of internal names that models write as if they
     were sources (``[project_data]``, ``[Tool Result]``, ``[search_docs]``, ``[System
     Instruction]``, ``[source]``, ``[data]``; case, ``_``, ``-`` and whitespace are alike)
-    goes the same way as a single number, except that a name followed at once by ``(`` is the
+    goes the same way as a citation, except that a name followed at once by ``(`` is the
     text of a markdown link and stays with it. A bracket that is neither, such as
     ``[11.54, 14.19]``, ``[a_ij]`` or ``[TODO]``, stays. Unlike :func:`strip_citations`,
     which leaves a space, this returns text meant to be shown. The result has none of them
@@ -599,11 +597,7 @@ class CitationStreamFilter:
     def _is_removable(self, content: str) -> bool:
         """Tell whether the text inside a bracket is a citation that has to go."""
         numbers = _cited_numbers(content)
-        if numbers is None:
-            return False
-        return (
-            numbers <= self._source_numbers or _SINGLE_CITATION_ITEM.fullmatch(content) is not None
-        )
+        return numbers is not None and numbers <= self._source_numbers
 
     def _close(self, closer: str) -> None:
         """Close the innermost open bracket of the closer's kind, dropping it if a citation."""

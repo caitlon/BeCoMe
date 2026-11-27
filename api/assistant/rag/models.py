@@ -313,13 +313,43 @@ def has_unclosed_think_block(reply: str) -> bool:
     Only the last opening tag counts: an earlier block is closed by the closing tag that
     follows it, and a closing tag written in the text with no opening tag before it is
     not a block at all. A reply cut off while the model was still reasoning is such a
-    reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is.
+    reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is;
+    :func:`answer_outside_reasoning` reads what the reply said outside its reasoning.
 
     :param reply: The model's raw reply text.
     :return: True when the last <think> has no </think> after it.
     """
     opened = reply.rfind(THINK_OPEN)
     return opened != -1 and _THINK_CLOSE not in reply[opened:]
+
+
+def answer_outside_reasoning(reply: str) -> str:
+    """Read the text a reply holds outside its reasoning blocks.
+
+    Every complete <think>...</think> block is removed, not only the first as
+    :func:`strip_think_block` does, so that no later block shows its reasoning. A block
+    that never closes starts at the first opening tag after the last block, so a second
+    opening tag written inside it does not leak its reasoning, and everything from it on
+    is dropped. A closing tag with no opening tag before it is plain text. Plain
+    substring search, not a regular expression, keeps this linear in the reply's length.
+
+    :param reply: The model's raw reply text.
+    :return: The text between the blocks, joined and stripped of leading and trailing
+        whitespace; empty when the reply is all reasoning.
+    """
+    parts: list[str] = []
+    position = 0
+    while True:
+        start = reply.find(THINK_OPEN, position)
+        if start == -1:
+            parts.append(reply[position:])
+            break
+        parts.append(reply[position:start])
+        end = reply.find(_THINK_CLOSE, start + len(THINK_OPEN))
+        if end == -1:
+            break
+        position = end + len(_THINK_CLOSE)
+    return "".join(parts).strip()
 
 
 # The embeddings client sends up to 1000 texts per request by default, and llama-server

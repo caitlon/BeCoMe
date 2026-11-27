@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from api.assistant.rag.models import (
     LlamaServerReranker,
+    answer_outside_reasoning,
     has_unclosed_think_block,
     make_answer_model,
     make_chat_model,
@@ -501,6 +502,14 @@ class TestStripThinkBlock:
         # THEN
         assert result == "<think>Still reasoning about the answer"
 
+    def test_removes_only_the_first_complete_block(self):
+        """
+        GIVEN a reply with two complete blocks, as ingest and retrieval may receive
+        WHEN strip_think_block runs
+        THEN only the first is removed: the answer path reads every block elsewhere
+        """
+        assert strip_think_block("<think>a</think>X <think>b</think> Y") == "X <think>b</think> Y"
+
 
 class TestHasUnclosedThinkBlock:
     """has_unclosed_think_block says whether the last <think> block of a reply never closes."""
@@ -513,6 +522,7 @@ class TestHasUnclosedThinkBlock:
             "<think>a</think>Text <think>b",
             "<think>a</think>One <think>b</think> two <think>c",
             "Text </think> then <think>c",
+            "<think>a</think>  \n  <think>b",
         ],
     )
     def test_true_when_the_last_block_never_closes(self, reply):
@@ -540,6 +550,64 @@ class TestHasUnclosedThinkBlock:
         THEN it reports no unclosed block, a stray closing tag included
         """
         assert has_unclosed_think_block(reply) is False
+
+
+class TestAnswerOutsideReasoning:
+    """answer_outside_reasoning keeps the text a reply holds outside its reasoning blocks."""
+
+    @pytest.mark.parametrize(
+        ("reply", "expected"),
+        [
+            ("Half an answer <think>and then", "Half an answer"),
+            ("<think>a</think>Text <think>b", "Text"),
+            ("<think>a</think>One <think>b</think> two <think>c", "One  two"),
+            ("A <think>a</think> B <think>b</think> C <think>cut", "A  B  C"),
+            ("Text </think> then <think>c", "Text </think> then"),
+            ("Text <think>a <think>b", "Text"),
+            ("A <think>a <think>b</think> c <think>d", "A  c"),
+            ("<think>Still reasoning", ""),
+            ("<think>a <think>b", ""),
+            ("  \n<think>Still reasoning", ""),
+            ("<think>a</think>  \n  <think>b", ""),
+            ("<think>a</think>  <think>b</think>  <think>c", ""),
+        ],
+    )
+    def test_drops_every_block_and_what_follows_one_that_never_closes(self, reply, expected):
+        """
+        GIVEN a reply with several reasoning blocks, the last of which may never close
+        WHEN the text outside the blocks is read
+        THEN every complete block is gone, the text after an unclosed one is dropped, and
+             the rest is joined and stripped
+        """
+        assert answer_outside_reasoning(reply) == expected
+
+    @pytest.mark.parametrize(
+        ("reply", "expected"),
+        [
+            ("", ""),
+            (" Plain answer, </think> here. ", "Plain answer, </think> here."),
+            ("<think>x</think>Answer.", "Answer."),
+            ("<think>a</think>Text <think>b</think> tail", "Text  tail"),
+            ("A <think>a</think> B <think>b</think> C", "A  B  C"),
+            ("<think>a</think>", ""),
+        ],
+    )
+    def test_removes_every_complete_block_of_a_reply_that_closes_them_all(self, reply, expected):
+        """
+        GIVEN a reply with no reasoning block, or whose blocks all close
+        WHEN the text outside the blocks is read
+        THEN no block is left, a stray closing tag stays as text, and the ends are stripped
+        """
+        assert answer_outside_reasoning(reply) == expected
+
+    @pytest.mark.parametrize("reply", ["", "Plain answer.", "<think>x</think>Answer.", " a \n"])
+    def test_reads_a_reply_with_at_most_one_block_as_strip_think_block_does(self, reply):
+        """
+        GIVEN a reply with no reasoning block, or one that closes
+        WHEN the text outside the blocks is read
+        THEN the result is the one strip_think_block gives
+        """
+        assert answer_outside_reasoning(reply) == strip_think_block(reply)
 
 
 class _FakeResponse:

@@ -177,7 +177,8 @@ this size follows a fixed plan better than it makes one.
 
 The answer comes from `Qwen3.5-9B`, an open-weight model, at temperature 0, with a limit of 800
 tokens. The model's reasoning mode is switched off. With reasoning on, it spent the whole token
-budget thinking and returned no visible text.
+budget thinking and returned no visible text. Should a model still write reasoning blocks, the
+answer drops all of them, and a reply that ends inside an unfinished block keeps the text before it.
 
 The instructions tell the model to state a fact only when a passage or the project data supports
 it, to say so when it does not know, and never to compute a number itself. They also pin three
@@ -251,11 +252,12 @@ and opens a short excerpt. A source from the local layer is marked as a local co
 to its original document yet. A `[n]` that points at no source is shown struck through.
 
 Production does not show sources for now. The setting `ASSISTANT_SHOW_SOURCES` is off there, and it
-works on the server, not only in the panel. The server removes the `[n]` markers from the answer,
-also while it streams, and sends an empty list of sources, so no title or excerpt reaches the
-browser at all. The search, the instructions and both checks stay the same. The citation flag is
-always reported as valid there, because a warning about a link you cannot see would only confuse.
-The server log still records which sources each answer used.
+works on the server, not only in the panel. The server removes the `[n]` markers that name a source
+of the turn from the answer, also while it streams, and sends an empty list of sources, so no title
+or excerpt reaches the browser at all. A bracket with a number that is no source of the turn, such
+as a range of values, stays as written. The search, the instructions and both checks stay the
+same. The citation flag is always reported as valid there, because a warning about a link you
+cannot see would only confuse. The server log still records which sources each answer used.
 
 ## How the panel displays an answer
 

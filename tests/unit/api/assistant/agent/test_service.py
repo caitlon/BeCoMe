@@ -447,6 +447,57 @@ class TestWorkflowMode:
             "cut_off",
         )
 
+    @pytest.mark.parametrize("reply", ["  \n <think>I was still", "<think>a</think>  \n  <think>b"])
+    async def test_blanks_before_a_reasoning_block_that_never_closes_are_a_cut_off_failure(
+        self, reply: str
+    ):
+        """
+        GIVEN a model whose reply has only whitespace, or a closed block and whitespace, before
+              a reasoning block that never closes
+        WHEN a turn is answered
+        THEN AssistantUnavailableError is raised and the warning gives the reason cut_off
+        """
+        model = _model(_say(reply))
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert (record.event, record.reason) == ("assistant_empty_answer", "cut_off")
+
+    async def test_text_before_a_reasoning_block_that_never_closes_is_the_answer(self):
+        """
+        GIVEN a model whose reply holds an answer with a number that no source gives, and then
+              opens a reasoning block that never closes
+        WHEN a turn is answered
+        THEN the answer is the text before the block, the grounding check ran on it, and no
+             failure was logged
+        """
+        model = _model(_say("The midpoint is 87654. <think>Now I wonder whether"))
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            response = await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert response.answer == "The midpoint is 87654."
+        assert response.checks.ungrounded_numbers == ["87654"]
+        assert [getattr(r, "event", "") for r in records] == ["assistant_turn"]
+
+    async def test_an_answer_cut_off_after_a_closed_block_and_some_text_is_that_text(self):
+        """
+        GIVEN a model whose reply has a closed reasoning block, an answer and a second block
+              that never closes
+        WHEN a turn is answered
+        THEN the answer is the text between the blocks
+        """
+        model = _model(_say("<think>plan</think>It is the midpoint.<think>hmm"))
+
+        response = await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert response.answer == "It is the midpoint."
+
     async def test_a_cut_off_answer_of_the_agent_fallback_is_a_failure_with_that_reason(self):
         """
         GIVEN an agent turn that reaches the model-call limit, and a fallback call whose reply
@@ -1118,6 +1169,69 @@ class TestStream:
                 pass
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
         assert record.reason == "cut_off"
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["  \n <think>I wonder"],
+            [" ", "\n <thi", "nk>I won", "der"],
+            ["<think>a</think>  \n  <think>b"],
+        ],
+    )
+    async def test_blanks_before_a_reasoning_block_that_never_closes_are_unavailable(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN a model whose streamed reply has only whitespace, or a closed block and
+              whitespace, before a reasoning block that never closes
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised, no piece was yielded and the empty-answer
+             record says cut_off
+        """
+        model = _model(_say("".join(chunks)))
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for item in service.stream(turn):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
+        assert record.reason == "cut_off"
+        assert pieces == []
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["It is the midpoint. <think>I wonder"],
+            ["It is the midpoint. <thi", "nk>I won", "der"],
+        ],
+    )
+    async def test_text_before_a_reasoning_block_that_never_closes_completes_the_turn(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN a model whose streamed reply holds an answer and then a reasoning block that
+              never closes, the tag arriving whole or split across chunks
+        WHEN the turn is streamed
+        THEN no error is raised, the pieces hold nothing from the block and join to the
+             answer of the response, and the turn is logged as answered
+        """
+        model = _model(_say("".join(chunks)))
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(), model)
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            pieces, response = await _drain(service, _request(), _ctx())
+
+        assert "".join(pieces) == response.answer == "It is the midpoint."
+        assert [getattr(r, "event", "") for r in records] == ["assistant_turn"]
 
     async def test_prepare_refuses_a_project_the_caller_cannot_see(self):
         """
@@ -2628,10 +2742,11 @@ class TestShowSourcesSetting:
 
     async def test_answer_with_the_setting_off_sends_no_sources_or_markers(self):
         """
-        GIVEN the setting off and an answer that cites the one passage found
+        GIVEN the setting off and an answer that cites the one passage found, and a bracket
+              with a number that names no source
         WHEN the turn is answered
-        THEN the response has no sources, no marker and no link target, and its citation
-             check reads valid
+        THEN the response has no sources, no marker and no link target, the other bracket
+             stays, and its citation check reads valid
         """
         service = AssistantService(
             _settings(assistant_show_sources=False),
@@ -2640,7 +2755,7 @@ class TestShowSourcesSetting:
 
         response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
 
-        assert response.answer == "It is the midpoint."
+        assert response.answer == "It is the midpoint [7]."
         assert response.sources == []
         assert response.checks.citations_valid is True
 
@@ -2730,7 +2845,8 @@ class TestShowSourcesSetting:
         """
         GIVEN the setting off and an answer citing a source that was never given
         WHEN the turn is answered
-        THEN the response reads valid and the record says the citations were not
+        THEN the response reads valid, keeps the bracket that names no source, and the record
+             says the citations were not
         """
         service = AssistantService(
             _settings(assistant_show_sources=False), _model(_say("It is the midpoint [4]."))
@@ -2740,6 +2856,7 @@ class TestShowSourcesSetting:
             response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
 
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert response.answer == "It is the midpoint [4]."
         assert response.checks.citations_valid is True
         assert record.citations_valid is False
 
@@ -2748,11 +2865,10 @@ class TestShowSourcesSetting:
         GIVEN the setting off and a stream that splits a citation across its pieces
         WHEN the turn is streamed
         THEN the pieces hold no marker and join to the answer of the response, which has no
-             sources and reads its citations as valid, though it cited a source that was never
-             given
+             sources and reads its citations as valid
         """
-        model = _model(_say("It is the midpoint [9](https://example.org/a)."))
-        model.stream_chunks = ["It is the midpoint [", "9", "](https://example.org/a)", "."]
+        model = _model(_say("It is the midpoint [1](https://example.org/a)."))
+        model.stream_chunks = ["It is the midpoint [", "1", "](https://example.org/a)", "."]
         service = AssistantService(_settings(assistant_show_sources=False), model)
 
         pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
@@ -2760,6 +2876,33 @@ class TestShowSourcesSetting:
         assert pieces == ["It is the midpoint", "."]
         assert "".join(pieces) == response.answer == "It is the midpoint."
         assert response.sources == []
+        assert response.checks.citations_valid is True
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["It is the midpoint [", "9", "](https://example.org/a)", "."],
+            ["It is the midpoint [", "1, ", "5", "](https://example.org/a)", "."],
+        ],
+    )
+    async def test_stream_with_the_setting_off_keeps_a_bracket_that_names_no_source(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN the setting off, one registered source and an answer with a bracket that names a
+              number that is no source (alone, or beside the one that is), split across pieces
+        WHEN the turn is streamed
+        THEN the bracket and the link target after it stay, and the pieces join to the answer
+             of the response
+        """
+        answer = "".join(chunks)
+        model = _model(_say(answer))
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert "".join(pieces) == response.answer == answer
         assert response.checks.citations_valid is True
 
     @pytest.mark.parametrize(
@@ -2813,8 +2956,10 @@ class TestShowSourcesSetting:
             _settings("agent", assistant_show_sources=False),
             _model(_say("It is the midpoint [1].")),
         )
+        ctx = _ctx()
+        ctx.sources.add(_chunk())
 
-        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+        pieces, response = await _drain(service, _request(), ctx)
 
         assert pieces == []
         assert response.answer == "It is the midpoint."
