@@ -152,6 +152,16 @@ _CASES = [
          "See https://x.y/Budget 2027;99999 now.", bad=["99999"], project=["2027"],
          kept=([NAME, "Plan 99999"], []), briefs=_briefs([NAME, "Plan 99999"]),
          tools=("list_my_projects",)),
+    *[_row(f"url-name-reads-an-ordinal-as-the-plain-scan-does-{n}", "agent", answer, bad=["42"],
+           kept=(["https://x.y/z", "Budget 42"], []), tools=("list_my_projects",),
+           briefs=_briefs(["https://x.y/z", "Budget 42"]))
+      for n, answer in enumerate(("The value is 42. https://x.y/z and Budget 42",
+                                  "Budget 42 is open. The budget is 42. https://x.y/z ok."))],
+    _row("url-name-and-a-nested-expert-name", "agent",
+         "Budget 43 plan. The budget is 43. https://x.y/z", bad=["43"],
+         kept=(["https://x.y/z", "Budget 43"], ["Budget 43 plan"]),
+         briefs=_briefs(["https://x.y/z", "Budget 43"]), opinions=[_expert("Budget 43 plan")],
+         tools=("list_my_projects", "get_project_opinions")),
     _row("number-glued-to-a-url-name-by-a-bracket", "workflow", "See https://x.y/z(77) now.",
          bad=["77"], kept=(["https://x.y/z"], []), project_fields={"name": "https://x.y/z"}),
     _row("link-target-with-a-copy", "workflow", f"See [x]({NAME};99999) now.", bad=["99999"],
@@ -267,7 +277,7 @@ class TestNamesInTheNumberCheck:
         assert record.numbers_grounded is True
         assert record.ungrounded_number_count == 0
         texts = [str(value) for value in vars(record).values()]
-        assert not any("2027" in text or "Expert" in text for text in texts)
+        assert not any("Budget" in text or "Expert" in text for text in texts)
 
     @pytest.mark.parametrize(
         ("answer", "ungrounded", "project"),

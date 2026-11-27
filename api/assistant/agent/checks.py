@@ -711,6 +711,8 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
 
     The filler starts with a lowercase letter when the copy does, so that an ordinal before
     it (``2. pilot 2027``) is read as before; the boundaries keep that letter off any number.
+    A copy that starts with a URL is the exception: the plain scan drops a URL to the bare
+    filler, and so does this.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
@@ -725,7 +727,8 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
     def replace(match: re.Match[str]) -> str:
         if " ".join(match[0].split()) in held:
             return match[0]
-        return ("a" if match[0][0].islower() else "") + _DROPPED
+        lowercase = match[0][0].islower() and not _BARE_URL.match(match[0])
+        return ("a" if lowercase else "") + _DROPPED
 
     return _copy_pattern(found).sub(replace, text)
 
@@ -769,7 +772,7 @@ def repeated_names(answer: str, names: Iterable[str]) -> list[str]:
     matched = {
         " ".join(m[0].split()) for m in _copy_pattern(found).finditer(strip_invisible(answer))
     }
-    return [name for name in names if " ".join(name.removesuffix(_CUT_MARK).split()) in matched]
+    return [name for name in names if _copy_prefixes([name]) & matched]
 
 
 def _strip_answer(answer: str, copies: Iterable[str] = (), kept: Iterable[str] = ()) -> str:
