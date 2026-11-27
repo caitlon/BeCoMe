@@ -30,14 +30,14 @@ describe('AssistantMessage name-number lines', () => {
     renderChecks({ ...passing, project_name_numbers: ['2026', '3'], expert_name_numbers: ['7'] });
 
     expect(screen.getByText('From the project name, not the data: 2026, 3')).toBeInTheDocument();
-    expect(screen.getByText('From an expert name, not the data: 7')).toBeInTheDocument();
+    expect(screen.getByText("From an expert's name, not the data: 7")).toBeInTheDocument();
   });
 
   it('shows only the list that is not empty', () => {
     renderChecks({ ...passing, project_name_numbers: ['2026'], expert_name_numbers: [] });
 
     expect(screen.getByText('From the project name, not the data: 2026')).toBeInTheDocument();
-    expect(screen.queryByText(/From an expert name/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/From an expert's name/)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -62,7 +62,7 @@ describe('AssistantMessage name-number lines', () => {
 
     expect(screen.getByText('Numbers not confirmed by the sources: 17')).toBeInTheDocument();
     expect(screen.getByText('From the project name, not the data: 2026')).toBeInTheDocument();
-    expect(screen.getByText('From an expert name, not the data: 7')).toBeInTheDocument();
+    expect(screen.getByText("From an expert's name, not the data: 7")).toBeInTheDocument();
   });
 
   it('does not style the lines as warnings', () => {
@@ -76,8 +76,9 @@ describe('AssistantMessage name-number lines', () => {
 
     const warning = screen.getByText('Numbers not confirmed by the sources: 17').closest('p');
     expect(warning).toHaveClass('text-warning');
-    for (const text of ['From the project name, not the data: 2026', 'From an expert name, not the data: 7']) {
+    for (const text of ['From the project name, not the data: 2026', "From an expert's name, not the data: 7"]) {
       const line = screen.getByText(text).closest('p');
+      expect(line).toHaveClass('text-foreground');
       expect(line).not.toHaveClass('text-warning');
       expect(line).not.toHaveClass('text-muted-foreground');
       expect(line?.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');

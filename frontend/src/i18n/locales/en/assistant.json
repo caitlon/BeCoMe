@@ -56,7 +56,7 @@
     "numbersNotConfirmed": "Numbers not confirmed by the sources: {{numbers}}",
     "numbersNotConfirmedGeneric": "Some numbers are not confirmed by the sources.",
     "numbersFromProjectName": "From the project name, not the data: {{numbers}}",
-    "numbersFromExpertName": "From an expert name, not the data: {{numbers}}",
+    "numbersFromExpertName": "From an expert's name, not the data: {{numbers}}",
     "citationInvalid": "A citation points to no source.",
     "read": "Read: {{tools}}",
     "tools": {

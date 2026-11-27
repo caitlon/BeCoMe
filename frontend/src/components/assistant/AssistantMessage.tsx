@@ -125,9 +125,8 @@ function ChecksLines({ checks }: { readonly checks: AnswerChecks }) {
     lines.push(t("message.citationInvalid"));
   }
 
-  // The live stream hands `checks` through without `cleanChecks`, so the lists may be anything.
-  const projectNameNumbers = Array.isArray(checks.project_name_numbers) ? checks.project_name_numbers : [];
-  const expertNameNumbers = Array.isArray(checks.expert_name_numbers) ? checks.expert_name_numbers : [];
+  const projectNameNumbers = checks.project_name_numbers ?? [];
+  const expertNameNumbers = checks.expert_name_numbers ?? [];
   const notes: { key: string; text: string }[] = [];
   if (projectNameNumbers.length > 0) {
     notes.push({
