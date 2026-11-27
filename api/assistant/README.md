@@ -302,10 +302,10 @@ them stays. A tag may be opening, closing or self-closing, with blanks inside (`
 case, with `-` for `_` (`<project-data>`). A line left with only blanks goes with its line break.
 A tag that removal assembles from the text around it, as in `<do<docs>cs>`, goes too. Removal does
 not look at code spans, so a tag inside backticks goes as well, and other angle brackets (`<h2>`,
-`x < 5`, `<docs source="x">`) stay. The tags are removed before the checks, so that the checks
-read what the user reads (`2<docs>3` is the number 23); with sources hidden they are removed again
-after the citation removal, which can join the two halves of a tag. The stream holds back what may
-still become a tag. An answer left with nothing but blanks and tags is refused as empty.
+`x < 5`, `<docs source="x">`) stay. The tags are removed before the checks, so that a tag cannot
+hide a number from them (`2<docs>3` is checked as 23). With sources hidden they are removed once
+more after the citation removal, which can join the two halves of a tag. The stream holds back what
+may still become a tag. An answer left with nothing but blanks and tags is refused as empty.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads

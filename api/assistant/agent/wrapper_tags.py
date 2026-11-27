@@ -102,7 +102,7 @@ class WrapperTagStreamFilter:
     away: from the first ``<`` that may still become a tag (one that cannot, because of the
     character after it, lets go at once), and a line that holds nothing but blanks and tags
     so far, because it goes whole when it ends that way. A ``<`` that never closes holds the
-    rest of the answer until :meth:`finish`.
+    rest of its line, until a line break or :meth:`finish`.
     """
 
     def __init__(self) -> None:

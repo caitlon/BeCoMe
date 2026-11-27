@@ -33,7 +33,7 @@ from api.assistant.invisible import strip_invisible
 # nothing is removed because of them. Matched on text that is already case folded.
 
 # An assistant tag, opening or closing, with spaces allowed inside the brackets. The answer side
-# has its own, more tolerant grammar in ``api/assistant/agent/wrapper_tags.py``.
+# has its own grammar, on one line only, in ``api/assistant/agent/wrapper_tags.py``.
 _TAG_PATTERN = re.compile(r"<\s*(/?)\s*(" + "|".join(map(re.escape, ASSISTANT_TAGS)) + r")\s*>")
 
 # Role and turn markers of common chat templates, plus the reasoning tags.
