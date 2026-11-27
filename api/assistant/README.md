@@ -460,27 +460,28 @@ logged at WARNING with the exception's class in `reason`.
   model call. A refused message is given back: in memory it is never stored, and in Redis its
   increment is given back by a guarded script (if that give-back fails with a store error,
   `assistant_throttle_giveback_unavailable` is logged and the counter stays above the budget until
-  the window closes). A Redis error does not lift it: each process then counts in its own memory
-  with the same budget, and the record `assistant_throttle_unavailable` is logged at ERROR. Set it
-  to `0` to switch it off, for a measurement run that sends many questions from one account; a
-  deployed service refuses `0`. A turn that fails while it is prepared, before the answer model is
+  the window closes). A Redis error does not lift it and is not counted in memory either: the
+  turn is refused with `503` and the body of an unreachable model server, nothing is counted, and
+  the record `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off,
+  for a measurement run that sends many questions from one account; a deployed service refuses
+  `0`. A turn that fails while it is prepared, before the answer model is
   called (an unknown project, a retrieval error, a timeout), gives back all its messages, the
   user's, the ceiling's and the address's; in the `agent` mode a project is looked up only when the
   model calls a tool, so an unknown project there keeps them. A failure of the answer model, and a
   client that goes away, keep them.
 - **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
   fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
-  set and in memory otherwise, with the same per-process fallback as the message limit. It is
-  spent after the user's own budget, so an account whose budget is spent cannot drain it; a turn
-  the ceiling refuses gives the user's message back, so it spends none of the user's own budget. A
-  turn over the ceiling is `503`, the same body as an unreachable model server, with
+  set and in memory otherwise, and refuses a turn when the store errors, as the message limit
+  does. It is spent after the user's own budget, so an account whose budget is spent cannot drain
+  it; a turn the ceiling refuses gives the user's message back, so it spends none of the user's
+  own budget. A turn over the ceiling is `503`, the same body as an unreachable model server, with
   `Retry-After` set to the seconds until the window closes; the record
   `assistant_global_cap_reached` carries `reason: global` and no user. Set it to `0` to switch it
   off on a laptop; a deployed service refuses `0`. A Better Stack alert on that record, one each
   for dev and prod, opens one incident when the ceiling refuses a turn and sends an e-mail; the
   incident closes after an hour without a refusal.
 - **Per-address cap.** `ASSISTANT_ADDRESS_TURNS_PER_HOUR` messages per client address in a fixed
-  hour (default 240), counted with the same backends, fallback and window as the
+  hour (default 240), counted with the same backends, store-error refusal and window as the
   message limit. The key is the keyed hash of the address from `get_client_ip` (an HMAC under
   `LOG_HASH_KEY`, or `SECRET_KEY` when that is unset), an IPv6 address cut to its /64 network and
   an IPv4-mapped one counted as its IPv4 address, so the Redis key is `assistant:chat:addr:<hash>`
