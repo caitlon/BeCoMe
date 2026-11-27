@@ -13,12 +13,19 @@ if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
 
 
+# Cap on the position. The sanitizer gets the same number, so the cleaned text is held to the
+# cap again after it is cleaned.
+OPINION_POSITION_MAX = 255
+
+
 class OpinionCreate(BaseModel):
     """Request to create or update an expert opinion."""
 
     model_config = ConfigDict(extra="forbid")
 
-    position: str = Field(..., min_length=1, max_length=255, description="Expert's position/role")
+    position: str = Field(
+        ..., min_length=1, max_length=OPINION_POSITION_MAX, description="Expert's position/role"
+    )
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")
     peak: float = Field(..., description="Peak value (most preferred)")
     upper_bound: float = Field(..., description="Upper bound (optimistic estimate)")
@@ -27,7 +34,7 @@ class OpinionCreate(BaseModel):
     @classmethod
     def sanitize_position(cls, v: str) -> str:
         """Remove HTML and invisible characters from the position, which must keep some text."""
-        sanitized = sanitize_text(v).strip()
+        sanitized = sanitize_text(v, max_length=OPINION_POSITION_MAX).strip()
         if not sanitized:
             msg = "Position must not be empty after sanitization"
             raise ValueError(msg)

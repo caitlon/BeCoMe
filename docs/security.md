@@ -570,6 +570,11 @@ form, while the line and paragraph separators and the braille blank (U+2800) are
 space. A name that is empty after the cleaning is refused. User first and last names are not cleaned
 but refused when they hold one (`validate_name_format`).
 
+The cleaning strips tags but leaves `&`, `<` and `>` as typed, so "R&D" is stored as "R&D" and not
+as an HTML entity. The text is stored as plain text because every reader escapes on output (React
+text nodes, the PDF renderer) and none renders it as HTML. Cleaning never makes a value longer,
+and each field is held to its own cap again after cleaning, so the text always fits its column.
+
 Text a model writes reaches the browser only through the optional assistant panel, which
 renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
 `ul`, `ol`, `li`, `code`, `br`, and `h1` to `h6` re-rendered as semibold paragraphs, with
