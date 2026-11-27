@@ -37,7 +37,11 @@ from langchain_core.messages import (
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
 from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
-from api.assistant.rag.models import THINK_OPEN, has_unclosed_think_block, strip_think_block
+from api.assistant.rag.models import (
+    THINK_OPEN,
+    has_unclosed_think_block,
+    text_before_unclosed_think_block,
+)
 from api.assistant.rag.retrieval import question_language
 from api.schemas.assistant import TurnUsage
 
@@ -58,7 +62,7 @@ _ANSWER_LANGUAGE_LINE = {"cs": "Answer in Czech.", "en": "Answer in English."}
 
 
 class CutOffAnswerError(Exception):
-    """Raised when a model's reply ends inside its reasoning block, so it holds no answer.
+    """Raised when a model's reply ends inside its reasoning block with no answer before it.
 
     The chat service turns it into the same failure as a blank answer, and gives it its own
     reason in the log.
@@ -134,30 +138,30 @@ def answer_text(message: BaseMessage) -> str:
 
     A reply given as a list of content blocks is joined from its text parts, and the
     reasoning block a model may put in front of its answer is removed. A reply that was
-    cut off inside its reasoning, so that a block opens and never closes, has no answer:
-    what is left of it is the model's half-written thoughts, and it is returned as empty.
-    ``strip_think_block`` is shared with the query transforms and keeps such a reply
-    as it is, which is why the check is here. The generators tell that case from a blank
-    reply with :func:`~api.assistant.rag.models.has_unclosed_think_block`.
+    cut off inside its reasoning, so that a block opens and never closes, keeps the text
+    written before that block: the half-written thoughts are dropped. The generators tell
+    such a reply with nothing before the block from a blank one with
+    :func:`~api.assistant.rag.models.has_unclosed_think_block`.
 
     :param message: The model's reply.
-    :return: The answer, stripped; empty when the reply held nothing else, or ended
-        inside a reasoning block.
+    :return: The answer, stripped; empty when the reply held nothing else, or opened with
+        a reasoning block that never closed.
     """
-    reply = message.text
-    return "" if has_unclosed_think_block(reply) else strip_think_block(reply)
+    return text_before_unclosed_think_block(message.text)
 
 
 def _answer_of(message: BaseMessage) -> str:
-    """Read the answer out of a model reply, refusing one that was cut off.
+    """Read the answer out of a model reply, refusing one that was cut off with no answer.
 
     :param message: The model's reply.
     :return: The answer, empty when the reply was only reasoning that closed.
-    :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+    :raises CutOffAnswerError: If the reply ends inside a reasoning block and nothing but
+        whitespace comes before it.
     """
-    if has_unclosed_think_block(message.text):
+    answer = answer_text(message)
+    if not answer and has_unclosed_think_block(message.text):
         raise CutOffAnswerError
-    return answer_text(message)
+    return answer
 
 
 def _usage_of(replies: Sequence[BaseMessage]) -> TurnUsage:
@@ -190,14 +194,12 @@ def _visible(buffer: str) -> str:
 
     The reasoning block is withheld, including while it is still open, and so is a
     trailing fragment that could be the start of its opening tag, since the tag may
-    arrive split across chunks.
+    arrive split across chunks. The text before an open block is shown.
 
     :param buffer: The reply so far.
     :return: The answer text so far, never ending in a prefix of ``<think>``.
     """
-    if has_unclosed_think_block(buffer):
-        return ""
-    shown = strip_think_block(buffer)
+    shown = text_before_unclosed_think_block(buffer)
     for length in range(min(len(THINK_OPEN) - 1, len(shown)), 0, -1):
         if THINK_OPEN.startswith(shown[-length:]):
             return shown[:-length].rstrip()
@@ -223,7 +225,8 @@ class DirectGenerator(AnswerGenerator):
         :param ctx: Unused: no tool runs, and nothing is fetched here.
         :param question: Unused: the user message already carries it.
         :return: The answer text, an empty list since no tool ran, and the usage of the reply.
-        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block with no
+            answer before it.
         """
         response = await self._model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *messages])
         return _answer_of(response), [], _usage_of([response])
@@ -243,7 +246,8 @@ class DirectGenerator(AnswerGenerator):
         :param ctx: Unused: no tool runs, and nothing is fetched here.
         :param question: Unused: the user message already carries it.
         :return: Pieces of answer text, then one :class:`Generated`.
-        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block with no
+            answer before it.
         """
         full = AIMessageChunk(content="")
         emitted = 0
@@ -431,7 +435,8 @@ class AgentGenerator(AnswerGenerator):
         :param ctx: The turn's context, holding the sources and the tool replies.
         :param question: The user's own message.
         :return: The answer text and the model's reply it was read from.
-        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block with no
+            answer before it.
         """
         excerpts = render_context_block(ctx.sources.numbered(), None)
         parts = [*([excerpts] if excerpts else []), *dict.fromkeys(ctx.tool_outputs)]

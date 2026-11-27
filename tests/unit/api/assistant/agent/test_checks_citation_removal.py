@@ -30,8 +30,8 @@ _ANSWERS = [
     "No citations here at all, only 5 experts and 11.54.",
     "Nested [[1]2] and [1[2]] and [[1]1] and [ [1] 2] here.",
     "A list:\n  [1] indented item\n\t[2]\ttabbed item\n  [3]\n[1]  x",
-    "Crisp [5, 5, 5], [0, 0, 0] and [0, 0] stay; [1, 1], [2] and [7] go.",
-    "A fuzzy number [6, 8, 11], a scale [1, 5], [0, 1] and a pair [1, 2] [7].",
+    "Crisp [5, 5, 5], [0, 0, 0] and [0, 0] stay; [1, 1], [2] go, [7] stays.",
+    "A fuzzy number [6, 8, 11], a scale [1, 5], [0, 1], a value [4] and a pair [1, 2] [7].",
     "Mixed [ \u30101\u3011 2] and \u3010 [1] 2\u3011 and [1](\u30102\u3011) here.",
     "Names [project_data] and [Project Data](https://x/y) and [a_ij] and [TODO] stay or go.",
     "See [docs](https://docs.example.com/x) and [data] (b) then [Source](u) [1](v) [docs](w",
@@ -78,7 +78,7 @@ class TestRemoveCitations:
             ("first\n[1] second", "first\nsecond"),
             ("a\n  [1] b", "a\n  b"),
             ("  [1] b", "  b"),
-            ("[1, 1] and [2] and [7]", "and and"),
+            ("[1, 1] and [2] and [7]", "and and [7]"),
             ("a\n  [1]\n[2]  c", "a\n  \nc"),
             ("a [1-3] b [1, 2] c [source 2] d", "a b c d"),
             ("\u30101\u3011 x \u30102, 3\u3011", "x"),
@@ -273,22 +273,37 @@ class TestRemoveCitations:
     @pytest.mark.parametrize(
         ("text", "expected"),
         [
+            ("See [2].", "See."),
             ("See [1, 2].", "See."),
+            ("See [1, 2, 3].", "See."),
             ("See [1-3].", "See."),
-            ("See [7].", "See."),
-            ("See [source 9] and \u301015\u3011.", "See and."),
+            ("See [source 2] and \u30103\u3011.", "See and."),
+            ("See [4].", "See [4]."),
+            ("See [7].", "See [7]."),
+            ("See [1, 5].", "See [1, 5]."),
+            ("See [source 9] and \u301015\u3011.", "See [source 9] and \u301015\u3011."),
         ],
     )
-    def test_a_single_number_always_goes_and_several_go_only_when_all_are_sources(
+    def test_a_bracket_of_numbers_goes_only_when_every_number_is_a_source(
         self, text: str, expected: str
     ):
         """
         GIVEN sources 1 to 3
         WHEN citations are removed
-        THEN a bracket of one number goes whatever it is, and so does one of several
-             numbers that are all sources
+        THEN a bracket goes when each number in it is a source, one number or several, and
+             stays when any number in it is not
         """
         assert remove_citations(text, SOURCES) == expected
+
+    def test_a_turn_with_no_sources_keeps_every_number_bracket(self):
+        """
+        GIVEN a turn that registered no source
+        WHEN citations are removed
+        THEN a number in brackets stays, and an internal name still goes
+        """
+        text = "Value [1] and [2, 3] [project_data]."
+
+        assert remove_citations(text, set()) == "Value [1] and [2, 3]."
 
     @pytest.mark.parametrize(
         ("text", "expected"),
@@ -406,6 +421,27 @@ class TestCitationStreamFilter:
         for index in range(len(answer) + 1):
             self._assert_exact(answer, [answer[:index], answer[index:]])
         self._assert_exact(answer, list(answer))
+        assert remove_citations(answer, SOURCES) == clean
+
+    @pytest.mark.parametrize(
+        ("answer", "clean"),
+        [
+            ("Value [4] stays and [2] goes.", "Value [4] stays and goes."),
+            ("A set [1, 2, 3] goes and [1, 5] stays.", "A set goes and [1, 5] stays."),
+            ("A value [1] [project_data] [4].", "A value [4]."),
+        ],
+    )
+    def test_a_number_that_names_no_source_stays_however_the_answer_is_cut(
+        self, answer: str, clean: str
+    ):
+        """
+        GIVEN an answer with a number in brackets that is no source of the turn
+        WHEN it is fed one character at a time, and cut in two at every index
+        THEN the pieces join to the cleaned answer, which keeps that bracket
+        """
+        self._assert_exact(answer, list(answer))
+        for index in range(len(answer) + 1):
+            self._assert_exact(answer, [answer[:index], answer[index:]])
         assert remove_citations(answer, SOURCES) == clean
 
     def test_a_closed_name_is_held_back_until_the_next_character_decides_it(self):

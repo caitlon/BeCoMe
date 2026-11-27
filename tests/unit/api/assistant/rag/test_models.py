@@ -13,6 +13,7 @@ from api.assistant.rag.models import (
     make_chat_model,
     make_embeddings,
     strip_think_block,
+    text_before_unclosed_think_block,
 )
 from api.config import Settings
 
@@ -540,6 +541,49 @@ class TestHasUnclosedThinkBlock:
         THEN it reports no unclosed block, a stray closing tag included
         """
         assert has_unclosed_think_block(reply) is False
+
+
+class TestTextBeforeUnclosedThinkBlock:
+    """text_before_unclosed_think_block keeps what a reply said before a block that never closes."""
+
+    @pytest.mark.parametrize(
+        ("reply", "expected"),
+        [
+            ("Half an answer <think>and then", "Half an answer"),
+            ("<think>a</think>Text <think>b", "Text"),
+            ("<think>a</think>One <think>b</think> two <think>c", "One <think>b</think> two"),
+            ("Text </think> then <think>c", "Text </think> then"),
+            ("Text <think>a <think>b", "Text"),
+            ("<think>Still reasoning", ""),
+            ("<think>a <think>b", ""),
+            ("  \n<think>Still reasoning", ""),
+        ],
+    )
+    def test_returns_the_stripped_text_before_the_unclosed_block(self, reply, expected):
+        """
+        GIVEN a reply whose last <think> block never closes
+        WHEN the text before it is read
+        THEN it is the text before the block, closed blocks read as strip_think_block reads
+             them, and empty when the reply opens with the unclosed block
+        """
+        assert text_before_unclosed_think_block(reply) == expected
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "",
+            " Plain answer, </think> here. ",
+            "<think>x</think>Answer.",
+            "<think>a</think>Text <think>b</think> tail",
+        ],
+    )
+    def test_reads_a_reply_with_no_unclosed_block_as_strip_think_block_does(self, reply):
+        """
+        GIVEN a reply with no <think> block, or whose blocks all close
+        WHEN the text before an unclosed block is read
+        THEN the result is the one strip_think_block gives
+        """
+        assert text_before_unclosed_think_block(reply) == strip_think_block(reply)
 
 
 class _FakeResponse:

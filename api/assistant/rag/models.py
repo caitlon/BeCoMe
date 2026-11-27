@@ -313,13 +313,34 @@ def has_unclosed_think_block(reply: str) -> bool:
     Only the last opening tag counts: an earlier block is closed by the closing tag that
     follows it, and a closing tag written in the text with no opening tag before it is
     not a block at all. A reply cut off while the model was still reasoning is such a
-    reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is.
+    reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is;
+    :func:`text_before_unclosed_think_block` reads what the reply said before it.
 
     :param reply: The model's raw reply text.
     :return: True when the last <think> has no </think> after it.
     """
     opened = reply.rfind(THINK_OPEN)
     return opened != -1 and _THINK_CLOSE not in reply[opened:]
+
+
+def text_before_unclosed_think_block(reply: str) -> str:
+    """Read the text a reply holds outside its reasoning, cutting at a block that never closes.
+
+    The unclosed block starts at the first opening tag after the last closing tag, so a
+    second opening tag written inside it does not leak its reasoning. What comes before is
+    read as :func:`strip_think_block` reads a reply. The text after the opening tag is
+    reasoning that stopped halfway and is dropped.
+
+    :param reply: The model's raw reply text.
+    :return: The text before the unclosed block, stripped of leading and trailing
+        whitespace; empty when the reply opens with that block. A reply with no unclosed
+        block is read as :func:`strip_think_block` reads it.
+    """
+    if not has_unclosed_think_block(reply):
+        return strip_think_block(reply)
+    last_close = reply.rfind(_THINK_CLOSE)
+    after_close = last_close + len(_THINK_CLOSE) if last_close != -1 else 0
+    return strip_think_block(reply[: reply.find(THINK_OPEN, after_close)])
 
 
 # The embeddings client sends up to 1000 texts per request by default, and llama-server

@@ -176,3 +176,49 @@ class TestInvisibleCharactersOnTheWire:
             for text in [*texts, answer]
             for char in text
         )
+
+
+@pytest.mark.asyncio
+class TestReasoningThatNeverCloses:
+    """A reply cut off inside its reasoning after some text ends as a normal answer."""
+
+    async def test_the_text_before_the_unclosed_block_is_streamed_and_the_last_event_is_done(
+        self,
+    ):
+        """
+        GIVEN a model that streams an answer and then opens a reasoning block, the tag split
+              across chunks, and is cut off
+        WHEN the whole body is read
+        THEN the tokens join to the answer, nothing of the block is sent, there is no error
+             event, and the last event is done with that answer
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_model="test-answer-model",
+        )
+        chunks = ["One two ", "<thi", "nk>secret ", "thoughts"]
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(settings, model),
+            settings,
+        )
+
+        # WHEN
+        blocks = [block async for block in response.body_iterator]
+
+        # THEN
+        events = [
+            (lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: ")))
+            for block in blocks
+            if (lines := block.strip().split("\n"))[0].startswith("event: ")
+        ]
+        names = [name for name, _ in events]
+        texts = [payload["text"] for name, payload in events if name == "token"]
+        assert "error" not in names
+        assert names[-1] == "done"
+        assert "".join(texts) == events[-1][1]["answer"] == "One two"

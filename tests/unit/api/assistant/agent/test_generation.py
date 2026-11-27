@@ -19,6 +19,7 @@ from api.assistant.agent.generation import (
     Generated,
     _tool_failed,
     _usage_of,
+    _visible,
     answer_text,
     user_message,
 )
@@ -164,13 +165,21 @@ class TestAnswerText:
         """
         assert answer_text(AIMessage(content="<think>I was working out that")) == ""
 
-    def test_text_before_a_reasoning_block_that_never_closes_is_still_empty(self):
+    def test_text_before_a_reasoning_block_that_never_closes_is_the_answer(self):
         """
         GIVEN a reply with some text and then a reasoning block that never closes
         WHEN its text is read
+        THEN the answer is the text before the block, without its trailing blank
+        """
+        assert answer_text(AIMessage(content="Half an answer <think>and then")) == "Half an answer"
+
+    def test_blank_text_before_a_reasoning_block_that_never_closes_is_empty(self):
+        """
+        GIVEN a reply with only whitespace before a reasoning block that never closes
+        WHEN its text is read
         THEN the answer is empty
         """
-        assert answer_text(AIMessage(content="Half an answer <think>and then")) == ""
+        assert answer_text(AIMessage(content=" \n <think>and then")) == ""
 
     def test_a_closed_reasoning_block_followed_by_text_returns_the_text(self):
         """
@@ -180,13 +189,13 @@ class TestAnswerText:
         """
         assert answer_text(AIMessage(content="<think>x</think>Answer.")) == "Answer."
 
-    def test_a_second_reasoning_block_that_never_closes_is_empty(self):
+    def test_a_second_reasoning_block_that_never_closes_leaves_the_text_before_it(self):
         """
         GIVEN a reply with a closed reasoning block, some text and a second block cut off
         WHEN its text is read
-        THEN the answer is empty
+        THEN the answer is the text between them
         """
-        assert answer_text(AIMessage(content="<think>a</think>Text <think>b")) == ""
+        assert answer_text(AIMessage(content="<think>a</think>Text <think>b")) == "Text"
 
     def test_a_later_block_that_closes_is_left_as_written(self):
         """
@@ -200,21 +209,31 @@ class TestAnswerText:
 
     def test_the_last_unclosed_block_decides_even_after_a_closed_one(self):
         """
-        GIVEN a reply whose first block closes and whose last block never does
+        GIVEN a reply whose first block closes, a later one closes too, and the last never does
         WHEN its text is read
-        THEN the answer is empty
+        THEN the answer is the text before the last block, read as a closed reply is
         """
         reply = "<think>a</think>One <think>b</think> two <think>c"
 
-        assert answer_text(AIMessage(content=reply)) == ""
+        assert answer_text(AIMessage(content=reply)) == "One <think>b</think> two"
 
     def test_a_stray_closing_tag_does_not_close_a_later_block(self):
         """
         GIVEN a reply with a closing tag written in the text, and then a block that never closes
         WHEN its text is read
-        THEN the answer is empty
+        THEN the answer is the text before the block, the stray tag included
         """
-        assert answer_text(AIMessage(content="Text </think> then <think>c")) == ""
+        assert answer_text(AIMessage(content="Text </think> then <think>c")) == (
+            "Text </think> then"
+        )
+
+    def test_a_second_opening_tag_inside_the_unclosed_block_does_not_leak_its_reasoning(self):
+        """
+        GIVEN a reply that opens a block, writes another opening tag inside it and never closes
+        WHEN its text is read
+        THEN the answer is empty, since the reply opens with the unclosed block
+        """
+        assert answer_text(AIMessage(content="<think>a <think>b")) == ""
 
     def test_text_with_no_reasoning_block_is_untouched(self):
         """
@@ -233,6 +252,32 @@ class TestAnswerText:
         THEN it is the empty string, for the caller to treat as a failure
         """
         assert answer_text(AIMessage(content="<think>all my tokens</think>  ")) == ""
+
+
+class TestVisible:
+    """The part of a partial reply that may be shown while it streams."""
+
+    @pytest.mark.parametrize(
+        ("buffer", "expected"),
+        [
+            ("It is the midpoint. <think>I wonder", "It is the midpoint."),
+            ("It is the midpoint. <think>", "It is the midpoint."),
+            ("It is the midpoint. <thi", "It is the midpoint."),
+            ("<think>a</think>One <think>b", "One"),
+            ("<think>I wonder", ""),
+            ("<thi", ""),
+        ],
+    )
+    def test_shows_the_text_before_an_open_block_and_nothing_of_the_block(
+        self, buffer: str, expected: str
+    ):
+        """
+        GIVEN a partial reply that has an answer and then an open reasoning block, or the
+              start of its tag
+        WHEN the visible part is read
+        THEN it is the text before the block or the tag, and empty when nothing precedes it
+        """
+        assert _visible(buffer) == expected
 
 
 class TestUsageOf:
@@ -289,6 +334,19 @@ class TestDirectGenerator:
 
         with pytest.raises(CutOffAnswerError):
             await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+    async def test_a_reply_cut_off_after_some_text_returns_that_text(self):
+        """
+        GIVEN a model whose reply holds an answer and then opens a reasoning block that never
+              closes
+        WHEN the turn is generated
+        THEN the text is the answer before the block and nothing is raised
+        """
+        model = _model(AIMessage(content="It is the midpoint. <think>Now I wonder whether"))
+
+        text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert text == "It is the midpoint."
 
     async def test_a_reply_that_is_only_a_closed_reasoning_block_is_blank_not_cut_off(self):
         """
@@ -485,6 +543,48 @@ class TestDirectGeneratorStream:
                     pieces.append(item)
 
         assert pieces == []
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["It is the midpoint. <think>Now I wonder whether"],
+            ["It is the midpoint. ", "<think>", "Now I wonder ", "whether"],
+            ["It is the midpoint. <thi", "nk>Now I wonder", " whether"],
+            ["It is the midpoint. <", "t", "h", "i", "n", "k", ">", "Now I wonder whether"],
+        ],
+    )
+    async def test_a_reply_cut_off_after_some_text_ends_in_that_text(self, chunks: list[str]):
+        """
+        GIVEN a reply with an answer and then a reasoning block that never closes, whose tag
+              arrives whole or split across chunks
+        WHEN the turn is streamed
+        THEN no piece holds the tag or what follows it, the pieces join to the answer, the
+             final item has the same text, and nothing is raised
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "It is the midpoint." == final.text
+        assert "think" not in "".join(pieces)
+        assert "wonder" not in "".join(pieces)
+
+    async def test_a_closed_block_then_text_then_an_unclosed_block_streams_the_text(self):
+        """
+        GIVEN a reply with a closed reasoning block, an answer and a second block cut off
+        WHEN the turn is streamed
+        THEN the pieces join to the answer between the blocks
+        """
+        chunks = ["<think>plan</think>It is ", "the midpoint.<think>hm", "m"]
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "It is the midpoint." == final.text
 
     async def test_a_stream_without_usage_is_incomplete(self):
         """
@@ -878,6 +978,21 @@ class TestAgentGenerator:
             await AgentGenerator(model, max_tool_calls=4).generate(
                 _user(), _ctx([_chunk()]), QUESTION
             )
+
+    async def test_a_final_reply_cut_off_after_some_text_returns_that_text(self):
+        """
+        GIVEN a model whose final reply holds an answer and then a reasoning block that never
+              closes
+        WHEN the turn is generated
+        THEN the text is the answer before the block
+        """
+        model = _model(_search(), AIMessage(content="It is the midpoint. <think>then I looked"))
+
+        text, _, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        assert text == "It is the midpoint."
 
     async def test_a_fallback_reply_cut_off_inside_its_reasoning_raises_the_cut_off_error(self):
         """
