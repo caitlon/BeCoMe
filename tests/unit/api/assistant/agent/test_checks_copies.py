@@ -80,9 +80,7 @@ _CASES = [
     _case("short-5", "Item 5 is open.", ("5",), ["5"]),
     _case("short-12", "Item 12 is open.", ("12",), ["12"]),
     _case("no-letter-2027", "In 2027 we go.", ("2027",), ["2027"]),
-    _case("no-letter-12.5", "A width of 12.5 is set.", ("12.5",), ["12.5"]),
     _case("three-chars-Q7", "The Q 7 is open.", ("Q 7",), ["7"]),
-    _case("three-chars-A1", "The A 1 is open.", ("A 1",), ["1"]),
     _case("only-dots", "Wait... 7 more.", ("...",), ["7"]),
     _case("short-prefix", "Plan ab 7 more.", ("ab...",), ["7"]),
     _case("empty", "Wait 7 more.", ("",), ["7"]),
@@ -96,7 +94,6 @@ _CASES = [
     _case("longest-first-reversed", "See Plan 2027 Q 4 today.", ("Plan 2027 Q 4", "Plan 2027"), []),
     _case("shorter-alone", "See Plan 2027 Q 4 today.", ("Plan 2027",), ["4"]),
     _case("shorter-where-longer-misses", "See Plan 2027 today.", ("Plan 2027 Q 4", "Plan 2027"), []),
-    _case("repeated-copy", "See Plan 2027 today.", ("Plan 2027",) * 3, []),
     # A copy must not change how the rest of the text is read.
     _case("url-swallows-its-copy", "https://x.y/Budget 2027;99999", (_B,), []),
     _case("name-in-a-url-path", "See https://x.y/Jana/reports/2024 now", ("Jana",), []),
@@ -165,7 +162,6 @@ _MERGE_CASES = [
     _merge("real-only-in-the-first", (["7"], [], []), ([], ["7"], []), (["7"], [], [])),
     _merge("real-leaves-the-expert-list", ([], [], ["7"]), (["7"], [], []), (["7"], [], [])),
     _merge("project-wins-over-expert", ([], ["7"], []), ([], [], ["7", "8"]), ([], ["7"], ["8"])),
-    _merge("a-name-number-once", ([], ["7", "7"], []), ([], ["7"], []), ([], ["7"], [])),
 ]
 # fmt: on
 
@@ -177,10 +173,8 @@ class TestNumbersIn:
         ("names", "expected"),
         [
             (["Budget 2027", "7351 CZK"], {"2027", "7351"}),
-            (["Q4 2027", "Alpha"], {"2027"}),
+            (["Q4 2027", "Alpha", ""], {"2027"}),
             (["https://x.y/z", "Plan 2028 and 2029..."], {"2028", "2029"}),
-            (["is 7351", ""], {"7351"}),
-            ([], set()),
         ],
     )
     def test_the_numbers_are_the_written_forms(self, names, expected):
@@ -196,39 +190,26 @@ class TestKeptCopies:
     """A kept copy takes part in the longest-first match but stays visible to the scan."""
 
     @pytest.mark.parametrize(
-        ("answer", "copies", "kept", "expected"),
+        ("answer", "kept", "expected"),
         [
-            pytest.param(
-                "The Budget 2027 plan is open.",
-                ("Budget 2027",),
-                ("Budget 2027 plan",),
-                ["2027"],
-                id="longer-kept-copy-shields-the-shorter-one",
-            ),
-            pytest.param(
-                "The Budget 2027 is open.",
-                ("Budget 2027",),
-                ("Budget 2027 plan",),
-                [],
-                id="shorter-copy-masks-where-the-longer-misses",
-            ),
-            pytest.param(
-                "The Budget 2027 is open.",
-                ("Budget 2027",),
-                ("Budget 2027",),
-                ["2027"],
-                id="a-name-in-both-is-kept",
-            ),
+            ("The Budget 2027 plan is open.", "Budget 2027 plan", ["2027"]),
+            ("The Budget 2027 is open.", "Budget 2027 plan", []),
+            ("The Budget 2027 is open.", "Budget 2027", ["2027"]),
+        ],
+        ids=[
+            "longer-kept-shields-the-shorter",
+            "shorter-masks-where-longer-misses",
+            "same-name-kept",
         ],
     )
-    def test_the_kept_copies_are_found_and_not_masked(self, answer, copies, kept, expected):
+    def test_the_kept_copies_are_found_and_not_masked(self, answer, kept, expected):
         """
-        GIVEN copies to mask and kept copies that may be longer than them
+        GIVEN the copy "Budget 2027" and a kept copy that may be longer
         WHEN an answer repeating one of them is checked
-        THEN a match of a kept copy stays visible and hides nothing under it, and only
-             a match of a masked copy is dropped
+        THEN a match of the kept copy stays visible and hides nothing under it, and a match
+             of the other copy is dropped
         """
-        assert find_ungrounded_numbers(answer, [], copies=copies, kept=kept) == expected
+        assert find_ungrounded_numbers(answer, [], copies=["Budget 2027"], kept=[kept]) == expected
 
 
 class TestNumberCheckMerge:

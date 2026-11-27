@@ -2,6 +2,7 @@
 
 import pytest
 
+from api.assistant.agent import service as service_module
 from api.assistant.agent.prompt import clean_text
 from api.assistant.agent.service import AssistantService
 from api.assistant.errors import AssistantNotFoundError
@@ -141,8 +142,18 @@ _CASES = [
          "The budget is 42. https://x.y/z ok.", bad=["42"], kept=(["https://x.y/z"], []),
          project_fields={"name": "https://x.y/z"}),
     _row("expert-url-name-does-not-explain-an-ordinal", "workflow",
-         "The budget is 43. https://x.y/z ok.", bad=["43"], kept=([OWN], ["https://x.y/z"]),
-         opinions=[_expert("https://x.y/z")]),
+         "The budget is 43. https://x.y/z ok.", bad=["43"], kept=([OWN], ["https://x.y/z", "Expert 43"]),
+         opinions=[_expert("https://x.y/z"), _expert("Expert 43")]),
+    _row("project-url-name-beside-a-project-with-the-number", "agent",
+         "The budget is 42. https://x.y/z ok.", bad=["42"],
+         kept=(["https://x.y/z", "Budget 42"], []), briefs=_briefs(["https://x.y/z", "Budget 42"]),
+         tools=("list_my_projects",)),
+    _row("url-with-a-copy-beside-a-project-with-the-number", "agent",
+         "See https://x.y/Budget 2027;99999 now.", bad=["99999"], project=["2027"],
+         kept=([NAME, "Plan 99999"], []), briefs=_briefs([NAME, "Plan 99999"]),
+         tools=("list_my_projects",)),
+    _row("number-glued-to-a-url-name-by-a-bracket", "workflow", "See https://x.y/z(77) now.",
+         bad=["77"], kept=(["https://x.y/z"], []), project_fields={"name": "https://x.y/z"}),
     _row("link-target-with-a-copy", "workflow", f"See [x]({NAME};99999) now.", bad=["99999"],
          project=["2027"], kept=([NAME], []), project_fields={"name": NAME}),
     _row("url-with-a-copy", "workflow", f"See https://x.y/{NAME};99999 now.", bad=["99999"],
@@ -223,6 +234,19 @@ class TestNamesInTheNumberCheck:
         if mode == "hybrid":
             ctx.client.get_opinions.assert_not_awaited()
 
+    async def test_a_name_with_a_line_break_still_holds_its_number(self):
+        """
+        GIVEN a project name that keeps a line break, as a hand-built context can hold it
+        WHEN an answer repeats it with other runs of whitespace
+        THEN its number is listed as from the project name
+        """
+        ctx = _ctx()
+        ctx.project_name_copies = ["Plan\n2028 Q4"]
+
+        checked = service_module._check_numbers("The Plan  2028\nQ4 is open.", [], ctx)
+
+        assert (checked.ungrounded, checked.project_name) == ([], ["2028"])
+
     async def test_the_log_record_counts_the_two_name_lines(self):
         """
         GIVEN a turn whose answer repeats a project name and an expert name
@@ -245,45 +269,38 @@ class TestNamesInTheNumberCheck:
         texts = [str(value) for value in vars(record).values()]
         assert not any("2027" in text or "Expert" in text for text in texts)
 
-    async def test_a_number_real_in_either_pass_is_reported_once_and_in_no_name_list(self):
+    @pytest.mark.parametrize(
+        ("answer", "ungrounded", "project"),
+        [
+            pytest.param(
+                f"The project {NAME} is open [1].", [], ["2027"], id="copy-beside-a-citation"
+            ),
+            pytest.param(
+                f"{NAME} and 2[1]027 differ.", ["027", "2027"], [], id="real-only-once-shown"
+            ),
+            pytest.param(f"Budget [1]2027 and {NAME}.", ["2027"], [], id="real-only-while-cited"),
+        ],
+    )
+    async def test_a_turn_with_hidden_sources_reads_the_text_and_the_shown_text(
+        self, answer, ungrounded, project
+    ):
         """
-        GIVEN a turn with sources hidden whose text and shown text differ by a citation: in
-              one answer the number stands outside a copy only once the citation is gone, in
-              the other only while the citation is there
+        GIVEN a turn with sources hidden whose answer cites a source, so that the text and the
+              shown text differ (a copy beside the citation; a number outside a copy only once
+              the citation is gone; only while it is there)
         WHEN the answer is checked, as written and as the client is shown it
-        THEN the number is reported as ungrounded, once, and is in neither name list
-        """
-        answers = [f"{NAME} and 2[1]027 differ.", f"{NAME[:-4]}[1]2027 and {NAME} differ."]
-
-        for answer in answers:
-            ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
-            ctx.client.get_project.return_value = _project().model_copy(update={"name": NAME})
-            model = _model(_say(answer))
-            service = AssistantService(_settings(assistant_show_sources=False), model)
-
-            response = await service.answer(_request(), ctx)
-
-            assert "[1]" not in response.answer
-            assert "2027" in response.checks.ungrounded_numbers, answer
-            assert response.checks.ungrounded_numbers.count("2027") == 1
-            assert response.checks.project_name_numbers == []
-
-    async def test_a_copy_next_to_a_hidden_citation_is_masked_in_the_shown_text_too(self):
-        """
-        GIVEN a turn with sources hidden, whose answer repeats the name and cites a source
-        WHEN the answer is checked, as written and as the client is shown it
-        THEN neither text reports the number as ungrounded, and the name's number is listed
+        THEN a number real in either text is ungrounded once and in no name list, and a number
+             that only a copy explains in both is listed as from the project name
         """
         ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
         ctx.client.get_project.return_value = _project().model_copy(update={"name": NAME})
-        model = _model(_say(f"The project {NAME} is open [1]."))
-        service = AssistantService(_settings(assistant_show_sources=False), model)
+        service = AssistantService(_settings(assistant_show_sources=False), _model(_say(answer)))
 
         response = await service.answer(_request(), ctx)
 
-        assert response.answer == f"The project {NAME} is open."
-        assert response.checks.ungrounded_numbers == []
-        assert response.checks.project_name_numbers == ["2027"]
+        assert "[1]" not in response.answer
+        assert response.checks.ungrounded_numbers == ungrounded
+        assert response.checks.project_name_numbers == project
 
     async def test_the_streamed_turn_lists_the_name_numbers_as_well(self):
         """

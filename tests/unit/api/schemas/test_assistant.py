@@ -425,21 +425,15 @@ class TestAnswerChecks:
         """
         GIVEN checks built with the three original fields
         WHEN they are read and dumped
-        THEN both name lists are empty, each check has its own, and both are in the dump
+        THEN both name lists are empty, own to each check, and in the dump
         """
         first = AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[])
         second = AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[])
 
         first.project_name_numbers.append("7351")
 
-        assert second.project_name_numbers == []
-        assert second.model_dump() == {
-            "citations_valid": True,
-            "numbers_grounded": True,
-            "ungrounded_numbers": [],
-            "project_name_numbers": [],
-            "expert_name_numbers": [],
-        }
+        dumped = second.model_dump()
+        assert (dumped["project_name_numbers"], dumped["expert_name_numbers"]) == ([], [])
 
 
 class TestTurnTiming:

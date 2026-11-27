@@ -32,6 +32,7 @@ from api.assistant.agent.checks import (
     find_ungrounded_numbers,
     numbers_in,
     remove_citations,
+    repeated_names,
     strip_citations,
 )
 from api.assistant.agent.context import AssistantContext
@@ -101,14 +102,17 @@ def _check_numbers(text: str, grounds: list[str], ctx: AssistantContext) -> Numb
     as a copy. A number that is unsupported only because of a copy is from a name: from a
     project's when at least one occurrence needs a project name to be explained (also when an
     expert has the same name), otherwise from an expert's. It is shown as from a name only
-    when that name holds it (see :func:`~api.assistant.agent.checks.numbers_in`); a number
-    that a copy only changed the reading of, such as an ordinal before a URL name, stays
-    ungrounded. Nothing is hidden: a name number goes to a line of its own.
+    when a name of that kind that the text repeats holds it (see
+    :func:`~api.assistant.agent.checks.numbers_in` and
+    :func:`~api.assistant.agent.checks.repeated_names`); a number that a copy only changed the
+    reading of, such as an ordinal before a URL name, stays ungrounded. Nothing is hidden: a
+    name number goes to a line of its own.
 
     :param text: The answer, as written or as shown.
     :param grounds: The texts that support a number.
     :param ctx: The turn's context, with the names the model was shown.
-    :return: The three lists, which share no number.
+    :return: The three lists, which share no number. Each is in order of first appearance,
+        except that an ungrounded number the plain scan did not read comes last.
     """
     unsupported = find_ungrounded_numbers(text, grounds)
     explained = find_ungrounded_numbers(
@@ -122,8 +126,9 @@ def _check_numbers(text: str, grounds: list[str], ctx: AssistantContext) -> Numb
     needs_project = find_ungrounded_numbers(
         text, grounds, copies=ctx.expert_name_copies, kept=ctx.project_name_copies
     )
-    held_by_projects = numbers_in(ctx.project_name_copies)
-    held_by_experts = numbers_in(ctx.expert_name_copies)
+    repeated = set(repeated_names(text, [*ctx.project_name_copies, *ctx.expert_name_copies]))
+    held_by_projects = numbers_in(n for n in ctx.project_name_copies if n in repeated)
+    held_by_experts = numbers_in(n for n in ctx.expert_name_copies if n in repeated)
     project = [n for n in named if n in needs_project and n in held_by_projects]
     expert = [n for n in named if n not in needs_project and n in held_by_experts]
     placed = {*project, *expert}

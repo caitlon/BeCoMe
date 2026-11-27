@@ -710,35 +710,66 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
     copy inside a kept one masks nothing. A field in both lists is kept.
 
     The filler starts with a lowercase letter when the copy does, so that an ordinal before
-    it (``2. pilot 2027``) is read as before. The copy's boundaries leave no digit or letter
-    next to the filler, so the letter cannot join a number.
+    it (``2. pilot 2027``) is read as before; the boundaries keep that letter off any number.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
     :param kept: Fields to find but not to mask.
     :return: The text with each copy replaced by the filler of a dropped token.
     """
-
-    def prefixes(fields: Iterable[str]) -> set[str]:
-        cut = {" ".join(field.removesuffix(_CUT_MARK).split()) for field in fields}
-        return {
-            field
-            for field in cut
-            if len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
-        }
-
-    held = prefixes(kept)
-    found = sorted(prefixes(copies) | held, key=len, reverse=True)
+    held = _copy_prefixes(kept)
+    found = sorted(_copy_prefixes(copies) | held, key=len, reverse=True)
     if not found:
         return text
-    alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in found)
 
     def replace(match: re.Match[str]) -> str:
         if " ".join(match[0].split()) in held:
             return match[0]
         return ("a" if match[0][0].islower() else "") + _DROPPED
 
-    return re.sub(f"{_COPY_BEFORE}(?:{alternatives}){_COPY_AFTER}", replace, text)
+    return _copy_pattern(found).sub(replace, text)
+
+
+def _copy_prefixes(fields: Iterable[str]) -> set[str]:
+    """Reduce fields to what a copy of each looks like: cut dots off, whitespace to a space.
+
+    :param fields: Free-text fields as the model was shown them.
+    :return: The reduced fields that are names: at least 4 characters and a letter.
+    """
+    cut = {" ".join(field.removesuffix(_CUT_MARK).split()) for field in fields}
+    return {
+        field
+        for field in cut
+        if len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
+    }
+
+
+def _copy_pattern(prefixes: list[str]) -> re.Pattern[str]:
+    """Build the pattern that finds copies, the longest of the given prefixes first.
+
+    :param prefixes: Reduced fields, longest first (see :func:`_copy_prefixes`).
+    :return: A pattern whose match is one copy, with its boundaries checked.
+    """
+    alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in prefixes)
+    return re.compile(f"{_COPY_BEFORE}(?:{alternatives}){_COPY_AFTER}")
+
+
+def repeated_names(answer: str, names: Iterable[str]) -> list[str]:
+    """List the names that an answer repeats as a copy, matched as :func:`_mask_copies` does.
+
+    :param answer: The model's final answer text.
+    :param names: Names as the model was shown them; every name of the turn, whatever its
+        kind, so that the longest copy covers an occurrence as it does when masking.
+    :return: The given names that have a copy in the answer, in the given order.
+    """
+    names = list(names)
+    found = sorted(_copy_prefixes(names), key=len, reverse=True)
+    if not found:
+        return []
+    matched = {
+        " ".join(m[0].split()) for m in _copy_pattern(found).finditer(strip_invisible(answer))
+    }
+    return [name for name in names if " ".join(name.removesuffix(_CUT_MARK).split()) in matched]
 
 
 def _strip_answer(answer: str, copies: Iterable[str] = (), kept: Iterable[str] = ()) -> str:
@@ -891,9 +922,9 @@ def find_ungrounded_numbers(
     :func:`_mask_copies` for what counts as a repeat and as a name). The caller decides what
     to say about those digits: the assistant service reports them on a line of their own,
     so a name written as a claim (a project called ``is 7351``) hides nothing, and only when
-    the name holds the number (see :func:`numbers_in`), because the masked and the plain scan
-    can read a neighbouring number differently (``42. https://x.y/z`` with a project named
-    for the URL). A copy
+    a name the answer repeats holds the number (see :func:`numbers_in` and
+    :func:`repeated_names`), because the masked and the plain scan can read a neighbouring
+    number differently (``42. https://x.y/z`` with a project named for the URL). A copy
     grounds nothing: the same number written anywhere else in the answer is checked as
     usual. A masked copy becomes a filler like any other dropped token, so a minus right
     after it is not read as a sign.
@@ -940,9 +971,10 @@ class NumberCheck:
 
     :ivar ungrounded: The numbers no grounding text supports and no copy of a name explains.
     :ivar project_name: The numbers whose every unsupported occurrence lies inside a copy of
-        a name, at least one of them a copy of a project name.
+        a name, at least one of them a copy of a project name, and that a project name the
+        answer repeats holds.
     :ivar expert_name: The numbers whose every unsupported occurrence lies inside a copy of an
-        expert name.
+        expert name, and that an expert name the answer repeats holds.
     """
 
     ungrounded: list[str]

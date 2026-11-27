@@ -128,7 +128,8 @@ class AnswerChecks(BaseModel):
     true when there are none. The numbers that appear only inside the verbatim name of a
     project (``project_name_numbers``) or of an expert (``expert_name_numbers``) are not
     in that list: they come from a name, not from the data, and the client shows them on a
-    line of their own. The three lists share no number.
+    line of their own. A number is listed there only when a name of that kind that the
+    answer repeats holds it. The three lists share no number.
     """
 
     citations_valid: bool

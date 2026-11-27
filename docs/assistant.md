@@ -220,23 +220,23 @@ without calling any model.
   rounded or shortened value counts as found: if the data says 14.19, an answer that says 14.2
   passes.
 - **Numbers from a name.** The digits of a project name or an expert name that this turn's data
-  showed are part of the name, and the answer may repeat the name. When the answer repeats a name
-  exactly as shown, a number that appears only inside such a repeat is not reported as unconfirmed.
-  The repeat has the same case and is a whole word sequence. It is not counted when a digit runs
-  into it (a digit right before or after it, or across a space, dot, comma, slash, colon or dash) or
-  when a percent sign follows, while trailing punctuation such as "Budget 2027." is fine. A name cut
-  to its limit is matched without its dots, and a name needs at least 4 characters and a letter. The
-  panel shows such a number on a neutral line of its own instead, "From the project name, not the
-  data: 2027" or "From an expert's name, not the data: 41", and nothing is hidden: a project named
-  "is 7351" gives that line when the answer says "The best compromise is 7351." A number that is
-  also written anywhere else in the answer stays among the unconfirmed ones. A number is shown as
-  from a name only when that name holds it, so a number written next to a name stays among the
-  unconfirmed ones. A number that comes from both kinds of name is listed as from the project name.
-  A number that another rule already drops from the check (a date, a name such as "COVID-19", a list
-  ordinal) gets no line. The response's `checks` carries the two lists as `project_name_numbers` and
-  `expert_name_numbers`, empty by default, and `numbers_grounded` stays true while only they are
-  filled. A client that does not read them shows no line for such a number, so the panel that reads
-  them ships before the server that fills them.
+  showed are part of the name, and the answer may repeat the name. When it repeats a name exactly as
+  shown, a number that appears only inside such a repeat is not reported as unconfirmed. The repeat
+  has the same case and is a whole word sequence. It is not counted when a digit runs into it (a
+  digit right before or after it, or across a space, dot, comma, slash, colon or dash) or when a
+  percent sign follows, while trailing punctuation such as "Budget 2027." is fine. A name cut to its
+  limit is matched without its dots, and a name needs at least 4 characters and a letter. The panel
+  shows such a number on a neutral line of its own instead, "From the project name, not the data:
+  2027" or "From an expert's name, not the data: 41", and nothing is hidden: a project named "is
+  7351" gives that line when the answer says "The best compromise is 7351." A number is shown as
+  from a name only when a name the answer repeats holds it, so a number next to a name stays among
+  the unconfirmed ones, as does a number that is also written anywhere else in the answer. A number
+  from both kinds of name is listed as from the project name. A number that another rule already
+  drops from the check (a date, a name such as "COVID-19", a list ordinal) gets no line. The
+  response's `checks` carries the two lists as `project_name_numbers` and `expert_name_numbers`,
+  empty by default, and `numbers_grounded` stays true while only they are filled. A client that does
+  not read them shows no line for such a number, so the panel that reads them ships before the
+  server that fills them.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the
