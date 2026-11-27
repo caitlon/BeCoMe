@@ -32,7 +32,8 @@ from api.assistant.invisible import strip_invisible
 # The lists below are a short heuristic, not a filter: they catch the obvious forms and
 # nothing is removed because of them. Matched on text that is already case folded.
 
-# An assistant tag, opening or closing, with spaces allowed inside the brackets.
+# An assistant tag, opening or closing, with spaces allowed inside the brackets. The answer side
+# has its own, more tolerant grammar in ``api/assistant/agent/wrapper_tags.py``.
 _TAG_PATTERN = re.compile(r"<\s*(/?)\s*(" + "|".join(map(re.escape, ASSISTANT_TAGS)) + r")\s*>")
 
 # Role and turn markers of common chat templates, plus the reasoning tags.

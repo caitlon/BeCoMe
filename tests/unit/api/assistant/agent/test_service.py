@@ -55,7 +55,7 @@ from api.schemas.assistant import (
     ChatTurn,
     TurnUsage,
 )
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, tagged
+from tests.shared.assistant_fakes import WRAPPER_TAG_PATTERN, ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -2988,6 +2988,13 @@ class _PieceGenerator:
         self._pieces = pieces
         self._text = text
 
+    async def generate(self, messages, ctx, question):
+        return (
+            self._text,
+            [],
+            TurnUsage(input_tokens=1, output_tokens=1, total_tokens=2, llm_calls=1, complete=True),
+        )
+
     async def stream(self, messages, ctx, question):
         for piece in self._pieces:
             yield piece
@@ -3127,13 +3134,16 @@ class TestInvisibleCharacters:
         assert response.timing.ttft_ms is not None
 
 
-_WRAPPER_TAG = re.compile(
-    r"<[ \t]*/?[ \t]*(?:project[_-]data|docs|earlier[_-]answer)[ \t]*/?[ \t]*>", re.IGNORECASE
-)
+def _cleaned(text: str, with_citations: bool) -> str:
+    """Clean a whole answer the way the stream text does, in the same order."""
+    tagless = remove_wrapper_tags(strip_invisible(text))
+    if not with_citations:
+        return tagless
+    return remove_wrapper_tags(remove_citations(tagless, {1, 2}))
 
 
 class TestStreamTextTags:
-    """The stream text cleans citations, then tags, as the whole answer is cleaned."""
+    """The stream text removes tags, then citations, then tags again, as the whole answer is."""
 
     @pytest.mark.parametrize(
         "text",
@@ -3145,6 +3155,7 @@ class TestStreamTextTags:
             "a [1]<docs>\r\n<docs>[2]\r\nb<d",
             "<docs>\r\n[1] x\r\n</docs>[2]\r",
             "[<docs\r\n>1] <earlier_answer/> [2]",
+            "a<d[1]ocs>b <d[1] ocs>",
         ],
     )
     @pytest.mark.parametrize("with_citations", [True, False])
@@ -3155,13 +3166,10 @@ class TestStreamTextTags:
         GIVEN an answer with citations next to tags and with carriage returns, cut at every
               index in two
         WHEN it goes through the stream text, with and without the citation filter
-        THEN the pieces join to the invisible characters stripped, the citations removed
-             when the filter is there, then the tags removed
+        THEN the pieces join to the invisible characters stripped, the tags removed, the
+             citations removed when the filter is there, and the tags removed again
         """
-        expected = strip_invisible(text)
-        if with_citations:
-            expected = remove_citations(expected, {1, 2})
-        expected = remove_wrapper_tags(expected)
+        expected = _cleaned(text, with_citations)
         for index in range(len(text) + 1):
             stream = service_module._StreamText(
                 CitationStreamFilter({1, 2}) if with_citations else None
@@ -3182,11 +3190,11 @@ class TestStreamTextTags:
             text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 20)))
             cuts = sorted(rng.randint(0, len(text)) for _ in range(rng.randint(0, 4)))
             pieces = [text[a:b] for a, b in zip([0, *cuts], [*cuts, len(text)], strict=True)]
-            expected = remove_wrapper_tags(remove_citations(strip_invisible(text), {1, 2}))
+            expected = _cleaned(text, True)
             stream = service_module._StreamText(CitationStreamFilter({1, 2}))
             shown = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
             assert shown == expected, (text, pieces)
-            assert not _WRAPPER_TAG.search(shown), (text, pieces)
+            assert not WRAPPER_TAG_PATTERN.search(shown), (text, pieces)
 
 
 @pytest.mark.asyncio
@@ -3222,7 +3230,7 @@ class TestWrapperTags:
             _request(), _ctx(chunks=[_chunk()])
         )
 
-        assert not any(_WRAPPER_TAG.search(piece) for piece in pieces)
+        assert not any(WRAPPER_TAG_PATTERN.search(piece) for piece in pieces)
         assert "".join(pieces) == streamed.answer == expected
         assert whole.answer == expected
 
@@ -3238,6 +3246,69 @@ class TestWrapperTags:
         response = await service.answer(_request(), _ctx())
 
         assert response.answer == "Best compromise: 14.19\nThe midpoint is 14.19."
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_tag_inside_a_number_does_not_hide_it_from_the_number_check(
+        self, streamed: bool
+    ):
+        """
+        GIVEN an answer whose number has a tag in the middle, which the reader sees as 23
+        WHEN it is answered whole or streamed
+        THEN the number check reports what it reports for the plain 23, which no source holds
+        """
+        tagged_checks = await self._checks("The value is 2<docs>3.", streamed)
+        plain_checks = await self._checks("The value is 23.", streamed)
+
+        assert tagged_checks == plain_checks
+        assert plain_checks.ungrounded_numbers == ["23"]
+        assert not plain_checks.numbers_grounded
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_tag_inside_a_citation_does_not_hide_it_from_the_citation_check(
+        self, streamed: bool
+    ):
+        """
+        GIVEN an answer that cites a source that does not exist, with a tag in the brackets
+        WHEN it is answered whole or streamed, with sources shown
+        THEN the citation check reports what it reports for the plain citation
+        """
+        tagged_checks = await self._checks("Claim [<docs>99].", streamed)
+        plain_checks = await self._checks("Claim [99].", streamed)
+
+        assert tagged_checks == plain_checks
+        assert not plain_checks.citations_valid
+
+    @staticmethod
+    async def _checks(text: str, streamed: bool):
+        """Answer a text in workflow mode, whole or streamed, and return its checks."""
+        service = AssistantService(_settings(), _model(_say(text)))
+        ctx = _ctx(chunks=[_chunk()])
+        if streamed:
+            _pieces, response = await _drain(service, _request(), ctx)
+        else:
+            response = await service.answer(_request(), ctx)
+        return response.checks
+
+    @pytest.mark.parametrize("show_sources", [True, False])
+    async def test_a_tag_that_citation_removal_joins_is_removed_too(self, show_sources: bool):
+        """
+        GIVEN an answer whose citation sits inside a tag name
+        WHEN it is streamed and answered whole
+        THEN no tag is shown: with sources hidden, removing the citation joins the tag and it
+             goes in the second pass, and with sources shown the citation stays in the text
+        """
+        text = "a<d[1]ocs>b"
+        expected = "ab" if not show_sources else text
+        settings = _settings(assistant_show_sources=show_sources)
+
+        pieces, streamed = await _drain(
+            AssistantService(settings, _model(_say(text))), _request(), _ctx(chunks=[_chunk()])
+        )
+        whole = await AssistantService(settings, _model(_say(text))).answer(
+            _request(), _ctx(chunks=[_chunk()])
+        )
+
+        assert "".join(pieces) == streamed.answer == whole.answer == expected
 
     async def test_an_answer_of_only_tags_is_refused_as_empty(self):
         """
@@ -3269,6 +3340,21 @@ class TestWrapperTags:
                 pieces.append(item)
 
         assert pieces == []
+
+    async def test_an_answer_left_with_only_blanks_after_its_tags_is_refused_as_empty(self):
+        """
+        GIVEN an answer whose only text is a blank line and a tag
+        WHEN it is answered whole and streamed
+        THEN it is refused as empty in both
+        """
+        service = _PiecesService(["\n", "<docs>"], "\n<docs>")
+        turn = await service.prepare(_request(), _ctx())
+
+        with pytest.raises(AssistantUnavailableError):
+            async for _item in service.stream(turn):
+                pass
+        with pytest.raises(AssistantUnavailableError):
+            await service.answer(_request(), _ctx())
 
 
 @pytest.mark.asyncio

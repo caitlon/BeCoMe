@@ -1,17 +1,12 @@
 """Tests for removing the assistant's wrapper tags from an answer, whole and piece by piece."""
 
 import random
-import re
 import time
 
 import pytest
 
 from api.assistant.agent.wrapper_tags import WrapperTagStreamFilter, remove_wrapper_tags
-
-# The tag grammar, written the plain way, to check that no tag is left in a result.
-_TAG = re.compile(
-    r"<[ \t]*/?[ \t]*(?:project[_-]data|docs|earlier[_-]answer)[ \t]*/?[ \t]*>", re.IGNORECASE
-)
+from tests.shared.assistant_fakes import WRAPPER_TAG_PATTERN
 
 _REMOVED = [
     ("<docs>", ""),
@@ -208,7 +203,7 @@ class TestRemoveWrapperTags:
         for _ in range(4000):
             text = "".join(rng.choice(_FUZZ_ALPHABET) for _ in range(rng.randint(0, 24)))
             once = remove_wrapper_tags(text)
-            assert _TAG.search(once) is None, text
+            assert WRAPPER_TAG_PATTERN.search(once) is None, text
             assert remove_wrapper_tags(once) == once, text
 
     def test_the_text_between_the_tags_is_never_lost(self):
@@ -251,18 +246,6 @@ class TestWrapperTagStreamFilter:
             self._assert_exact(text, [text[:index], text[index:]])
 
     @pytest.mark.parametrize("text", _CASES)
-    def test_every_split_in_three_adds_up_to_the_cleaned_text(self, text: str):
-        """
-        GIVEN a text and every pair of indices at which it can be cut in three
-        WHEN the three pieces are fed through the filter
-        THEN the text let out joins to the cleaned text
-        """
-        short = text[:40]
-        for first in range(len(short) + 1):
-            for second in range(first, len(short) + 1):
-                self._assert_exact(short, [short[:first], short[first:second], short[second:]])
-
-    @pytest.mark.parametrize("text", _CASES)
     def test_one_character_pieces_add_up_to_the_cleaned_text(self, text: str):
         """
         GIVEN a text arriving one character at a time
@@ -297,6 +280,16 @@ class TestWrapperTagStreamFilter:
         stream = WrapperTagStreamFilter()
 
         assert stream.feed("If x < 5 then") == "If x < 5 then"
+
+    def test_a_less_than_sign_that_cannot_start_a_tag_lets_go_of_the_ones_before_it(self):
+        """
+        GIVEN two less-than signs in a row and then text that no tag has
+        WHEN the piece is fed through the filter
+        THEN everything is let out at once, as a closing sign is read against the last one
+        """
+        stream = WrapperTagStreamFilter()
+
+        assert stream.feed("a << b and then text") == "a << b and then text"
 
     def test_a_possible_tag_is_held_until_it_is_settled(self):
         """

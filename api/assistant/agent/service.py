@@ -172,8 +172,9 @@ class _StreamText:
 
     Each piece loses its invisible characters. A carriage return that ends a piece is held
     back and put before the next one, so that a ``\\r\\n`` cut in two still gives one line
-    break, exactly as for the whole answer. The text then goes through the citation filter,
-    when there is one, and last through the filter that removes the wrapper tags.
+    break, exactly as for the whole answer. The text then goes through the filter that removes
+    the wrapper tags, then the citation filter, when there is one, and then, because removing
+    a citation can join the two halves of a tag (``<d[1]ocs>``), the tag filter again.
 
     :param citation_filter: The filter that removes citations, or None when sources are shown.
     """
@@ -182,6 +183,7 @@ class _StreamText:
         """Start with no text read."""
         self._filter = citation_filter
         self._tags = WrapperTagStreamFilter()
+        self._tags_again = WrapperTagStreamFilter()  # Used only after the citation filter.
         self._held_return = ""  # A raw carriage return that ended the last piece.
 
     def feed(self, piece: str) -> str:
@@ -198,20 +200,27 @@ class _StreamText:
         """Release what is still held back, once every piece has been fed.
 
         :return: The held carriage return as a newline, then the rest of what the filters
-            hold. A mode that yields no text fed nothing, so it releases nothing here.
+            hold, each filter drained into the ones after it. A mode that yields no text fed
+            nothing, so it releases nothing here.
         """
         text = self._pass("\n") if self._held_return else ""
-        if self._filter:
-            text += self._tags.feed(self._filter.finish())
-        return text + self._tags.finish()
+        if self._filter is None:
+            return text + self._tags.finish()
+        text += self._again(self._filter.feed(self._tags.finish()))
+        return text + self._again(self._filter.finish()) + self._tags_again.finish()
 
     def _pass(self, text: str) -> str:
-        """Run text through the citation filter, if there is one, then the tag filter."""
+        """Run text through the tag filter, then the citation filter and the tag filter again."""
         if not text:
             return text
-        if self._filter is not None:
-            text = self._filter.feed(text)
-        return self._tags.feed(text)
+        text = self._tags.feed(text)
+        if self._filter is None:
+            return text
+        return self._again(self._filter.feed(text))
+
+    def _again(self, text: str) -> str:
+        """Run text that left the citation filter through the second tag filter."""
+        return self._tags_again.feed(text) if text else text
 
 
 class AssistantService:
@@ -445,7 +454,9 @@ class AssistantService:
         :param streamed: Whether the answer was delivered piece by piece.
         :return: The response.
         """
-        ctx, text, usage = turn.ctx, strip_invisible(generated.text), generated.usage
+        ctx, usage = turn.ctx, generated.usage
+        # The tags go first, so that the checks read what the user reads: ``2<docs>3`` is 23.
+        text = remove_wrapper_tags(strip_invisible(generated.text))
         sources = ctx.sources.refs()
         cited = cited_numbers(text)
         source_numbers = {source.n for source in sources}
@@ -498,7 +509,8 @@ class AssistantService:
             # The client sees no citation, so a warning about one would mean nothing to it;
             # the turn record above keeps the real value.
             text, sources, citations_valid = remove_citations(text, source_numbers), [], True
-        text = remove_wrapper_tags(text)
+            # Removing a citation can join the two halves of a tag (``<d[1]ocs>``).
+            text = remove_wrapper_tags(text)
         return AssistantChatResponse(
             answer=text,
             sources=sources,

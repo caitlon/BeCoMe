@@ -3,8 +3,7 @@
 The model reads reference text inside the tags of
 :data:`~api.assistant.agent.prompt.ASSISTANT_TAGS` and sometimes writes them back into its
 answer, where the panel shows them as literal text. Pure text functions, like the ones in
-:mod:`api.assistant.agent.checks`: no model calls and no dependency on the rest of the
-assistant.
+:mod:`api.assistant.agent.checks`, with no model calls.
 
 A tag is ``<``, blanks, ``/``, blanks, a name, blanks, ``/``, blanks and ``>``, with each
 slash optional and each run of blanks (spaces and tabs) optional. The name is one of the
@@ -131,8 +130,7 @@ class WrapperTagStreamFilter:
 
         :return: The rest of the answer without wrapper tags.
         """
-        if self._tagged and self._text_end == self._line_start:
-            del self._out[self._line_start - self._base :]
+        self._drop_tag_only_line()
         return self._take(len(self._out))
 
     def _held(self) -> int:
@@ -185,7 +183,8 @@ class WrapperTagStreamFilter:
         if top.reading is None:
             return
         top.reading = _read(top.reading, char)
-        if top.reading is None and self._live == len(self._open) - 1:
+        if top.reading is None:
+            # A ``>`` is read against the innermost ``<`` only, so the ones below it are dead too.
             self._live = len(self._open)
 
     def _close(self) -> None:
@@ -204,11 +203,19 @@ class WrapperTagStreamFilter:
 
     def _end_line(self) -> None:
         """End the line, dropping it when it held tags and nothing else."""
-        if self._tagged and self._text_end == self._line_start:
-            del self._out[self._line_start - self._base :]
-        else:
+        if not self._drop_tag_only_line():
             self._append("\n")
         self._line_start = self._text_end = self._base + len(self._out)
         self._tagged = False
         self._open.clear()
         self._live = 0
+
+    def _drop_tag_only_line(self) -> bool:
+        """Drop the current line when a tag was removed from it and only blanks are left.
+
+        :return: True when the line was dropped.
+        """
+        if not (self._tagged and self._text_end == self._line_start):
+            return False
+        del self._out[self._line_start - self._base :]
+        return True
