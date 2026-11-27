@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from langchain_core.documents import Document
 
 from api.assistant.agent.prompt import ASSISTANT_TAGS
-from api.assistant.invisible import strip_invisible
+from api.utils.invisible import strip_invisible
 
 # The lists below are a short heuristic, not a filter: they catch the obvious forms and
 # nothing is removed because of them. Matched on text that is already case folded.

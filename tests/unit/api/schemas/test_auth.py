@@ -188,6 +188,25 @@ class TestValidateNameFormat:
         with pytest.raises(ValueError, match="letters"):
             validate_name_format(name)
 
+    @pytest.mark.parametrize(
+        "char",
+        ["\x0b", "\x0c", "\r", "\x85", "\u115f", "\u1160", "\u3164", "\uffa0"],
+        ids=lambda char: f"U+{ord(char):04X}",
+    )
+    def test_name_with_character_that_strip_invisible_changes_rejected(self, char):
+        """
+        GIVEN a name holding a character that passes isspace or isalpha yet that
+            strip_invisible removes or changes
+        WHEN validate_name_format is called
+        THEN ValueError is raised
+        """
+        # GIVEN
+        name = f"Anna{char}Bell"
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="letters"):
+            validate_name_format(name)
+
     def test_empty_name_rejected(self):
         """
         GIVEN an empty name

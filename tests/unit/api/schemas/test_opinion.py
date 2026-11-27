@@ -108,6 +108,44 @@ class TestOpinionCreateSanitization:
             )
 
 
+class TestOpinionCreateInvisibleCharacters:
+    """Characters that render as nothing are removed from the position."""
+
+    @pytest.mark.parametrize("invisible", ["\u202e", "\u200b", "\u00ad"])
+    def test_position_loses_invisible_characters(self, invisible):
+        """
+        GIVEN a position holding an invisible character
+        WHEN OpinionCreate is created
+        THEN the character is gone
+        """
+        # WHEN
+        opinion = OpinionCreate(
+            position=f"Ana{invisible}lyst",
+            lower_bound=5.0,
+            peak=10.0,
+            upper_bound=15.0,
+        )
+
+        # THEN
+        assert opinion.position == "Analyst"
+
+    @pytest.mark.parametrize("invisible", ["\u202e", "\u200b", "\u00ad"])
+    def test_position_of_only_invisible_characters_rejected(self, invisible):
+        """
+        GIVEN a position made only of invisible characters
+        WHEN OpinionCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Position must not be empty"):
+            OpinionCreate(
+                position=invisible * 3,
+                lower_bound=5.0,
+                peak=10.0,
+                upper_bound=15.0,
+            )
+
+
 class TestOpinionResponseFromModel:
     """Tests for OpinionResponse.from_model method."""
 

@@ -559,6 +559,17 @@ unbounded result set. The GDPR export is the one deliberate exception to the lis
 Article 20 requires the full dataset. `api/README.md` records the exemption, and the route itself
 carries no note.
 
+Stored user text is cleaned of more than HTML. A project's name, description and unit and an
+opinion's position lose their tags and every character that renders as nothing: control characters
+except the line break and the tab, Unicode format characters (bidirectional overrides, zero-width
+characters, the soft hyphen), variation selectors and the other default-ignorable code points
+(`api/utils/invisible.py`, called from `sanitize_text`). Such a character could reorder what a
+reader sees or split a number in two. Some visible text changes with it: an emoji built with a
+zero-width joiner is stored as its separate emoji and one with a presentation selector as its plain
+form, while the line and paragraph separators and the braille blank (U+2800) are kept as visible
+space. A name that is empty after the cleaning is refused. User first and last names are not cleaned
+but refused when they hold one (`validate_name_format`).
+
 Text a model writes reaches the browser only through the optional assistant panel, which
 renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
 `ul`, `ol`, `li`, `code`, `br`, and `h1` to `h6` re-rendered as semibold paragraphs, with

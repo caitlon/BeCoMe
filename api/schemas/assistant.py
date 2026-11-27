@@ -5,8 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.assistant.invisible import strip_invisible
 from api.assistant.rag.corpus import Layer
+from api.utils.invisible import strip_invisible
 
 # Hard ceilings on what one request may carry. Kept equal to
 # Settings.assistant_max_message_chars and to twice Settings.assistant_max_history_turns

@@ -79,7 +79,7 @@ def remove_wrapper_tags(text: str) -> str:
     on its line, as the text reads after the tags inside have gone, so that goes too, and
     removing again changes nothing. Code spans and blocks are not looked at. Only ``\\n``
     ends a line, so the text is expected to have gone through
-    :func:`~api.assistant.invisible.strip_invisible`.
+    :func:`~api.utils.invisible.strip_invisible`.
 
     :param text: The text to clean.
     :return: The text without its wrapper tags.

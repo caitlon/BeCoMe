@@ -10,7 +10,7 @@ from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 
-from api.assistant.invisible import strip_invisible
+from api.utils.invisible import strip_invisible
 
 # A bracket group: square brackets, or the full-width lenticular ones some models emit.
 _BRACKET = re.compile(r"\[([^\[\]]*)\]|\u3010([^\u3010\u3011]*)\u3011")
@@ -685,7 +685,7 @@ def _strip_answer(answer: str) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
     The drops run in this order: first the characters that render as nothing (see
-    :func:`~api.assistant.invisible.strip_invisible`), so that none can hide a digit or
+    :func:`~api.utils.invisible.strip_invisible`), so that none can hide a digit or
     split a number; then the target of every markdown link, bare URLs, citation-like
     brackets, dates, the digits of identifiers and names (see :func:`_drop_words`: a word
     that mixes letters and digits stays, only its digit tail goes, and a capitalised name
@@ -774,7 +774,7 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     """Return the numbers in the answer that no grounding text supports.
 
     Before scanning, the answer and every grounding text lose the characters that render as
-    nothing (see :func:`~api.assistant.invisible.strip_invisible`): a bidirectional override
+    nothing (see :func:`~api.utils.invisible.strip_invisible`): a bidirectional override
     cannot hide a number, a zero-width space cannot split one, and a soft hyphen inside a
     source number does not stop it grounding. The answer then loses the target of markdown
     links, bare URLs, citation-like brackets (see :func:`strip_citations`), dates, the dot-

@@ -5,7 +5,7 @@ import unicodedata
 
 import pytest
 
-from api.assistant.invisible import strip_invisible
+from api.utils.invisible import strip_invisible
 
 # Formatting characters (category Cf) a text may carry: the soft hyphen, zero-width space,
 # non-joiner and joiner, the direction marks, the embeddings and overrides, the word joiner,

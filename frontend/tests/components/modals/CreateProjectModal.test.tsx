@@ -73,6 +73,19 @@ describe('CreateProjectModal', () => {
     });
   });
 
+  it('treats a name of only spaces as missing and does not call the API', async () => {
+    const user = userEvent.setup();
+    render(<CreateProjectModal {...defaultProps} />);
+
+    await user.type(getNameInput(), '   ');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(screen.getByText(/name is required/i)).toBeInTheDocument();
+    });
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
   // An empty unit on a 0-100 scale is what makes a project a Likert agreement project,
   // so the form must let it through and send the empty string as it is.
   it('creates a project with an empty unit and shows no unit error', async () => {

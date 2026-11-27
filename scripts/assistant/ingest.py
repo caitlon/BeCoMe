@@ -19,10 +19,10 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from api.assistant.invisible import strip_invisible
 from api.assistant.rag.chunkers import ChunkerConfig
 from api.assistant.rag.pipeline import BuildReport, CollectionSpec, build_collection
 from api.config import get_settings
+from api.utils.invisible import strip_invisible
 
 
 def _parse_args() -> argparse.Namespace:
