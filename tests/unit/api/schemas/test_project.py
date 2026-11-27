@@ -262,6 +262,120 @@ class TestProjectUpdate:
         assert any(error["loc"] == (field,) for error in exc_info.value.errors())
 
 
+# A bidirectional override, a zero-width space and a soft hyphen: they draw nothing.
+INVISIBLE_CHARS = pytest.mark.parametrize("invisible", ["\u202e", "\u200b", "\u00ad"])
+
+
+class TestProjectInvisibleCharacters:
+    """Characters that render as nothing are removed from stored project text."""
+
+    @INVISIBLE_CHARS
+    def test_create_removes_them_from_every_text_field(self, invisible):
+        """
+        GIVEN name, description and scale unit holding an invisible character
+        WHEN ProjectCreate is created
+        THEN the character is gone and the line break and tab of the description stay
+        """
+        # WHEN
+        project = ProjectCreate(
+            name=f"Pro{invisible}ject",
+            description=f"one{invisible}\n\ttwo",
+            scale_unit=f"%{invisible}",
+        )
+
+        # THEN
+        assert project.name == "Project"
+        assert project.description == "one\n\ttwo"
+        assert project.scale_unit == "%"
+
+    @INVISIBLE_CHARS
+    def test_update_removes_them_from_every_text_field(self, invisible):
+        """
+        GIVEN name, description and scale unit holding an invisible character
+        WHEN ProjectUpdate is created
+        THEN the character is gone and the line break and tab of the description stay
+        """
+        # WHEN
+        update = ProjectUpdate(
+            name=f"Pro{invisible}ject",
+            description=f"one{invisible}\n\ttwo",
+            scale_unit=f"%{invisible}",
+        )
+
+        # THEN
+        assert update.name == "Project"
+        assert update.description == "one\n\ttwo"
+        assert update.scale_unit == "%"
+
+    @INVISIBLE_CHARS
+    def test_create_refuses_a_name_of_only_invisible_characters(self, invisible):
+        """
+        GIVEN a name made only of invisible characters
+        WHEN ProjectCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Name must not be empty"):
+            ProjectCreate(name=invisible * 3)
+
+    @INVISIBLE_CHARS
+    def test_update_refuses_a_name_of_only_invisible_characters(self, invisible):
+        """
+        GIVEN a name made only of invisible characters
+        WHEN ProjectUpdate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Name must not be empty"):
+            ProjectUpdate(name=f" {invisible} ")
+
+    @pytest.mark.parametrize("name", ["<b></b>", "   "])
+    def test_create_refuses_a_name_that_sanitizes_to_nothing(self, name):
+        """
+        GIVEN a name of empty HTML tags or of spaces only
+        WHEN ProjectCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Name must not be empty"):
+            ProjectCreate(name=name)
+
+    @pytest.mark.parametrize("name", ["<b></b>", "   "])
+    def test_update_refuses_a_name_that_sanitizes_to_nothing(self, name):
+        """
+        GIVEN a name of empty HTML tags or of spaces only
+        WHEN ProjectUpdate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Name must not be empty"):
+            ProjectUpdate(name=name)
+
+    def test_update_without_a_name_still_passes(self):
+        """
+        GIVEN an update that leaves the name out
+        WHEN ProjectUpdate is created
+        THEN the name stays None
+        """
+        # WHEN
+        update = ProjectUpdate(description="Only this")
+
+        # THEN
+        assert update.name is None
+
+    def test_create_keeps_the_scale_unit_empty(self):
+        """
+        GIVEN a scale unit made only of an invisible character
+        WHEN ProjectCreate is created
+        THEN the unit is the empty string and nothing is refused
+        """
+        # WHEN
+        project = ProjectCreate(name="Project", scale_unit="\u200b")
+
+        # THEN
+        assert project.scale_unit == ""
+
+
 class TestProjectResponseFromModel:
     """Tests for ProjectResponse.from_model method."""
 

@@ -84,7 +84,8 @@ api/
 │   ├── export/             # Result export renderers
 │   └── storage/            # File storage (Railway bucket, S3)
 ├── utils/              # Utilities
-│   ├── sanitization.py     # HTML sanitization
+│   ├── sanitization.py     # HTML and invisible-character sanitization of user text
+│   ├── invisible.py        # Removal of characters that render as nothing
 │   ├── client_ip.py        # Real client IP behind trusted proxies
 │   ├── upload.py           # Size-capped streaming reads
 │   └── photo_links.py      # Photo proxy URL builder

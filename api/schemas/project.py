@@ -14,6 +14,19 @@ if TYPE_CHECKING:
     from api.db.models import Project, ProjectMember, User
 
 
+def _require_visible_name(name: str) -> str:
+    """Refuse a name that is empty or only whitespace once sanitized.
+
+    :param name: Sanitized project name
+    :return: The name unchanged
+    :raises ValueError: If nothing but whitespace is left
+    """
+    if not name.strip():
+        msg = "Name must not be empty after sanitization"
+        raise ValueError(msg)
+    return name
+
+
 class ProjectCreate(BaseModel):
     """Request to create a new project."""
 
@@ -39,10 +52,16 @@ class ProjectCreate(BaseModel):
         default="", max_length=50, description="Scale unit (e.g., '%', 'points')"
     )
 
-    @field_validator("name", "scale_unit", mode="after")
+    @field_validator("name", mode="after")
     @classmethod
-    def sanitize_required_text(cls, v: str) -> str:
-        """Remove HTML from text fields."""
+    def sanitize_name(cls, v: str) -> str:
+        """Remove HTML and invisible characters from the name, which must keep some text."""
+        return _require_visible_name(sanitize_text(v))
+
+    @field_validator("scale_unit", mode="after")
+    @classmethod
+    def sanitize_scale_unit(cls, v: str) -> str:
+        """Remove HTML and invisible characters from the scale unit."""
         return sanitize_text(v)
 
     @field_validator("description", mode="after")
@@ -102,10 +121,17 @@ class ProjectUpdate(BaseModel):
                 raise ValueError(f"cannot be null: {joined}")
         return data
 
-    @field_validator("name", "description", "scale_unit", mode="after")
+    @field_validator("name", mode="after")
+    @classmethod
+    def sanitize_name(cls, v: str | None) -> str | None:
+        """Remove HTML and invisible characters from the name, which must keep some text."""
+        sanitized = sanitize_text_or_none(v)
+        return None if sanitized is None else _require_visible_name(sanitized)
+
+    @field_validator("description", "scale_unit", mode="after")
     @classmethod
     def sanitize_text_fields(cls, v: str | None) -> str | None:
-        """Remove HTML from text fields."""
+        """Remove HTML and invisible characters from text fields."""
         return sanitize_text_or_none(v)
 
 

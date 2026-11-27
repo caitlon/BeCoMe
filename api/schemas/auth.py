@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from api.utils.invisible import strip_invisible
 from api.utils.photo_links import build_photo_url
 
 if TYPE_CHECKING:
@@ -40,8 +41,14 @@ def validate_name_format(name: str) -> str:
     :raises ValueError: If name contains invalid characters
     """
     # str.isspace() also counts the control separators \x1c-\x1f as whitespace; keep them out.
-    if not name or not all(
-        c.isalpha() or c in "'-" or (c.isspace() and c not in "\x1c\x1d\x1e\x1f") for c in name
+    # Anything strip_invisible would remove or change (the vertical tab, the form feed, the
+    # carriage return, U+0085, the Hangul fillers that pass isalpha) is refused too.
+    if (
+        not name
+        or strip_invisible(name) != name
+        or not all(
+            c.isalpha() or c in "'-" or (c.isspace() and c not in "\x1c\x1d\x1e\x1f") for c in name
+        )
     ):
         raise ValueError("Name can only contain letters, spaces, hyphens, and apostrophes")
     return name
