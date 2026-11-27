@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 import re
 import unicodedata
 from contextlib import contextmanager
@@ -18,7 +19,12 @@ from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import service as service_module
-from api.assistant.agent.checks import find_ungrounded_numbers, strip_citations
+from api.assistant.agent.checks import (
+    CitationStreamFilter,
+    find_ungrounded_numbers,
+    remove_citations,
+    strip_citations,
+)
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import Generated
 from api.assistant.agent.masking import mask_participants
@@ -30,12 +36,14 @@ from api.assistant.agent.prompt import (
 )
 from api.assistant.agent.service import AssistantService
 from api.assistant.agent.tools import ASSISTANT_TOOLS, render_opinions, render_project
+from api.assistant.agent.wrapper_tags import remove_wrapper_tags
 from api.assistant.client import UserApiClient
 from api.assistant.errors import (
     AssistantNotFoundError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
+from api.assistant.invisible import strip_invisible
 from api.assistant.rag.models import MalformedModelResponseError, make_answer_model
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
@@ -47,7 +55,7 @@ from api.schemas.assistant import (
     ChatTurn,
     TurnUsage,
 )
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, tagged
+from tests.shared.assistant_fakes import WRAPPER_TAG_PATTERN, ScriptedToolCallingModel, tagged
 from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
@@ -2980,6 +2988,13 @@ class _PieceGenerator:
         self._pieces = pieces
         self._text = text
 
+    async def generate(self, messages, ctx, question):
+        return (
+            self._text,
+            [],
+            TurnUsage(input_tokens=1, output_tokens=1, total_tokens=2, llm_calls=1, complete=True),
+        )
+
     async def stream(self, messages, ctx, question):
         for piece in self._pieces:
             yield piece
@@ -3117,6 +3132,257 @@ class TestInvisibleCharacters:
         _pieces, response = await _drain(AssistantService(_settings(), model), _request(), _ctx())
 
         assert response.timing.ttft_ms is not None
+
+
+def _cleaned(text: str, with_citations: bool) -> str:
+    """Clean a whole answer the way the stream text does, in the same order."""
+    tagless = remove_wrapper_tags(strip_invisible(text))
+    if not with_citations:
+        return tagless
+    return remove_wrapper_tags(remove_citations(tagless, {1, 2}))
+
+
+class TestStreamTextTags:
+    """The stream text removes tags, then citations, then tags again, as the whole answer is."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[1]<docs>",
+            "<docs>[1]",
+            "[<docs>1]",
+            "<d[1]ocs>",
+            "a [1]<docs>\r\n<docs>[2]\r\nb<d",
+            "<docs>\r\n[1] x\r\n</docs>[2]\r",
+            "[<docs\r\n>1] <earlier_answer/> [2]",
+            "a<d[1]ocs>b <d[1] ocs>",
+        ],
+    )
+    @pytest.mark.parametrize("with_citations", [True, False])
+    def test_the_stream_text_is_the_whole_text_cleaned_in_the_same_order(
+        self, text: str, with_citations: bool
+    ):
+        """
+        GIVEN an answer with citations next to tags and with carriage returns, cut at every
+              index in two
+        WHEN it goes through the stream text, with and without the citation filter
+        THEN the pieces join to the invisible characters stripped, the tags removed, the
+             citations removed when the filter is there, and the tags removed again
+        """
+        expected = _cleaned(text, with_citations)
+        for index in range(len(text) + 1):
+            stream = service_module._StreamText(
+                CitationStreamFilter({1, 2}) if with_citations else None
+            )
+            shown = stream.feed(text[:index]) + stream.feed(text[index:]) + stream.finish()
+            assert shown == expected, (text, index)
+
+    def test_random_pieces_of_citations_tags_and_line_ends_match_the_whole_text(self):
+        """
+        GIVEN random answers made of citations, tag fragments and line ends, cut in random places
+        WHEN they go through the stream text
+        THEN the pieces join to the whole answer cleaned in the same order, and hold no tag
+        """
+        rng = random.Random(3)
+        alphabet = ["[", "]", "1", "2", "<", ">", "/", " ", "\n", "\r", "\r\n", "x"]
+        alphabet += ["docs", "<docs>", "d", "ocs", "[1]", "</docs>", "\u200b"]
+        for _ in range(3000):
+            text = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 20)))
+            cuts = sorted(rng.randint(0, len(text)) for _ in range(rng.randint(0, 4)))
+            pieces = [text[a:b] for a, b in zip([0, *cuts], [*cuts, len(text)], strict=True)]
+            expected = _cleaned(text, True)
+            stream = service_module._StreamText(CitationStreamFilter({1, 2}))
+            shown = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
+            assert shown == expected, (text, pieces)
+            assert not WRAPPER_TAG_PATTERN.search(shown), (text, pieces)
+
+
+@pytest.mark.asyncio
+class TestWrapperTags:
+    """The tags that wrap reference text never reach the client, in any piece or the answer."""
+
+    @pytest.mark.parametrize(
+        ("show_sources", "expected"),
+        [
+            (True, "Before The midpoint [1]."),
+            (False, "Before The midpoint."),
+        ],
+    )
+    async def test_a_tag_split_across_pieces_reaches_the_client_in_none_of_them(
+        self, show_sources: bool, expected: str
+    ):
+        """
+        GIVEN a workflow answer that writes the excerpt tags, cut inside the tag names, with
+              sources shown or hidden
+        WHEN it is streamed, and when it is answered whole
+        THEN no piece and no answer holds a tag, the pieces join to the streamed answer, and
+             the whole answer reads the same
+        """
+        text = "Before <docs>The midpoint</docs> [1]."
+        model = _model(_say(text))
+        model.stream_chunks = ["Before <do", "cs>The mid", "point</d", "ocs> [1", "]."]
+        settings = _settings(assistant_show_sources=show_sources)
+
+        pieces, streamed = await _drain(
+            AssistantService(settings, model), _request(), _ctx(chunks=[_chunk()])
+        )
+        whole = await AssistantService(settings, _model(_say(text))).answer(
+            _request(), _ctx(chunks=[_chunk()])
+        )
+
+        assert not any(WRAPPER_TAG_PATTERN.search(piece) for piece in pieces)
+        assert "".join(pieces) == streamed.answer == expected
+        assert whole.answer == expected
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_tag_inside_a_number_does_not_hide_it_from_the_number_check(
+        self, streamed: bool
+    ):
+        """
+        GIVEN an answer whose number has a tag in the middle, which the reader sees as 23
+        WHEN it is answered whole or streamed
+        THEN the number check reports what it reports for the plain 23, which no source holds
+        """
+        tagged_checks = (await self._checks("The value is 2<docs>3.", streamed)).checks
+        plain_checks = (await self._checks("The value is 23.", streamed)).checks
+
+        assert tagged_checks == plain_checks
+        assert plain_checks.ungrounded_numbers == ["23"]
+        assert not plain_checks.numbers_grounded
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_tag_inside_a_citation_does_not_hide_it_from_the_citation_check(
+        self, streamed: bool
+    ):
+        """
+        GIVEN an answer that cites a source that does not exist, with a tag in the brackets
+        WHEN it is answered whole or streamed, with sources shown
+        THEN the citation check reports what it reports for the plain citation
+        """
+        tagged_checks = (await self._checks("Claim [<docs>99].", streamed)).checks
+        plain_checks = (await self._checks("Claim [99].", streamed)).checks
+
+        assert tagged_checks == plain_checks
+        assert not plain_checks.citations_valid
+
+    @staticmethod
+    async def _checks(text: str, streamed: bool, *, show_sources: bool = True):
+        """Answer a text in workflow mode, whole or streamed, and return its response."""
+        settings = _settings(assistant_show_sources=show_sources)
+        service = AssistantService(settings, _model(_say(text)))
+        ctx = _ctx(chunks=[_chunk()])
+        if not streamed:
+            return await service.answer(_request(), ctx)
+        pieces, response = await _drain(service, _request(), ctx)
+        assert "".join(pieces) == response.answer
+        return response
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    @pytest.mark.parametrize("text", ["The value is 2[1]3.", "The value is 2<d[1]ocs>3."])
+    async def test_a_citation_removed_between_digits_does_not_hide_a_number(
+        self, text: str, streamed: bool
+    ):
+        """
+        GIVEN sources hidden and an answer whose removed citation joins two digits into 23
+        WHEN it is answered whole or streamed
+        THEN the shown answer reads 23 and the number check reports 23 as ungrounded
+        """
+        response = await self._checks(text, streamed, show_sources=False)
+
+        assert response.answer == "The value is 23."
+        assert response.checks.ungrounded_numbers == ["23"]
+        assert not response.checks.numbers_grounded
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    @pytest.mark.parametrize("text", ["[1]", "<d[1]ocs>"])
+    async def test_an_answer_that_is_empty_once_its_citations_go_is_refused_when_they_are_hidden(
+        self, text: str, streamed: bool
+    ):
+        """
+        GIVEN an answer that is only a citation, or a citation inside a tag name
+        WHEN it is answered whole or streamed with sources hidden
+        THEN it is refused as empty
+        """
+        with pytest.raises(AssistantUnavailableError):
+            await self._checks(text, streamed, show_sources=False)
+
+    @pytest.mark.parametrize("streamed", [False, True])
+    async def test_a_citation_only_answer_is_delivered_when_sources_are_shown(self, streamed: bool):
+        """
+        GIVEN an answer that is only a citation
+        WHEN it is answered whole or streamed with sources shown
+        THEN it is delivered as written
+        """
+        response = await self._checks("[1]", streamed)
+
+        assert response.answer == "[1]"
+
+    @pytest.mark.parametrize("show_sources", [True, False])
+    async def test_a_tag_that_citation_removal_joins_is_removed_too(self, show_sources: bool):
+        """
+        GIVEN an answer whose citation sits inside a tag name
+        WHEN it is streamed and answered whole
+        THEN no tag is shown: with sources hidden, removing the citation joins the tag and it
+             goes in the second pass, and with sources shown the citation stays in the text
+        """
+        text = "a<d[1]ocs>b"
+        expected = "ab" if not show_sources else text
+        settings = _settings(assistant_show_sources=show_sources)
+
+        pieces, streamed = await _drain(
+            AssistantService(settings, _model(_say(text))), _request(), _ctx(chunks=[_chunk()])
+        )
+        whole = await AssistantService(settings, _model(_say(text))).answer(
+            _request(), _ctx(chunks=[_chunk()])
+        )
+
+        assert "".join(pieces) == streamed.answer == whole.answer == expected
+
+    async def test_an_answer_of_only_tags_is_refused_as_empty(self):
+        """
+        GIVEN an answer that holds nothing but wrapper tags
+        WHEN it is answered
+        THEN it is refused as empty
+        """
+        service = AssistantService(_settings(), _model(_say("<docs>\n</docs>")))
+
+        with pytest.raises(AssistantUnavailableError):
+            await service.answer(_request(), _ctx())
+
+    async def test_a_streamed_answer_of_only_tags_is_refused_as_empty(self):
+        """
+        GIVEN a streamed answer that holds nothing but wrapper tags, cut inside a name
+        WHEN the turn is streamed
+        THEN nothing is sent and the answer is refused as empty
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("<docs>\n</docs>")], stream_chunks=["<do", "cs>\n</d", "ocs>"]
+        )
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+
+        with pytest.raises(AssistantUnavailableError):
+            async for item in service.stream(turn):
+                assert isinstance(item, str)
+                pieces.append(item)
+
+        assert pieces == []
+
+    async def test_an_answer_left_with_only_blanks_after_its_tags_is_refused_as_empty(self):
+        """
+        GIVEN an answer whose only text is a blank line and a tag
+        WHEN it is answered whole and streamed
+        THEN it is refused as empty in both
+        """
+        service = _PiecesService(["\n", "<docs>"], "\n<docs>")
+        turn = await service.prepare(_request(), _ctx())
+
+        with pytest.raises(AssistantUnavailableError):
+            async for _item in service.stream(turn):
+                pass
+        with pytest.raises(AssistantUnavailableError):
+            await service.answer(_request(), _ctx())
 
 
 @pytest.mark.asyncio

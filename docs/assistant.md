@@ -223,6 +223,10 @@ Invisible formatting characters, such as zero-width spaces and text-direction ov
 removed from the answer before the checks and before it is shown, and from the passages and the
 project data the model reads, so that they cannot hide a number or split one in two.
 
+The tags that mark reference text for the model (`<docs>`, `<project_data>`, `<earlier_answer>`)
+are removed from the answer as well, wherever the model wrote them, and the text between them
+stays.
+
 A failed check does not block the answer and does not regenerate it. The answer arrives with a
 flag, and the panel shows an orange warning under it: numbers not confirmed, or a citation that is
 invalid. With sources hidden, as on production, only the number warning can appear. Answering

@@ -11,6 +11,7 @@ to run against a scripted sequence, and records the messages of every call in
 """
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
@@ -28,6 +29,11 @@ from requests.adapters import HTTPAdapter
 
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.roles import UpstreamRole, tag_role
+
+# A wrapper tag as an answer may write it: no tag matching this may reach the client.
+WRAPPER_TAG_PATTERN = re.compile(
+    r"<[ \t]*/?[ \t]*(?:project[_-]data|docs|earlier[_-]answer)[ \t]*/?[ \t]*>", re.IGNORECASE
+)
 
 
 class NoNetworkAdapter(HTTPAdapter):
