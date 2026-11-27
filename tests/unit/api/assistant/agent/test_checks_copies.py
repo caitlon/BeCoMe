@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from api.assistant.agent.checks import NumberCheck, find_ungrounded_numbers
+from api.assistant.agent.checks import NumberCheck, find_ungrounded_numbers, numbers_in
 
 _B = "Budget 2027"
 _GAPS = ("\n", "\t", "   ", " \n ")
@@ -98,7 +98,8 @@ _CASES = [
     _case("shorter-where-longer-misses", "See Plan 2027 today.", ("Plan 2027 Q 4", "Plan 2027"), []),
     _case("repeated-copy", "See Plan 2027 today.", ("Plan 2027",) * 3, []),
     # A copy must not change how the rest of the text is read.
-    _case("url-stops-at-a-copy", "https://x.y/Budget 2027;99999", (_B,), ["99999"]),
+    _case("url-swallows-its-copy", "https://x.y/Budget 2027;99999", (_B,), []),
+    _case("name-in-a-url-path", "See https://x.y/Jana/reports/2024 now", ("Jana",), []),
     _case("ordinal-before-lowercase-copy", "Podle 2. pilot 2027 vysly dobre.", ("pilot 2027",), []),
     _case("ordinal-before-lowercase-name", "See 3. van der Berg gave 5.", ("van der Berg",), [], ["5"]),
     _case("sentence-end-before-capital-copy", "See 3. Budget 2027 now.", (_B,), ["3"]),
@@ -167,6 +168,28 @@ _MERGE_CASES = [
     _merge("a-name-number-once", ([], ["7", "7"], []), ([], ["7"], []), ([], ["7"], [])),
 ]
 # fmt: on
+
+
+class TestNumbersIn:
+    """The numbers a name holds are what the scan reads in the name alone."""
+
+    @pytest.mark.parametrize(
+        ("names", "expected"),
+        [
+            (["Budget 2027", "7351 CZK"], {"2027", "7351"}),
+            (["Q4 2027", "Alpha"], {"2027"}),
+            (["https://x.y/z", "Plan 2028 and 2029..."], {"2028", "2029"}),
+            (["is 7351", ""], {"7351"}),
+            ([], set()),
+        ],
+    )
+    def test_the_numbers_are_the_written_forms(self, names, expected):
+        """
+        GIVEN names (digits in the middle or at the start, glued to a letter, in a URL, none)
+        WHEN the numbers they hold are read
+        THEN they are the numbers the scan finds in each name on its own, as written
+        """
+        assert numbers_in(names) == expected
 
 
 class TestKeptCopies:

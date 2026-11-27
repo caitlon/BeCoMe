@@ -229,13 +229,14 @@ without calling any model.
   panel shows such a number on a neutral line of its own instead, "From the project name, not the
   data: 2027" or "From an expert's name, not the data: 41", and nothing is hidden: a project named
   "is 7351" gives that line when the answer says "The best compromise is 7351." A number that is
-  also written anywhere else in the answer stays among the unconfirmed ones. A number that comes
-  from both kinds of name is listed as from the project name. A number that another rule already
-  drops from the check (a date, a name such as "COVID-19", a list ordinal) gets no line. The
-  response's `checks` carries the two lists as `project_name_numbers` and `expert_name_numbers`,
-  empty by default, and `numbers_grounded` stays true while only they are filled. A client that does
-  not read them shows no line for such a number, so the panel that reads them ships before the
-  server that fills them.
+  also written anywhere else in the answer stays among the unconfirmed ones. A number is shown as
+  from a name only when that name holds it, so a number written next to a name stays among the
+  unconfirmed ones. A number that comes from both kinds of name is listed as from the project name.
+  A number that another rule already drops from the check (a date, a name such as "COVID-19", a list
+  ordinal) gets no line. The response's `checks` carries the two lists as `project_name_numbers` and
+  `expert_name_numbers`, empty by default, and `numbers_grounded` stays true while only they are
+  filled. A client that does not read them shows no line for such a number, so the panel that reads
+  them ships before the server that fills them.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the

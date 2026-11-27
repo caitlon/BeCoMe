@@ -54,7 +54,7 @@ _CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 # at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
 # makes the scan run to the end of the text once per bracket.
 _LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
-_BARE_URL = re.compile(r"https?://[^\s\x00]+")
+_BARE_URL = re.compile(r"https?://\S+")
 _DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
 _DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
 # A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
@@ -720,7 +720,7 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
     """
 
     def prefixes(fields: Iterable[str]) -> set[str]:
-        cut = {field.removesuffix(_CUT_MARK).rstrip() for field in fields}
+        cut = {" ".join(field.removesuffix(_CUT_MARK).split()) for field in fields}
         return {
             field
             for field in cut
@@ -731,11 +731,10 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
     found = sorted(prefixes(copies) | held, key=len, reverse=True)
     if not found:
         return text
-    groups = (r"\s+".join(map(re.escape, copy.split())) for copy in found)
-    alternatives = "|".join(f"({group})" for group in groups)
+    alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in found)
 
     def replace(match: re.Match[str]) -> str:
-        if found[(match.lastindex or 1) - 1] in held:
+        if " ".join(match[0].split()) in held:
             return match[0]
         return ("a" if match[0][0].islower() else "") + _DROPPED
 
@@ -891,7 +890,10 @@ def find_ungrounded_numbers(
     word sequence and in the same case, is not scanned for the digits inside it (see
     :func:`_mask_copies` for what counts as a repeat and as a name). The caller decides what
     to say about those digits: the assistant service reports them on a line of their own,
-    so a name written as a claim (a project called ``is 7351``) hides nothing. A copy
+    so a name written as a claim (a project called ``is 7351``) hides nothing, and only when
+    the name holds the number (see :func:`numbers_in`), because the masked and the plain scan
+    can read a neighbouring number differently (``42. https://x.y/z`` with a project named
+    for the URL). A copy
     grounds nothing: the same number written anywhere else in the answer is checked as
     usual. A masked copy becomes a filler like any other dropped token, so a minus right
     after it is not read as a sign.
@@ -921,6 +923,15 @@ def find_ungrounded_numbers(
         ):
             ungrounded.append(token.written)
     return ungrounded
+
+
+def numbers_in(names: Iterable[str]) -> set[str]:
+    """Read the numbers that names hold, each name on its own, with the answer's drops.
+
+    :param names: Names as the model was shown them.
+    :return: The numbers the scan finds in them, as written.
+    """
+    return {token.written for name in names for token in _scan_numbers(_strip_answer(name))}
 
 
 @dataclass(frozen=True)

@@ -30,6 +30,7 @@ from api.assistant.agent.checks import (
     check_citations,
     cited_numbers,
     find_ungrounded_numbers,
+    numbers_in,
     remove_citations,
     strip_citations,
 )
@@ -99,29 +100,36 @@ def _check_numbers(text: str, grounds: list[str], ctx: AssistantContext) -> Numb
     A number is ungrounded when it is unsupported even with every name this turn showed read
     as a copy. A number that is unsupported only because of a copy is from a name: from a
     project's when at least one occurrence needs a project name to be explained (also when an
-    expert has the same name), otherwise from an expert's. Nothing is hidden: the number
-    goes to a line of its own.
+    expert has the same name), otherwise from an expert's. It is shown as from a name only
+    when that name holds it (see :func:`~api.assistant.agent.checks.numbers_in`); a number
+    that a copy only changed the reading of, such as an ordinal before a URL name, stays
+    ungrounded. Nothing is hidden: a name number goes to a line of its own.
 
     :param text: The answer, as written or as shown.
     :param grounds: The texts that support a number.
     :param ctx: The turn's context, with the names the model was shown.
     :return: The three lists, which share no number.
     """
-    names = [*ctx.project_name_copies, *ctx.expert_name_copies]
     unsupported = find_ungrounded_numbers(text, grounds)
-    ungrounded = find_ungrounded_numbers(text, grounds, copies=names)
-    named = [number for number in unsupported if number not in ungrounded]
+    explained = find_ungrounded_numbers(
+        text, grounds, copies=[*ctx.project_name_copies, *ctx.expert_name_copies]
+    )
+    named = [number for number in unsupported if number not in explained]
     if not named:
-        return NumberCheck(ungrounded, [], [])
+        return NumberCheck(explained, [], [])
     # The experts' names mask, the projects' only take their place in the longest-first match, so
     # a number that is still there sits in an occurrence a project name covers.
     needs_project = find_ungrounded_numbers(
         text, grounds, copies=ctx.expert_name_copies, kept=ctx.project_name_copies
     )
+    held_by_projects = numbers_in(ctx.project_name_copies)
+    held_by_experts = numbers_in(ctx.expert_name_copies)
+    project = [n for n in named if n in needs_project and n in held_by_projects]
+    expert = [n for n in named if n not in needs_project and n in held_by_experts]
+    placed = {*project, *expert}
+    ungrounded = [n for n in unsupported if n not in placed]
     return NumberCheck(
-        ungrounded,
-        [number for number in named if number in needs_project],
-        [number for number in named if number not in needs_project],
+        [*ungrounded, *(n for n in explained if n not in unsupported)], project, expert
     )
 
 
