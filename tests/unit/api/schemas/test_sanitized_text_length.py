@@ -59,3 +59,17 @@ class TestTextAtItsCap:
         # WHEN / THEN
         with pytest.raises(ValidationError):
             schema(**{**extra, field: char * (cap + 1)})
+
+
+class TestTagsNestedTooDeep:
+    """Input that cannot be cleaned within the pass limit is a validation error."""
+
+    def test_deeply_nested_tags_are_a_validation_error(self):
+        """
+        GIVEN a name whose tags are nested five levels deep
+        WHEN ProjectCreate is built
+        THEN ValidationError is raised, which the API answers with 422 and not 500
+        """
+        # WHEN / THEN
+        with pytest.raises(ValidationError):
+            ProjectCreate(name="<" * 5 + "b>" * 5)

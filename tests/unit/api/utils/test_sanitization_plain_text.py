@@ -21,13 +21,13 @@ _FRAGMENTS = [
     "&amp;",
     "&#60;",
     "&#x200b;",
-    "​",
+    "\u200b",
     "\r\n",
 ]
 _TEXT = st.lists(
     st.one_of(
         st.sampled_from(_FRAGMENTS),
-        st.text(alphabet="<>&;#/!-ab c​\r\n", max_size=6),
+        st.text(alphabet="<>&;#/!-ab c\u200b\r\n", max_size=6),
     ),
     max_size=12,
 ).map("".join)
@@ -142,7 +142,7 @@ class TestOtherBehaviourKept:
         THEN the space is removed and the ampersand stays
         """
         # WHEN
-        result = sanitize_text("R&​D")
+        result = sanitize_text("R&\u200bD")
 
         # THEN
         assert result == "R&D"
@@ -164,53 +164,43 @@ class TestOtherBehaviourKept:
         assert twice == once
 
 
-class TestMaxLength:
-    """The optional length guard."""
+class TestPassLimit:
+    """Input that needs more cleaning passes than the limit is refused."""
 
-    def test_result_at_the_limit_is_accepted(self):
+    def test_tags_nested_four_deep_are_stripped(self):
         """
-        GIVEN text exactly as long as max_length
-        WHEN sanitize_text is called with that limit
-        THEN the text is returned
+        GIVEN tags nested four levels deep
+        WHEN sanitize_text is called
+        THEN nothing is left
         """
         # WHEN
-        result = sanitize_text("&" * 10, max_length=10)
+        result = sanitize_text("<" * 4 + "b>" * 4)
 
         # THEN
-        assert result == "&" * 10
+        assert result == ""
 
-    def test_result_over_the_limit_is_refused(self):
+    def test_tags_nested_five_deep_are_refused(self):
         """
-        GIVEN text one character longer than max_length
-        WHEN sanitize_text is called with that limit
+        GIVEN tags nested five levels deep
+        WHEN sanitize_text is called
         THEN ValueError is raised with a neutral message
         """
         # WHEN / THEN
-        with pytest.raises(ValueError, match="too long after sanitization"):
-            sanitize_text("&" * 11, max_length=10)
+        with pytest.raises(ValueError, match="could not be sanitized"):
+            sanitize_text("<" * 5 + "b>" * 5)
 
-    def test_limit_applies_to_the_cleaned_text(self):
-        """
-        GIVEN text whose tags make it longer than max_length before cleaning only
-        WHEN sanitize_text is called with that limit
-        THEN the cleaned text is accepted
-        """
-        # WHEN
-        result = sanitize_text("<b>abc</b>", max_length=3)
 
-        # THEN
-        assert result == "abc"
+class TestNoneVariant:
+    """sanitize_text_or_none passes None through."""
 
-    def test_none_variant_passes_the_limit_on(self):
+    def test_none_stays_none(self):
         """
-        GIVEN text over max_length
-        WHEN sanitize_text_or_none is called with that limit
-        THEN ValueError is raised, and None still returns None
+        GIVEN None
+        WHEN sanitize_text_or_none is called
+        THEN None is returned
         """
         # WHEN / THEN
-        with pytest.raises(ValueError, match="too long after sanitization"):
-            sanitize_text_or_none("abcd", max_length=3)
-        assert sanitize_text_or_none(None, max_length=3) is None
+        assert sanitize_text_or_none(None) is None
 
 
 class TestSanitizedTextProperties:

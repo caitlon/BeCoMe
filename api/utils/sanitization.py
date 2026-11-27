@@ -1,8 +1,9 @@
 """Sanitization of user text for input validation: invisible characters and HTML tags.
 
 The result is plain text. Tags are stripped, but ``&``, ``<`` and ``>`` stay as typed instead
-of becoming ``&amp;``, ``&lt;`` and ``&gt;``. Nothing renders this text as HTML (React text
-nodes, the PDF renderer and the assistant each escape on output), and escaping on the way in
+of becoming ``&amp;``, ``&lt;`` and ``&gt;``. No page, export or e-mail renders this text as
+HTML: React renders it as text nodes, the PDF renderer escapes it, the assistant's context
+cleaning removes angle brackets, and e-mails do not carry these fields. Escaping on the way in
 both showed ``R&D`` as ``R&amp;D`` and let the stored value outgrow the field's length cap.
 """
 
@@ -18,7 +19,7 @@ from api.utils.invisible import strip_invisible
 _MAX_PASSES = 5
 
 
-def sanitize_text(value: str, *, max_length: int | None = None) -> str:
+def sanitize_text(value: str) -> str:
     """Remove invisible characters and all HTML tags from text input, keeping plain text.
 
     The invisible characters go first (control characters, Unicode format characters such as
@@ -36,33 +37,26 @@ def sanitize_text(value: str, *, max_length: int | None = None) -> str:
     longer than the input.
 
     :param value: Raw text input
-    :param max_length: Longest result allowed, or None for no limit; a guard that keeps a
-        future change in the cleaning from growing the text past the field's cap
     :return: Sanitized plain text without invisible characters and with HTML tags stripped
-    :raises ValueError: If the text does not settle within the pass limit, or if the result
-        is longer than ``max_length``
+    :raises ValueError: If the text does not settle within the pass limit
     """
     text = strip_invisible(value)
     for _ in range(_MAX_PASSES):
         cleaned = html.unescape(bleach.clean(text.replace("&", "&amp;"), tags=[], strip=True))
         if cleaned == text:
-            if max_length is not None and len(cleaned) > max_length:
-                msg = "Text is too long after sanitization"
-                raise ValueError(msg)
             return cleaned
         text = cleaned
     msg = "Text could not be sanitized"
     raise ValueError(msg)
 
 
-def sanitize_text_or_none(value: str | None, *, max_length: int | None = None) -> str | None:
+def sanitize_text_or_none(value: str | None) -> str | None:
     """Sanitize text if not None.
 
     :param value: Optional raw text input
-    :param max_length: Longest result allowed, or None for no limit
     :return: Sanitized text or None
     :raises ValueError: As :func:`sanitize_text`
     """
     if value is None:
         return None
-    return sanitize_text(value, max_length=max_length)
+    return sanitize_text(value)

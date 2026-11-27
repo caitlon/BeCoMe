@@ -13,8 +13,7 @@ if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
 
 
-# Cap on the position. The sanitizer gets the same number, so the cleaned text is held to the
-# cap again after it is cleaned.
+# Field cap on the position.
 OPINION_POSITION_MAX = 255
 
 
@@ -34,7 +33,7 @@ class OpinionCreate(BaseModel):
     @classmethod
     def sanitize_position(cls, v: str) -> str:
         """Remove HTML and invisible characters from the position, which must keep some text."""
-        sanitized = sanitize_text(v, max_length=OPINION_POSITION_MAX).strip()
+        sanitized = sanitize_text(v).strip()
         if not sanitized:
             msg = "Position must not be empty after sanitization"
             raise ValueError(msg)

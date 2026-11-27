@@ -14,8 +14,7 @@ if TYPE_CHECKING:
     from api.db.models import Project, ProjectMember, User
 
 
-# Field caps. The sanitizers in this module get the same numbers, so the cleaned text is held
-# to the cap again after it is cleaned.
+# Field caps.
 PROJECT_NAME_MAX = 255
 PROJECT_DESCRIPTION_MAX = 2000
 PROJECT_SCALE_UNIT_MAX = 50
@@ -72,7 +71,7 @@ class ProjectCreate(BaseModel):
         :return: The name with markup and invisible characters removed
         :raises ValueError: If nothing but whitespace is left after sanitizing
         """
-        return _require_visible_name(sanitize_text(v, max_length=PROJECT_NAME_MAX))
+        return _require_visible_name(sanitize_text(v))
 
     @field_validator("scale_unit", mode="after")
     @classmethod
@@ -82,13 +81,13 @@ class ProjectCreate(BaseModel):
         :param v: Scale unit as parsed from the request
         :return: The scale unit with markup and invisible characters removed
         """
-        return sanitize_text(v, max_length=PROJECT_SCALE_UNIT_MAX)
+        return sanitize_text(v)
 
     @field_validator("description", mode="after")
     @classmethod
     def sanitize_optional_text(cls, v: str | None) -> str | None:
-        """Remove HTML and invisible characters from the description."""
-        return sanitize_text_or_none(v, max_length=PROJECT_DESCRIPTION_MAX)
+        """Remove HTML and invisible characters from optional text fields."""
+        return sanitize_text_or_none(v)
 
     @model_validator(mode="after")
     def validate_scale(self) -> Self:
@@ -151,20 +150,14 @@ class ProjectUpdate(BaseModel):
         :return: The sanitized name
         :raises ValueError: If nothing but whitespace is left after sanitizing
         """
-        sanitized = sanitize_text_or_none(v, max_length=PROJECT_NAME_MAX)
+        sanitized = sanitize_text_or_none(v)
         return None if sanitized is None else _require_visible_name(sanitized)
 
-    @field_validator("description", mode="after")
+    @field_validator("description", "scale_unit", mode="after")
     @classmethod
-    def sanitize_description(cls, v: str | None) -> str | None:
-        """Remove HTML and invisible characters from the description."""
-        return sanitize_text_or_none(v, max_length=PROJECT_DESCRIPTION_MAX)
-
-    @field_validator("scale_unit", mode="after")
-    @classmethod
-    def sanitize_scale_unit(cls, v: str | None) -> str | None:
-        """Remove HTML and invisible characters from the scale unit."""
-        return sanitize_text_or_none(v, max_length=PROJECT_SCALE_UNIT_MAX)
+    def sanitize_text_fields(cls, v: str | None) -> str | None:
+        """Remove HTML and invisible characters from text fields."""
+        return sanitize_text_or_none(v)
 
 
 class TransferOwnershipRequest(BaseModel):
