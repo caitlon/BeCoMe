@@ -90,6 +90,46 @@ describe('cleanChecks', () => {
     ).toEqual({ citations_valid: false, numbers_grounded: false, ungrounded_numbers: ['17', '9'] });
   });
 
+  it('keeps the name-number lists when present, string entries only', () => {
+    expect(
+      cleanChecks({
+        citations_valid: true,
+        numbers_grounded: true,
+        ungrounded_numbers: [],
+        project_name_numbers: ['2026', 5, '3'],
+        expert_name_numbers: ['7'],
+      })
+    ).toEqual({
+      citations_valid: true,
+      numbers_grounded: true,
+      ungrounded_numbers: [],
+      project_name_numbers: ['2026', '3'],
+      expert_name_numbers: ['7'],
+    });
+  });
+
+  it('keeps an empty name-number list as empty', () => {
+    expect(
+      cleanChecks({ citations_valid: true, numbers_grounded: true, ungrounded_numbers: [], project_name_numbers: [] })
+    ).toEqual({ citations_valid: true, numbers_grounded: true, ungrounded_numbers: [], project_name_numbers: [] });
+  });
+
+  it.each([
+    ['a string', '2026'],
+    ['null', null],
+    ['an object', { 0: '2026' }],
+  ])('leaves out a name-number list that is %s', (_label, bad) => {
+    expect(
+      cleanChecks({
+        citations_valid: true,
+        numbers_grounded: true,
+        ungrounded_numbers: [],
+        project_name_numbers: bad,
+        expert_name_numbers: bad,
+      })
+    ).toEqual({ citations_valid: true, numbers_grounded: true, ungrounded_numbers: [] });
+  });
+
   it.each([
     ['undefined', undefined],
     ['an array', []],

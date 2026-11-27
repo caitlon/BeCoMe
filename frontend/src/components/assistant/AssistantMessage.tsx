@@ -125,12 +125,39 @@ function ChecksLines({ checks }: { readonly checks: AnswerChecks }) {
     lines.push(t("message.citationInvalid"));
   }
 
-  return lines.map((line) => (
-    <p key={line} className="mt-2 flex items-start gap-2 text-[12.5px] text-warning">
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span>{line}</span>
-    </p>
-  ));
+  // The live stream hands `checks` through without `cleanChecks`, so the lists may be anything.
+  const projectNameNumbers = Array.isArray(checks.project_name_numbers) ? checks.project_name_numbers : [];
+  const expertNameNumbers = Array.isArray(checks.expert_name_numbers) ? checks.expert_name_numbers : [];
+  const notes: { key: string; text: string }[] = [];
+  if (projectNameNumbers.length > 0) {
+    notes.push({
+      key: "project-name-numbers",
+      text: t("message.numbersFromProjectName", { numbers: projectNameNumbers.join(", ") }),
+    });
+  }
+  if (expertNameNumbers.length > 0) {
+    notes.push({
+      key: "expert-name-numbers",
+      text: t("message.numbersFromExpertName", { numbers: expertNameNumbers.join(", ") }),
+    });
+  }
+
+  return (
+    <>
+      {lines.map((line) => (
+        <p key={`warning-${line}`} className="mt-2 flex items-start gap-2 text-[12.5px] text-warning">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{line}</span>
+        </p>
+      ))}
+      {notes.map((note) => (
+        <p key={note.key} className="mt-2 flex items-start gap-2 text-[12.5px] text-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{note.text}</span>
+        </p>
+      ))}
+    </>
+  );
 }
 
 function ToolsLine({ tools }: { readonly tools: readonly string[] }) {
