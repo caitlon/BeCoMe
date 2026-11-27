@@ -447,6 +447,27 @@ class TestWorkflowMode:
             "cut_off",
         )
 
+    @pytest.mark.parametrize("reply", ["  \n <think>I was still", "<think>a</think>  \n  <think>b"])
+    async def test_blanks_before_a_reasoning_block_that_never_closes_are_a_cut_off_failure(
+        self, reply: str
+    ):
+        """
+        GIVEN a model whose reply has only whitespace, or a closed block and whitespace, before
+              a reasoning block that never closes
+        WHEN a turn is answered
+        THEN AssistantUnavailableError is raised and the warning gives the reason cut_off
+        """
+        model = _model(_say(reply))
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert (record.event, record.reason) == ("assistant_empty_answer", "cut_off")
+
     async def test_text_before_a_reasoning_block_that_never_closes_is_the_answer(self):
         """
         GIVEN a model whose reply holds an answer with a number that no source gives, and then
@@ -1148,6 +1169,42 @@ class TestStream:
                 pass
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
         assert record.reason == "cut_off"
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["  \n <think>I wonder"],
+            [" ", "\n <thi", "nk>I won", "der"],
+            ["<think>a</think>  \n  <think>b"],
+        ],
+    )
+    async def test_blanks_before_a_reasoning_block_that_never_closes_are_unavailable(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN a model whose streamed reply has only whitespace, or a closed block and
+              whitespace, before a reasoning block that never closes
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised, no piece was yielded and the empty-answer
+             record says cut_off
+        """
+        model = _model(_say("".join(chunks)))
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for item in service.stream(turn):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
+        assert record.reason == "cut_off"
+        assert pieces == []
 
     @pytest.mark.parametrize(
         "chunks",
@@ -2819,6 +2876,33 @@ class TestShowSourcesSetting:
         assert pieces == ["It is the midpoint", "."]
         assert "".join(pieces) == response.answer == "It is the midpoint."
         assert response.sources == []
+        assert response.checks.citations_valid is True
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
+            ["It is the midpoint [", "9", "](https://example.org/a)", "."],
+            ["It is the midpoint [", "1, ", "5", "](https://example.org/a)", "."],
+        ],
+    )
+    async def test_stream_with_the_setting_off_keeps_a_bracket_that_names_no_source(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN the setting off, one registered source and an answer with a bracket that names a
+              number that is no source (alone, or beside the one that is), split across pieces
+        WHEN the turn is streamed
+        THEN the bracket and the link target after it stay, and the pieces join to the answer
+             of the response
+        """
+        answer = "".join(chunks)
+        model = _model(_say(answer))
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert "".join(pieces) == response.answer == answer
         assert response.checks.citations_valid is True
 
     @pytest.mark.parametrize(

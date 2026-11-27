@@ -266,6 +266,11 @@ class TestVisible:
             ("<think>a</think>One <think>b", "One"),
             ("<think>I wonder", ""),
             ("<thi", ""),
+            ("x < <think>secret", "x <"),
+            ("< <think>secret", "<"),
+            (" \n <think>a", ""),
+            (" \n <thi", ""),
+            ("It is the midpoint. <think>a <think>b", "It is the midpoint."),
         ],
     )
     def test_shows_the_text_before_an_open_block_and_nothing_of_the_block(
@@ -275,7 +280,9 @@ class TestVisible:
         GIVEN a partial reply that has an answer and then an open reasoning block, or the
               start of its tag
         WHEN the visible part is read
-        THEN it is the text before the block or the tag, and empty when nothing precedes it
+        THEN it is the text before the block or the tag, and empty when nothing precedes it;
+             a ``<`` that ends the text before a whole opening tag is text, not a tag in the
+             making
         """
         assert _visible(buffer) == expected
 
@@ -335,6 +342,21 @@ class TestDirectGenerator:
         with pytest.raises(CutOffAnswerError):
             await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
+    @pytest.mark.parametrize(
+        "reply", ["  \n <think>I was still working out", "<think>a</think>  \n  <think>b"]
+    )
+    async def test_a_reply_of_only_blanks_before_an_unclosed_block_is_cut_off(self, reply: str):
+        """
+        GIVEN a model whose reply has nothing but whitespace, or a closed block and whitespace,
+              before a reasoning block that never closes
+        WHEN the turn is generated
+        THEN CutOffAnswerError is raised, as for a reply that opens with the block
+        """
+        model = _model(AIMessage(content=reply))
+
+        with pytest.raises(CutOffAnswerError):
+            await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
     async def test_a_reply_cut_off_after_some_text_returns_that_text(self):
         """
         GIVEN a model whose reply holds an answer and then opens a reasoning block that never
@@ -347,6 +369,40 @@ class TestDirectGenerator:
         text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
         assert text == "It is the midpoint."
+
+    async def test_a_reply_cut_off_after_some_text_is_logged_without_its_text(self):
+        """
+        GIVEN a model whose reply holds an answer and then a reasoning block that never closes
+        WHEN the turn is generated
+        THEN one info record names the event and the length of the kept answer, and holds
+             neither the answer nor the reasoning
+        """
+        model = _model(AIMessage(content="It is the midpoint. <think>Now I wonder whether"))
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        (record,) = records
+        assert record.levelno == logging.INFO
+        assert record.event == "assistant_reasoning_cut_off"
+        assert record.answer_chars == len("It is the midpoint.")
+        assert _extra_fields(record) == {"event", "answer_chars"}
+        assert not any(
+            word in str(value) for value in vars(record).values() for word in ("midpoint", "wonder")
+        )
+
+    async def test_a_reply_that_closes_its_reasoning_leaves_no_cut_off_record(self):
+        """
+        GIVEN a model whose reply holds a closed reasoning block and an answer
+        WHEN the turn is generated
+        THEN nothing is logged by the generator
+        """
+        model = _model(AIMessage(content="<think>x</think>Done."))
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert records == []
 
     async def test_a_reply_that_is_only_a_closed_reasoning_block_is_blank_not_cut_off(self):
         """
@@ -547,6 +603,35 @@ class TestDirectGeneratorStream:
     @pytest.mark.parametrize(
         "chunks",
         [
+            ["  \n <think>still thinking"],
+            [" ", "\n ", "<think>", "still thinking"],
+            ["<think>a</think>  \n  <think>b"],
+        ],
+    )
+    async def test_a_reply_of_only_blanks_before_an_unclosed_block_is_refused(
+        self, chunks: list[str]
+    ):
+        """
+        GIVEN a reply with only whitespace, or a closed block and whitespace, before a
+              reasoning block that never closes, whole or split across chunks
+        WHEN the turn is streamed
+        THEN CutOffAnswerError is raised and no piece was yielded
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+        pieces: list[str] = []
+
+        with pytest.raises(CutOffAnswerError):
+            async for item in DirectGenerator(model).stream(_user(), _ctx(), QUESTION):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        assert pieces == []
+
+    @pytest.mark.parametrize(
+        "chunks",
+        [
             ["It is the midpoint. <think>Now I wonder whether"],
             ["It is the midpoint. ", "<think>", "Now I wonder ", "whether"],
             ["It is the midpoint. <thi", "nk>Now I wonder", " whether"],
@@ -570,6 +655,26 @@ class TestDirectGeneratorStream:
         assert "".join(pieces) == "It is the midpoint." == final.text
         assert "think" not in "".join(pieces)
         assert "wonder" not in "".join(pieces)
+
+    async def test_a_stream_cut_off_after_some_text_logs_one_record(self):
+        """
+        GIVEN a reply with an answer and then a reasoning block that never closes, streamed in
+              several chunks
+        WHEN the turn is streamed
+        THEN one info record is written for the turn, with the event and the answer's length
+        """
+        chunks = ["It is the midpoint. ", "<think>", "Now I wonder ", "whether"]
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="".join(chunks))], stream_chunks=chunks
+        )
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            await _collect(DirectGenerator(model), _user(), _ctx())
+
+        (record,) = records
+        assert record.event == "assistant_reasoning_cut_off"
+        assert record.answer_chars == len("It is the midpoint.")
+        assert _extra_fields(record) == {"event", "answer_chars"}
 
     async def test_a_closed_block_then_text_then_an_unclosed_block_streams_the_text(self):
         """

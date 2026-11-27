@@ -338,9 +338,7 @@ def text_before_unclosed_think_block(reply: str) -> str:
     """
     if not has_unclosed_think_block(reply):
         return strip_think_block(reply)
-    last_close = reply.rfind(_THINK_CLOSE)
-    after_close = last_close + len(_THINK_CLOSE) if last_close != -1 else 0
-    return strip_think_block(reply[: reply.find(THINK_OPEN, after_close)])
+    return strip_think_block(reply[: reply.find(THINK_OPEN, max(reply.rfind(_THINK_CLOSE), 0))])
 
 
 # The embeddings client sends up to 1000 texts per request by default, and llama-server

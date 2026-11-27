@@ -154,13 +154,20 @@ def _answer_of(message: BaseMessage) -> str:
     """Read the answer out of a model reply, refusing one that was cut off with no answer.
 
     :param message: The model's reply.
-    :return: The answer, empty when the reply was only reasoning that closed.
+    :return: The answer, empty when the reply was only reasoning that closed. A reply
+        cut off in its reasoning after some text is logged once, as
+        ``assistant_reasoning_cut_off`` with the length of the text kept.
     :raises CutOffAnswerError: If the reply ends inside a reasoning block and nothing but
         whitespace comes before it.
     """
     answer = answer_text(message)
-    if not answer and has_unclosed_think_block(message.text):
-        raise CutOffAnswerError
+    if has_unclosed_think_block(message.text):
+        if not answer:
+            raise CutOffAnswerError
+        logger.info(
+            "assistant reply cut off in its reasoning, kept the text before it",
+            extra={"event": "assistant_reasoning_cut_off", "answer_chars": len(answer)},
+        )
     return answer
 
 
@@ -194,12 +201,16 @@ def _visible(buffer: str) -> str:
 
     The reasoning block is withheld, including while it is still open, and so is a
     trailing fragment that could be the start of its opening tag, since the tag may
-    arrive split across chunks. The text before an open block is shown.
+    arrive split across chunks. The text before an open block is shown as it stands, since
+    the tag that follows it has already arrived and nothing is left to wait for.
 
     :param buffer: The reply so far.
-    :return: The answer text so far, never ending in a prefix of ``<think>``.
+    :return: The answer text so far, never ending in a prefix of ``<think>`` unless a
+        complete opening tag follows it.
     """
     shown = text_before_unclosed_think_block(buffer)
+    if has_unclosed_think_block(buffer):
+        return shown
     for length in range(min(len(THINK_OPEN) - 1, len(shown)), 0, -1):
         if THINK_OPEN.startswith(shown[-length:]):
             return shown[:-length].rstrip()

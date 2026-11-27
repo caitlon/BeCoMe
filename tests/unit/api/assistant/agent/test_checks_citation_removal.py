@@ -490,6 +490,34 @@ class TestCitationStreamFilter:
         assert shown == ["The midpoint", "", "", "."]
         assert stream.finish() == ""
 
+    def test_a_turn_with_no_source_keeps_a_number_bracket_and_drops_an_internal_tag(self):
+        """
+        GIVEN a filter with no source number, and a number bracket and an internal tag, each
+              arriving in pieces
+        WHEN the pieces are fed one after another
+        THEN the number bracket is let out as written and the tag is dropped with its blank
+        """
+        stream = CitationStreamFilter(set())
+        pieces = ("The midpoint [", "1", "]", " and [proj", "ect_data", "]", " end.")
+
+        joined = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
+
+        assert joined == "The midpoint [1] and end."
+
+    def test_a_bracket_naming_no_source_keeps_its_link_target_split_across_pieces(self):
+        """
+        GIVEN a filter with source 1 only and a bracket that names 9, followed by a link
+              target, in five pieces
+        WHEN the pieces are fed one after another
+        THEN the bracket and its link target are let out whole, as written
+        """
+        stream = CitationStreamFilter({1})
+        pieces = ("The midpoint [", "9", "](https://exam", "ple.org/a)", ".")
+
+        joined = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
+
+        assert joined == "The midpoint [9](https://example.org/a)."
+
     @pytest.mark.parametrize(
         ("answer", "expected"),
         [

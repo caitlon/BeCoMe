@@ -251,9 +251,10 @@ and opens a short excerpt. A source from the local layer is marked as a local co
 to its original document yet. A `[n]` that points at no source is shown struck through.
 
 Production does not show sources for now. The setting `ASSISTANT_SHOW_SOURCES` is off there, and it
-works on the server, not only in the panel. The server removes the `[n]` markers from the answer,
-also while it streams, and sends an empty list of sources, so no title or excerpt reaches the
-browser at all. The search, the instructions and both checks stay the same. The citation flag is
+works on the server, not only in the panel. The server removes the `[n]` markers that name a source
+of the turn from the answer, also while it streams, and sends an empty list of sources, so no title
+or excerpt reaches the browser at all. A bracket with a number that is no source of the turn, such
+as a range of values, stays as written. The search, the instructions and both checks stay the same. The citation flag is
 always reported as valid there, because a warning about a link you cannot see would only confuse.
 The server log still records which sources each answer used.
 

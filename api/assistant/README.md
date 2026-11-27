@@ -273,15 +273,15 @@ plain text, at most 240 characters.
 
 `ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev through an
 environment variable) decides whether the client is sent the sources. While it is off, `sources` is
-an empty list, the answer text has no `[n]` marker and no link target after one, and
-`checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
-blanks before a marker go with it, except that a marker opening a line keeps the indent before it
-and drops the blanks after it. A bracket that writes numbers (`[2]`, `[source 2]`, `[1, 2]`,
-`[1-3]`) is removed only when each number in it is a source of the turn, so `[4]` in a turn with
-three sources stays, and so does a fuzzy number such as `[6, 8, 11]` or `[5, 5, 5]`, or a scale
-such as `[0, 1]`. A turn with no source removes none of them. A bracket whose
-whole content is the name of an internal tag or tool, which the model sometimes writes as if it
-were a source, is removed the same way. Such names are `[project_data]`, `[project result]`,
+an empty list, the answer text has no `[n]` marker of a source of the turn and no link target
+after one, and `checks.citations_valid` is always true, in `/chat` and in every event of
+`/chat/stream`. The blanks before a marker go with it, except that a marker opening a line keeps
+the indent before it and drops the blanks after it. A bracket that writes numbers (`[2]`,
+`[source 2]`, `[1, 2]`, `[1-3]`) is removed only when each number in it is a source of the turn,
+so `[4]` in a turn with three sources stays, and so does a fuzzy number such as `[6, 8, 11]` or
+`[5, 5, 5]`, or a scale such as `[0, 1]`. A turn with no source removes none of them. A bracket
+whose whole content is the name of an internal tag or tool, which the model sometimes writes as if
+it were a source, is removed the same way. Such names are `[project_data]`, `[project result]`,
 `[tool result]`, `[System Instruction]`, the tool names such as `[search_docs]` or
 `[get_project_result]`, and bare words such as `[source]`, `[docs]`, `[data]` or `[zdroj]`, in any
 case and with `_`, `-` or blanks between words. The list is fixed, so other bracketed words such as
@@ -373,7 +373,8 @@ The answer model (`make_answer_model`) asks the server for usage on the last str
 (`stream_usage=True`), which a streamed turn needs for its token counts. `DirectGenerator.stream()`
 yields the answer as it arrives, withholding any reasoning block, and its pieces always join to
 the text `generate()` returns. A reply that ends inside a reasoning block that never closes is
-answered with the text before that block; only when nothing precedes the block is the answer cut
+answered with the text before that block, and the turn logs `assistant_reasoning_cut_off` with the
+length of that text, `answer_chars`, once; only when nothing precedes the block is the answer cut
 off, which is the `503` below. `AgentGenerator.stream()` yields the whole answer once, since the
 `hybrid` and `agent` modes do not stream.
 
@@ -420,8 +421,9 @@ or the API, or a project API that answers something unusable, is `503`, a proces
 answering its limit of turns is `503` with `Retry-After`, and a spent budget is `429`. After that
 the status is already 200, so every failure arrives as an `error` event, with or without a token
 before it: a model that is down, an empty answer or one cut off in its reasoning before any text,
-a turn that outlives its deadline (all `503`; the upstream-error branch is only defensive, since the tools catch an
-unusable project API), and any other exception (`500`, `Internal server error`, logged as
+a turn that outlives its deadline (all `503`; the upstream-error branch is only defensive, since
+the tools catch an unusable project API), and any other exception (`500`,
+`Internal server error`, logged as
 `assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the `hybrid`
 and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
 start of the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.

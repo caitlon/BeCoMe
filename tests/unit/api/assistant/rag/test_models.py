@@ -514,6 +514,7 @@ class TestHasUnclosedThinkBlock:
             "<think>a</think>Text <think>b",
             "<think>a</think>One <think>b</think> two <think>c",
             "Text </think> then <think>c",
+            "<think>a</think>  \n  <think>b",
         ],
     )
     def test_true_when_the_last_block_never_closes(self, reply):
@@ -557,6 +558,7 @@ class TestTextBeforeUnclosedThinkBlock:
             ("<think>Still reasoning", ""),
             ("<think>a <think>b", ""),
             ("  \n<think>Still reasoning", ""),
+            ("<think>a</think>  \n  <think>b", ""),
         ],
     )
     def test_returns_the_stripped_text_before_the_unclosed_block(self, reply, expected):
