@@ -96,12 +96,13 @@ def _holds_number(text: str, value: str) -> bool:
     """Tell whether a formatted number stands in the text as a value of its own.
 
     A trace body also carries ISO timestamps, whose digits can spell a short number, so a
-    plain substring test is not enough.
+    plain substring test is not enough. Their seconds always run on into six digits of
+    microseconds, which the lookahead rejects.
 
     :param text: The text to search, such as a trace body.
     :param value: The formatted number, such as ``"20.25"``.
     """
-    return re.search(r"(?<![\d:.])" + re.escape(value) + r"(?!\d)", text) is not None
+    return re.search(r"(?<![\d.])" + re.escape(value) + r"(?!\d)", text) is not None
 
 
 @pytest.fixture
@@ -489,7 +490,7 @@ class TestInvalidToolArgumentsEchoNoInternals:
             or of the wrong type
         WHEN the user asks
         THEN the tool message is an error that holds the arguments the model sent and the
-            field error and nothing else (no host, URL, API path or traceback), and the
+            field error, and nothing internal (no host, URL, API path or traceback), and the
             application was not read at all
         """
         # GIVEN
