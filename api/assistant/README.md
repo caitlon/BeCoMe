@@ -54,11 +54,11 @@ How the pipeline is built and why, from the corpus to the streamed answer, is ex
    for query transforms and index building (:8081, `ASSISTANT_LLM_*`), embeddings (:8082),
    rerank (:8083) and the answer model that writes chat answers (:8084,
    `ASSISTANT_ANSWER_LLM_*`, Qwen3.5-9B Q8_0). The answer model adds about 10 GB of memory and
-   downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer,
-   `ASSISTANT_QUERY_MAX_TOKENS` (default 2048) caps one reply of the small model, which writes
-   query transforms and also the context sentences and summaries at index time; it bounds a
-   runaway reply, and a model that thinks inline needs a higher value. `ASSISTANT_RETRIEVAL_K`
-   is how many passages the chat endpoint's search returns.
+   downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer (at most 4096),
+   `ASSISTANT_QUERY_MAX_TOKENS` (default 2048, at most 8192) caps one reply of the small model,
+   which writes query transforms and also the context sentences and summaries at index time; it
+   bounds a runaway reply, and a model that thinks inline needs a higher value.
+   `ASSISTANT_RETRIEVAL_K` is how many passages the chat endpoint's search returns (at most 20).
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
    docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
    --overlap-pct 10 --context captions` builds the collection the backend reads by default;
@@ -492,7 +492,7 @@ watch for the disconnect itself fails, the turn runs on without it and
   fixed, so an address can spend up to twice the cap across a window edge. Set it to `0` to switch
   it off on a laptop; a deployed service refuses `0` and refuses a value that is not below the
   global ceiling. It is separate from the per-minute limit described under "Per-address limit".
-- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most turns
+- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero, at most 64) is the most turns
   one process answers at once, and one user may run at most two of them, so a single account cannot
   take every slot. A turn that finds no free slot is refused at once, not queued, with `503`, the
   same body as an unreachable model server and `Retry-After: 5`; the record
@@ -539,9 +539,9 @@ watch for the disconnect itself fails, the turn runs on without it and
   over the limit is answered `429`, not `401`. Each route has its own counter, so `/chat` and
   `/chat/stream` each allow `20/minute` per address, while the hourly message limit is shared by
   both.
-- **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
+- **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180, at most 600) bounds one turn, fetching and
   generation together; a turn that outlives it is answered `503`.
-- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90) bounds the work done
+- **First-byte timeout.** `ASSISTANT_FIRST_BYTE_TIMEOUT_SECONDS` (default 90, at most 300) bounds the work done
   before a response's first byte, and is kept under the 100 seconds after which Cloudflare
   answers `524` for an origin that has sent nothing. It is counted from the start of the turn's
   preparation, not from the request's arrival. It applies to the retrieval and project fetch that
