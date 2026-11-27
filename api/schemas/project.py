@@ -135,8 +135,9 @@ class ProjectUpdate(BaseModel):
     def sanitize_name(cls, v: str | None) -> str | None:
         """Remove HTML and invisible characters from the name, which must keep some text.
 
-        :param v: Name as parsed from the request, or None when the field is absent
-        :return: The sanitized name, or None when no name was given
+        :param v: Name as parsed from the request; an absent field skips this validator and
+            an explicit null is refused by ``reject_explicit_nulls``
+        :return: The sanitized name
         :raises ValueError: If nothing but whitespace is left after sanitizing
         """
         sanitized = sanitize_text_or_none(v)
