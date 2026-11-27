@@ -575,6 +575,7 @@ as an HTML entity. The text is stored as plain text: React renders it as text no
 renderer escapes it, the assistant's context cleaning removes angle brackets, and no page, export
 or e-mail renders it as HTML (e-mails do not carry these fields). A new place that puts this text
 into HTML must escape it. Cleaning never makes a value longer, so the text always fits its column.
+Text stored escaped before this change was decoded once by the data migration `3d7a9e5c1f42`.
 Input whose tags are nested five or more levels deep cannot be cleaned and is refused.
 
 Text a model writes reaches the browser only through the optional assistant panel, which
