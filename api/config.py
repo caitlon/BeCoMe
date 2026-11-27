@@ -399,8 +399,9 @@ class Settings(BaseSettings):
     # prefix.
     assistant_enabled: bool = False
     # Whether a chat answer reaches the client with its sources, excerpts and [n] markers.
-    # Off by default: the client then gets an empty sources list and an answer without
-    # markers, in /chat and in every event of /chat/stream. Switched on by an environment
+    # Off by default: the client then gets an empty sources list, and the server removes the
+    # markers that name a source of the turn from the answer (a bracket that names none stays
+    # as written), in /chat and in every event of /chat/stream. Switched on by an environment
     # variable on the dev service only. The assistant_turn log record lists the
     # sources a turn used either way.
     assistant_show_sources: bool = False
@@ -414,15 +415,16 @@ class Settings(BaseSettings):
     # the wrong thing. A model that thinks inline needs a higher value, because an unclosed
     # <think> block is not stripped on the query and index-time paths. A hosted reasoning
     # model with reasoning on would spend the whole budget on thinking and return no text,
-    # which is why the hosted chat models send assistant_api_reasoning_effort below.
-    assistant_query_max_tokens: int = Field(default=2048, gt=0)
+    # which is why the hosted chat models send assistant_api_reasoning_effort below. At most
+    # 8192.
+    assistant_query_max_tokens: int = Field(default=2048, gt=0, le=8192)
     # The model that writes the chat answers, on its own llama-server. The token cap bounds
-    # one reply. The retrieval k is how many passages the chat endpoint's search returns (the
-    # retrieval evaluation keeps its own k, RetrievalConfig.k).
+    # one reply, up to 4096. The retrieval k is how many passages the chat endpoint's search
+    # returns, up to 20 (the retrieval evaluation keeps its own k, RetrievalConfig.k).
     assistant_answer_llm_base_url: str = "http://127.0.0.1:8084/v1"
     assistant_answer_llm_model: str = "Qwen/Qwen3.5-9B"
-    assistant_answer_max_tokens: int = Field(default=800, gt=0)
-    assistant_retrieval_k: int = Field(default=3, gt=0)
+    assistant_answer_max_tokens: int = Field(default=800, gt=0, le=4096)
+    assistant_retrieval_k: int = Field(default=3, gt=0, le=20)
     assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
     assistant_embedding_model: str = "BAAI/bge-m3"
     # Where each of the three model roles runs: "local" is the llama-server named by the
@@ -453,7 +455,8 @@ class Settings(BaseSettings):
     assistant_mode: Literal["agent", "workflow", "hybrid"] = "workflow"
     # The most tool calls one turn may make in agent and hybrid mode. It must be above
     # zero: an agent that can call nothing, or that always falls back, is a misconfiguration.
-    assistant_max_tool_calls: int = Field(default=4, gt=0)
+    # At most 16.
+    assistant_max_tool_calls: int = Field(default=4, gt=0, le=16)
     # Limits the chat service and the chat route apply. The request schema
     # (api/schemas/assistant.py) holds the hard ceilings, 20 history entries (10 exchanges)
     # and 4000 characters per message, and rejects anything above them before the service
@@ -474,21 +477,22 @@ class Settings(BaseSettings):
     assistant_address_turns_per_hour: int = Field(default=240, ge=0)
     # The most chat turns one process answers at once, and above zero: a turn that finds no
     # free slot is refused with a 503 instead of waiting. A streamed answer holds its slot
-    # until the stream ends.
-    assistant_max_concurrent_turns: int = Field(default=8, gt=0)
-    assistant_llm_timeout_seconds: float = 120.0
+    # until the stream ends. At most 64.
+    assistant_max_concurrent_turns: int = Field(default=8, gt=0, le=64)
+    # The timeout of one request to a model server, in seconds, above zero and at most 600.
+    assistant_llm_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     # The longest one chat turn may take, fetching and generation together. When it runs
     # out, the call in flight is cancelled with the turn and the turn answers
     # "unavailable", so a stalled server does not hold the request past this deadline.
-    # The model's own timeout above only bounds one request inside it.
-    assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
+    # The model's own timeout above only bounds one request inside it. At most 600 seconds.
+    assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0, le=600)
     # The longest the work done before a response's first byte may take, counted from the
     # start of the turn: the retrieval and project fetch that precede a stream, and the whole
     # of a /chat turn, whose answer is one JSON body. Keep it under the 100 seconds after
     # which Cloudflare answers 524 for an origin that has sent nothing. The streamed part of
     # a turn is not held to it and keeps the full turn timeout above, which this value can
-    # only shorten: a turn timeout below it decides first.
-    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0)
+    # only shorten: a turn timeout below it decides first. Below 100 seconds.
+    assistant_first_byte_timeout_seconds: float = Field(default=90.0, gt=0, lt=100)
     # How often a waiting /chat/stream sends a keep-alive comment, in seconds, so that
     # a proxy sees bytes while the model is still working (the agent modes send nothing
     # until the final response). Below 100, the idle time after which Cloudflare answers 524.

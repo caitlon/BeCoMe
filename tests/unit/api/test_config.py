@@ -3130,6 +3130,84 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_first_byte_timeout_seconds"):
             Settings(secret_key="test-secret-key", assistant_first_byte_timeout_seconds=value)
 
+    @pytest.mark.parametrize(
+        ("field", "ceiling", "above"),
+        [
+            ("assistant_query_max_tokens", 8192, 8193),
+            ("assistant_answer_max_tokens", 4096, 4097),
+            ("assistant_retrieval_k", 20, 21),
+            ("assistant_max_tool_calls", 16, 17),
+            ("assistant_max_concurrent_turns", 64, 65),
+            ("assistant_llm_timeout_seconds", 600, 600.5),
+            ("assistant_turn_timeout_seconds", 600, 600.5),
+            ("assistant_first_byte_timeout_seconds", 99.9, 100.0),
+        ],
+    )
+    def test_numeric_limits_stop_at_their_ceilings(
+        self, field, ceiling, above, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a numeric assistant limit set to its ceiling, and one set just above it
+        WHEN Settings is constructed
+        THEN the ceiling is accepted and the value above it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        at_ceiling = Settings(secret_key="test-secret-key", **{field: ceiling})
+
+        # THEN
+        assert getattr(at_ceiling, field) == ceiling
+        with pytest.raises(ValidationError, match=field):
+            Settings(secret_key="test-secret-key", **{field: above})
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_llm_timeout(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a model request timeout of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because every model call would time out at once
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_llm_timeout_seconds"):
+            Settings(secret_key="test-secret-key", assistant_llm_timeout_seconds=value)
+
+    def test_llm_timeout_accepts_a_small_positive_value(self, monkeypatch, tmp_path):
+        """
+        GIVEN a model request timeout just above zero
+        WHEN Settings is constructed
+        THEN it is accepted, so the lower bound is exclusive and sits at zero
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key", assistant_llm_timeout_seconds=0.001)
+
+        # THEN
+        assert settings.assistant_llm_timeout_seconds == 0.001
+
+    def test_llm_timeout_defaults_to_two_minutes(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the model request timeout and no .env file
+              in reach
+        WHEN constructed
+        THEN one model request may take 120 seconds
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LLM_TIMEOUT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_llm_timeout_seconds == 120.0
+
     def test_stream_heartbeat_defaults_to_fifteen_seconds(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an override for the stream heartbeat and no .env file in reach
