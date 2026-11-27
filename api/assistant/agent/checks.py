@@ -54,7 +54,7 @@ _CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 # at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
 # makes the scan run to the end of the text once per bracket.
 _LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
-_BARE_URL = re.compile(r"https?://\S+")
+_BARE_URL = re.compile(r"https?://[^\s\x00]+")
 _DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
 _DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
 # A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
@@ -695,39 +695,54 @@ def _drop_words(text: str) -> str:
     return _WORD.sub(replace, text)
 
 
-def _is_name(field: str) -> bool:
-    """Tell whether a field, with its cut dots removed, is a name a copy may be made of.
-
-    :param field: A free-text field as the model was shown it.
-    :return: True when it has at least 4 characters and a letter.
-    """
-    return len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
-
-
-def _mask_copies(text: str, copies: Iterable[str]) -> str:
+def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> str:
     """Replace every verbatim copy of a free-text field in a text by a filler.
 
     A copy is a field as the model was shown it, matched case-sensitively and as a whole
     word sequence (see ``_COPY_BEFORE`` and ``_COPY_AFTER``); any run of whitespace in the
     field matches any run of whitespace in the text. A field that ends in ``...`` was cut
     to its limit and is matched without the dots. A field is a copy only when, after that,
-    it has at least 4 characters and a letter (see :func:`_is_name`). The longest copy is
-    tried first. The pattern is built from escaped literals only, so matching is linear in
-    the text.
+    it has at least 4 characters and a letter. The longest copy is tried first. The pattern
+    is built from escaped literals only, so matching is linear in the text.
+
+    The kept fields are matched the same way, among the others and longest first, but their
+    matches stay as written: they decide which copy covers an occurrence, and a shorter
+    copy inside a kept one masks nothing. A field in both lists is kept.
+
+    The filler starts with a lowercase letter when the copy does, so that an ordinal before
+    it (``2. pilot 2027``) is read as before. The copy's boundaries leave no digit or letter
+    next to the filler, so the letter cannot join a number.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
+    :param kept: Fields to find but not to mask.
     :return: The text with each copy replaced by the filler of a dropped token.
     """
-    prefixes = {copy.removesuffix(_CUT_MARK).rstrip() for copy in copies}
-    qualifying = sorted((prefix for prefix in prefixes if _is_name(prefix)), key=len, reverse=True)
-    if not qualifying:
+
+    def prefixes(fields: Iterable[str]) -> set[str]:
+        cut = {field.removesuffix(_CUT_MARK).rstrip() for field in fields}
+        return {
+            field
+            for field in cut
+            if len(field) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in field)
+        }
+
+    held = prefixes(kept)
+    found = sorted(prefixes(copies) | held, key=len, reverse=True)
+    if not found:
         return text
-    alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in qualifying)
-    return re.sub(f"{_COPY_BEFORE}(?:{alternatives}){_COPY_AFTER}", _DROPPED, text)
+    groups = (r"\s+".join(map(re.escape, copy.split())) for copy in found)
+    alternatives = "|".join(f"({group})" for group in groups)
+
+    def replace(match: re.Match[str]) -> str:
+        if found[(match.lastindex or 1) - 1] in held:
+            return match[0]
+        return ("a" if match[0][0].islower() else "") + _DROPPED
+
+    return re.sub(f"{_COPY_BEFORE}(?:{alternatives}){_COPY_AFTER}", replace, text)
 
 
-def _strip_answer(answer: str, copies: Iterable[str] = ()) -> str:
+def _strip_answer(answer: str, copies: Iterable[str] = (), kept: Iterable[str] = ()) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
     The drops run in this order: first the characters that render as nothing (see
@@ -748,9 +763,10 @@ def _strip_answer(answer: str, copies: Iterable[str] = ()) -> str:
 
     :param answer: The model's final answer text.
     :param copies: The free-text fields whose digits are part of a copy.
+    :param kept: Fields found like the copies but left as written (see :func:`_mask_copies`).
     :return: The cleaned text.
     """
-    text = _LINK_TARGET.sub("]", _mask_copies(strip_invisible(answer), copies))
+    text = _LINK_TARGET.sub("]", _mask_copies(strip_invisible(answer), copies, kept))
     text = _BARE_URL.sub(_DROPPED, text)
     text = _replace_citations(text, _DROPPED)
     text = _DATE_ISO.sub(_DROPPED, text)
@@ -819,7 +835,11 @@ class _Grounding:
 
 
 def find_ungrounded_numbers(
-    answer: str, grounding_texts: list[str], *, copies: Iterable[str] = ()
+    answer: str,
+    grounding_texts: list[str],
+    *,
+    copies: Iterable[str] = (),
+    kept: Iterable[str] = (),
 ) -> list[str]:
     """Return the numbers in the answer that no grounding text supports.
 
@@ -886,12 +906,14 @@ def find_ungrounded_numbers(
     :param copies: The names the model was shown, as written in the data blocks: the names of
         the projects and of the experts. Never the description, the unit or a position, and
         never part of the grounding.
+    :param kept: Names found like the copies, among them and longest first, but whose digits
+        stay in the scan. They tell a caller which copy covers an occurrence.
     :return: Each ungrounded number as written in the answer, sign included, once, in
         order of first appearance.
     """
     grounding = _Grounding(grounding_texts)
     ungrounded: list[str] = []
-    for token in _scan_numbers(_strip_answer(answer, copies)):
+    for token in _scan_numbers(_strip_answer(answer, copies, kept)):
         if token.written in ungrounded:
             continue
         if not any(

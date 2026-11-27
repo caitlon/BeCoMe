@@ -107,15 +107,17 @@ def _check_numbers(text: str, grounds: list[str], ctx: AssistantContext) -> Numb
     :param ctx: The turn's context, with the names the model was shown.
     :return: The three lists, which share no number.
     """
-    project_names = ctx.project_name_copies
-    # A name shared by a project and an expert is the project's, so the experts' alone are read.
-    expert_only = [name for name in ctx.expert_name_copies if name not in project_names]
+    names = [*ctx.project_name_copies, *ctx.expert_name_copies]
     unsupported = find_ungrounded_numbers(text, grounds)
-    ungrounded = find_ungrounded_numbers(text, grounds, copies=[*project_names, *expert_only])
+    ungrounded = find_ungrounded_numbers(text, grounds, copies=names)
     named = [number for number in unsupported if number not in ungrounded]
     if not named:
         return NumberCheck(ungrounded, [], [])
-    needs_project = find_ungrounded_numbers(text, grounds, copies=expert_only)
+    # The experts' names mask, the projects' only take their place in the longest-first match, so
+    # a number that is still there sits in an occurrence a project name covers.
+    needs_project = find_ungrounded_numbers(
+        text, grounds, copies=ctx.expert_name_copies, kept=ctx.project_name_copies
+    )
     return NumberCheck(
         ungrounded,
         [number for number in named if number in needs_project],

@@ -97,6 +97,11 @@ _CASES = [
     _case("shorter-alone", "See Plan 2027 Q 4 today.", ("Plan 2027",), ["4"]),
     _case("shorter-where-longer-misses", "See Plan 2027 today.", ("Plan 2027 Q 4", "Plan 2027"), []),
     _case("repeated-copy", "See Plan 2027 today.", ("Plan 2027",) * 3, []),
+    # A copy must not change how the rest of the text is read.
+    _case("url-stops-at-a-copy", "https://x.y/Budget 2027;99999", (_B,), ["99999"]),
+    _case("ordinal-before-lowercase-copy", "Podle 2. pilot 2027 vysly dobre.", ("pilot 2027",), []),
+    _case("ordinal-before-lowercase-name", "See 3. van der Berg gave 5.", ("van der Berg",), [], ["5"]),
+    _case("sentence-end-before-capital-copy", "See 3. Budget 2027 now.", (_B,), ["3"]),
     # A copy grounds nothing.
     _case("number-alone", "The figure is 2027.", (_B,), ["2027"]),
 ]
@@ -162,6 +167,45 @@ _MERGE_CASES = [
     _merge("a-name-number-once", ([], ["7", "7"], []), ([], ["7"], []), ([], ["7"], [])),
 ]
 # fmt: on
+
+
+class TestKeptCopies:
+    """A kept copy takes part in the longest-first match but stays visible to the scan."""
+
+    @pytest.mark.parametrize(
+        ("answer", "copies", "kept", "expected"),
+        [
+            pytest.param(
+                "The Budget 2027 plan is open.",
+                ("Budget 2027",),
+                ("Budget 2027 plan",),
+                ["2027"],
+                id="longer-kept-copy-shields-the-shorter-one",
+            ),
+            pytest.param(
+                "The Budget 2027 is open.",
+                ("Budget 2027",),
+                ("Budget 2027 plan",),
+                [],
+                id="shorter-copy-masks-where-the-longer-misses",
+            ),
+            pytest.param(
+                "The Budget 2027 is open.",
+                ("Budget 2027",),
+                ("Budget 2027",),
+                ["2027"],
+                id="a-name-in-both-is-kept",
+            ),
+        ],
+    )
+    def test_the_kept_copies_are_found_and_not_masked(self, answer, copies, kept, expected):
+        """
+        GIVEN copies to mask and kept copies that may be longer than them
+        WHEN an answer repeating one of them is checked
+        THEN a match of a kept copy stays visible and hides nothing under it, and only
+             a match of a masked copy is dropped
+        """
+        assert find_ungrounded_numbers(answer, [], copies=copies, kept=kept) == expected
 
 
 class TestNumberCheckMerge:
