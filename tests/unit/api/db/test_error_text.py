@@ -1,13 +1,20 @@
 """Tests for the reduction of database error text."""
 
 import logging
+import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
+import psycopg
+import psycopg.errors
+import psycopg2
 import psycopg2.errors
 import pytest
 
 from api.db.error_text import (
+    CONNECTION_FAILURE_LABELS,
+    connection_failure_label,
     database_error_chain,
     exception_chain,
     format_exception_safely,
@@ -19,10 +26,12 @@ from api.logging_config import SafeTextFormatter
 from tests.shared.database_errors import (
     SENTINEL,
     bind_processor_error,
+    psycopg2_connection_refused,
     psycopg2_invalid_uuid,
     psycopg2_unique_violation,
     psycopg3_unique_violation,
     raised,
+    wrap,
 )
 
 
@@ -510,3 +519,228 @@ class TestFormatExceptionSafely:
             assert SafeTextFormatter().formatException(
                 exc_info
             ) == logging.Formatter().formatException(exc_info)
+
+
+_LIBPQ = 'connection to server at "127.0.0.1", port 54199 failed: '
+_PG_HBA = 'no pg_hba.conf entry for host "10.1.2.3", user "becomeuser", database "become", '
+_SERVER = "\tThis probably means the server terminated abnormally\n"
+
+# Captured with psycopg2 2.9.13 on libpq 16 against fake servers on loopback, except the
+# ``dns`` text (libpq's format string) and the OS-level reasons (strerror text on Linux).
+_CONNECT_FAILURES = [
+    ("refused", f"{_LIBPQ}Connection refused\n\tIs the server running on that host?\n"),
+    ("timeout", f"{_LIBPQ}timeout expired\n"),
+    ("timeout", f"{_LIBPQ}Connection timed out\n"),
+    ("closed", f"{_LIBPQ}server closed the connection unexpectedly\n{_SERVER}"),
+    ("closed", f"{_LIBPQ}Connection reset by peer\n"),
+    ("unreachable", f"{_LIBPQ}Network is unreachable\n"),
+    ("unreachable", f"{_LIBPQ}No route to host\n"),
+    ("authentication", f'{_LIBPQ}FATAL:  password authentication failed for user "becomeuser"\n'),
+    ("authentication", f"{_LIBPQ}FATAL:  {_PG_HBA}no encryption\n"),
+    ("authentication", f"{_LIBPQ}FATAL:  {_PG_HBA}SSL encryption\n"),
+    ("authentication", f'{_LIBPQ}FATAL:  role "becomeuser" does not exist\n'),
+    ("unknown_database", f'{_LIBPQ}FATAL:  database "become" does not exist\n'),
+    ("too_many_connections", f"{_LIBPQ}FATAL:  sorry, too many clients already\n"),
+    ("too_many_connections", f'{_LIBPQ}FATAL:  too many connections for role "becomeuser"\n'),
+    ("too_many_connections", f"{_LIBPQ}FATAL:  remaining connection slots are reserved\n"),
+    ("unavailable", f"{_LIBPQ}FATAL:  the database system is starting up\n"),
+    ("unavailable", f"{_LIBPQ}FATAL:  the database system is shutting down\n"),
+    ("unavailable", f"{_LIBPQ}FATAL:  terminating connection due to administrator command\n"),
+    ("ssl", f"{_LIBPQ}server does not support SSL, but SSL was required\n"),
+    ("ssl", f"{_LIBPQ}SSL error: wrong version number\nThis may indicate a protocol mismatch.\n"),
+    ("ssl", f"{_LIBPQ}SSL connection has been closed unexpectedly\n"),
+    ("dns", 'could not translate host name "db.internal" to address: Name or service not known\n'),
+    ("dns", "failed to resolve host '127.0.0.1': [Errno 8] nodename nor servname provided\n"),
+    ("other", f"{_LIBPQ}something new\n"),
+]
+
+
+def _psycopg2_error(text: str) -> BaseException:
+    return psycopg2.OperationalError(text)
+
+
+def _psycopg3_error(text: str) -> BaseException:
+    return psycopg.OperationalError(f"connection failed: {text.rstrip()}")
+
+
+def _wrapped_psycopg2_error(text: str) -> BaseException:
+    return wrap(psycopg2.OperationalError(text), psycopg2.Error)
+
+
+def _wrapped_psycopg3_error(text: str) -> BaseException:
+    return wrap(_psycopg3_error(text), psycopg.Error)
+
+
+_BUILDERS = [_psycopg2_error, _psycopg3_error, _wrapped_psycopg2_error, _wrapped_psycopg3_error]
+_BUILDER_IDS = ["psycopg2", "psycopg3", "wrapped-psycopg2", "wrapped-psycopg3"]
+
+
+class _ServerShutdown(psycopg2.OperationalError):
+    """A server error that carries a SQLSTATE, as a live one does."""
+
+    pgcode = "57P01"
+
+
+class TestConnectionFailureLabel:
+    """A failed connection keeps one fixed reason and nothing it names."""
+
+    @pytest.mark.parametrize("build", _BUILDERS, ids=_BUILDER_IDS)
+    @pytest.mark.parametrize(("label", "text"), _CONNECT_FAILURES)
+    def test_every_known_reason_gets_its_label(self, build, label, text):
+        """
+        GIVEN the message of a failed connection, from either driver, raw or wrapped
+        WHEN its label is read and its text reduced
+        THEN the label is the reason and the reduced text ends with it
+        AND the host and the port are gone from the reduced text
+        """
+        exc = build(text)
+
+        assert label in CONNECTION_FAILURE_LABELS
+        assert connection_failure_label(exc) == label
+        reduced = safe_error_text(exc)
+        assert reduced.endswith(f" (connection failure: {label})")
+        assert "127.0.0.1" not in reduced
+        assert "54199" not in reduced
+
+    @pytest.mark.parametrize(
+        ("label", "text"),
+        [
+            (
+                "refused",
+                'connection to server at "ssl-db.internal" (10.0.0.5), port 5 failed: '
+                "Connection refused",
+            ),
+            (
+                "authentication",
+                f'{_LIBPQ}FATAL:  password authentication failed for user "timed out"',
+            ),
+            (
+                "authentication",
+                f'{_LIBPQ}FATAL:  password authentication failed for user "sslreader"',
+            ),
+            ("authentication", f'{_LIBPQ}FATAL:  role "timed out" does not exist'),
+            ("unknown_database", f'{_LIBPQ}FATAL:  database "ssl" does not exist'),
+            ("too_many_connections", f'{_LIBPQ}FATAL:  too many connections for role "refused"'),
+            ("other", f'{_LIBPQ}something new "authentication failed'),
+            ("other", f"{_LIBPQ}something new 'connection refused"),
+        ],
+    )
+    def test_a_name_in_the_message_does_not_choose_the_label(self, label, text):
+        """
+        GIVEN a failed connection whose host, user, role or database name holds a reason word
+            or whose text after an unclosed quote mark holds one
+        WHEN its label is read
+        THEN only the words outside the quote marks decide it
+        """
+        assert connection_failure_label(psycopg2.OperationalError(text)) == label
+
+    @pytest.mark.parametrize(
+        ("exc", "label"),
+        [
+            (psycopg.errors.ConnectionTimeout("connection timeout expired"), "timeout"),
+            (
+                psycopg.OperationalError(
+                    f"connection failed: {_LIBPQ}Connection refused\n"
+                    "Multiple connection attempts failed. All failures were:\n"
+                    "- host: 'db.internal', port: '5432', hostaddr: '10.0.0.5': timeout expired\n"
+                ),
+                "refused",
+            ),
+        ],
+        ids=["connection-timeout", "several-attempts"],
+    )
+    def test_psycopg3_only_errors_are_labelled(self, exc, label):
+        """
+        GIVEN psycopg 3's own timeout error, and its message after several failed attempts
+        WHEN their labels are read
+        THEN the timeout class is ``timeout`` and the last attempt on the first line decides
+            the other
+        AND the lines that name each host are gone from the reduced text
+        """
+        assert connection_failure_label(exc) == label
+        assert "db.internal" not in safe_error_text(exc)
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            _ServerShutdown(f"{_LIBPQ}FATAL:  terminating connection due to administrator command"),
+            psycopg.errors.AdminShutdown("connection failed: terminating connection"),
+            psycopg2.OperationalError("server closed the connection unexpectedly\n" + _SERVER),
+            psycopg2.ProgrammingError(f"{_LIBPQ}Connection refused"),
+            ValueError(f"{_LIBPQ}Connection refused"),
+        ],
+        ids=[
+            "psycopg2-sqlstate",
+            "psycopg3-sqlstate",
+            "mid-query",
+            "not-operational",
+            "not-a-database-error",
+        ],
+    )
+    def test_anything_but_a_connect_failure_has_no_label(self, exc):
+        """
+        GIVEN a server error with a SQLSTATE, a connection that dropped in the middle of a
+            query, an error of another class, or an exception that is no database error
+        WHEN its label is read
+        THEN there is none
+        """
+        assert connection_failure_label(exc) is None
+        assert "connection failure" not in safe_error_text(exc)
+
+    def test_a_dropped_connection_keeps_its_plain_text(self):
+        """
+        GIVEN a connection that dropped in the middle of a query
+        WHEN its text is reduced
+        THEN it is the first line alone, as before the label existed
+        """
+        exc = psycopg2.OperationalError("server closed the connection unexpectedly\n" + _SERVER)
+
+        assert safe_error_text(exc) == "server closed the connection unexpectedly"
+
+    def test_the_label_is_found_through_the_sqlalchemy_wrapper_and_never_raises(self):
+        """
+        GIVEN a wrapper around a refused connection, and a driver error whose text cannot be read
+        WHEN their labels are read
+        THEN the wrapper has the label of its driver error and the broken one has none
+        """
+        wrapped, _ = psycopg2_connection_refused()
+
+        class Broken(psycopg2.OperationalError):
+            def __str__(self) -> str:
+                raise RuntimeError("no text")
+
+        assert connection_failure_label(wrapped) == "refused"
+        assert connection_failure_label(Broken()) is None
+        assert safe_error_text(Broken()) == "Broken"
+
+
+_WITHOUT_PSYCOPG3 = """
+import sys
+sys.path.insert(0, sys.argv[1])
+sys.modules["psycopg"] = None  # an import of psycopg 3 now raises ImportError
+import psycopg2
+from api.db.error_text import connection_failure_label
+
+error = psycopg2.OperationalError('connection to server at "h", port 1 failed: Connection refused')
+print(connection_failure_label(error))
+"""
+
+
+def test_the_module_works_without_psycopg3():
+    """
+    GIVEN an API image built without the ``assistant`` extra, where psycopg 3 is missing
+    WHEN the module is imported and a refused psycopg2 connection is labelled
+    THEN the import succeeds and the label is ``refused``
+    """
+    root = Path(__file__).resolve().parents[4]
+
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-I", "-c", _WITHOUT_PSYCOPG3, str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "refused"

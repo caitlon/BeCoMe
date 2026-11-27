@@ -3,12 +3,14 @@
 Only the request data listed here reaches the error tracker. Log records the SDK turns into
 breadcrumbs or event extras lose their ``ip`` field, which the access, auth, CSRF and
 rate-limit records carry. The text of a database error is cut to its first line at the first
-quote mark, because PostgreSQL's own message can quote row values.
+quote mark, because PostgreSQL's own message can quote row values. A failed database connection
+also gets the tag ``db.connection_failure``, a fixed reason label, and none of its names.
 """
 
 from typing import TYPE_CHECKING
 
 from api.db.error_text import (
+    connection_failure_label,
     database_error_chain,
     exception_chain,
     is_database_module,
@@ -30,6 +32,9 @@ _DROPPED_REQUEST_KEYS = ("cookies", "data", "env", "query_string")
 # extra fields of a log record into breadcrumb data and into the extra of an error event.
 _LOG_ADDRESS_FIELD = "ip"
 
+# Event tag that holds the reason label of a failed database connection.
+CONNECTION_FAILURE_TAG = "db.connection_failure"
+
 
 def _drop_log_address(fields: object) -> None:
     """Remove the client address from a mapping of log record fields, if it is one."""
@@ -49,6 +54,15 @@ def _drop_breadcrumb_addresses(breadcrumbs: object) -> None:
         for crumb in breadcrumbs:
             if isinstance(crumb, dict):
                 _drop_log_address(crumb.get("data"))
+
+
+def _tag_connection_failure(event: "Event", label: str) -> None:
+    """Set the connection failure tag on an event; an event whose tags are no dict is left alone."""
+    tags = event.get("tags")
+    if tags is None:
+        event["tags"] = {CONNECTION_FAILURE_TAG: label}
+    elif isinstance(tags, dict):
+        tags[CONNECTION_FAILURE_TAG] = label
 
 
 def _exception_objects(hint: object) -> tuple[list[BaseException], set[int]]:
@@ -80,8 +94,10 @@ def _scrub_database_errors(event: "Event", hint: "Hint") -> None:
     """Reduce the message of every database error in an event's exception chain.
 
     An entry is paired with the exception it came from through the hint. A database error
-    gets :func:`api.db.error_text.safe_error_text`. An entry that cannot be paired but names a
-    SQLAlchemy or driver module keeps the first line of its message cut at the first quote mark.
+    gets :func:`api.db.error_text.safe_error_text`, and the event gets the tag
+    ``db.connection_failure`` when that error is a failed connection. An entry that cannot be
+    paired but names a SQLAlchemy or driver module keeps the first line of its message cut at
+    the first quote mark, and sets no tag.
     ``type``, ``module``, ``mechanism`` and ``stacktrace`` stay as they are. An event whose
     exception data has an unexpected shape is left alone.
 
@@ -103,6 +119,9 @@ def _scrub_database_errors(event: "Event", hint: "Hint") -> None:
             used.add(id(match))
             if id(match) in reduce:
                 entry["value"] = safe_error_text(match)
+                label = connection_failure_label(match)
+                if label is not None:
+                    _tag_connection_failure(event, label)
         elif is_database_module(entry.get("module")) and isinstance(entry.get("value"), str):
             entry["value"] = safe_message_text(entry["value"])
 
@@ -116,7 +135,8 @@ def scrub_request_data(event: "Event", hint: "Hint") -> "Event":
     breadcrumbs and from the event extras. It also reduces the text of database errors in the
     event's exception chain to the first line of the message cut at the first quote mark, plus
     the SQLSTATE and the constraint, table and column names; the ``DETAIL`` line and the SQL
-    statement are dropped. An event without a request, or with fields of an unexpected type, is
+    statement are dropped. A failed connection also sets the tag ``db.connection_failure`` to a
+    fixed reason label. An event without a request, or with fields of an unexpected type, is
     passed through otherwise unchanged, so the filter never raises and never drops an event.
 
     :param event: The event the SDK is about to send, modified in place.

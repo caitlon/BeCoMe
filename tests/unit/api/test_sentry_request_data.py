@@ -21,9 +21,12 @@ from api.db.error_text import exception_chain
 from api.dependencies import get_email_address_policy, get_registration_service
 from api.sentry_filter import ALLOWED_REQUEST_HEADERS, scrub_request_data
 from tests.shared.database_errors import (
+    CONNECT_NAMES,
     SENTINEL,
     bind_processor_error,
+    psycopg2_connection_refused,
     psycopg2_invalid_uuid,
+    psycopg2_pg_hba_rejection,
     psycopg2_unique_violation,
     psycopg3_unique_violation,
     raised,
@@ -328,6 +331,39 @@ class TestDatabaseErrorText:
             assert SENTINEL not in text
             assert "DETAIL" not in text
             assert "INSERT INTO" not in text
+
+    @pytest.mark.parametrize(
+        ("build", "label"),
+        [(psycopg2_connection_refused, "refused"), (psycopg2_pg_hba_rejection, "authentication")],
+        ids=["refused", "pg-hba-rejection"],
+    )
+    def test_failed_connection_keeps_its_reason_and_no_name(
+        self, monkeypatch, tmp_path, transport, build, label
+    ):
+        """
+        GIVEN the real app with Sentry on and a route whose database call fails to connect,
+            the message naming a host, an address, a port, a user and a database
+        WHEN the request reaches it
+        THEN the event carries the reason label in its text and in the ``db.connection_failure`` tag
+        AND no envelope and no log output holds the host, address, port, user or database name
+        """
+        client = _build_client(monkeypatch, tmp_path, transport, traces=0.0)
+        client.app.dependency_overrides[get_registration_service] = lambda: _RaisingDatabaseError(
+            build
+        )
+        log = _capture_api_log(monkeypatch)
+
+        self._register_failing(client)
+
+        events = transport.items("event")
+        assert [event["tags"]["db.connection_failure"] for event in events] == [label]
+        values = [value["value"] for event in events for value in event["exception"]["values"]]
+        assert any(value.endswith(f"(connection failure: {label})") for value in values)
+        output = log.getvalue()
+        assert f"(connection failure: {label})" in output
+        for text in (transport.serialized(), output):
+            for name in CONNECT_NAMES:
+                assert name not in text
 
 
 class TestLogRecordFields:
@@ -746,6 +782,48 @@ class TestScrubDatabaseErrors:
         chain = exception_chain(group)
         assert member in chain
         assert orig in chain
+
+    @pytest.mark.parametrize(
+        ("tags", "expected"),
+        [
+            (None, {"db.connection_failure": "refused"}),
+            ({"release": "1"}, {"release": "1", "db.connection_failure": "refused"}),
+            ([("release", "1")], [("release", "1")]),
+            ("text", "text"),
+        ],
+        ids=["no-tags", "other-tags", "list", "text"],
+    )
+    def test_failed_connection_sets_the_tag_unless_the_tags_are_no_dict(self, tags, expected):
+        """
+        GIVEN an event for a refused connection, whose tags are missing, a dict or another type
+        WHEN the filter runs
+        THEN the tag ``db.connection_failure`` is set next to the other tags of a dict
+        AND tags of another type are not touched
+        AND the host of the connection is gone in every case
+        """
+        event, hint = _event_from(raised(*psycopg2_connection_refused()))
+        if tags is not None:
+            event["tags"] = tags
+
+        result: Any = scrub_request_data(event, hint)
+
+        assert result["tags"] == expected
+        assert CONNECT_NAMES[0] not in json.dumps(result, default=str)
+
+    def test_other_database_errors_and_unpaired_entries_set_no_tag(self):
+        """
+        GIVEN an event for a unique violation, and one for a refused connection with no hint
+        WHEN the filter runs
+        THEN neither gets a ``db.connection_failure`` tag
+        """
+        violation = self._scrubbed_event(psycopg2_unique_violation)
+        unpaired, _ = _event_from(raised(*psycopg2_connection_refused()))
+
+        result: Any = scrub_request_data(unpaired, {})
+
+        assert "tags" not in violation
+        assert "tags" not in result
+        assert CONNECT_NAMES[0] not in json.dumps(result, default=str)
 
     @pytest.mark.parametrize(
         "event",

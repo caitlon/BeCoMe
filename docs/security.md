@@ -975,6 +975,11 @@ message cut at the first quote mark, the SQLSTATE and the constraint, table and 
 `DETAIL`, `HINT` and `CONTEXT` lines and the SQL statement are dropped. The Sentry filter does this
 for every exception of an event's chain. The JSON and text log formatters, the Better Stack handler
 and Python's last-resort handler do it for the traceback of a log record.
+A failed connection has no SQLSTATE, and its first line breaks off at the host name, so it also
+carries one fixed reason label, `(connection failure: <label>)`, and the Sentry event gets the tag
+`db.connection_failure` with the same label. The labels are `authentication`, `unknown_database`,
+`too_many_connections`, `unavailable`, `ssl`, `refused`, `timeout`, `dns`, `unreachable`, `closed`
+and `other`. The host, address, port, user and database name never appear.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
