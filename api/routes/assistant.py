@@ -14,8 +14,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
+from langsmith.run_trees import RunTree
+from starlette.types import Receive, Scope, Send
 
 from api.assistant.agent.generation import raised_at
+from api.assistant.agent.tracing import ending_turn
 from api.assistant.deps import (
     AssistantServiceDep,
     PreparedTurnDep,
@@ -239,6 +242,34 @@ async def _event_frames(
         await asyncio.gather(producer, return_exceptions=True)
 
 
+class _TurnResponse(StreamingResponse):
+    """A streaming response that closes the turn's trace when the response is torn down.
+
+    The service's stream closes the trace itself once it has started. A body that Starlette
+    never iterates, because the client left before the first read, leaves that generator
+    unstarted: its ``finally`` never runs and the held trace would wait for the bound on held
+    traces to drop it unsent. Closing here ends the turn as a client leaving mid-stream does,
+    and does nothing when the stream has closed it already.
+    """
+
+    def __init__(
+        self, content: AsyncIterator[str], *, trace: RunTree | None, **kwargs: Any
+    ) -> None:
+        """Build the response.
+
+        :param content: The body.
+        :param trace: The turn's root run, or None when tracing is off.
+        :param kwargs: The arguments of :class:`~fastapi.responses.StreamingResponse`.
+        """
+        super().__init__(content, **kwargs)
+        self._trace = trace
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Send the response, and close the turn's trace however that ends."""
+        with ending_turn(self._trace):
+            await super().__call__(scope, receive, send)
+
+
 @router.get("/config", summary="Get the assistant's active configuration")
 def get_assistant_config(
     _current_user: CurrentUser,
@@ -358,8 +389,9 @@ async def chat_stream(
     if prepared is None:
         return Response(status_code=CLIENT_CLOSED_REQUEST)
 
-    return StreamingResponse(
+    return _TurnResponse(
         _event_frames(service.stream(prepared), settings.assistant_stream_heartbeat_seconds),
+        trace=prepared.trace,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

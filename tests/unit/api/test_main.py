@@ -692,6 +692,8 @@ class TestAssistantExceptionHandlerGating:
         registered = {exc.__name__ for exc in app.exception_handlers if isinstance(exc, type)}
         assert not registered & {
             "AssistantBusyError",
+            "AssistantError",
+            "AssistantNotFoundError",
             "AssistantRateLimitedError",
             "AssistantUnavailableError",
             "AssistantUpstreamError",
@@ -708,6 +710,8 @@ class TestAssistantExceptionHandlerGating:
             ("AssistantBusyError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUnavailableError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUpstreamError", 503, "The assistant is temporarily unavailable"),
+            ("AssistantNotFoundError", 404, "Project not found"),
+            ("AssistantError", 500, "Internal server error"),
         ],
     )
     def test_handlers_answer_when_enabled(
@@ -745,6 +749,43 @@ class TestAssistantExceptionHandlerGating:
         assert "internal detail" not in response.text
         assert response.json() == {"detail": detail}
         assert response.headers.get("Retry-After") == ("5" if waits else None)
+
+    @pytest.mark.parametrize(
+        ("base_name", "status_code", "detail"),
+        [
+            ("AssistantNotFoundError", 404, "Project not found"),
+            ("AssistantError", 500, "Internal server error"),
+        ],
+    )
+    def test_a_subclass_without_its_own_handler_gets_its_parents_fixed_body(
+        self, monkeypatch, tmp_path, base_name, status_code, detail
+    ):
+        """
+        GIVEN the assistant switched on and an assistant error subclass with no handler of its own
+        WHEN a route raises it
+        THEN the nearest registered parent answers with its fixed body, not the 400 and the
+             error's text of the generic BeCoMeAPIError handler
+        """
+        from fastapi.testclient import TestClient
+
+        from api.assistant import errors
+
+        # GIVEN
+        app = self._build_app(monkeypatch, tmp_path, enabled=True)
+        unhandled = type("UnhandledAssistantError", (getattr(errors, base_name),), {})
+
+        def boom() -> None:
+            raise unhandled("internal detail that must not leak")
+
+        app.add_api_route("/__raise", boom)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # WHEN
+        response = client.get("/__raise")
+
+        # THEN
+        assert response.status_code == status_code
+        assert response.json() == {"detail": detail}
 
 
 _ASSISTANT_LIBRARIES = (

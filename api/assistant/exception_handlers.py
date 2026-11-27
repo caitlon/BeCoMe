@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse
 
 from api.assistant.errors import (
     AssistantBusyError,
+    AssistantError,
+    AssistantNotFoundError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
@@ -22,6 +24,8 @@ from api.assistant.errors import (
 logger = logging.getLogger(__name__)
 
 UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
+NOT_FOUND_DETAIL = "Project not found"
+INTERNAL_ERROR_DETAIL = "Internal server error"
 
 
 def _log(
@@ -142,3 +146,37 @@ def assistant_upstream_handler(request: Request, exc: AssistantUpstreamError) ->
         request, exc, event="assistant_upstream_error", status_code=status_code, level=logging.ERROR
     )
     return JSONResponse(status_code=status_code, content={"detail": UNAVAILABLE_DETAIL})
+
+
+def assistant_not_found_handler(request: Request, exc: AssistantNotFoundError) -> JSONResponse:
+    """Answer 404 when a project the caller cannot see escapes a route.
+
+    The service turns this error into ``ProjectNotFoundError`` and the tools catch it, so it
+    reaches here only from a path that does neither. The body is the one a missing project
+    gets everywhere else, and never the error's text, which names an internal API path.
+
+    :param request: FastAPI request.
+    :param exc: The raised error.
+    :return: A 404 JSON response.
+    """
+    status_code = status.HTTP_404_NOT_FOUND
+    _log(request, exc, event="assistant_not_found", status_code=status_code, level=logging.WARNING)
+    return JSONResponse(status_code=status_code, content={"detail": NOT_FOUND_DETAIL})
+
+
+def assistant_error_handler(request: Request, exc: AssistantError) -> JSONResponse:
+    """Answer 500 for an assistant error that has no handler of its own.
+
+    A subclass with a specific handler never reaches here. One that escapes without a handler
+    is a missed case in our code, not a model server that is down or full, so it answers like
+    any other unhandled fault: 500 with the generic body, not the retryable 503 of
+    :data:`UNAVAILABLE_DETAIL`. Without this handler the error would reach the app's
+    ``BeCoMeAPIError`` handler, which answers 400 with the error's text as the detail.
+
+    :param request: FastAPI request.
+    :param exc: The raised error.
+    :return: A 500 JSON response.
+    """
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    _log(request, exc, event="assistant_error", status_code=status_code, level=logging.ERROR)
+    return JSONResponse(status_code=status_code, content={"detail": INTERNAL_ERROR_DETAIL})

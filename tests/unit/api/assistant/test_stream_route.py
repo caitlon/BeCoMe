@@ -4,11 +4,16 @@ import asyncio
 import json
 import time
 import unicodedata
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import langsmith as ls
 import pytest
+import requests
 from langchain_core.messages import AIMessage
+from starlette.requests import ClientDisconnect
 
+from api.assistant.agent import service as service_module
+from api.assistant.agent import tracing
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.service import AssistantService
 from api.assistant.client import UserApiClient
@@ -18,7 +23,7 @@ from api.assistant.sse import KEEP_ALIVE
 from api.config import Settings
 from api.routes.assistant import chat_stream
 from api.schemas.assistant import AssistantChatRequest
-from tests.shared.assistant_fakes import ScriptedToolCallingModel
+from tests.shared.assistant_fakes import NoNetworkAdapter, ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
 
@@ -272,3 +277,136 @@ class TestReasoningThatNeverCloses:
         assert "secret" not in "".join(blocks)
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
         assert record.reason == "cut_off"
+
+
+class _RecordingClient(tracing.MaskingClient):
+    """A LangSmith client that sends nothing and records the traces it was told to release.
+
+    :ivar released: The id of each trace handed to :meth:`release`, in order.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(auto_batch_tracing=False, **kwargs)
+        self.released: list[str] = []
+        self.session.mount("http://", NoNetworkAdapter())
+        self.session.mount("https://", NoNetworkAdapter())
+
+    def release(self, trace_id: str) -> None:
+        self.released.append(trace_id)
+        super().release(trace_id)
+
+    def request_with_retries(self, method, pathname, **kwargs):
+        return requests.Response()
+
+
+@pytest.fixture
+def traced():
+    """Switch tracing on with a recording client, and hand back the runs the turns open.
+
+    :return: The client, and the list that receives each turn's root run.
+    """
+    client = _RecordingClient()
+    runs: list = []
+
+    def start_and_keep(*args, **kwargs):
+        runs.append(tracing.start_turn(*args, **kwargs))
+        return runs[-1]
+
+    tracing.shutdown_tracing()
+    ls.utils.get_env_var.cache_clear()
+    with (
+        patch.object(tracing, "_new_client", return_value=client),
+        patch.object(service_module, "start_turn", side_effect=start_and_keep),
+    ):
+        yield client, runs
+    tracing.shutdown_tracing()
+    ls.utils.get_env_var.cache_clear()
+
+
+def _traced_settings() -> Settings:
+    return Settings(
+        secret_key="test-secret-key",  # pragma: allowlist secret
+        assistant_answer_llm_model="test-answer-model",
+        assistant_langsmith_enabled=True,
+        assistant_langsmith_api_key="lsv2_test",  # pragma: allowlist secret
+    )
+
+
+async def _send_nowhere(message) -> None:
+    """Take what the response sends."""
+
+
+async def _never_disconnects():
+    """Stand in for a receive channel of a client that stays."""
+    await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+class TestTraceOfAResponseThatIsTornDown:
+    """The held trace of a stream ends once, whether or not the body was ever read."""
+
+    async def test_a_body_that_is_never_read_still_ends_the_trace(self, traced):
+        """
+        GIVEN a prepared stream whose trace is held, and a client that is gone before Starlette
+            reads the first piece of the body, so that sending the headers fails
+        WHEN the response is run
+        THEN the trace is ended, with no answer and the disconnect as its error, and released once
+        """
+        # GIVEN
+        client, runs = traced
+        settings = _traced_settings()
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(
+                settings, ScriptedToolCallingModel(responses=[AIMessage(content="a")])
+            ),
+            settings,
+        )
+        (run,) = runs
+        assert run.end_time is None
+        assert client.released == []
+
+        async def failing_send(message) -> None:
+            raise OSError("client gone")
+
+        # WHEN
+        with pytest.raises(ClientDisconnect):
+            await response(
+                {"type": "http", "asgi": {"spec_version": "2.4"}}, _never_disconnects, failing_send
+            )
+
+        # THEN
+        assert run.end_time is not None
+        assert not run.outputs
+        assert run.error == "ClientDisconnect"
+        assert client.released == [str(run.trace_id)]
+
+    async def test_a_turn_that_streams_is_ended_once_with_its_answer(self, traced):
+        """
+        GIVEN a prepared stream whose trace is held
+        WHEN the response is run to its end
+        THEN the trace was ended by the stream with the answer, and released exactly once
+        """
+        # GIVEN
+        client, runs = traced
+        settings = _traced_settings()
+        response = await chat_stream(
+            _QuietRequest(),  # type: ignore[arg-type]
+            _turn(),
+            AssistantService(
+                settings, ScriptedToolCallingModel(responses=[AIMessage(content="One two")])
+            ),
+            settings,
+        )
+        (run,) = runs
+
+        # WHEN
+        await response(
+            {"type": "http", "asgi": {"spec_version": "2.4"}}, _never_disconnects, _send_nowhere
+        )
+
+        # THEN
+        assert run.outputs == {"answer": "One two"}
+        assert run.error is None
+        assert client.released == [str(run.trace_id)]

@@ -239,12 +239,16 @@ def create_app() -> FastAPI:
     if settings.assistant_enabled:
         from api.assistant.errors import (
             AssistantBusyError,
+            AssistantError,
+            AssistantNotFoundError,
             AssistantRateLimitedError,
             AssistantUnavailableError,
             AssistantUpstreamError,
         )
         from api.assistant.exception_handlers import (
             assistant_busy_handler,
+            assistant_error_handler,
+            assistant_not_found_handler,
             assistant_rate_limited_handler,
             assistant_unavailable_handler,
             assistant_upstream_handler,
@@ -254,11 +258,14 @@ def create_app() -> FastAPI:
         app.include_router(assistant.router)
         # Registered here, not in EXCEPTION_MAP, so a deployed process never imports
         # the assistant package to build its error table. A specific class outranks
-        # the BeCoMeAPIError handler, so these answer before the generic one.
+        # the BeCoMeAPIError handler, and a subclass's own handler outranks the
+        # AssistantError one, so these answer before the generic ones.
         app.add_exception_handler(AssistantBusyError, assistant_busy_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantNotFoundError, assistant_not_found_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantError, assistant_error_handler)  # type: ignore[arg-type]
 
     return app
 

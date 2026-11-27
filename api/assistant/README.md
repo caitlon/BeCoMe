@@ -304,7 +304,10 @@ What a project the caller cannot see does depends on the mode. In `workflow` and
 project named by `project_id` is read ahead of the model, so the request is answered `404`
 exactly as `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the
 request is answered `200`, and a tool asked for such a project tells the model `not_found:`
-and nothing else, so the answer says it found nothing. A failing model server, embedding server,
+and nothing else, so the answer says it found nothing. Should such a project's error escape a
+route anyway, it is answered `404` with `Project not found`, and an assistant error with no
+handler of its own `500` with `Internal server error`; neither body carries the error's text. A
+failing model server, embedding server,
 vector database or application answers `503` with a fixed message. On any request until the
 retriever has been built once, that covers a vector database that is down, a URL that is not set,
 and a collection that is missing or that the role cannot read. Requests that arrive together on a
@@ -444,7 +447,8 @@ client is an empty `499`, nginx's "client closed request", which nobody receives
 open the server cancels it when the client disconnects, with no record of this module. This relies
 on the server reporting ASGI spec 2.3 (uvicorn 0.54 does, so Starlette's `StreamingResponse` listens
 for the disconnect); on a server reporting 2.4 the vanished client is noticed at the next write, a
-keep-alive at the latest. If the
+keep-alive at the latest. A stream whose body is never read, because the client left before the
+first write, still ends its turn's trace, as a disconnect mid-stream does. If the
 watch for the disconnect itself fails, the turn runs on without it and
 `assistant_disconnect_watch_failed` is logged at WARNING with the exception's class in `reason`.
 

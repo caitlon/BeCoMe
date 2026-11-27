@@ -103,12 +103,16 @@ def create_test_app() -> FastAPI:
         from api.assistant.deps import get_docs_retriever
         from api.assistant.errors import (
             AssistantBusyError,
+            AssistantError,
+            AssistantNotFoundError,
             AssistantRateLimitedError,
             AssistantUnavailableError,
             AssistantUpstreamError,
         )
         from api.assistant.exception_handlers import (
             assistant_busy_handler,
+            assistant_error_handler,
+            assistant_not_found_handler,
             assistant_rate_limited_handler,
             assistant_unavailable_handler,
             assistant_upstream_handler,
@@ -121,6 +125,8 @@ def create_test_app() -> FastAPI:
         app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantNotFoundError, assistant_not_found_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantError, assistant_error_handler)  # type: ignore[arg-type]
         # No integration test may reach a real vector database or embedding server; a
         # test that needs particular passages overrides this again with its own fake.
         app.dependency_overrides[get_docs_retriever] = lambda: StaticDocsRetriever([])
