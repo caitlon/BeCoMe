@@ -89,6 +89,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   // expired session, a logout and a login. A probe that finds the count moved on when its
   // request settles is stale and applies nothing, so an old answer never undoes a newer one.
   const epochRef = useRef(0);
+  // Probes whose request has not settled yet, stale ones included: a login that invalidates
+  // one must settle the tab itself, because the probe's own answer will be discarded.
+  const probesInFlightRef = useRef(0);
   const updateUser = useCallback((next: User | null) => {
     userRef.current = next;
     setUser(next);
@@ -100,6 +103,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     const epoch = ++epochRef.current;
     // Read before the request: by the time it settles the user may be another event's.
     const hadUser = userRef.current !== null;
+    probesInFlightRef.current += 1;
     try {
       setStatus('loading');
       // Probe the session via the HttpOnly cookie; isAuthProbe so an anonymous
@@ -148,6 +152,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    } finally {
+      probesInFlightRef.current -= 1;
     }
   }, [queryClient, updateUser]);
 
@@ -218,11 +224,20 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   ) => {
     // A probe in flight now predates the session this login creates, and one that settles
     // while the request is out must not act on the tab as if nothing were happening.
+    const probeInvalidated = probesInFlightRef.current > 0;
     epochRef.current += 1;
-    await api.login(email, password, turnstileToken);
+    try {
+      await api.login(email, password, turnstileToken);
+    } catch (err) {
+      // The invalidated probe left the tab in 'loading' and will not say otherwise.
+      if (probeInvalidated) {
+        await probeSession(false);
+      }
+      throw err;
+    }
     channelRef.current?.post('signed-in');
     await refreshUser();
-  }, [refreshUser]);
+  }, [refreshUser, probeSession]);
 
   const logout = useCallback(async () => {
     let logoutFailed = false;

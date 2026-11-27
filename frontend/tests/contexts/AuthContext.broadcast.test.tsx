@@ -473,6 +473,47 @@ describe('AuthContext across tabs', () => {
       expect(tab.result.current.auth.user).toBeNull()
     })
 
+    it.each([
+      ['unauthenticated', () => Promise.reject(new UnauthorizedError()), false],
+      ['authenticated', () => Promise.resolve(createUser({ id: '1' })), true],
+    ])('settles to %s, not loading, when a login is refused while a mount probe is in flight', async (status, answer, isAuthenticated) => {
+      const mountProbe = deferred<User>()
+      vi.mocked(api.getCurrentUser).mockReturnValueOnce(mountProbe.promise)
+      const tab = mountTab()
+      const other = otherTab()
+      vi.mocked(api.getCurrentUser).mockImplementationOnce(answer)
+      vi.mocked(api.login).mockRejectedValueOnce(new Error('Invalid credentials'))
+
+      await act(async () => {
+        await tab.result.current.auth.login('a@example.com', 'wrong').catch(() => undefined)
+      })
+      await act(async () => {
+        mountProbe.reject(new UnauthorizedError())
+      })
+
+      expect(tab.result.current.auth.status).toBe(status)
+      expect(tab.result.current.auth.isAuthenticated).toBe(isAuthenticated)
+      expect(api.getCurrentUser).toHaveBeenCalledTimes(2)
+      expect(other.received).toEqual([])
+    })
+
+    it('makes no extra request when a login is refused and no probe is in flight', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
+      const tab = mountTab()
+      await waitFor(() => expect(tab.result.current.auth.status).toBe('unauthenticated'))
+      vi.mocked(api.getCurrentUser).mockClear()
+      vi.mocked(api.login).mockRejectedValueOnce(new Error('Invalid credentials'))
+
+      await act(async () => {
+        await expect(tab.result.current.auth.login('a@example.com', 'wrong')).rejects.toThrow(
+          'Invalid credentials'
+        )
+      })
+
+      expect(api.getCurrentUser).not.toHaveBeenCalled()
+      expect(tab.result.current.auth.status).toBe('unauthenticated')
+    })
+
     it('stays signed out when a probe settles after a logout completed', async () => {
       const tab = await signedInTab()
       const probe = deferred<User>()
