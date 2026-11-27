@@ -26,20 +26,24 @@ _COLUMNS: tuple[tuple[str, str, int | None], ...] = (
 )
 
 
-def _unescape(column: str) -> str:
-    """Return the SQL that turns the three entities back into characters.
+def _unescape(column: sa.ColumnElement[str]) -> sa.ColumnElement[str]:
+    """Return the expression that turns the three entities back into characters.
 
     The ampersand comes last, so ``&amp;lt;`` becomes the text ``&lt;`` and not ``<``.
     """
-    return f"replace(replace(replace({column}, '&lt;', '<'), '&gt;', '>'), '&amp;', '&')"
+    return sa.func.replace(
+        sa.func.replace(sa.func.replace(column, "&lt;", "<"), "&gt;", ">"), "&amp;", "&"
+    )
 
 
-def _escape(column: str) -> str:
-    """Return the SQL that escapes the three characters the way bleach did.
+def _escape(column: sa.ColumnElement[str]) -> sa.ColumnElement[str]:
+    """Return the expression that escapes the three characters the way bleach did.
 
     The ampersand comes first, so the entities it adds are not escaped a second time.
     """
-    return f"replace(replace(replace({column}, '&', '&amp;'), '<', '&lt;'), '>', '&gt;')"
+    return sa.func.replace(
+        sa.func.replace(sa.func.replace(column, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"
+    )
 
 
 def upgrade() -> None:
@@ -51,8 +55,8 @@ def upgrade() -> None:
     This decodes the three entities once. Bleach's output never held a bare ``<`` or ``>``,
     and it escaped every ``&`` except one that looked like the start of an entity
     (``AT&T;``); only the three exact entities are replaced, so such text is left as it is.
-    The text is plain SQL and imports no application code, so it does not change when the
-    sanitizer does.
+    The statements are built with SQLAlchemy Core and import no application code, so they
+    do not change when the sanitizer does.
 
     A save by the previous application version between this migration and the new version
     going live stores the old escaped form, which this migration does not see; such a row
@@ -64,11 +68,10 @@ def upgrade() -> None:
     cleans it. Decoded text is never longer than the escaped text, so it always fits.
     """
     for table, column, _ in _COLUMNS:
+        t = sa.table(table, sa.column(column, sa.String))
+        c = t.c[column]
         op.execute(
-            sa.text(
-                f"UPDATE {table} SET {column} = {_unescape(column)} "  # noqa: S608
-                f"WHERE {column} LIKE '%&%' AND {column} <> {_unescape(column)}"
-            )
+            sa.update(t).where(c.like("%&%"), c != _unescape(c)).values({column: _unescape(c)})
         )
 
 
@@ -82,11 +85,9 @@ def downgrade() -> None:
     old code could never have stored it.
     """
     for table, column, max_length in _COLUMNS:
-        fits = f" AND length({_escape(column)}) <= {max_length}" if max_length else ""
-        op.execute(
-            sa.text(
-                f"UPDATE {table} SET {column} = {_escape(column)} "  # noqa: S608
-                f"WHERE ({column} LIKE '%&%' OR {column} LIKE '%<%' OR {column} LIKE '%>%')"
-                f"{fits}"
-            )
-        )
+        t = sa.table(table, sa.column(column, sa.String))
+        c = t.c[column]
+        conditions = [sa.or_(c.like("%&%"), c.like("%<%"), c.like("%>%"))]
+        if max_length:
+            conditions.append(sa.func.length(_escape(c)) <= max_length)
+        op.execute(sa.update(t).where(*conditions).values({column: _escape(c)}))
