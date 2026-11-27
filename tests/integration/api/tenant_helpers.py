@@ -50,10 +50,12 @@ class Team:
 
 _PROJECT = "/api/v1/projects/{project_id}"
 
-# Every project-scoped route as (method, path, body). Placeholders are filled by
-# ``send_route``: ``target_id`` is the user a request is aimed at, ``actor_id`` the caller,
-# ``invitee_email`` a registered address and ``missing_id`` a random id. ``ADMIN_ROUTES``
-# sit behind ProjectAdmin, ``MEMBER_ROUTES`` behind ProjectMember.
+# Every route with ``{project_id}`` in its path, as (method, path, body); a test compares
+# this table with the routes of the test app, so a new project route cannot be left out.
+# Placeholders are filled by ``send_route``: ``target_id`` is the user a request is aimed
+# at, ``actor_id`` the caller, ``invitee_email`` a registered address and ``invitation_id``
+# an invitation (a random one unless the test passes a real id). ``ADMIN_ROUTES`` sit
+# behind ProjectAdmin, ``MEMBER_ROUTES`` behind ProjectMember.
 _OPINION = {"position": "Expert", "lower_bound": 40.0, "peak": 60.0, "upper_bound": 80.0}
 ADMIN_ROUTES: dict[str, tuple[str, str, dict | None]] = {
     "update_project": ("PATCH", _PROJECT, {"name": "Renamed", "description": "Changed"}),
@@ -66,7 +68,7 @@ ADMIN_ROUTES: dict[str, tuple[str, str, dict | None]] = {
     ),
     "invite": ("POST", _PROJECT + "/invite", {"email": "{invitee_email}"}),
     "list_invitations": ("GET", _PROJECT + "/invitations", None),
-    "revoke_invitation": ("DELETE", _PROJECT + "/invitations/{missing_id}", None),
+    "revoke_invitation": ("DELETE", _PROJECT + "/invitations/{invitation_id}", None),
 }
 MEMBER_ROUTES: dict[str, tuple[str, str, dict | None]] = {
     "get_project": ("GET", _PROJECT, None),
@@ -74,6 +76,7 @@ MEMBER_ROUTES: dict[str, tuple[str, str, dict | None]] = {
     "list_opinions": ("GET", _PROJECT + "/opinions", None),
     "submit_opinion": ("POST", _PROJECT + "/opinions", _OPINION),
     "delete_opinion": ("DELETE", _PROJECT + "/opinions", None),
+    "leave_project": ("DELETE", _PROJECT + "/members/me", None),
     "get_result": ("GET", _PROJECT + "/result", None),
     "export_result": ("GET", _PROJECT + "/result/export?format=csv", None),
 }
@@ -90,11 +93,11 @@ def send_route(
     :param token: Access token of the caller
     :param project_id: Project UUID string
     :param context: Values for the ``target_id``, ``actor_id``, ``invitee_email`` and
-        ``missing_id`` placeholders the route may use
+        ``invitation_id`` placeholders the route may use
     :return: The raw response
     """
     method, path, body = ALL_ROUTES[name]
-    values = {"project_id": project_id, "missing_id": str(uuid4()), **context}
+    values = {"project_id": project_id, "invitation_id": str(uuid4()), **context}
     payload: Any = None
     if body is not None:
         payload = {
@@ -116,6 +119,24 @@ def register_account(client: TestClient, email: str) -> Account:
     return Account(email=email, token=token, user_id=profile.json()["id"])
 
 
+def invite(client: TestClient, admin: Account, project_id: str, email: str) -> dict:
+    """Invite a registered user into a project and return the invitation.
+
+    :param client: Test client instance
+    :param admin: Admin of the project
+    :param project_id: Project UUID string
+    :param email: Address of the registered user to invite
+    :return: The invitation response data
+    """
+    invited = client.post(
+        f"/api/v1/projects/{project_id}/invite",
+        json={"email": email},
+        headers=auth_header(admin.token),
+    )
+    assert invited.status_code == 201
+    return invited.json()
+
+
 def add_expert(client: TestClient, admin: Account, project_id: str, email: str) -> Account:
     """Register a user and make them an ordinary member of a project (invite, then accept).
 
@@ -126,14 +147,9 @@ def add_expert(client: TestClient, admin: Account, project_id: str, email: str) 
     :return: The new member's account
     """
     account = register_account(client, email)
-    invited = client.post(
-        f"/api/v1/projects/{project_id}/invite",
-        json={"email": email},
-        headers=auth_header(admin.token),
-    )
-    assert invited.status_code == 201
+    invitation = invite(client, admin, project_id, email)
     accepted = client.post(
-        f"/api/v1/invitations/{invited.json()['id']}/accept",
+        f"/api/v1/invitations/{invitation['id']}/accept",
         headers=auth_header(account.token),
     )
     assert accepted.status_code == 201
@@ -169,19 +185,26 @@ def capture_state(client: TestClient, admin: Account, project_id: str) -> dict:
     :return: Project, member roles, opinions, the admin's project ids and all invitation rows
     """
     headers = auth_header(admin.token)
-    project = client.get(f"/api/v1/projects/{project_id}", headers=headers)
-    members = client.get(f"/api/v1/projects/{project_id}/members", headers=headers)
-    opinions = client.get(f"/api/v1/projects/{project_id}/opinions", headers=headers)
-    listing = client.get("/api/v1/projects", headers=headers)
+    responses = {
+        "project": client.get(f"/api/v1/projects/{project_id}", headers=headers),
+        "members": client.get(f"/api/v1/projects/{project_id}/members", headers=headers),
+        "opinions": client.get(f"/api/v1/projects/{project_id}/opinions", headers=headers),
+        "listing": client.get("/api/v1/projects", headers=headers),
+    }
+    for name, response in responses.items():
+        assert response.status_code == 200, f"reading {name} failed: {response.text}"
     with app_session(client) as session:
         invitations = sorted(
-            (str(row.project_id), str(row.invitee_id))
+            (str(row.id), str(row.project_id), str(row.invitee_id), str(row.inviter_id))
             for row in session.exec(select(Invitation)).all()
         )
+    opinion_fields = ("id", "user_id", "position", "lower_bound", "peak", "upper_bound")
     return {
-        "project": project.json(),
-        "roles": {member["user_id"]: member["role"] for member in members.json()},
-        "opinions": sorted((item["id"], item["peak"]) for item in opinions.json()),
-        "admin_project_ids": sorted(item["id"] for item in listing.json()),
+        "project": responses["project"].json(),
+        "roles": {member["user_id"]: member["role"] for member in responses["members"].json()},
+        "opinions": sorted(
+            tuple(item[field] for field in opinion_fields) for item in responses["opinions"].json()
+        ),
+        "admin_project_ids": sorted(item["id"] for item in responses["listing"].json()),
         "invitations": invitations,
     }

@@ -6,6 +6,7 @@ personal-data export and the invitation list show only what belongs to the calle
 """
 
 import json
+import re
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,7 @@ from fastapi import status
 from tests.integration.api.conftest import (
     auth_header,
     create_project,
+    create_test_app,
     delete_account,
     submit_opinion,
 )
@@ -22,6 +24,7 @@ from tests.integration.api.tenant_helpers import (
     Account,
     Team,
     capture_state,
+    invite,
     make_team,
     register_account,
     send_route,
@@ -56,6 +59,8 @@ class TestAnotherTenantsProject:
         """Every project-scoped route answers 404 and leaves both projects as they were."""
         # GIVEN two tenants, each the admin of their own project
         invitee = register_account(client, "alpha-invitee@example.com")
+        register_account(client, "alpha-third@example.com")
+        pending = invite(client, team.admin, team.project_id, "alpha-third@example.com")
         before_one = capture_state(client, team.admin, team.project_id)
         before_two = capture_state(client, rival, rival_project["id"])
 
@@ -68,10 +73,12 @@ class TestAnotherTenantsProject:
             target_id=team.admin.user_id,
             actor_id=rival.user_id,
             invitee_email=invitee.email,
+            invitation_id=pending["id"],
         )
 
-        # THEN the project is reported missing, and neither project changed
+        # THEN the dependency reports the project missing, and neither project changed
         assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json() == {"detail": "Project not found"}
         assert capture_state(client, team.admin, team.project_id) == before_one
         assert capture_state(client, rival, rival_project["id"]) == before_two
         assert rival.user_id not in before_one["roles"]
@@ -97,6 +104,33 @@ class TestAnotherTenantsProject:
         assert capture_state(client, team.admin, team.project_id)["project"]["name"] == (
             "AlphaProject"
         )
+
+
+class TestRouteTable:
+    """The route table the tenant tests iterate over covers every project-scoped route."""
+
+    def test_table_matches_the_routes_of_the_app(self):
+        """Each route with ``{project_id}`` in its path is in the table, and nothing else is."""
+
+        def shape(path: str) -> str:
+            """Reduce a path to its static parts, so ``{user_id}`` and ``{target_id}`` match."""
+            return re.sub(r"\{(?!project_id\})[^}]+\}", "{}", path.split("?")[0])
+
+        # GIVEN the (method, path) pairs of the app the tests run against, read from its
+        # OpenAPI schema because included routers are not listed flat in ``app.routes``
+        paths = create_test_app().openapi()["paths"]
+        in_app = {
+            (method.upper(), shape(path))
+            for path, operations in paths.items()
+            if "{project_id}" in path
+            for method in operations
+        }
+
+        # WHEN they are compared with the table
+        in_table = {(method, shape(path)) for method, path, _ in ALL_ROUTES.values()}
+
+        # THEN the two sets are equal
+        assert in_table == in_app
 
 
 class TestMissingAndForeignProjectLookAlike:
@@ -243,6 +277,19 @@ class TestPersonalDataStaysPrivate:
         assert second_project["id"] not in mine.text
         assert to_rival["id"] not in theirs.text
         assert team.project_id not in theirs.text
+
+    def test_a_user_without_invitations_sees_none(self, client, team, rival):
+        """Pending invitations of other users never show up in an empty list."""
+        # GIVEN pending invitations for others, and a user nobody has invited
+        third = register_account(client, "alpha-third@example.com")
+        invite(client, team.admin, team.project_id, third.email)
+
+        # WHEN the uninvited user lists their invitations
+        response = client.get("/api/v1/invitations", headers=auth_header(rival.token))
+
+        # THEN the list is empty
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == []
 
     def test_another_users_invitation_cannot_be_answered(self, client, team, rival):
         """Accepting someone else's invitation fails and does not make the caller a member."""

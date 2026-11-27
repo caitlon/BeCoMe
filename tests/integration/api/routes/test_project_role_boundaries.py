@@ -9,11 +9,13 @@ checks that nothing changed.
 import pytest
 from fastapi import status
 
-from tests.integration.api.conftest import auth_header
+from tests.integration.api.conftest import auth_header, create_project
 from tests.integration.api.tenant_helpers import (
+    ADMIN_ROUTES,
     Account,
     Team,
     capture_state,
+    invite,
     make_team,
     register_account,
     send_route,
@@ -124,6 +126,34 @@ class TestOrdinaryMemberIsRefused:
         assert after["project"]["admin_id"] == team.admin.user_id
 
 
+class TestAdminOfAnotherProjectIsOnlyAMemberHere:
+    """Being admin of project P2 gives no admin rights on P1, where the caller is an expert."""
+
+    @pytest.mark.parametrize("route", sorted(ADMIN_ROUTES))
+    def test_admin_of_their_own_project_is_refused_on_this_one(self, client, team, invitee, route):
+        """An expert of P1 who administers P2 still gets 403 on each admin route of P1."""
+        # GIVEN an expert of P1 who also owns a project of their own, and a real invitation
+        create_project(client, team.expert.token, "GammaProject")
+        pending = invite(client, team.admin, team.project_id, invitee.email)
+        before = capture_state(client, team.admin, team.project_id)
+
+        # WHEN they send the admin route to P1
+        response = send_route(
+            client,
+            route,
+            team.expert.token,
+            team.project_id,
+            target_id=team.other_expert.user_id,
+            actor_id=team.expert.user_id,
+            invitee_email=team.admin.email,
+            invitation_id=pending["id"],
+        )
+
+        # THEN it is forbidden as a role problem, and P1 is unchanged
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert capture_state(client, team.admin, team.project_id) == before
+
+
 class TestOutsiderIsRefused:
     """Someone with no membership gets 404 and cannot change or remove anything."""
 
@@ -204,13 +234,14 @@ class TestRightsFollowTheRole:
     def test_former_admin_cannot_move_people_after_a_transfer(self, client, team, route):
         """The previous admin can neither remove a member nor take the project back."""
         # GIVEN the admin has transferred ownership to an expert
-        send_route(
+        handover = send_route(
             client,
             "transfer_ownership",
             team.admin.token,
             team.project_id,
             actor_id=team.expert.user_id,
         )
+        assert handover.status_code == status.HTTP_200_OK
         before = capture_state(client, team.expert, team.project_id)
 
         # WHEN the former admin removes the other expert or names themselves admin again
@@ -232,16 +263,10 @@ class TestRightsFollowTheRole:
     )
     def test_removed_member_loses_access(self, client, team, route):
         """After the admin removes a member, that member gets 404 on the project's read routes."""
-        # GIVEN an expert who could read the project
+        # GIVEN an expert who could read the project and was then removed by the admin
         assert send_route(client, route, team.expert.token, team.project_id).status_code == 200
-        removal = send_route(
-            client,
-            "remove_member",
-            team.admin.token,
-            team.project_id,
-            target_id=team.expert.user_id,
-        )
-        assert removal.status_code == status.HTTP_204_NO_CONTENT
+        self._remove_expert(client, team)
+        before = capture_state(client, team.admin, team.project_id)
 
         # WHEN the removed member reads the project again
         response = send_route(client, route, team.expert.token, team.project_id)
@@ -250,6 +275,35 @@ class TestRightsFollowTheRole:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         projects = client.get("/api/v1/projects", headers=auth_header(team.expert.token))
         assert projects.json() == []
-        assert (
-            team.expert.user_id not in capture_state(client, team.admin, team.project_id)["roles"]
+        assert team.expert.user_id not in before["roles"]
+        assert capture_state(client, team.admin, team.project_id) == before
+
+    @pytest.mark.parametrize("route", ["submit_opinion", "delete_opinion", "leave_project"])
+    def test_removed_member_cannot_write(self, client, team, route):
+        """A removed member can neither submit nor delete an opinion, and cannot leave again."""
+        # GIVEN an expert who was removed from the project
+        self._remove_expert(client, team)
+        before = capture_state(client, team.admin, team.project_id)
+
+        # WHEN they send the write
+        response = send_route(client, route, team.expert.token, team.project_id)
+
+        # THEN the project looks missing and nothing changed
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert capture_state(client, team.admin, team.project_id) == before
+
+    @staticmethod
+    def _remove_expert(client, team: Team) -> None:
+        """Remove the team's first expert as the admin and check the removal worked.
+
+        :param client: Test client instance
+        :param team: Team whose ``expert`` is removed
+        """
+        removal = send_route(
+            client,
+            "remove_member",
+            team.admin.token,
+            team.project_id,
+            target_id=team.expert.user_id,
         )
+        assert removal.status_code == status.HTTP_204_NO_CONTENT
