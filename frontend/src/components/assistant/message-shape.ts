@@ -42,15 +42,24 @@ export function cleanToolsUsed(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((tool): tool is string => typeof tool === "string") : [];
 }
 
+function cleanStrings(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;
+}
+
 /** Only a complete set of checks counts; anything else is treated as "no checks". */
 export function cleanChecks(value: unknown): AnswerChecks | null {
   if (!isRecord(value)) return null;
-  const { citations_valid, numbers_grounded, ungrounded_numbers } = value;
+  const { citations_valid, numbers_grounded, ungrounded_numbers, project_name_numbers, expert_name_numbers } = value;
   if (typeof citations_valid !== "boolean" || typeof numbers_grounded !== "boolean") return null;
   if (!Array.isArray(ungrounded_numbers)) return null;
+  // The name-number lists are optional: a missing or malformed one is left out of the result.
+  const projectNameNumbers = cleanStrings(project_name_numbers);
+  const expertNameNumbers = cleanStrings(expert_name_numbers);
   return {
     citations_valid,
     numbers_grounded,
     ungrounded_numbers: ungrounded_numbers.filter((n): n is string => typeof n === "string"),
+    ...(projectNameNumbers && { project_name_numbers: projectNameNumbers }),
+    ...(expertNameNumbers && { expert_name_numbers: expertNameNumbers }),
   };
 }

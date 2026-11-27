@@ -196,6 +196,10 @@ export interface AnswerChecks {
   citations_valid: boolean;
   numbers_grounded: boolean;
   ungrounded_numbers: string[];
+  /** Numbers found only inside a verbatim copy of the project name, so not from the data. */
+  project_name_numbers?: string[];
+  /** Numbers found only inside a verbatim copy of an expert name, so not from the data. */
+  expert_name_numbers?: string[];
 }
 
 export interface TurnUsage {
