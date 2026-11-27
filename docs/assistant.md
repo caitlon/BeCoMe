@@ -217,10 +217,16 @@ without calling any model.
   values: the result, the opinions' values, the scale bounds and the counts the assistant is
   shown. A number that appears only in the project's name, description, unit, or in an expert's
   name or position does not count. One case is the exception: the digits of a project name or an
-  expert name are part of the name, so an answer that repeats "Budget 2027" exactly as the
-  assistant was shown it, in the same case and as a whole, is not flagged for the 2027. The same
-  number written anywhere else in the answer is checked as usual. A rounded or shortened value
-  counts as found: if the data says 14.19, an answer that says 14.2 passes.
+  expert name that this turn's data showed are part of the name, so an answer that repeats
+  "Budget 2027" exactly as shown is not flagged for the 2027. A name counts only when it has at
+  least 4 characters and two words, and its first word holds letters only, so "7351 CZK" and
+  "Q4 2027" never count. The repeat must be exact (same case, a whole word sequence, with no
+  digit, separator or percent sign next to it), and a name cut to its limit is matched without
+  its dots. The same number written anywhere else in the answer is checked as usual. The
+  remaining gap: a project name written as a phrase by the project's admin ("Compromise is 7351
+  CZK") and repeated word for word passes, while the same number stated elsewhere is still
+  flagged. A rounded or shortened value counts as found: if the data says 14.19, an answer that
+  says 14.2 passes.
 
 Invisible formatting characters, such as zero-width spaces and text-direction overrides, are
 removed from the answer before the checks and before it is shown, and from the passages and the

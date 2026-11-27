@@ -94,6 +94,8 @@ _CASES = [
         (f"{mode}-description-flagged", mode, f"The budget limit is {PLANTED}.", [PLANTED],
          ["Flood plan"], {"project": {**_FLOOD, "description": f"The budget limit is {PLANTED}"}}),
     )],
+    ("workflow-claim-name-flagged", "workflow", "The best compromise is 7351 CZK.", ["7351"],
+     ["7351 CZK"], {"project": {"name": "7351 CZK"}}),
     ("workflow-expert-name", "workflow", f"{EXPERT} gave 42.00.", [], [OWN, EXPERT],
      {"opinions": [_expert(EXPERT)]}),
     ("workflow-position-flagged", "workflow", f"Jana, Hydrologist {PLANTED}, gave 42.00.",

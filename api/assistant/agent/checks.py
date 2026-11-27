@@ -88,13 +88,16 @@ _SIGN_PREFIXES = "([{=,;:"
 # middle of such a run, so ``7 500 CZK`` is not a copy of ``500 CZK``.
 _NUMBER_JOINERS = "[ \u00a0\u202f.,/:\\-\u2013\u2212]"
 # A copy is a whole word sequence: no letter or digit right before or after it (an underscore
-# counts as a boundary, so ``_Budget 2027_`` is a copy), and no digit and joiner before it or
-# joiner and digit after it.
+# counts as a boundary, so ``_Budget 2027_`` is a copy), no digit and joiner before it, no
+# joiner and digit after it, and no percent or per-mille sign after it (``Budget 2027%``).
 _COPY_BEFORE = rf"(?<![^\W_])(?<!\d{_NUMBER_JOINERS})"
-_COPY_AFTER = rf"(?![^\W_])(?!{_NUMBER_JOINERS}\d)"
-# Fewer characters than this, or none that is a letter, and a field is too common to be told
-# from the model's own words: ``5``, ``12``, ``2027``, ``A1``.
+_COPY_AFTER = rf"(?![^\W_])(?!{_NUMBER_JOINERS}\d)(?!\s*[%\u2030])"
+# A field is a name, and its digits part of the name, only when it has this many characters
+# and at least two words, the first of letters only: ``Budget 2027``, ``Expert 41``. A bare
+# number or a number first (``7351 CZK``, ``2027``, ``Q4 2027``) reads as the model's own
+# claim, so it is never a copy.
 _COPY_MIN_LENGTH = 4
+_COPY_MIN_WORDS = 2
 _CUT_MARK = "..."
 
 
@@ -695,30 +698,39 @@ def _drop_words(text: str) -> str:
     return _WORD.sub(replace, text)
 
 
+def _is_name(field: str) -> bool:
+    """Tell whether a field, with its cut dots removed, is a name whose digits a copy may hide.
+
+    :param field: A free-text field as the model was shown it.
+    :return: True when it has at least 4 characters and two words, and its first word holds
+        a letter and no digit.
+    """
+    words = field.split()
+    return (
+        len(field) >= _COPY_MIN_LENGTH
+        and len(words) >= _COPY_MIN_WORDS
+        and any(char.isalpha() for char in words[0])
+        and not any(char.isdigit() for char in words[0])
+    )
+
+
 def _mask_copies(text: str, copies: Iterable[str]) -> str:
     """Replace every verbatim copy of a free-text field in a text by a filler.
 
     A copy is a field as the model was shown it, matched case-sensitively and as a whole
     word sequence (see ``_COPY_BEFORE`` and ``_COPY_AFTER``); any run of whitespace in the
     field matches any run of whitespace in the text. A field that ends in ``...`` was cut
-    to its limit and is matched without the dots. A field shorter than 4 characters after
-    that, or without a letter, is never a copy. The longest copy is tried first. The
-    pattern is built from escaped literals only, so matching is linear in the text.
+    to its limit and is matched without the dots. A field is a copy only when, after that,
+    it has at least 4 characters and two words, and its first word holds a letter and no
+    digit (see ``_COPY_MIN_WORDS``). The longest copy is tried first. The pattern is built
+    from escaped literals only, so matching is linear in the text.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
     :return: The text with each copy replaced by the filler of a dropped token.
     """
     prefixes = {copy.removesuffix(_CUT_MARK).rstrip() for copy in copies}
-    qualifying = sorted(
-        (
-            prefix
-            for prefix in prefixes
-            if len(prefix) >= _COPY_MIN_LENGTH and any(char.isalpha() for char in prefix)
-        ),
-        key=len,
-        reverse=True,
-    )
+    qualifying = sorted((prefix for prefix in prefixes if _is_name(prefix)), key=len, reverse=True)
     if not qualifying:
         return text
     alternatives = "|".join(r"\s+".join(map(re.escape, copy.split())) for copy in qualifying)
@@ -742,7 +754,7 @@ def _strip_answer(answer: str, copies: Iterable[str] = ()) -> str:
     name and a digit tail are each replaced by a filler that is not whitespace, so a
     hyphen right after one (``[1]-5``) is not read as a minus sign and the digits around
     it do not run together. Verbatim copies of the fields the model was shown go right after
-    the invisible characters (see :func:`_mask_copies`), before any pattern can cut one.
+    the invisible characters (see :func:`_mask_copies`), ahead of the other drops.
 
     :param answer: The model's final answer text.
     :param copies: The free-text fields whose digits are part of a copy.
@@ -866,11 +878,14 @@ def find_ungrounded_numbers(
 
     The digits of a project name or of an expert name are part of that name: an answer that
     repeats ``Budget 2027`` as the model was shown it does not carry a number, and ``copies``
-    lists those fields (see :func:`_mask_copies` for what counts as a repeat). A copy
-    grounds nothing: the same number written anywhere else in the answer is checked as
-    usual, and so is a number in a copy that is cut, edited or written in another case.
-    The residual risk is a name written as a claim (a project called ``Best compromise is
-    7351``) and repeated verbatim: it passes, while the same number stated elsewhere is still
+    lists those fields, the names this turn's data blocks showed (see :func:`_mask_copies`
+    for what counts as a repeat). A field counts when it has at least 4 characters and two
+    words, the first of letters only, so ``7351 CZK`` and ``Q4 2027`` never do. The repeat
+    must be exact, in the same case, as a whole word sequence with no digit, joiner or
+    percent sign next to it; a cut name is matched without its dots. A copy grounds nothing:
+    the same number written anywhere else in the answer is checked as usual. The residual
+    risk is a name written as a phrase (a project the admin called ``Compromise is 7351
+    CZK``) and repeated verbatim: it passes, while the same number stated elsewhere is still
     reported. A masked copy becomes a filler like any other dropped token, so a minus right
     after it is not read as a sign.
 
