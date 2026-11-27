@@ -214,16 +214,23 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('[4]').closest('s')).not.toBeNull();
     });
 
-    it('links a known citation and strikes an unknown one when the answer has several sources', () => {
-      renderMessage({
-        content: 'A value [2] and [4].',
-        sources: [publicSource, localSource, { ...publicSource, n: 3, title: 'Third' }],
-      });
+    it.each([
+      { numbers: [1, 2, 3], known: '[2]', unknown: '[4]' },
+      { numbers: [1], known: '[1]', unknown: '[2]' },
+    ])(
+      'links $known and strikes $unknown when the answer has sources $numbers',
+      ({ numbers, known, unknown }) => {
+        renderMessage({
+          content: `A value ${known} and ${unknown}.`,
+          sources: numbers.map((n) => ({ ...publicSource, n, title: `Source ${n}` })),
+        });
 
-      expect(screen.getByRole('link', { name: '[2]' })).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: '[4]' })).not.toBeInTheDocument();
-      expect(screen.getByText('[4]').closest('s')).not.toBeNull();
-    });
+        expect(screen.getByRole('link', { name: known })).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: unknown })).not.toBeInTheDocument();
+        expect(screen.getByText(unknown).closest('s')).not.toBeNull();
+        expect(screen.getAllByText(/No such source/)).toHaveLength(1);
+      },
+    );
 
     it.each([[[]], [undefined]])('shows every [n] as plain text in a done answer with sources %j', (sources) => {
       const { container } = renderMessage({ content: 'A value [4] and [1].', sources });

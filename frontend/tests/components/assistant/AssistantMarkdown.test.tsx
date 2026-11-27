@@ -294,12 +294,13 @@ describe('AssistantMarkdown', () => {
       });
     });
 
-    it('treats every [n] as struck through when the sources are known to be empty', () => {
-      renderMarkdown('Claim [1].', { sourceNumbers: [] });
+    it('leaves every [n] as plain text when the answer has no sources', () => {
+      const { container } = renderMarkdown('Claim [1].', { sourceNumbers: [] });
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      expect(screen.getByText('[1]').closest('s')).not.toBeNull();
-      expect(document.body).toHaveTextContent('No such source');
+      expect(container.querySelector('s')).toBeNull();
+      expect(container.textContent).toBe('Claim [1].');
+      expect(document.body).not.toHaveTextContent('No such source');
     });
 
     it('leaves [n] as plain text while the sources are not known yet', () => {

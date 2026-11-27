@@ -141,7 +141,9 @@ export interface AssistantMarkdownProps {
   readonly messageId: string;
   /**
    * Numbers of the sources this answer really has; any other [n] is struck through.
-   * Undefined means the sources are not known yet, and every [n] stays plain text.
+   * An empty list or undefined renders every [n] as plain text: undefined while the sources
+   * are not known yet, an empty list when the answer has none (hidden by the server, or none
+   * found), where a [n] is a value, not a citation.
    */
   readonly sourceNumbers?: readonly number[];
   readonly onCite?: (n: number) => void;
@@ -152,11 +154,12 @@ export interface AssistantMarkdownProps {
  * text: react-markdown never parses it into elements without rehype-raw, which is
  * deliberately absent. A `[n]` marker in the text of a paragraph, heading, list item, bold or
  * italic run becomes our own element: an in-page anchor when the sources are known and
- * include n, a struck-through marker when they do not, plain text while they are unknown.
+ * include n, a struck-through marker when they do not, plain text while they are unknown or empty.
  * A "[n]: url" line is shown as text, so it cannot turn the markers into markdown links.
  */
 export function AssistantMarkdown({ content, messageId, sourceNumbers, onCite }: AssistantMarkdownProps) {
-  const known = useMemo(() => (sourceNumbers ? new Set(sourceNumbers) : undefined), [sourceNumbers]);
+  // Without any source a [n] cannot be a citation, so it is left as written.
+  const known = useMemo(() => (sourceNumbers?.length ? new Set(sourceNumbers) : undefined), [sourceNumbers]);
   const citation = useMemo(() => ({ known, messageId, onCite }), [known, messageId, onCite]);
   const text = useMemo(() => neutraliseDefinitions(content), [content]);
 
