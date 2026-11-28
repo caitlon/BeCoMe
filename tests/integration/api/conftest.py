@@ -11,7 +11,6 @@ import dns.asyncresolver
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
@@ -33,7 +32,7 @@ from api.db.utils import utc_now
 from api.dependencies import get_email_address_policy
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
-from api.middleware.rate_limit import limiter
+from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 from api.services.email_policy import EmailAddressPolicy
@@ -78,7 +77,7 @@ def create_test_app() -> FastAPI:
 
     # Rate limiting setup (required for auth routes)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
 
     # CSRF double-submit guard (dormant unless the request carries the csrf_token cookie).
     app.add_middleware(CSRFMiddleware)
