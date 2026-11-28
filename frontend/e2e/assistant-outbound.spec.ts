@@ -95,7 +95,7 @@ const hostileStream = (route: Route) =>
 
 /**
  * Records and aborts every http(s) request to an origin other than the app's own, records
- * every WebSocket to another host, and returns the set it fills (a Set, because both nets
+ * every WebSocket the page opens to another host (not one opened by a popup), and returns the set it fills (a Set, because both nets
  * see the same request). Two nets, so a miss in one does not hide a request:
  *  - a catch-all route that aborts the request, so no http(s) request to another origin
  *    leaves this machine even if the app does misbehave, and
