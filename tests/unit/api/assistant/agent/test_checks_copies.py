@@ -95,7 +95,7 @@ _CASES = [
     _case("shorter-alone", "See Plan 2027 Q 4 today.", ("Plan 2027",), ["4"]),
     _case("shorter-where-longer-misses", "See Plan 2027 today.", ("Plan 2027 Q 4", "Plan 2027"), []),
     # A copy must not change how the rest of the text is read.
-    _case("url-swallows-its-copy", "https://x.y/Budget 2027;99999", (_B,), []),
+    _case("url-ends-inside-its-copy", "https://x.y/Budget 2027;99999", (_B,), ["99999"]),
     _case("name-in-a-url-path", "See https://x.y/Jana/reports/2024 now", ("Jana",), []),
     _case("ordinal-before-lowercase-copy", "Podle 2. pilot 2027 vysly dobre.", ("pilot 2027",), []),
     _case("ordinal-before-lowercase-name", "See 3. van der Berg gave 5.", ("van der Berg",), [], ["5"]),

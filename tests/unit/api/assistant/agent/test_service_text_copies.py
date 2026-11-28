@@ -157,13 +157,19 @@ _CASES = [
            briefs=_briefs(["https://x.y/z", "Budget 42"]))
       for n, answer in enumerate(("The value is 42. https://x.y/z and Budget 42",
                                   "Budget 42 is open. The budget is 42. https://x.y/z ok."))],
-    _row("url-name-and-a-nested-expert-name", "agent",
-         "Budget 43 plan. The budget is 43. https://x.y/z", bad=["43"],
-         kept=(["https://x.y/z", "Budget 43"], ["Budget 43 plan"]),
-         briefs=_briefs(["https://x.y/z", "Budget 43"]), opinions=[_expert("Budget 43 plan")],
+    # Every 43 sits in the expert's name, which covers the project's shorter one, so it is the
+    # expert's. The 6 is read in the answer (a sentence ends after it) but not in the name on
+    # its own (a list number), so no repeated name holds it and it stays ungrounded, whatever
+    # a name that the answer does not repeat holds.
+    _row("url-name-a-nested-expert-name-and-a-name-that-is-not-repeated", "agent",
+         "See 6. Plan now. Budget 43 plan is open, as is https://x.y/z ok.", bad=["6"],
+         expert=["43"],
+         kept=(["https://x.y/z", "Budget 43"], ["6. Plan", "Plan 6", "Budget 43 plan"]),
+         briefs=_briefs(["https://x.y/z", "Budget 43"]),
+         opinions=[_expert("6. Plan"), _expert("Plan 6"), _expert("Budget 43 plan")],
          tools=("list_my_projects", "get_project_opinions")),
-    _row("number-glued-to-a-url-name-by-a-bracket", "workflow", "See https://x.y/z(77) now.",
-         bad=["77"], kept=(["https://x.y/z"], []), project_fields={"name": "https://x.y/z"}),
+    _row("url-name-reads-its-url-as-the-plain-scan-does", "workflow", "See https://x.y/z(77) now.",
+         kept=(["https://x.y/z"], []), project_fields={"name": "https://x.y/z"}),
     _row("link-target-with-a-copy", "workflow", f"See [x]({NAME};99999) now.", bad=["99999"],
          project=["2027"], kept=([NAME], []), project_fields={"name": NAME}),
     _row("url-with-a-copy", "workflow", f"See https://x.y/{NAME};99999 now.", bad=["99999"],

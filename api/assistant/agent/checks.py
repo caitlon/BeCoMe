@@ -96,6 +96,10 @@ _COPY_AFTER = rf"(?![^\W_])(?!{_NUMBER_JOINERS}\d)(?!\s*[%\u2030])"
 # and a letter: ``Budget 2027``, ``7351 CZK``. A bare number (``2027``, ``12.5``) is never a copy.
 _COPY_MIN_LENGTH = 4
 _CUT_MARK = "..."
+# A run of a copy that neither a bare URL nor a link's target runs on through.
+_COPY_RUN = re.compile(r"[^\s()\[\]]+")
+# The start of a bare URL; split with it, a copy gives its schemes and the parts between them.
+_URL_SCHEME = re.compile(r"(https?://)")
 
 
 def _cited_numbers(content: str) -> set[int] | None:
@@ -711,8 +715,14 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
 
     The filler starts with a lowercase letter when the copy does, so that an ordinal before
     it (``2. pilot 2027``) is read as before; the boundaries keep that letter off any number.
-    A copy that starts with a URL is the exception: the plain scan drops a URL to the bare
-    filler, and so does this.
+
+    The filler keeps the whitespace and the brackets of the copy and replaces every run of the
+    other characters by a dropped token. A link's target stops at whitespace and at a bracket,
+    a bare URL at whitespace, so a URL or a link target that runs into a copy ends where the
+    plain scan ends it, and no digit of the copy is left. A scheme (``https://``) is kept
+    wherever it is in the copy, so that a URL that starts inside the copy still runs on past
+    its end, a bracket included, as in the plain scan; a copy that starts with one gets no
+    letter in front.
 
     :param text: The answer, with the invisible characters already removed.
     :param copies: The fields the model was shown, as it was shown them.
@@ -727,8 +737,11 @@ def _mask_copies(text: str, copies: Iterable[str], kept: Iterable[str] = ()) -> 
     def replace(match: re.Match[str]) -> str:
         if " ".join(match[0].split()) in held:
             return match[0]
-        lowercase = match[0][0].islower() and not _BARE_URL.match(match[0])
-        return ("a" if lowercase else "") + _DROPPED
+        parts = _URL_SCHEME.split(match[0])
+        masked = "".join(
+            _COPY_RUN.sub(_DROPPED, p) if i % 2 == 0 else p for i, p in enumerate(parts)
+        )
+        return ("a" if parts[0] and match[0][0].islower() else "") + masked
 
     return _copy_pattern(found).sub(replace, text)
 
