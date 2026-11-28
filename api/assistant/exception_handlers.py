@@ -18,6 +18,7 @@ from api.assistant.errors import (
     AssistantError,
     AssistantNotFoundError,
     AssistantRateLimitedError,
+    AssistantTurnFailedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
@@ -172,21 +173,28 @@ def assistant_error_handler(request: Request, exc: AssistantError) -> JSONRespon
     is a missed case in our code, not a model server that is down or full, so it answers like
     any other unhandled fault: 500 with the generic body, not the retryable 503 of
     :data:`UNAVAILABLE_DETAIL`. The record names where it was raised (see
-    :func:`~api.assistant.agent.generation.raised_at`) and never its text. Without this
-    handler the error would reach the app's ``BeCoMeAPIError`` handler, which answers 400 with
-    the error's text as the detail.
+    :func:`~api.assistant.agent.generation.raised_at`) and never its text; for an
+    :class:`~api.assistant.errors.AssistantTurnFailedError` it names the type and place of the
+    exception the turn failed on. Without this handler the error would reach the app's
+    ``BeCoMeAPIError`` handler, which answers 400 with the error's text as the detail.
 
     :param request: FastAPI request.
     :param exc: The raised error.
     :return: A 500 JSON response.
     """
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    if isinstance(exc, AssistantTurnFailedError):
+        # The exception that ended the turn was replaced by this one; its type and place
+        # are what the record names.
+        fields = {"exception_type": exc.failed_type, "where": exc.where}
+    else:
+        fields = {"where": raised_at(exc)}
     _log(
         request,
         exc,
         event="assistant_error",
         status_code=status_code,
         level=logging.ERROR,
-        where=raised_at(exc),
+        **fields,
     )
     return JSONResponse(status_code=status_code, content={"detail": INTERNAL_ERROR_DETAIL})

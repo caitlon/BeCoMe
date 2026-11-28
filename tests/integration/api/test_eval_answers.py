@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import langsmith as ls
 import psycopg
 import pytest
@@ -275,7 +276,7 @@ class TestRunEval:
         """
         GIVEN a question about another user's project, a plain one, and a model with one answer
         WHEN the runner asks three questions
-        THEN the tenant check's 404 and the model's exception are rows, and the plain one is ok
+        THEN the tenant check's 404 and the 500 of the model's failure are rows, and the plain one is ok
         """
         # GIVEN
         model = _scripted("Plain answer.")
@@ -295,8 +296,43 @@ class TestRunEval:
         assert (first["status"], first["answer"], first["usage"]) == ("http_404", None, None)
         assert OTHER_PROJECT not in _shown(model)
         assert second["status"] == "ok"
-        assert third["status"] == "IndexError"
+        assert third["status"] == "http_500"
         assert (summary["ok"], summary["failed"]) == (1, 2)
+
+    def test_a_transport_error_becomes_a_row_and_the_run_goes_on(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN an http client whose first request raises httpx.ConnectError
+        WHEN the runner asks two questions
+        THEN the first row's status is the error's type name and the second question is still asked
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Unused."))
+        questions = [
+            {"id": "q1", "question": "What is BeCoMe?"},
+            {"id": "q2", "question": "And again?"},
+        ]
+        output = tmp_path / "out.jsonl"
+        asked: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            asked.append(request.url.path)
+            if len(asked) == 1:
+                raise httpx.ConnectError("no route", request=request)
+            return httpx.Response(404)
+
+        monkeypatch.setattr(ea.httpx, "ASGITransport", lambda app: httpx.MockTransport(handler))
+
+        # WHEN
+        summary = _run(client, fixtures, questions, output)
+
+        # THEN
+        first, second = _rows(output)
+        assert (first["id"], first["status"], first["answer"]) == ("q1", "ConnectError", None)
+        assert (second["id"], second["status"]) == ("q2", "http_404")
+        assert len(asked) == 2
+        assert (summary["ok"], summary["failed"], summary["stop"]) == (0, 2, None)
 
     def test_done_rows_of_the_same_arm_are_skipped(self, assistant_settings, client, tmp_path):
         """
@@ -869,7 +905,7 @@ class TestFailureHandling:
 
         # THEN
         assert (plain["rows"], retried["rows"]) == (0, 1)
-        assert [row["status"] for row in _rows(output)] == ["RuntimeError", "ok"]
+        assert [row["status"] for row in _rows(output)] == ["http_500", "ok"]
         assert ea.latest_rows(output)[("q1", "test-arm")]["status"] == "ok"
 
     def test_three_failures_in_a_row_stop_the_run_with_exit_3(
@@ -910,7 +946,7 @@ class TestFailureHandling:
 
         # THEN
         assert (stopped, rows_after_stop) == (3, 3)
-        assert "RuntimeError" in message
+        assert "http_500" in message
         assert "--retry-failed" in message
         assert (second, asked_by_second) == (0, 22)
         assert "unresolved=3" in second_out

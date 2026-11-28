@@ -65,3 +65,20 @@ class AssistantRateLimitedError(AssistantError):
         super().__init__(message)
         self.retry_after = retry_after
         self.reason = reason
+
+
+class AssistantTurnFailedError(AssistantError):
+    """Raised in place of an exception no handler maps that ended a chat turn.
+
+    The original exception stays out of the way on purpose: its message can hold the user's
+    question or the model's words, and whatever walks the exception chain (the error tracker,
+    a traceback in a log record) would carry it. This one names only the type and the place.
+
+    :param failed_type: The class name of the exception that ended the turn.
+    :param where: ``file:line`` where that exception was raised, without its message.
+    """
+
+    def __init__(self, failed_type: str, where: str) -> None:
+        super().__init__("a chat turn failed on an exception no handler maps")
+        self.failed_type = failed_type
+        self.where = where

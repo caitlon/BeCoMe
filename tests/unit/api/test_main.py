@@ -427,7 +427,109 @@ class TestSentryInit:
 
         # THEN
         disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert RedisIntegration in [type(integration) for integration in disabled]
+
+    def test_disables_the_model_integrations(self):
+        """
+        GIVEN a configured Sentry DSN and langchain and openai installed
+        WHEN _init_sentry runs
+        THEN the Redis, LangChain and OpenAI integrations are disabled: the last two report a
+            failed model call as an event that holds the exception's message, and the SDK
+            switches OpenAI off only while LangChain is on
+        """
+        # GIVEN
+        from sentry_sdk.integrations.langchain import LangchainIntegration
+        from sentry_sdk.integrations.openai import OpenAIIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert [type(integration) for integration in disabled] == [
+            RedisIntegration,
+            LangchainIntegration,
+            OpenAIIntegration,
+        ]
+
+    @pytest.mark.parametrize(
+        ("absent", "still_disabled"),
+        [
+            ("langchain_core", "OpenAIIntegration"),
+            ("openai", "LangchainIntegration"),
+        ],
+    )
+    def test_starts_with_one_model_package_absent(self, monkeypatch, absent, still_disabled):
+        """
+        GIVEN a configured Sentry DSN and a process where one of langchain and openai cannot
+            be imported
+        WHEN _init_sentry runs
+        THEN Sentry is still initialised, with the Redis integration and the integration of
+            the package that is there disabled
+        """
+        # GIVEN
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+        self._make_unimportable(monkeypatch, absent)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert [type(integration).__name__ for integration in disabled] == [
+            "RedisIntegration",
+            still_disabled,
+        ]
+
+    def test_starts_without_the_assistant_extra(self, monkeypatch):
+        """
+        GIVEN a configured Sentry DSN and a process where neither langchain nor openai can be
+            imported
+        WHEN _init_sentry runs
+        THEN Sentry is still initialised, with only the Redis integration disabled
+        """
+        # GIVEN
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+        self._make_unimportable(monkeypatch, "langchain_core")
+        self._make_unimportable(monkeypatch, "openai")
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
         assert [type(integration) for integration in disabled] == [RedisIntegration]
+
+    @staticmethod
+    def _make_unimportable(monkeypatch: pytest.MonkeyPatch, package: str) -> None:
+        """Make a package unimportable for the test, and the SDK module that needs it too.
+
+        The SDK's integration module imports the package when it is first imported, so it is
+        taken out of the module table. The package and every submodule already loaded are set
+        to ``None``, because an import finds a loaded submodule without asking its parent.
+        """
+        integration = {"langchain_core": "langchain", "openai": "openai"}[package]
+        monkeypatch.delitem(sys.modules, f"sentry_sdk.integrations.{integration}", raising=False)
+        for name in [*sys.modules, package]:
+            if name == package or name.startswith(f"{package}."):
+                monkeypatch.setitem(sys.modules, name, None)
 
     def test_filters_request_data_and_attaches_no_body(self):
         """
