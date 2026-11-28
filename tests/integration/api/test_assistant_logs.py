@@ -1,7 +1,7 @@
 """Integration tests that pin the assistant's logs: no record of a turn carries what a user wrote.
 
 ``TestLogsCarryNoText`` in ``test_assistant_chat.py`` covers /chat in two modes. These tests
-widen it to /chat/stream, the hybrid mode, a traced turn and a turn that fails with an
+widen it to /chat/stream, the hybrid mode, a traced turn and a stream turn that fails with an
 exception whose message holds text, and they search more of each record: the traceback text
 and the stack of every record, not only its message, arguments and attributes.
 
@@ -13,6 +13,7 @@ nothing. Nothing here reaches a real model server, embedding server or LangSmith
 import io
 import json
 import logging
+import sys
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from typing import Any, override
@@ -194,8 +195,8 @@ class TestLogsOfAnAnsweredTurnCarryNoText:
         THEN the answer carries the model's sentinel (so the turn ran through the client),
             the model was shown the question, the name and the position (workflow and hybrid
             read the project ahead; the tool modes through the tool), some library record was
-            captured (so the capture is live), the trace client received runs when tracing is
-            on, and no record's message, arguments, attributes, traceback or stack holds a
+            captured (so the capture is live), the app's own assistant_turn record was captured,
+            the trace client received runs when tracing is on, and no record's message, arguments, attributes, traceback or stack holds a
             sentinel
         """
         # GIVEN
@@ -223,6 +224,7 @@ class TestLogsOfAnAnsweredTurnCarryNoText:
         for shown in (_QUESTION_SENTINEL, _NAME_SENTINEL, _POSITION_SENTINEL):
             assert shown in sent
         assert any(record.name.split(".")[0].startswith(_LIBRARY_PREFIXES) for record in records)
+        assert any(getattr(record, "event", "") == "assistant_turn" for record in records)
         if traced:
             (recorder,) = trace_clients
             assert recorder.bodies
@@ -230,7 +232,7 @@ class TestLogsOfAnAnsweredTurnCarryNoText:
 
 
 class TestLogsOfAFailedStreamCarryNoText:
-    """A stream that fails on text the model's exception holds writes no record with that text."""
+    """A stream turn that fails on text the model's exception holds writes no record with it."""
 
     @pytest.mark.parametrize("traced", [False, True], ids=["untraced", "traced"])
     @pytest.mark.parametrize("mode", _ALL_MODES)
@@ -242,8 +244,9 @@ class TestLogsOfAFailedStreamCarryNoText:
             the project's data and every logger at DEBUG, and tracing on or off
         WHEN a turn is posted through /chat/stream in each mode
         THEN the stream ends with its error event holding the fixed public text, the failure
-            was recorded (so the capture is live), and no record's message, arguments,
-            attributes, traceback or stack holds a sentinel
+            was recorded as a RuntimeError (so the stub model's exception is what failed and
+            the capture is live), the trace client received runs when tracing is on, and no
+            record's message, arguments, attributes, traceback or stack holds a sentinel
         """
         # GIVEN
         owner = _owner_project(client, position=_POSITION_SENTINEL, first_name=_NAME_SENTINEL)
@@ -251,7 +254,7 @@ class TestLogsOfAFailedStreamCarryNoText:
         tracing_scope: AbstractContextManager[list[_CapturingClient]] = (
             _captured_tracing(monkeypatch, configure) if traced else nullcontext([])
         )
-        with tracing_scope:
+        with tracing_scope as trace_clients:
             configure(ASSISTANT_MODE=mode)
             _use_model(client, _RaisingModel(responses=[]))
 
@@ -266,5 +269,58 @@ class TestLogsOfAFailedStreamCarryNoText:
         )
         assert _ERROR_SENTINEL not in response.text
         failure = [r for r in records if getattr(r, "event", "") == "assistant_stream_failed"]
-        assert failure
+        assert {getattr(r, "reason", "") for r in failure} == {"RuntimeError"}
+        if traced:
+            (recorder,) = trace_clients
+            assert recorder.bodies
         _assert_records_hold_no_text(records)
+
+
+def _record_with(**fields: Any) -> logging.LogRecord:
+    """Build a record whose message is clean, with the given fields set on it."""
+    record = logging.LogRecord("api.x", logging.ERROR, __file__, 1, "Fixed message", None, None)
+    for name, value in fields.items():
+        setattr(record, name, value)
+    return record
+
+
+class TestTheDetectorSeesText:
+    """The search for text in records reads the places a clean message does not show."""
+
+    def test_a_sentinel_only_in_the_exception_of_a_record_is_found(self):
+        """
+        GIVEN a record with a clean message whose exc_info holds an exception carrying a sentinel
+        WHEN the records are searched for text
+        THEN the search fails on that sentinel
+        """
+        # GIVEN
+        try:
+            raise RuntimeError(f"failed on {_ERROR_SENTINEL}")
+        except RuntimeError:
+            record = _record_with(exc_info=sys.exc_info())
+
+        # WHEN/THEN
+        with pytest.raises(AssertionError, match=_ERROR_SENTINEL):
+            _assert_records_hold_no_text([record])
+
+    def test_a_sentinel_only_in_the_cached_traceback_text_is_found(self):
+        """
+        GIVEN a record with a clean message and no exc_info whose exc_text holds a sentinel
+        WHEN the records are searched for text
+        THEN the search fails on that sentinel
+        """
+        # GIVEN
+        record = _record_with(exc_text=f"RuntimeError: failed on {_ERROR_SENTINEL}")
+
+        # WHEN/THEN
+        with pytest.raises(AssertionError, match=_ERROR_SENTINEL):
+            _assert_records_hold_no_text([record])
+
+    def test_a_clean_record_passes(self):
+        """
+        GIVEN a record with a clean message and no exception
+        WHEN the records are searched for text
+        THEN the search passes
+        """
+        # WHEN/THEN
+        _assert_records_hold_no_text([_record_with()])

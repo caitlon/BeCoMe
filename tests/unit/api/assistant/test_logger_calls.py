@@ -3,9 +3,12 @@
 A log record of the assistant states what happened in a fixed message and puts the details in
 ``extra``. The message of a call is therefore always a string literal: an f-string, a
 variable, a call, a concatenation or a ``%`` expression could carry a question, a name or a
-model's text into the record. A traceback is the other way text reaches a record, because it
-prints the message of the exception: so every ``exc_info=`` carries a comment that says why
-that traceback is needed and what it holds.
+model's text into the record. The rule reads the message argument only: positional ``%s``
+arguments and the values of ``extra`` are out of its scope, and the names of the ``extra``
+keys are checked by ``tests/unit/api/test_logging_pii.py``. A traceback is the other way text
+reaches a record, because it prints the message of the exception: so every ``exc_info=``,
+every ``stack_info=`` other than ``False`` and every ``.exception(...)`` call carries a
+comment that says why that traceback is needed and what it holds.
 
 This walks the syntax tree of ``api/assistant/`` and ``api/routes/assistant.py``, in the style
 of ``tests/unit/api/test_logging_pii.py``, which does the same for the names of the ``extra``
@@ -28,17 +31,18 @@ SCANNED = [
 
 # The methods of a logger that write a record. ``log`` takes the level first.
 LOG_METHODS = frozenset(
-    {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
+    {"debug", "info", "warning", "warn", "error", "exception", "critical", "fatal", "log"}
 )
 REASON_PREFIX = "# exc_info:"
+TRACE_KEYWORDS = frozenset({"exc_info", "stack_info"})
 
 
 def _receiver_is_a_logger(node: ast.expr) -> bool:
     """Say whether the object a method is called on is a logger.
 
     :param node: The expression before the dot: a name or attribute ending in ``logger`` or
-        ``log`` (``logger``, ``security_logger``, ``self._logger``), the ``logging`` module,
-        or a ``logging.getLogger(...)`` call.
+        ``log``, in any case (``logger``, ``security_logger``, ``self._logger``, ``LOGGER``),
+        the ``logging`` module, or a ``logging.getLogger(...)`` call.
     :return: True for any of those.
     """
     if isinstance(node, ast.Call):
@@ -47,6 +51,7 @@ def _receiver_is_a_logger(node: ast.expr) -> bool:
             isinstance(func, ast.Name) and func.id == "getLogger"
         )
     name = node.id if isinstance(node, ast.Name) else getattr(node, "attr", "")
+    name = name.lower()
     return name == "logging" or name.endswith(("logger", "log"))
 
 
@@ -130,7 +135,8 @@ def _has_reason(comments: dict[int, tuple[str, bool]], line: int) -> bool:
     that ends on the line above and starts with ``# exc_info:``, followed by some text.
 
     :param comments: The module's comments, from :func:`_comments`.
-    :param line: The line of the ``exc_info=`` keyword.
+    :param line: The line of the ``exc_info=`` or ``stack_info=`` keyword, or of an
+        ``.exception(...)`` call.
     :return: True when the reason is there.
     """
     same_line = comments.get(line)
@@ -146,19 +152,27 @@ def _has_reason(comments: dict[int, tuple[str, bool]], line: int) -> bool:
 
 
 def exc_info_lines(path: Path) -> list[int]:
-    """Find every ``exc_info=`` keyword of a module.
+    """Find every place of a module that writes a traceback or a stack into a record.
 
     :param path: Module to scan.
-    :return: Their line numbers.
+    :return: The line numbers of each ``exc_info=`` keyword, each ``stack_info=`` keyword that
+        is not ``False``, and each ``.exception(...)`` call. ``exc_info=False`` is no trace.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return sorted(
+    lines = [
         keyword.lineno
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         for keyword in node.keywords
-        if keyword.arg == "exc_info"
+        if keyword.arg in TRACE_KEYWORDS
+        and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is False)
+    ]
+    lines.extend(
+        call.lineno
+        for call in _logger_calls(tree)
+        if isinstance(call.func, ast.Attribute) and call.func.attr == "exception"
     )
+    return sorted(lines)
 
 
 def reason_violations(path: Path) -> list[int]:
@@ -189,7 +203,8 @@ def test_every_logger_call_has_a_literal_message(module):
     # THEN
     assert not offenders, (
         f"{_module_ids(module)} writes a log message that is not a string literal: {offenders}. "
-        "Write a fixed message and put the details in extra={...}; %s may take a type name."
+        "Write a fixed message and put the details in extra={...}. This rule reads the message "
+        "argument only; positional %s arguments and extra values are not checked here."
     )
 
 
@@ -197,7 +212,8 @@ def test_every_logger_call_has_a_literal_message(module):
 def test_every_exc_info_has_a_reason_comment(module):
     """
     GIVEN a module of the assistant
-    WHEN each exc_info= keyword is looked up
+    WHEN each exc_info= keyword, each stack_info= keyword other than False and each
+        .exception(...) call is looked up
     THEN a comment starting with '# exc_info:' and some text stands on its line or directly
         above it, so a reviewer reads why that traceback may be written
     """
@@ -206,7 +222,7 @@ def test_every_exc_info_has_a_reason_comment(module):
 
     # THEN
     assert not offenders, (
-        f"{_module_ids(module)} has exc_info= without a '# exc_info: <reason>' comment "
+        f"{_module_ids(module)} writes a traceback or stack without a '# exc_info: <reason>' comment "
         f"on lines {offenders}. The traceback prints the exception's message: say why that "
         "is needed and why it holds no user text."
     )
@@ -216,7 +232,7 @@ def test_the_scan_reaches_the_real_calls():
     """
     GIVEN the files the rules scan
     WHEN their logger calls and exc_info keywords are counted
-    THEN more than 25 calls and at least one keyword are found, and the files include the
+    THEN more than 20 calls and at least one keyword are found, and the files include the
         route module, so the parametrised tests above cannot pass on an empty scan
     """
     # GIVEN/WHEN
@@ -224,7 +240,7 @@ def test_the_scan_reaches_the_real_calls():
     keywords = sum(len(exc_info_lines(module)) for module in SCANNED)
 
     # THEN
-    assert calls > 25
+    assert calls > 20
     assert keywords > 0
     assert REPO_ROOT / "api" / "routes" / "assistant.py" in SCANNED
     assert REPO_ROOT / "api" / "assistant" / "deps.py" in SCANNED
@@ -257,15 +273,24 @@ def work(exc, level):
     print(f"{message}")
     notes.append(f"{message}")
     logger.isEnabledFor(10)
+    logger.warning("No trace", exc_info=False, stack_info=False)
+    # exc_info: the traceback names the exception class and the failing call, never user text.
+    logger.exception("Turn failed")
+    logger.critical(
+        "Stack",
+        stack_info=True,  # exc_info: the call stack names functions only, never user text
+    )
+    LOGGER.fatal("Upper case", extra={"event": "x"})
 """
 
 
 def test_a_clean_module_passes_both_rules(tmp_path):
     """
     GIVEN a module whose logger calls take literal messages (with %s arguments, a level
-        first for log, and a getLogger call), whose exc_info keywords carry a reason on
-        their own line or in the block above, and which formats text in calls that are
-        not loggers
+        first for log, a getLogger call and an upper-case receiver), whose exc_info,
+        stack_info and .exception sites carry a reason on their own line or in the block
+        above, which has exc_info=False and stack_info=False with none, and which formats
+        text in calls that are not loggers
     WHEN both rules read it
     THEN neither finds anything, and the scan did find the calls and the keywords
     """
@@ -274,8 +299,8 @@ def test_a_clean_module_passes_both_rules(tmp_path):
     module.write_text(_CLEAN_MODULE, encoding="utf-8")
 
     # WHEN/THEN
-    assert logger_call_count(module) == 6
-    assert len(exc_info_lines(module)) == 2
+    assert logger_call_count(module) == 10
+    assert len(exc_info_lines(module)) == 4
     assert message_violations(module) == []
     assert reason_violations(module) == []
 
@@ -298,6 +323,9 @@ def test_a_clean_module_passes_both_rules(tmp_path):
         ('logging.info(f"{question}")', "JoinedStr"),
         ("logger.info(msg=message)", "Name"),
         ("logger.info()", "no message"),
+        ("LOGGER.info(message)", "Name"),
+        ('_LOGGER.warning(f"{question}")', "JoinedStr"),
+        ("logger.fatal(message)", "Name"),
     ],
 )
 def test_a_message_that_is_not_a_literal_is_found(tmp_path, call, kind):
@@ -324,12 +352,15 @@ def test_a_message_that_is_not_a_literal_is_found(tmp_path, call, kind):
         "exc_info=True,  # because the traceback helps",
         "exc_info=True,  # exc_info:",
         "exc_info=True,  # exc_info:    ",
+        "stack_info=True,",
+        "stack_info=True,  # because the stack helps",
+        "stack_info=True,  # exc_info:",
     ],
 )
 def test_exc_info_without_a_reason_is_found(tmp_path, keyword_line):
     """
-    GIVEN a logger call with exc_info= that has no comment, an unrelated one, or the prefix
-        with no reason after it
+    GIVEN a logger call with exc_info= or stack_info= that has no comment, an unrelated one,
+        or the prefix with no reason after it
     WHEN the reason rule reads the module
     THEN it reports the line of the keyword
     """
@@ -375,3 +406,49 @@ def test_a_reason_two_lines_above_or_on_a_code_line_does_not_count(tmp_path):
 
     # THEN
     assert found == [5, 9]
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'logger.exception("Failed")',
+        'LOGGER.exception("Failed")',
+        'self._logger.exception("Failed", extra={"event": "x"})',
+    ],
+)
+def test_an_exception_call_without_a_reason_is_found(tmp_path, call):
+    """
+    GIVEN a module whose .exception(...) call has no reason comment
+    WHEN the reason rule reads it
+    THEN it reports the line of the call, and a reason above it clears it
+    """
+    # GIVEN
+    bare = tmp_path / "bare.py"
+    bare.write_text(f"def work():\n    {call}\n", encoding="utf-8")
+    explained = tmp_path / "explained.py"
+    explained.write_text(
+        f"def work():\n    # exc_info: the traceback names the failing call only\n    {call}\n",
+        encoding="utf-8",
+    )
+
+    # WHEN/THEN
+    assert reason_violations(bare) == [2]
+    assert reason_violations(explained) == []
+
+
+def test_a_false_trace_keyword_needs_no_reason(tmp_path):
+    """
+    GIVEN a logger call with exc_info=False and stack_info=False and no comment
+    WHEN the reason rule reads it
+    THEN it finds no trace site and no violation
+    """
+    # GIVEN
+    module = tmp_path / "planted.py"
+    module.write_text(
+        'def work():\n    logger.error("Failed", exc_info=False, stack_info=False)\n',
+        encoding="utf-8",
+    )
+
+    # WHEN/THEN
+    assert exc_info_lines(module) == []
+    assert reason_violations(module) == []
