@@ -696,6 +696,8 @@ async def _give_back(throttle: AssistantThrottle, charge: Charge) -> None:
         security_logger.warning(
             "Assistant message not given back after a failed turn",
             extra={"event": "assistant_refund_failed"},
+            # exc_info: the throttle is handed only a hashed charge key, so its error names the
+            # failing store call (and, for Redis, the store's host and port), never user text.
             exc_info=True,
         )
 
