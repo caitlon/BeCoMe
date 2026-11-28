@@ -65,6 +65,21 @@ class TestDropPipelineCommand:
         # THEN
         assert str(exc) == _REASON
 
+    def test_a_command_with_a_newline_is_dropped_whole(self):
+        """
+        GIVEN an annotated message whose command text holds a line break
+        WHEN the command text is dropped
+        THEN the message is the server's reason alone
+        """
+        # GIVEN
+        exc = _annotated(3, f"SET {_KEY}\nsecond line 1")
+
+        # WHEN
+        drop_pipeline_command(exc)
+
+        # THEN
+        assert str(exc) == _REASON
+
     def test_the_other_arguments_of_the_error_are_kept(self):
         """
         GIVEN an annotated error that carries a second argument

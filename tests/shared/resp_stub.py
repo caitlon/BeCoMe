@@ -19,17 +19,17 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 
-READONLY_REPLY = b"-READONLY You can't write against a read only replica.\r\n"
-EXECABORT_REPLY = b"-EXECABORT Transaction discarded because of previous errors.\r\n"
-OK_REPLY = b"+OK\r\n"
-NULL_REPLY = b"_\r\n"
+_READONLY_REPLY = b"-READONLY You can't write against a read only replica.\r\n"
+_EXECABORT_REPLY = b"-EXECABORT Transaction discarded because of previous errors.\r\n"
+_OK_REPLY = b"+OK\r\n"
+_NULL_REPLY = b"_\r\n"
 # RESP3 map ``{"proto": 3}``: what redis-py's ``HELLO 3`` handshake needs to see.
 _HELLO_REPLY = b"%1\r\n$5\r\nproto\r\n:3\r\n"
 
 # redis-py sends ``INCR`` and ``DECR`` as ``INCRBY`` and ``DECRBY``.
 _WRITES = frozenset({"SET", "INCRBY", "DECRBY", "EXPIRE", "DEL", "EVAL", "EVALSHA", "SETEX"})
 _ACCEPTED = frozenset({"MULTI", "WATCH", "UNWATCH", "DISCARD"})
-_READS = {"GET": NULL_REPLY, "TTL": b":-2\r\n", "EXISTS": b":0\r\n"}
+_READS = {"GET": _NULL_REPLY, "TTL": b":-2\r\n", "EXISTS": b":0\r\n"}
 
 
 def _read_command(stream: io.BufferedIOBase) -> list[bytes] | None:
@@ -110,15 +110,15 @@ class _Server(socketserver.ThreadingTCPServer):
         if name == "HELLO":
             return _HELLO_REPLY
         if name == "EXEC":
-            return EXECABORT_REPLY
+            return _EXECABORT_REPLY
         if name in _WRITES:
-            return READONLY_REPLY
+            return _READONLY_REPLY
         if name in _ACCEPTED:
-            return OK_REPLY
+            return _OK_REPLY
         if name in _READS:
             return _READS[name]
         if name == "CLIENT":
-            return OK_REPLY
+            return _OK_REPLY
         return b"-ERR unknown command\r\n"
 
 
@@ -145,20 +145,13 @@ class RespStub:
         self._server.replies[name] = list(replies)
         self._server.reset_calls(name)
 
-    def commands(self) -> list[list[str]]:
-        """Return the commands received so far, each as a list of words.
-
-        :return: Every command since the stub started, including the handshake.
-        """
-        return [[word.decode() for word in words] for words in list(self._server.commands)]
-
     def received(self, text: str) -> bool:
         """Say whether any command received so far carries ``text`` in one of its words.
 
         :param text: What to look for, for example a key.
         :return: True when a command held it.
         """
-        return any(text in word for words in self.commands() for word in words)
+        return any(text in word.decode() for words in list(self._server.commands) for word in words)
 
 
 @contextmanager

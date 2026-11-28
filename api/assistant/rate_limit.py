@@ -194,9 +194,10 @@ def _log_store_unavailable(exc: redis.RedisError) -> None:
     logger.error(
         "Assistant throttle store unavailable, turn refused",
         extra={"event": "assistant_throttle_unavailable"},
-        # exc_info: the traceback names the Redis error class and the server's reason, which
-        # tells a lost connection from a store that refuses writes; the command text of the
-        # pipeline is dropped first, so it holds no key.
+        # exc_info: the traceback names the Redis error class and its text, the server's reason
+        # or a connection failure's, which names the store's host and port at most; that tells
+        # a lost connection from a store that refuses writes. The command text of the pipeline
+        # is dropped first, so it holds no key.
         exc_info=exc,
     )
 
@@ -426,8 +427,8 @@ class RedisAssistantThrottle:
                 "Assistant throttle store unavailable, refused message not given back",
                 extra={"event": "assistant_throttle_giveback_unavailable"},
                 # exc_info: a Redis error from a single command carries the server's reason, or
-                # the store's host and port if it cannot connect; the traceback's source line
-                # names the call. Never a key, password or user text.
+                # a connection failure's text, which names the store's host and port at most;
+                # the traceback's source line names the call. Never a key, password or user text.
                 exc_info=e,
             )
         return Charge(key, allowed=False, in_store=True)
@@ -452,8 +453,8 @@ class RedisAssistantThrottle:
                 "Assistant throttle store unavailable, message not given back",
                 extra={"event": "assistant_throttle_refund_unavailable"},
                 # exc_info: a Redis error from a single command carries the server's reason, or
-                # the store's host and port if it cannot connect; the traceback's source line
-                # names the call. Never a key, password or user text.
+                # a connection failure's text, which names the store's host and port at most;
+                # the traceback's source line names the call. Never a key, password or user text.
                 exc_info=e,
             )
 
@@ -484,8 +485,8 @@ class RedisAssistantThrottle:
                 "Assistant throttle store unavailable, retry time not known",
                 extra={"event": "assistant_throttle_retry_unavailable"},
                 # exc_info: a Redis error from a single command carries the server's reason, or
-                # the store's host and port if it cannot connect; the traceback's source line
-                # names the call. Never a key, password or user text.
+                # a connection failure's text, which names the store's host and port at most;
+                # the traceback's source line names the call. Never a key, password or user text.
                 exc_info=e,
             )
             return self._window

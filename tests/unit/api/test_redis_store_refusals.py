@@ -9,9 +9,10 @@ raises, and read everything a record and an event say.
 
 import asyncio
 import logging
+import traceback
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
-from typing import Any
+from typing import Any, NamedTuple
 from unittest.mock import patch
 from uuid import UUID
 
@@ -63,40 +64,56 @@ def client(stub: RespStub) -> Iterator[redis.Redis]:
         built.close()
 
 
-@pytest.fixture
-def records() -> Iterator[Callable[[], list[logging.LogRecord]]]:
-    """Collect the records of the loggers the stores and their handlers write to."""
-    with ExitStack() as stack:
-        groups = [stack.enter_context(captured_log_records(name)) for name in _LOGGERS]
-        yield lambda: [record for group in groups for record in group]
+class _Emitted(NamedTuple):
+    """A record and everything it said at the moment it was emitted."""
+
+    record: logging.LogRecord
+    text: str
 
 
-def _everything_a_record_says(record: logging.LogRecord) -> str:
-    """Render a record as every handler could: message, arguments, attributes and tracebacks.
+class _SayAtEmit(logging.Handler):
+    """Render each record as it is emitted, before anything can change the error it holds.
 
-    The traceback is formatted again from ``exc_info``, so the messages of the exception and of
-    its chained causes are in it.
+    The text holds the formatted message and traceback, the arguments and the attributes, so
+    what an application handler would write is read at the moment it would write it. A record
+    formatted after the test has run would show an error the code had already cleaned up.
     """
-    parts = [
-        logging.Formatter("%(name)s %(levelname)s %(message)s").format(record),
-        repr(record.args),
-        repr(record.__dict__),
-        record.exc_text or "",
-        record.stack_info or "",
-    ]
-    if record.exc_info and record.exc_info[0] is not None:
-        parts.append(logging.Formatter().formatException(record.exc_info))
-    return "\n".join(parts)
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.NOTSET)
+        self.seen: list[_Emitted] = []
+        self._formatter = logging.Formatter("%(name)s %(levelname)s %(message)s")
+
+    def emit(self, record: logging.LogRecord) -> None:
+        text = "\n".join(
+            [
+                self._formatter.format(record),
+                repr(record.args),
+                repr(record.__dict__),
+                record.stack_info or "",
+            ]
+        )
+        self.seen.append(_Emitted(record, text))
 
 
-def _event_of(record: logging.LogRecord) -> str | None:
+@pytest.fixture
+def records() -> Iterator[Callable[[], list[_Emitted]]]:
+    """Collect, with their text at emit time, the records of the loggers the stores write to."""
+    handler = _SayAtEmit()
+    with ExitStack() as stack:
+        for name in _LOGGERS:
+            stack.enter_context(captured_log_records(name))
+            logging.getLogger(name).addHandler(handler)
+            stack.callback(logging.getLogger(name).removeHandler, handler)
+        yield lambda: list(handler.seen)
+
+
+def _event_of(emitted: _Emitted) -> str | None:
     """Return the ``event`` field of a record, or None."""
-    return getattr(record, "event", None)
+    return getattr(emitted.record, "event", None)
 
 
-def _assert_no_record_holds(
-    records: list[logging.LogRecord], needles: list[str], stub: RespStub
-) -> None:
+def _assert_no_record_holds(records: list[_Emitted], needles: list[str], stub: RespStub) -> None:
     """Fail when a record says one of the needles, or when the stub never saw the first one.
 
     The second check keeps the first honest: a key the stub never received could not have
@@ -104,17 +121,21 @@ def _assert_no_record_holds(
     """
     assert stub.received(needles[0]), "the stub never received the key"
     assert records, "no record was written"
-    for record in records:
-        text = _everything_a_record_says(record)
+    for emitted in records:
         for needle in needles:
-            assert needle not in text, f"{record.name} logged {needle!r}: {record.getMessage()}"
+            assert needle not in emitted.text, (
+                f"{emitted.record.name} logged {needle!r}: {emitted.record.getMessage()}"
+            )
 
 
-def _the_record(records: list[logging.LogRecord], event: str) -> logging.LogRecord:
-    """Return the one record of an event."""
+def _the_record(records: list[_Emitted], event: str) -> _Emitted:
+    """Return the one record of an event, with its text at emit time."""
     found = [record for record in records if _event_of(record) == event]
     assert len(found) == 1, [_event_of(record) for record in records]
     return found[0]
+
+
+_KINDS = ("a user", "an address", "everyone")
 
 
 def _assistant_keys() -> dict[str, tuple[str, list[str]]]:
@@ -132,13 +153,10 @@ def _assistant_keys() -> dict[str, tuple[str, list[str]]]:
     }
 
 
-_ASSISTANT_KEYS = _assistant_keys()
-
-
 class TestAssistantThrottleRefusal:
     """A store that refuses the assistant throttle's count leaves no key in a record."""
 
-    @pytest.mark.parametrize("kind", list(_ASSISTANT_KEYS), ids=list(_ASSISTANT_KEYS))
+    @pytest.mark.parametrize("kind", _KINDS)
     def test_the_record_names_the_reason_and_holds_no_key(self, stub, client, records, kind):
         """
         GIVEN a store that refuses writes and a throttle counting under one kind of key
@@ -147,7 +165,7 @@ class TestAssistantThrottleRefusal:
             server's reason, and no record holds the key or what identifies its owner
         """
         # GIVEN
-        key, needles = _ASSISTANT_KEYS[kind]
+        key, needles = _assistant_keys()[kind]
         throttle = RedisAssistantThrottle(client, max_per_hour=5)
 
         # WHEN
@@ -155,12 +173,13 @@ class TestAssistantThrottleRefusal:
             throttle.charge_key(key)
 
         # THEN
-        text = _everything_a_record_says(_the_record(records(), "assistant_throttle_unavailable"))
+        text = _the_record(records(), "assistant_throttle_unavailable").text
         assert "ReadOnlyError" in text
         assert _READ_ONLY in text
         assert isinstance(raised.value.__cause__, redis.ReadOnlyError)
+        propagated = "".join(traceback.format_exception(raised.value))
         for needle in needles:
-            assert needle not in str(raised.value.__cause__)
+            assert needle not in propagated
         _assert_no_record_holds(records(), needles, stub)
 
     def test_a_user_charge_leaves_no_key_in_a_record(self, stub, client, records):
@@ -179,7 +198,7 @@ class TestAssistantThrottleRefusal:
             throttle.charge(_USER_ID)
 
         # THEN
-        text = _everything_a_record_says(_the_record(records(), "assistant_throttle_unavailable"))
+        text = _the_record(records(), "assistant_throttle_unavailable").text
         assert "ReadOnlyError" in text
         _assert_no_record_holds(records(), [f"{KEY_PREFIX}:{digest}", digest], stub)
 
@@ -206,9 +225,7 @@ class TestSingleCommandRefusals:
 
         # THEN
         assert charge.allowed is False
-        text = _everything_a_record_says(
-            _the_record(records(), "assistant_throttle_giveback_unavailable")
-        )
+        text = _the_record(records(), "assistant_throttle_giveback_unavailable").text
         assert "ReadOnlyError" in text
         _assert_no_record_holds(records(), [f"{KEY_PREFIX}:{digest}", digest], stub)
 
@@ -247,6 +264,23 @@ class TestSingleCommandRefusals:
         assert wait == 3600
         _the_record(records(), "assistant_throttle_retry_unavailable")
         _assert_no_record_holds(records(), [f"{KEY_PREFIX}:{digest}", digest], stub)
+
+    def test_a_connection_failure_keeps_the_host_and_port_of_the_store(self, records):
+        """
+        GIVEN a connection error that names the store's host and port
+        WHEN the throttle records that the store is unavailable
+        THEN the record still names them, because only a pipeline's command text is dropped
+        """
+        # GIVEN
+        exc = redis.ConnectionError("Error 61 connecting to 127.0.0.1:6390. Connection refused.")
+
+        # WHEN
+        assistant_rate_limit._log_store_unavailable(exc)
+
+        # THEN
+        text = _the_record(records(), "assistant_throttle_unavailable").text
+        assert "127.0.0.1:6390" in text
+        assert "ConnectionError" in text
 
     def test_the_route_helper_that_gives_a_charge_back_writes_no_record_of_its_own(
         self, stub, client, records
@@ -291,26 +325,28 @@ def sentry_events() -> Iterator[Callable[[], KeepEnvelopes]]:
 class TestErrorTrackerEventsOfARefusedWrite:
     """The error tracker receives a refused write without the key in it."""
 
-    def test_the_assistant_throttle_event_holds_no_key(self, stub, client, sentry_events):
+    @pytest.mark.parametrize("kind", ["a user", "an address"])
+    def test_the_assistant_throttle_event_holds_no_key(self, stub, client, sentry_events, kind):
         """
         GIVEN Sentry started by the app's own initialisation, and a store that refuses writes
-        WHEN an assistant message is counted
-        THEN an event names the Redis error class and no item sent holds the key or the digest
+        WHEN an assistant message is counted under a user's or an address's key
+        THEN an event names the Redis error class and no item sent holds the key or what
+            identifies its owner
         """
         # GIVEN
+        key, needles = _assistant_keys()[kind]
         throttle = RedisAssistantThrottle(client, max_per_hour=5)
-        digest = assistant_rate_limit._digest(_USER_ID)
 
         # WHEN
         with pytest.raises(AssistantUnavailableError):
-            throttle.charge_key(digest)
+            throttle.charge_key(key)
         sentry_sdk.flush()
 
         # THEN
         kept = sentry_events()
         sent = kept.serialized()
-        assert stub.received(digest)
+        assert stub.received(needles[0])
         assert "ReadOnlyError" in sent
         assert kept.items("event")
-        for needle in (f"{KEY_PREFIX}:{digest}", digest):
+        for needle in needles:
             assert needle not in sent
