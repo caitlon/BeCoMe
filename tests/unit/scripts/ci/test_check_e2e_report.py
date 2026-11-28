@@ -127,6 +127,58 @@ def test_unexpected_failure_fails(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "1 test(s) failed unexpectedly" in err
 
 
+def test_errors_outside_the_tests_fail(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """GIVEN 15 passed but one error outside the tests WHEN checked THEN it fails and names it."""
+    report = _report(passed=15)
+    report["errors"] = [{"message": "global setup failed\n    at setup.ts:1"}]
+
+    status, out, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 1
+    assert out == ""
+    assert "1 error(s) outside the tests" in err
+    assert "  error: global setup failed" in err
+    assert "setup.ts" not in err
+
+
+def test_empty_errors_list_succeeds(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """GIVEN 15 passed and an empty errors list WHEN checked THEN it exits 0."""
+    report = _report(passed=15)
+    report["errors"] = []
+
+    status, _, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 0
+    assert err == ""
+
+
+def test_errors_that_is_not_a_list_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """GIVEN `errors` given as a string WHEN checked THEN it fails as an unusable report."""
+    report = _report(passed=15)
+    report["errors"] = "boom"
+
+    status, _, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 1
+    assert "no usable Playwright report" in err
+    assert "`errors` is not a list" in err
+
+
+def test_error_without_message_lists_a_placeholder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """GIVEN an error entry with no message WHEN checked THEN it is listed as `?`."""
+    report = _report(passed=15)
+    report["errors"] = [{"stack": "x"}]
+
+    status, _, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 1
+    assert "  error: ?" in err
+
+
 def test_missing_report_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """GIVEN no report file WHEN checked THEN it fails and points at the reporter setting."""
     status, out, err = _run(tmp_path / "absent.json", capsys)

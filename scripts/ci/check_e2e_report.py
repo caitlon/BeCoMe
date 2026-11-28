@@ -4,8 +4,9 @@
 A spec that skips itself reports success, so a shard whose specs all skip stays green. The
 assistant specs do this when ``VITE_ASSISTANT_ENABLED`` does not reach the Playwright
 container. This check reads the JSON report of the run and refuses a report with a skipped
-test, an unexpected failure, or fewer tests than ``--min-tests``. A missing or unreadable
-report fails too, so a dropped reporter setting cannot pass silently.
+test, an unexpected failure, an error outside the tests (the report's top-level ``errors``,
+such as a global setup failure or a worker crash), or fewer tests than ``--min-tests``. A
+missing or unreadable report fails too, so a dropped reporter setting cannot pass silently.
 
 Usage::
 
@@ -47,6 +48,14 @@ def _positive_int(text: str) -> int:
 def _is_count(value: object) -> bool:
     """Tell whether a report value is a plain integer count, booleans excluded."""
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _first_line(error: object) -> str:
+    """Return the first line of a report error's ``message``, or ``?`` when it has none."""
+    message = error.get("message") if isinstance(error, dict) else None
+    if not isinstance(message, str) or not message.strip():
+        return "?"
+    return message.strip().splitlines()[0]
 
 
 def _skipped_tests(suites: object) -> Iterator[str]:
@@ -92,6 +101,9 @@ def check_report(path: Path, min_tests: int) -> tuple[list[str], str]:
     stats = report.get("stats") if isinstance(report, dict) else None
     if not isinstance(stats, dict) or not all(_is_count(stats.get(k)) for k in COUNT_KEYS):
         return [f"{missing} (no `stats` object with integer counts)"], ""
+    errors = report.get("errors", [])
+    if not isinstance(errors, list):
+        return [f"{missing} (`errors` is not a list)"], ""
 
     expected, skipped = stats["expected"], stats["skipped"]
     unexpected, flaky = stats["unexpected"], stats["flaky"]
@@ -105,6 +117,11 @@ def check_report(path: Path, min_tests: int) -> tuple[list[str], str]:
             problems.append(f"  ... and {len(titles) - MAX_LISTED} more")
     if unexpected > 0:
         problems.append(f"{unexpected} test(s) failed unexpectedly")
+    if errors:
+        problems.append(f"{len(errors)} error(s) outside the tests")
+        problems.extend(f"  error: {_first_line(error)}" for error in errors[:MAX_LISTED])
+        if len(errors) > MAX_LISTED:
+            problems.append(f"  ... and {len(errors) - MAX_LISTED} more")
     if ran < min_tests:
         problems.append(f"only {ran} test(s) ran, at least {min_tests} expected")
     summary = f"E2E report: {ran} ran ({expected} passed, {flaky} flaky), {skipped} skipped"

@@ -510,17 +510,18 @@ jobs:
           # gitignored and emptied by Playwright at the start of a run, so no stale file
           # survives. Were this variable dropped, the report would go to stdout, no file
           # would exist, and the check below would fail instead of passing unseen.
-          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ matrix.min_tests && format('{0}/frontend/test-results/assistant-e2e-report.json', github.workspace) || '' }}
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ matrix.min_tests && format('{0}/frontend/test-results/e2e-report.json', github.workspace) || '' }}
         # --add-reporter appends json to the config's list and html reporters instead of
         # replacing them, so the uploaded html report stays.
         run: scripts/ci/playwright-image.sh run test ${{ matrix.projects }} ${{ matrix.min_tests && '--add-reporter=json' || '' }}
 
-      # A spec that skips itself reports success, and the assistant specs skip whenever
-      # VITE_ASSISTANT_ENABLED does not reach the dev server, so this fails the shard on
-      # any skipped test or on fewer than `min_tests` run.
-      - name: Check the assistant specs ran
+      # A spec that skips itself reports success (the assistant specs skip whenever
+      # VITE_ASSISTANT_ENABLED does not reach the dev server), so for an entry with `min_tests`
+      # this fails the shard on any skipped test, on fewer than `min_tests` run, or on an error
+      # outside the tests.
+      - name: Check the E2E report
         if: matrix.min_tests
-        run: uv run python scripts/ci/check_e2e_report.py --min-tests ${{ matrix.min_tests }} frontend/test-results/assistant-e2e-report.json
+        run: uv run python scripts/ci/check_e2e_report.py --min-tests ${{ matrix.min_tests }} frontend/test-results/e2e-report.json
 
       # Alone, at one worker, which is the concurrency its baselines were recorded at.
       # Nine tests and well under a minute, so giving them their own pass costs almost nothing.
