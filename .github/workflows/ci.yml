@@ -431,6 +431,12 @@ jobs:
           # specs they used to ride along with. Both are Desktop Chrome.
           - name: chrome-audits
             projects: --project=wcag-audit
+          # The assistant panel exists only in a build made with VITE_ASSISTANT_ENABLED=true,
+          # so its specs skip in every other shard; this one builds with the flag and runs
+          # them in chromium. The filter is a regex on the spec path: assistant-*.spec.ts.
+          - name: chromium-assistant
+            projects: --project=chromium assistant-
+            assistant: "true"
     needs: lint
     env:
       # An account is unusable until its emailed link is redeemed, so the suite has to
@@ -490,6 +496,11 @@ jobs:
           MX_CHECK_ENABLED: "false"
 
       - name: Run E2E tests
+        env:
+          # Read by the dev server Playwright starts inside the container (the image script
+          # passes it through). Only the assistant shard sets it, so every other shard keeps
+          # the build it had, without the panel.
+          VITE_ASSISTANT_ENABLED: ${{ matrix.assistant || 'false' }}
         run: scripts/ci/playwright-image.sh run test ${{ matrix.projects }}
 
       # Alone, at one worker, which is the concurrency its baselines were recorded at.
