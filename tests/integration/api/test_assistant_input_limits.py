@@ -14,6 +14,7 @@ from tests.integration.api.conftest import register_and_login
 from tests.integration.api.test_assistant_chat import (
     CHAT,
     STREAM,
+    _events,
     _scripted,
     _use_model,
     _watched_budgets,
@@ -33,8 +34,11 @@ def _history(entries: int, chars: int = 2) -> list[dict[str, str]]:
     ]
 
 
-# The numbers are the schema's ceilings written out, so that raising one in the schema fails
-# here instead of moving the test along with it.
+# The numbers are the limits written out, so that raising one fails here instead of moving the
+# test along with it. The history rows pin the schema's ceilings. The message row pins the
+# smaller of the two message ceilings: the configured length is capped at 4000 by its own
+# ``le=``, so it refuses 4001 before the schema does; the schema's own bound is pinned by
+# tests/unit/api/schemas/test_assistant.py.
 # Each case is the configuration it needs, a request over a limit, and the same request
 # exactly at that limit.
 _CASES = {
@@ -43,7 +47,7 @@ _CASES = {
         {"message": "m" * 51},
         {"message": "m" * 50},
     ),
-    "the schema's message length": (
+    "the largest configurable message length": (
         {},
         {"message": "m" * 4001},
         {"message": "m" * 4000},
@@ -100,6 +104,10 @@ class TestRequestOverALimit:
             assert model.seen == []
             answered = client.post(endpoint, json=at_limit, headers=auth_header(token))
             assert answered.status_code == 200
+            if endpoint == STREAM:
+                names = [name for name, _ in _events(answered.text)]
+                assert "error" not in names
+                assert names[-1] == "done"
             assert len(model.seen) == 1
             assert (user_spy.call_count, global_spy.call_count) == (1, 1)
             assert deps.get_turn_slots().holders == {}

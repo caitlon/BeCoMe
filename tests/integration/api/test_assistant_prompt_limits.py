@@ -17,6 +17,7 @@ import pytest
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from api.assistant import deps
+from api.assistant.agent.service import _HISTORY_CHAR_BUDGET
 from api.assistant.rag.models import make_answer_model
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
@@ -51,10 +52,21 @@ configure = chat_tests.configure
 
 # The window of the answer model's server, in tokens.
 _WINDOW_TOKENS = 16384
-# Characters per token assumed when counting a prompt. English prose runs near four; digits,
+# Characters per token assumed for everything but digits. English prose runs near four;
 # symbols, code and Czech text run lower, and a prompt of project data is mostly the latter.
 # 2.5 is below all of them on purpose, so the estimate of the tokens errs on the high side.
 _CHARS_PER_TOKEN = 2.5
+# Digit runs tokenize near one character per token on Qwen-style tokenizers, so the estimate
+# counts every digit as a whole token and only the other characters at _CHARS_PER_TOKEN.
+_TOKENS_PER_DIGIT = 1.0
+
+
+def _estimated_tokens(text: str) -> float:
+    """Estimate the tokens of a text: one per digit, the rest at ``_CHARS_PER_TOKEN``."""
+    digits = sum(character.isdigit() for character in text)
+    return digits * _TOKENS_PER_DIGIT + (len(text) - digits) / _CHARS_PER_TOKEN
+
+
 _PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
 # The longest a number reads in a project block: 15 digits, two decimals and a sign.
 _WIDEST_NUMBER = -999_999_999_999_999.99
@@ -167,11 +179,29 @@ class TestPromptAtTheInputLimits:
     """Every input at its limit still gives the answer model a prompt that fits its window."""
 
     @pytest.mark.parametrize(
-        ("history", "history_chars"),
+        ("history", "history_chars", "kept_entries"),
         [
-            pytest.param(_entries(MAX_HISTORY_ENTRIES, 300, 265), range(5701, 6001), id="budget"),
+            # 10 user entries of 300 characters and 10 assistant entries of 264 plus the
+            # 35-character wrapper: 5990 characters sent, inside the budget with slack, so
+            # every entry is kept. A sum within one entry (300) of the budget shows the
+            # budget is the limit that was reached.
+            pytest.param(
+                _entries(MAX_HISTORY_ENTRIES, 300, 264),
+                range(_HISTORY_CHAR_BUDGET - 299, _HISTORY_CHAR_BUDGET + 1),
+                range(MAX_HISTORY_ENTRIES, MAX_HISTORY_ENTRIES + 1),
+                id="budget",
+            ),
+            # About 10,000 characters in 20 entries: the oldest are dropped until the rest
+            # fits the budget, and what is kept starts with a user entry.
+            pytest.param(
+                _entries(MAX_HISTORY_ENTRIES, 500, 500),
+                range(1, _HISTORY_CHAR_BUDGET + 1),
+                range(1, MAX_HISTORY_ENTRIES),
+                id="over the budget",
+            ),
             pytest.param(
                 _entries(MAX_HISTORY_ENTRIES, MAX_HISTORY_CONTENT_CHARS, MAX_HISTORY_CONTENT_CHARS),
+                range(0, 1),
                 range(0, 1),
                 id="entries at the schema limit",
             ),
@@ -184,6 +214,7 @@ class TestPromptAtTheInputLimits:
         monkeypatch,
         history,
         history_chars,
+        kept_entries,
     ):
         """
         GIVEN workflow mode with the default settings, a 4000-character message, 20 history
@@ -191,8 +222,9 @@ class TestPromptAtTheInputLimits:
             and positions, and three of the longest passages from the retriever
         WHEN the question is posted
         THEN every limited part really reached the prompt at its limit (the history is as much
-            as the budget keeps: a full budget, or none when each entry alone is over it), and
-            the prompt's estimated tokens plus the answer's allowance stay within the window
+            as the budget keeps: all of it, the newest entries that fit starting with a user
+            entry, or none when each entry alone is over it), and the prompt's estimated
+            tokens plus the answer's allowance stay within the window
         """
         # GIVEN
         token = register_and_login(client, "prompt-limits@example.com")
@@ -221,30 +253,40 @@ class TestPromptAtTheInputLimits:
         last = sent[-1].text
         assert f"Question: {message}" in last
         assert sum(len(entry.text) for entry in sent[1:-1]) in history_chars
+        assert len(sent[1:-1]) in kept_entries
+        assert not sent[1:-1] or isinstance(sent[1], HumanMessage)
         assert "... and 6 more opinions" in last
         assert all(chunk.chunk_text in last for chunk in chunks)
         description = next(line for line in last.splitlines() if line.startswith("Description: "))
         assert len(description) > 1000
-        characters = sum(len(entry.text) for entry in sent)
-        assert characters > 20_000
+        prompt = "".join(entry.text for entry in sent)
+        # Without its history the worst case measures 23,095 characters (about 29,000 with a
+        # full history budget), so a shrunken prompt cannot pass.
+        history_sent = sum(len(entry.text) for entry in sent[1:-1])
+        assert len(prompt) - history_sent > 23_000
         answer_tokens = Settings.model_fields["assistant_answer_max_tokens"].default
         assert get_settings().assistant_answer_max_tokens == answer_tokens
-        assert characters / _CHARS_PER_TOKEN + answer_tokens <= _WINDOW_TOKENS
+        assert _estimated_tokens(prompt) + answer_tokens <= _WINDOW_TOKENS
 
 
-def _use_rejecting_model(client: Any) -> None:
+def _use_rejecting_model(client: Any) -> list[httpx.Request]:
     """Make the app's answer model the real one, with a server that rejects every prompt.
 
     The server is a mock transport answering 400 in llama.cpp's shape, so the real client
     raises the real ``openai.BadRequestError`` with no connection made.
+
+    :return: The requests that reached the mock server, so a test can show that the 503 came
+        from this rejection and not from a failed connection.
     """
+    requests: list[httpx.Request] = []
+
+    def reject(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(400, json=_CONTEXT_SIZE_REJECTION)
+
     model = make_answer_model(get_settings())
     # Typed as Any: the openai package types its http client as httpx2's, the tests use httpx's.
-    http_client: Any = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(400, json=_CONTEXT_SIZE_REJECTION)
-        )
-    )
+    http_client: Any = httpx.AsyncClient(transport=httpx.MockTransport(reject))
     # The provider client's own class, built again around the mock transport.
     api_client = type(model.root_async_client)(
         api_key="unused",  # pragma: allowlist secret
@@ -255,6 +297,7 @@ def _use_rejecting_model(client: Any) -> None:
     model.root_async_client = api_client
     model.async_client = api_client.chat.completions
     _use_model(client, model)
+    return requests
 
 
 @pytest.mark.parametrize("mode", _ALL_MODES)
@@ -267,21 +310,21 @@ class TestPromptTooLongForTheModelServer:
         """
         GIVEN a model server that rejects the prompt with its context-size error (HTTP 400)
         WHEN a question is posted to /chat in the mode
-        THEN the answer is 503 with exactly the fixed body, carrying nothing the server said
+        THEN exactly one request reached the model server, and the answer is 503 with exactly
+            the fixed body, carrying nothing the server said
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
         token = register_and_login(client, f"too-long-{mode}@example.com")
-        _use_rejecting_model(client)
+        requests = _use_rejecting_model(client)
 
         # WHEN
         response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
 
         # THEN
+        assert len(requests) == 1
         assert response.status_code == 503
         assert response.json() == UNAVAILABLE_BODY
-        assert "context" not in response.text
-        assert "n_ctx" not in response.text
 
     def test_the_stream_route_ends_in_a_503_error_event_without_the_providers_text(
         self, assistant_settings, client, configure, mode
@@ -289,19 +332,20 @@ class TestPromptTooLongForTheModelServer:
         """
         GIVEN the same model server
         WHEN a question is posted to /chat/stream in the mode
-        THEN the stream ends in one error event of code 503, with nothing the server said
+        THEN exactly one request reached the model server, and the stream ends in one error
+            event with exactly the fixed payload, with nothing the server said
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
         token = register_and_login(client, f"too-long-stream-{mode}@example.com")
-        _use_rejecting_model(client)
+        requests = _use_rejecting_model(client)
 
         # WHEN
         response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
 
         # THEN
+        assert len(requests) == 1
         events = _events(response.text)
-        assert [name for name, _ in events] == ["error"]
-        assert events[0][1]["code"] == 503
+        assert events == [("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})]
         assert "context" not in response.text
         assert "n_ctx" not in response.text

@@ -56,8 +56,8 @@ class TurnSlotsMachine(RuleBasedStateMachine):
 
     @precondition(lambda self: bool(self.held))
     @rule(data=st.data())
-    def cancel_a_holder(self, data: st.DataObject) -> None:
-        """Give back a slot a user holds, as ``hold_turn_slot`` does when its turn is cancelled."""
+    def release_a_holder(self, data: st.DataObject) -> None:
+        """Give back a slot a user holds, as ``hold_turn_slot`` does when its turn ends."""
         user = data.draw(st.sampled_from(sorted(self.held)))
 
         self.slots.release(user)
@@ -99,8 +99,8 @@ class TestHoldTurnSlotUnderCancellation:
     async def test_cancelled_turns_give_back_exactly_their_own_slots(self):
         """
         GIVEN three turns running inside ``hold_turn_slot``, two for one user and one for another
-        WHEN the first user's two turns are cancelled, and then the other's
-        THEN each cancellation frees only the slots of the cancelled turn, and the table ends empty
+        WHEN the first user's turns are cancelled one at a time, and then the other's
+        THEN each cancellation frees only the slot of the cancelled turn, and the table ends empty
         """
         # GIVEN
         slots = deps.TurnSlots(max_total=3, max_per_user=2)
@@ -122,9 +122,11 @@ class TestHoldTurnSlotUnderCancellation:
         assert slots.holders == {_USERS[0]: 2, _USERS[1]: 1}
 
         # WHEN/THEN
-        for task in first_turns:
-            task.cancel()
-        await asyncio.gather(*first_turns, return_exceptions=True)
+        first_turns[0].cancel()
+        await asyncio.gather(first_turns[0], return_exceptions=True)
+        assert slots.holders == {_USERS[0]: 1, _USERS[1]: 1}
+        first_turns[1].cancel()
+        await asyncio.gather(first_turns[1], return_exceptions=True)
         assert slots.holders == {_USERS[1]: 1}
         second_turn.cancel()
         await asyncio.gather(second_turn, return_exceptions=True)
