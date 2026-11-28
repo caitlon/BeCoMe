@@ -39,8 +39,11 @@ case "${1:-}" in
     shift
     # A bare `-e NAME` passes the variable through only when it is set. /tmp is
     # mounted because the API log the tests read is $E2E_API_LOG under /tmp.
+    # PLAYWRIGHT_JSON_OUTPUT_FILE names the file of the json reporter; without it the
+    # report goes to stdout and the CI step that reads the file fails.
     exec docker run --rm --network host --ipc host \
       -e CI -e E2E_API_LOG -e SECRET_KEY -e LOG_HASH_KEY -e VITE_ASSISTANT_ENABLED \
+      -e PLAYWRIGHT_JSON_OUTPUT_FILE \
       -v "$ROOT:$ROOT" -v /tmp:/tmp \
       -w "$ROOT/frontend" \
       "$image" npx playwright "$@"
