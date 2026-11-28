@@ -229,6 +229,18 @@ def test_long_skipped_list_is_capped(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "  ... and 2 more" in err
 
 
+def test_long_error_list_is_capped(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """GIVEN 12 top-level errors WHEN checked THEN only 10 are listed, plus a count of the rest."""
+    report = _report(passed=15)
+    report["errors"] = [{"message": f"boom {index}\nstack"} for index in range(12)]
+
+    status, _, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 1
+    assert len([line for line in err.splitlines() if line.startswith("  error: ")]) == 10
+    assert "  ... and 2 more" in err
+
+
 def test_walk_tolerates_missing_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """GIVEN skipped stats but a suite tree with missing keys WHEN checked THEN it still fails cleanly."""
     report = {
