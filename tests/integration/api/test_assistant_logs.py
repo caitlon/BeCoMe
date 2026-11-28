@@ -20,11 +20,15 @@ from typing import Any, override
 from unittest.mock import patch
 
 import pytest
+import sentry_sdk
 from fastapi.testclient import TestClient
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
+from sentry_sdk.transport import Transport
 
 from api.assistant.agent import tracing
+from api.config import get_settings
+from api.main import _init_sentry
 from tests.integration.api import test_assistant_chat as chat_tests
 from tests.integration.api.test_assistant_chat import (
     _ALL_MODES,
@@ -274,6 +278,132 @@ class TestLogsOfAFailedStreamCarryNoText:
             (recorder,) = trace_clients
             assert recorder.bodies
         _assert_records_hold_no_text(records)
+
+
+class TestLogsOfAFailedChatTurnCarryNoText:
+    """A /chat turn that fails on text the model's exception holds writes no record with it."""
+
+    @pytest.mark.parametrize("traced", [False, True], ids=["untraced", "traced"])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_no_record_holds_the_message_of_the_models_exception(
+        self, assistant_settings, client, configure, monkeypatch, mode, traced
+    ):
+        """
+        GIVEN a model that raises an exception whose message holds a sentinel, the question,
+            the project's data and every logger at DEBUG, and tracing on or off
+        WHEN a turn is posted through /chat in each mode
+        THEN the answer is the fixed 500 body without the sentinel, the failure was recorded
+            once as an unhandled_exception event naming a RuntimeError and carrying the request
+            id (so the stub model's exception is what failed and the capture is live), the trace
+            client received runs when tracing is on, and no record's message, arguments,
+            attributes, traceback or stack holds a sentinel
+        """
+        # GIVEN
+        owner = _owner_project(client, position=_POSITION_SENTINEL, first_name=_NAME_SENTINEL)
+        body = {"message": f"Question {_QUESTION_SENTINEL}?", "project_id": owner["id"]}
+        tracing_scope: AbstractContextManager[list[_CapturingClient]] = (
+            _captured_tracing(monkeypatch, configure) if traced else nullcontext([])
+        )
+        with tracing_scope as trace_clients:
+            configure(ASSISTANT_MODE=mode)
+            _use_model(client, _RaisingModel(responses=[]))
+
+            # WHEN
+            response, records = _post_capturing_records(client, CHAT, body, owner["token"])
+
+        # THEN
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Internal server error"}
+        assert _ERROR_SENTINEL not in response.text
+        # A record reaches every logger above its own, so the same one can be captured twice.
+        failures = {id(r): r for r in records if getattr(r, "event", "") == "unhandled_exception"}
+        (failure,) = failures.values()
+        assert failure.exception_type == "RuntimeError"  # type: ignore[attr-defined]
+        assert failure.path == CHAT  # type: ignore[attr-defined]
+        assert failure.request_id  # type: ignore[attr-defined]
+        if traced:
+            (recorder,) = trace_clients
+            assert recorder.bodies
+        _assert_records_hold_no_text(records)
+
+
+class _KeepEnvelopes(Transport):
+    """A Sentry transport that keeps every envelope in memory instead of sending it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.envelopes: list[Any] = []
+
+    @override
+    def capture_envelope(self, envelope: Any) -> None:
+        self.envelopes.append(envelope)
+
+    def event_count(self) -> int:
+        """Count the error events among the kept envelopes."""
+        return sum(
+            1 for envelope in self.envelopes for item in envelope.items if item.type == "event"
+        )
+
+    def serialized(self) -> str:
+        """Return every envelope item's payload as one string."""
+        return json.dumps(
+            [item.payload.json for envelope in self.envelopes for item in envelope.items],
+            default=str,
+        )
+
+
+@contextmanager
+def _sentry_keeping_envelopes() -> Iterator[_KeepEnvelopes]:
+    """Start Sentry with the app's own initialisation, sending to a transport that keeps envelopes."""
+    transport = _KeepEnvelopes()
+    real_init = sentry_sdk.init
+
+    def init_with_transport(**kwargs: Any) -> None:
+        real_init(**kwargs, transport=transport)
+
+    settings = get_settings().model_copy(
+        update={"sentry_dsn": "https://public@o0.ingest.sentry.io/0"}
+    )
+    previous = sentry_sdk.get_client()
+    try:
+        with patch("api.main.sentry_sdk.init", init_with_transport):
+            _init_sentry(settings)
+        yield transport
+    finally:
+        sentry_sdk.flush()
+        sentry_sdk.get_global_scope().set_client(previous)
+
+
+class TestSentryEventsOfAFailedChatTurnCarryNoText:
+    """The error tracker receives the failure of a /chat turn without the text in it."""
+
+    @pytest.mark.parametrize("endpoint", _ENDPOINTS, ids=_ENDPOINT_IDS)
+    def test_no_event_holds_the_message_of_the_models_exception(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN Sentry started by the app's own _init_sentry, with a transport that keeps
+            envelopes, and a model that raises an exception whose message holds a sentinel
+        WHEN a turn is posted through /chat or /chat/stream
+        THEN the failure reached Sentry as at least one event (so the capture is live) and no
+            item of any envelope holds a sentinel
+        """
+        # GIVEN
+        owner = _owner_project(client, position=_POSITION_SENTINEL, first_name=_NAME_SENTINEL)
+        body = {"message": f"Question {_QUESTION_SENTINEL}?", "project_id": owner["id"]}
+        configure(ASSISTANT_MODE="workflow")
+        _use_model(client, _RaisingModel(responses=[]))
+
+        # WHEN
+        with _sentry_keeping_envelopes() as transport:
+            _post_capturing_records(client, endpoint, body, owner["token"])
+            sentry_sdk.flush()
+
+        # THEN
+        assert transport.event_count() >= 1
+        sent = transport.serialized()
+        for sentinel in _TEXT_SENTINELS:
+            assert sentinel not in sent
 
 
 def _record_with(**fields: Any) -> logging.LogRecord:

@@ -13,7 +13,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Coroutine
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from langsmith.run_trees import RunTree
 from starlette.types import Receive, Scope, Send
 
@@ -188,6 +188,20 @@ def _error_frame(exc: Exception) -> str:
     return format_event("error", {"code": code, "detail": detail})
 
 
+def _has_own_handler(request: Request, exc: Exception) -> bool:
+    """Say whether the app maps this exception to a response of its own.
+
+    This is Starlette's lookup: a handler registered for a class in the exception's MRO other
+    than ``Exception``, which is the catch-all that answers every other failure.
+
+    :param request: The request that failed, whose app holds the registered handlers.
+    :param exc: The exception the route raised.
+    :return: ``True`` when a handler other than the catch-all one exists for it.
+    """
+    handlers = request.app.exception_handlers
+    return any(cls in handlers for cls in type(exc).__mro__ if cls is not Exception)
+
+
 def _frame(item: str | AssistantChatResponse | Exception) -> tuple[str, bool]:
     """Frame one queued item as a server-sent event.
 
@@ -334,7 +348,9 @@ async def chat(
     project the caller cannot see into ``ProjectNotFoundError``; both are answered by handlers
     registered next to this router.
 
-    A client that goes away while the turn runs cancels it, and the slot is given back.
+    A client that goes away while the turn runs cancels it, and the slot is given back. A
+    failure that no handler maps is answered ``500`` here, with one record that names the
+    exception type and where it was raised, never its text, as the stream route does.
 
     :param request: The incoming request, watched for its client going away.
     :param turn: The validated chat request and the context built for it, whose API client
@@ -344,9 +360,32 @@ async def chat(
         token usage of the turn; for a client that has gone away, an empty ``499`` that nobody
         receives.
     """
-    answer = await _run_unless_disconnected(
-        request, service.answer(turn.request, turn.context), "chat"
-    )
+    try:
+        answer = await _run_unless_disconnected(
+            request, service.answer(turn.request, turn.context), "chat"
+        )
+    except Exception as exc:
+        if _has_own_handler(request, exc):
+            raise
+        # The app-wide handler would log the traceback, whose text carries the exception's
+        # message, which can hold the question or the model's words. This record names the
+        # type and where it was raised, never the text, as the stream route does, and keeps
+        # the event name that existing queries and alerts on /chat failures use.
+        logger.error(
+            "assistant chat failed: %s",
+            type(exc).__name__,
+            extra={
+                "event": "unhandled_exception",
+                "request_id": getattr(request.state, "request_id", None),
+                "path": request.url.path,
+                "exception_type": type(exc).__name__,
+                "where": raised_at(exc),
+            },
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": INTERNAL_ERROR_DETAIL},
+        )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED_REQUEST)
     return answer

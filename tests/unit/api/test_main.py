@@ -427,6 +427,63 @@ class TestSentryInit:
 
         # THEN
         disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert RedisIntegration in [type(integration) for integration in disabled]
+
+    def test_disables_the_langchain_integration(self):
+        """
+        GIVEN a configured Sentry DSN and langchain installed
+        WHEN _init_sentry runs
+        THEN the LangChain integration is disabled, because it reports a failed model call
+            as an event that holds the exception's message
+        """
+        # GIVEN
+        from sentry_sdk.integrations.langchain import LangchainIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
+        assert [type(integration) for integration in disabled] == [
+            RedisIntegration,
+            LangchainIntegration,
+        ]
+
+    def test_starts_without_langchain_when_the_assistant_extra_is_absent(self, monkeypatch):
+        """
+        GIVEN a configured Sentry DSN and a process where langchain cannot be imported
+        WHEN _init_sentry runs
+        THEN Sentry is still initialised, with only the Redis integration disabled
+        """
+        # GIVEN
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        from api.config import Settings
+        from api.main import _init_sentry
+
+        settings = Settings(sentry_dsn=_FAKE_DSN)
+        # The SDK's module imports langchain_core when it is first imported, so it is taken
+        # out of the module table and langchain_core, with every submodule already loaded
+        # (an import finds a loaded submodule without asking its parent), made unimportable
+        # for the run.
+        monkeypatch.delitem(sys.modules, "sentry_sdk.integrations.langchain", raising=False)
+        for name in [*sys.modules, "langchain_core"]:
+            if name == "langchain_core" or name.startswith("langchain_core."):
+                monkeypatch.setitem(sys.modules, name, None)
+
+        # WHEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        # THEN
+        disabled = mock_init.call_args.kwargs["disabled_integrations"]
         assert [type(integration) for integration in disabled] == [RedisIntegration]
 
     def test_filters_request_data_and_attaches_no_body(self):

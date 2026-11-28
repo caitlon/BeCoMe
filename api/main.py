@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager, suppress
 import sentry_sdk
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sentry_sdk.integrations import DidNotEnable, Integration
 from sentry_sdk.integrations.redis import RedisIntegration
 from slowapi.errors import RateLimitExceeded
 
@@ -82,6 +83,21 @@ def _init_sentry(settings: Settings) -> None:
     :param settings: Application settings.
     """
     if settings.sentry_dsn:
+        disabled_integrations: list[Integration] = [
+            # The Redis integration records command keys, which hold token and session
+            # ids and a digest of the email address.
+            RedisIntegration()
+        ]
+        # The LangChain integration reports a failed model call as an event of its own, with
+        # the exception's message, which can hold the user's question or the model's text.
+        # The assistant's failures reach Sentry through their log records, which name only
+        # the exception type, and LangSmith keeps the traces. The module raises DidNotEnable
+        # on import without langchain, which only the assistant extra installs; then the
+        # integration cannot enable itself either, so nothing is lost.
+        with suppress(DidNotEnable):
+            from sentry_sdk.integrations.langchain import LangchainIntegration
+
+            disabled_integrations.append(LangchainIntegration())
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
@@ -94,9 +110,7 @@ def _init_sentry(settings: Settings) -> None:
             # anywhere in the request would ship repr(ChangePasswordRequest) to the
             # tracker, meaning the plaintext passwords or a still-valid reset token.
             include_local_variables=False,
-            # The Redis integration records command keys, which hold token and session
-            # ids and a digest of the email address.
-            disabled_integrations=[RedisIntegration()],
+            disabled_integrations=disabled_integrations,
             # Request data is reduced to an allowlist (api/sentry_filter.py).
             max_request_body_size="never",
             before_send=scrub_request_data,
