@@ -53,17 +53,20 @@ async def check_redis(settings: Settings) -> None:
 async def run_startup_checks(settings: Settings) -> None:
     """Check every backend of this process at once, never raising.
 
-    Redis is checked always, the assistant's backends when the assistant is enabled. A failure
-    is logged by the check that met it; a fault in a check itself is logged here, and does not
-    stop the other check, so the background task that runs this ends quietly whatever happens.
+    Redis is checked always, the assistant's backends when the assistant is enabled; with it
+    enabled, the record of the assistant's turn ceiling is logged too, which needs no request. A
+    failure is logged by the check that met it; a fault in a check itself is logged here, and
+    does not stop the other check, so the background task that runs this ends quietly whatever
+    happens.
 
     :param settings: Application settings.
     """
     checks = [check_redis(settings)]
     if settings.assistant_enabled:
         # Imported only when the flag is on, like the router in create_app().
-        from api.assistant.startup import check_assistant_backends
+        from api.assistant.startup import check_assistant_backends, log_turn_ceiling
 
+        log_turn_ceiling(settings)
         checks.append(check_assistant_backends(settings))
     for outcome in await asyncio.gather(*checks, return_exceptions=True):
         if isinstance(outcome, Exception):

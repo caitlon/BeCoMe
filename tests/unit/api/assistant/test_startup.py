@@ -9,12 +9,14 @@ import openai
 import pytest
 from pydantic import SecretStr
 
+from api import startup_checks
 from api.assistant import startup
 from api.assistant.errors import AssistantUnavailableError
 from api.assistant.rag.models import make_answer_model
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.roles import tag_role
 from api.config import get_settings
+from tests.shared.helpers import captured_log_records
 
 _LOGGER = "api.assistant.startup"
 _SECRET_TEXT = "http://secret-host.internal:9999/v1 sk-leaked-key"  # pragma: allowlist secret
@@ -375,3 +377,115 @@ class TestARealClientCutOffByTheCap:
         (body,) = _completion_cut_off_by_the_cap.bodies
         assert body["max_completion_tokens"] == 8
         assert _records(caplog, logging.ERROR) == []
+
+
+@pytest.mark.asyncio
+class TestTurnCeilingRecord:
+    @pytest.fixture(autouse=True)
+    def _no_redis(self, monkeypatch):
+        """Keep the Redis check of run_startup_checks off the network."""
+
+        async def check_redis(settings):
+            return None
+
+        monkeypatch.setattr(startup_checks, "check_redis", check_redis)
+
+    async def test_startup_logs_one_record_with_the_ceiling_across_workers(
+        self, settings, backends
+    ):
+        """
+        GIVEN three uvicorn workers and the default of 8 concurrent turns per process
+        WHEN the process runs its startup checks
+        THEN exactly one assistant_turn_ceiling record is logged, with 3 workers, 8 turns per
+        worker and a ceiling of 24
+        """
+        # GIVEN
+        configured = settings.model_copy(
+            update={"uvicorn_workers": 3, "assistant_max_concurrent_turns": 8}
+        )
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            await startup_checks.run_startup_checks(configured)
+
+        # THEN
+        (record,) = [r for r in records if r.event == "assistant_turn_ceiling"]
+        assert record.levelno == logging.INFO
+        assert record.getMessage() == "Assistant turn ceiling"
+        assert (record.workers, record.turns_per_worker, record.turns_ceiling) == (3, 8, 24)
+
+    async def test_startup_logs_the_record_once_when_a_backend_probe_fails(
+        self, settings, backends
+    ):
+        """
+        GIVEN a document index that fails its probe
+        WHEN the process runs its startup checks
+        THEN the ceiling is still logged exactly once, beside the failure's ERROR
+        """
+        # GIVEN
+        backends.vector_db_error = RuntimeError("down")
+        configured = settings.model_copy(update={"uvicorn_workers": 2})
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            await startup_checks.run_startup_checks(configured)
+
+        # THEN
+        assert len([r for r in records if r.event == "assistant_turn_ceiling"]) == 1
+        assert [r.role for r in records if r.event == "assistant_backend_check_failed"] == [
+            "vector_db"
+        ]
+
+    async def test_startup_logs_no_record_with_the_assistant_disabled(self, settings):
+        """
+        GIVEN the assistant switched off
+        WHEN the process runs its startup checks
+        THEN no assistant_turn_ceiling record is logged
+        """
+        # GIVEN
+        configured = settings.model_copy(update={"assistant_enabled": False, "uvicorn_workers": 3})
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            await startup_checks.run_startup_checks(configured)
+
+        # THEN
+        assert [r for r in records if r.event == "assistant_turn_ceiling"] == []
+
+    async def test_one_worker_gives_a_ceiling_of_the_per_process_limit(self, settings):
+        """
+        GIVEN one worker and a limit of 5 turns per process
+        WHEN the ceiling is logged
+        THEN the record names 1 worker, 5 turns per worker and a ceiling of 5
+        """
+        # GIVEN
+        configured = settings.model_copy(
+            update={"uvicorn_workers": 1, "assistant_max_concurrent_turns": 5}
+        )
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            startup.log_turn_ceiling(configured)
+
+        # THEN
+        (record,) = records
+        assert (record.workers, record.turns_per_worker, record.turns_ceiling) == (1, 5, 5)
+
+    async def test_zero_workers_count_as_one_as_uvicorn_reads_it(self, settings):
+        """
+        GIVEN uvicorn_workers of 0 and a limit of 5 turns per process
+        WHEN the ceiling is logged
+        THEN the record names 1 worker and a ceiling equal to the per-process limit
+        """
+        # GIVEN
+        configured = settings.model_copy(
+            update={"uvicorn_workers": 0, "assistant_max_concurrent_turns": 5}
+        )
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            startup.log_turn_ceiling(configured)
+
+        # THEN
+        (record,) = records
+        assert (record.workers, record.turns_per_worker, record.turns_ceiling) == (1, 5, 5)

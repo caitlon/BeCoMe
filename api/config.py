@@ -302,6 +302,10 @@ class Settings(BaseSettings):
     # API
     debug: bool = False
     api_version: str = _version
+    # Mirrors the UVICORN_WORKERS the image's CMD passes to uvicorn as --workers. It feeds only
+    # the startup record of the assistant's turn ceiling; 0 counts as one worker, as uvicorn
+    # reads it.
+    uvicorn_workers: int = Field(default=1, ge=0)
 
     # Logging. The field default is only a floor: when LOG_LEVEL is absent,
     # _apply_profile_log_level replaces it with the active profile's level from

@@ -3549,3 +3549,69 @@ class TestAssistantProviderSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_api_reasoning_effort"):
             Settings(secret_key="test-secret-key")
+
+
+class TestUvicornWorkersSetting:
+    """Tests for the worker count the application reads from the container's variable."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_env(self, monkeypatch, tmp_path):
+        """Keep a local .env and a worker count of the process out of the tests."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("UVICORN_WORKERS", raising=False)
+
+    def test_defaults_to_one_worker(self):
+        """
+        GIVEN no UVICORN_WORKERS in the environment
+        WHEN Settings is constructed
+        THEN the container is taken to run one worker
+        """
+        # GIVEN/WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.uvicorn_workers == 1
+
+    def test_reads_the_variable_the_container_command_reads(self, monkeypatch):
+        """
+        GIVEN UVICORN_WORKERS set to 3
+        WHEN Settings is constructed
+        THEN uvicorn_workers is 3
+        """
+        # GIVEN
+        monkeypatch.setenv("UVICORN_WORKERS", "3")
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.uvicorn_workers == 3
+
+    def test_refuses_a_negative_count(self, monkeypatch):
+        """
+        GIVEN UVICORN_WORKERS set to -1
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.setenv("UVICORN_WORKERS", "-1")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="uvicorn_workers"):
+            Settings(secret_key="test-secret-key")
+
+    @pytest.mark.parametrize("raw", ["0", "64"])
+    def test_accepts_every_count_uvicorn_runs_with(self, monkeypatch, raw):
+        """
+        GIVEN UVICORN_WORKERS set to zero (which uvicorn runs as one worker) or to 64
+        WHEN Settings is constructed
+        THEN the value is accepted as it stands
+        """
+        # GIVEN
+        monkeypatch.setenv("UVICORN_WORKERS", raw)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.uvicorn_workers == int(raw)

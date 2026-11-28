@@ -7,6 +7,9 @@ together. A failure is logged at ERROR with the role of the backend and the clas
 error, the same role names the 503 records carry (``api/assistant/roles.py``); the text of
 an error is never logged, since it can name a host. Nothing here raises or stops the start.
 
+The module also records the ceiling on concurrent turns across the container's workers, which
+no probe can show: each worker process keeps its own turn slots.
+
 This module is imported only when the assistant is enabled, by ``api/startup_checks.py``.
 """
 
@@ -124,6 +127,29 @@ async def _run_probe(
         )
         return False
     return True
+
+
+def log_turn_ceiling(settings: Settings) -> None:
+    """Log how many chat turns the container answers at once at most, in one INFO record.
+
+    Each uvicorn worker process has its own turn slots, sized by
+    ``assistant_max_concurrent_turns``, so the ceiling across the container is that number
+    times ``uvicorn_workers``. Every worker logs its own copy at start, and the count in each
+    is the same. The record carries only counts.
+
+    :param settings: Application settings.
+    """
+    # uvicorn reads --workers 0 as one worker, so the record does too.
+    workers = settings.uvicorn_workers or 1
+    logger.info(
+        "Assistant turn ceiling",
+        extra={
+            "event": "assistant_turn_ceiling",
+            "workers": workers,
+            "turns_per_worker": settings.assistant_max_concurrent_turns,
+            "turns_ceiling": workers * settings.assistant_max_concurrent_turns,
+        },
+    )
 
 
 async def check_assistant_backends(settings: Settings) -> None:
