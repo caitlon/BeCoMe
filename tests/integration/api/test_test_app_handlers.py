@@ -12,15 +12,14 @@ This compares what each app has, with the assistant switched on in both builds:
 
 * The exception handlers must be the same objects under the same keys. There is no deliberate
   difference today, so any difference is a bug in ``create_test_app()``.
-* The middleware may differ only where ``DELIBERATE_MIDDLEWARE_DIFFERENCES`` says so, each with
-  the reason and the test that covers the behaviour instead.
+* The set of middleware classes (not their order or options) may differ only where
+  ``DELIBERATE_MIDDLEWARE_DIFFERENCES`` says so, each with the reason and the test that covers
+  the behaviour instead.
 * The real app has the default-limits dependency and the test app leaves it out on purpose.
 
 The last test checks the behaviour the first one protects: the 429 the test app answers.
 """
 
-import logging
-from collections.abc import Iterable
 from typing import cast
 from unittest.mock import patch
 
@@ -38,6 +37,7 @@ from api.middleware.rate_limit import (
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.middleware.unhandled_errors import UnhandledErrorMiddleware
 from tests.integration.api.conftest import create_test_app
+from tests.shared.helpers import captured_log_records
 from tests.unit.api.route_table import real_app
 
 # Middleware the real app has and the test app leaves out, each with the reason and where the
@@ -50,8 +50,9 @@ DELIBERATE_MIDDLEWARE_DIFFERENCES: dict[type, str] = {
         "middleware answers is tested in tests/unit/api/middleware/test_unhandled_errors.py."
     ),
     SecurityHeadersMiddleware: (
-        "Response headers only; no integration test reads them. Tested in "
-        "tests/unit/api/middleware/test_security_headers.py on a minimal app."
+        "Response headers only; no test that uses the test app reads them. Tested in "
+        "tests/unit/api/middleware/test_security_headers.py on a minimal app, and on the real "
+        "app's 429 in tests/integration/api/test_default_rate_limits.py."
     ),
     BodySizeLimitMiddleware: (
         "Guards the request size, which no integration request approaches. Tested on the real "
@@ -81,16 +82,13 @@ def _middleware_classes(app: FastAPI) -> set[type]:
     return {cast(type, middleware.cls) for middleware in app.user_middleware}
 
 
-def _describe(handlers: Iterable[object]) -> list[str]:
-    """Name handlers for a failure message.
+def _describe(handler: object) -> str:
+    """Name a handler for a failure message.
 
-    :param handlers: Handler callables (or ``None`` for a missing one).
-    :return: ``module.qualname`` of each, in the same order.
+    :param handler: A handler callable (or ``None`` for a missing one).
+    :return: ``module.qualname`` of the handler.
     """
-    return [
-        f"{getattr(handler, '__module__', '?')}.{getattr(handler, '__qualname__', handler)}"
-        for handler in handlers
-    ]
+    return f"{getattr(handler, '__module__', '?')}.{getattr(handler, '__qualname__', handler)}"
 
 
 def test_test_app_registers_the_exception_handlers_of_the_real_app(assistant_settings):
@@ -115,8 +113,8 @@ def test_test_app_registers_the_exception_handlers_of_the_real_app(assistant_set
     ), "no assistant exception handler in either app: the comparison ran with the flag off"
     assert not different, "exception handlers differ between the real app and the test app: " + (
         "; ".join(
-            f"{key.__name__}: real={_describe([real.get(key)])[0]}, "
-            f"test app={_describe([test_app.get(key)])[0]}"
+            f"{key.__name__}: real={_describe(real.get(key))}, "
+            f"test app={_describe(test_app.get(key))}"
             for key in different
         )
         + ". Register the real handler in create_test_app() in tests/integration/api/conftest.py."
@@ -124,7 +122,10 @@ def test_test_app_registers_the_exception_handlers_of_the_real_app(assistant_set
 
 
 class TestMiddleware:
-    """The test app carries the real app's middleware, bar the ones listed with a reason."""
+    """The test app carries the real app's set of middleware classes, bar the listed ones.
+
+    Only the set of classes is compared, not their order or options.
+    """
 
     def test_test_app_has_no_middleware_the_real_app_lacks(self, assistant_settings):
         """
@@ -189,21 +190,11 @@ def test_test_app_leaves_out_the_default_limits_the_real_app_enforces(assistant_
 
     # THEN
     assert enforce_default_limits in real, "the real app no longer enforces the default limits"
+    gained = [_describe(dependency) for dependency in test_app]
     assert test_app == [], (
-        f"the test app gained app-level dependencies: {_describe(test_app)}. "
+        f"the test app gained app-level dependencies: {gained}. "
         "Compare them with api/main.py::create_app() and update this test."
     )
-
-
-class _RecordCollector(logging.Handler):
-    """Keep the records of one logger, whether or not it propagates to the root."""
-
-    def __init__(self) -> None:
-        super().__init__(level=logging.WARNING)
-        self.records: list[logging.LogRecord] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.records.append(record)
 
 
 def test_rate_limited_request_gets_the_429_of_the_real_handler(client: TestClient) -> None:
@@ -217,30 +208,21 @@ def test_rate_limited_request_gets_the_429_of_the_real_handler(client: TestClien
     allowed = int(LIMIT_PWD_RESET.split("/")[0])
     window_seconds = 60
     body = {"email": "nobody@example.com"}
-    # The api loggers stop propagating once any test configures logging, so caplog cannot be
-    # relied on: the collector goes on the logger itself.
-    ratelimit_logger = logging.getLogger("api.ratelimit")
-    collector = _RecordCollector()
-    ratelimit_logger.addHandler(collector)
 
     # WHEN
-    try:
-        with patch.object(limiter, "enabled", True):
+    with captured_log_records("api.ratelimit") as records, patch.object(limiter, "enabled", True):
+        limiter.reset()
+        try:
+            answers = [
+                client.post("/api/v1/auth/forgot-password", json=body) for _ in range(allowed + 1)
+            ]
+        finally:
             limiter.reset()
-            try:
-                answers = [
-                    client.post("/api/v1/auth/forgot-password", json=body)
-                    for _ in range(allowed + 1)
-                ]
-            finally:
-                limiter.reset()
-    finally:
-        ratelimit_logger.removeHandler(collector)
 
     # THEN
     assert [answer.status_code for answer in answers] == [202] * allowed + [429]
     retry_after = answers[-1].headers["Retry-After"]
     assert retry_after.isdigit()
     assert 1 <= int(retry_after) <= window_seconds
-    events = [getattr(record, "event", None) for record in collector.records]
+    events = [getattr(record, "event", None) for record in records]
     assert events == ["rate_limit_exceeded"]
