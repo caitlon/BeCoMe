@@ -11,9 +11,7 @@ from typing import Any
 import fakeredis
 import pytest
 import sentry_sdk
-import sentry_sdk.integrations as sentry_integrations
 from fastapi.testclient import TestClient
-from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception
 
 from api.auth.login_throttle import LOGIN_KEY_PREFIX, RedisLoginThrottle
@@ -31,6 +29,7 @@ from tests.shared.database_errors import (
     psycopg3_unique_violation,
     raised,
 )
+from tests.shared.sentry_capture import KeepEnvelopes, capturing_transport
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://public@o0.ingest.sentry.io/0"
@@ -62,37 +61,6 @@ _SENTINELS = (
 )
 
 
-class _KeepEnvelopes(Transport):
-    """A transport that keeps every envelope instead of sending it."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.envelopes: list[Any] = []
-
-    def capture_envelope(self, envelope: Any) -> None:
-        self.envelopes.append(envelope)
-
-    def items(self, item_type: str) -> list[dict[str, Any]]:
-        """Return the payloads of every envelope item of one type."""
-        return [
-            item.payload.json
-            for envelope in self.envelopes
-            for item in envelope.items
-            if item.type == item_type
-        ]
-
-    def serialized(self) -> str:
-        """Return every envelope payload as one string."""
-        return json.dumps(
-            [item.payload.json for envelope in self.envelopes for item in envelope.items],
-            default=str,
-        )
-
-
-# Identifier of the SDK's Redis integration.
-_REDIS = "redis"
-
-
 class _FailingRegistration:
     """A registration service that fails the way an unexpected fault would."""
 
@@ -101,43 +69,16 @@ class _FailingRegistration:
 
 
 @pytest.fixture
-def transport() -> Iterator[_KeepEnvelopes]:
-    """The capturing transport, with the SDK set up as in a fresh process.
-
-    The SDK records set-up integrations per process: an integration set up by an earlier
-    ``init`` is kept by a later one, even when that ``init`` lists it in
-    ``disabled_integrations``. A deployed process calls ``init`` once; a test worker calls
-    it many times. So the Redis entry is taken out of both registries for the test, which
-    makes ``init`` decide about it afresh, and the earlier state is put back afterwards. The
-    client and the scopes are reset around the test too.
-    """
-    registries = (
-        sentry_integrations._processed_integrations,
-        sentry_integrations._installed_integrations,
-    )
-    earlier = [_REDIS in registry for registry in registries]
-    for registry in registries:
-        registry.discard(_REDIS)
-    sentry_sdk.get_isolation_scope().clear()
-    sentry_sdk.get_current_scope().clear()
-    keep = _KeepEnvelopes()
-    try:
+def transport() -> Iterator[KeepEnvelopes]:
+    """The capturing transport, with the SDK set up as in a fresh process."""
+    with capturing_transport() as keep:
         yield keep
-    finally:
-        sentry_sdk.get_global_scope().set_client(None)
-        sentry_sdk.get_isolation_scope().clear()
-        sentry_sdk.get_current_scope().clear()
-        for registry, was_there in zip(registries, earlier, strict=True):
-            if was_there:
-                registry.add(_REDIS)
-            else:
-                registry.discard(_REDIS)
 
 
 def _build_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
-    keep: _KeepEnvelopes,
+    keep: KeepEnvelopes,
     traces: float,
     origin_verify: str = "",
 ) -> TestClient:

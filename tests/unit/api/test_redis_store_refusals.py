@@ -44,10 +44,7 @@ from tests.shared.resp_stub import (
     RespStub,
     resp_stub,
 )
-from tests.unit.api.test_sentry_request_data import (  # noqa: F401 - the fixture is used by name
-    _KeepEnvelopes,
-    transport,
-)
+from tests.shared.sentry_capture import KeepEnvelopes, capturing_transport
 
 _FAKE_DSN = "https://public@o0.ingest.sentry.io/0"
 _LOGGERS = ("api.security", "api.exception", "api.assistant.deps")
@@ -187,7 +184,8 @@ class TestAssistantThrottleRefusal:
         """
         GIVEN a store that refuses writes
         WHEN a message is counted for a user id
-        THEN the turn is refused and no record holds the user's digest
+        THEN the turn is refused, the record names the Redis error class, and no record holds
+            the user's digest
         """
         # GIVEN
         throttle = RedisAssistantThrottle(client, max_per_hour=5)
@@ -198,6 +196,8 @@ class TestAssistantThrottleRefusal:
             throttle.charge(_USER_ID)
 
         # THEN
+        text = _everything_a_record_says(_the_record(records(), "assistant_throttle_unavailable"))
+        assert "ReadOnlyError" in text
         _assert_no_record_holds(records(), [f"{KEY_PREFIX}:{digest}", digest], stub)
 
 
@@ -266,6 +266,29 @@ class TestLoginThrottleRefusal:
         # THEN
         assert allowed is True
         assert [words[0] for words in stub.commands() if words[0] == "EXEC"] == ["EXEC", "EXEC"]
+        _assert_no_record_holds(records(), self._needles(), stub)
+
+    def test_a_refused_release_fails_open_and_the_record_holds_no_key(self, stub, client, records):
+        """
+        GIVEN a store whose counter has gone negative and that refuses the pipeline that
+            restores it
+        WHEN a reserved attempt is released
+        THEN the call returns, the record names the error class, and no record holds the key
+            or the digest of the identifier
+        """
+        # GIVEN
+        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX)
+        stub.reply_to("DECRBY", b":-1\r\n")
+        stub.reply_to("INCRBY", b"-READONLY You can't write against a read only replica.\r\n")
+        stub.reply_to("EXEC", EXECABORT_REPLY)
+
+        # WHEN
+        throttle.release(_IDENTIFIER)
+
+        # THEN
+        text = _everything_a_record_says(_the_record(records(), "throttle_store_unavailable"))
+        assert "ReadOnlyError" in text
+        assert [words[0] for words in stub.commands() if words[0] == "EXEC"] == ["EXEC"]
         _assert_no_record_holds(records(), self._needles(), stub)
 
 
@@ -508,26 +531,21 @@ class TestSingleCommandRefusals:
 
 
 @pytest.fixture
-def sentry_events(
-    transport: _KeepEnvelopes,  # noqa: F811 - the imported fixture is requested by name
-) -> Iterator[Callable[[], _KeepEnvelopes]]:
+def sentry_events() -> Iterator[Callable[[], KeepEnvelopes]]:
     """Start Sentry with the app's own initialisation, sending to a transport that keeps envelopes.
 
-    The client the test found is put back afterwards.
+    The client is left unset afterwards, as ``capturing_transport`` leaves it.
     """
     real_init = sentry_sdk.init
-
-    def init_with_transport(**kwargs: Any) -> None:
-        real_init(**kwargs, transport=transport)
-
     settings = get_settings().model_copy(update={"sentry_dsn": _FAKE_DSN})
-    previous = sentry_sdk.get_client()
-    try:
+    with capturing_transport() as keep:
+
+        def init_with_transport(**kwargs: Any) -> None:
+            real_init(**kwargs, transport=keep)
+
         with patch("api.main.sentry_sdk.init", init_with_transport):
             _init_sentry(settings)
-        yield lambda: transport
-    finally:
-        sentry_sdk.get_global_scope().set_client(previous)
+        yield lambda: keep
 
 
 class TestErrorTrackerEventsOfARefusedWrite:
@@ -579,3 +597,63 @@ class TestErrorTrackerEventsOfARefusedWrite:
         assert kept.items("event")
         assert digest not in sent
         assert f"{LOGIN_KEY_PREFIX}:fail:" not in sent
+
+    def test_the_email_throttle_event_holds_no_key_or_digest(self, stub, client, sentry_events):
+        """
+        GIVEN Sentry started by the app's own initialisation, and a store that takes the
+            cooldown key but refuses the transaction that counts the send
+        WHEN a send is asked for
+        THEN an event names the Redis error class and no item sent holds a key or the digest
+        """
+        # GIVEN
+        throttle = RedisEmailSendThrottle(client, key_prefix=RESET_KEY_PREFIX)
+        digest = login_throttle._digest(_IDENTIFIER)
+        stub.reply_to(
+            "SET", OK_REPLY, b"-READONLY You can't write against a read only replica.\r\n"
+        )
+        stub.reply_to("EXEC", _TWO_READS, EXECABORT_REPLY)
+
+        # WHEN
+        allowed = throttle.allow(_IDENTIFIER)
+        sentry_sdk.flush()
+
+        # THEN
+        assert allowed is True
+        kept = sentry_events()
+        sent = kept.serialized()
+        assert stub.received(digest)
+        assert kept.items("event")
+        assert "ReadOnlyError" in sent
+        for needle in (digest, f"{RESET_KEY_PREFIX}:daily:", f"{RESET_KEY_PREFIX}:cooldown:"):
+            assert needle not in sent
+
+    def test_the_revocation_store_event_holds_no_session_id(self, stub, client, sentry_events):
+        """
+        GIVEN Sentry started by the app's own initialisation, and a store that refuses the
+            transaction that revokes a session
+        WHEN the 503 handler answers the store's error
+        THEN an event names the Redis error class and no item sent holds the session id value
+            or its key
+        """
+        # GIVEN
+        store = RedisRevocationStore(client)
+        request = SimpleNamespace(
+            state=SimpleNamespace(request_id="request-1"),
+            url=SimpleNamespace(path="/api/v1/auth/logout"),
+        )
+
+        # WHEN
+        with pytest.raises(RevocationStoreError) as raised:
+            store.revoke_session(_SESSION_ID, 60)
+        response = revocation_store_unavailable_handler(request, raised.value)  # type: ignore[arg-type]
+        sentry_sdk.flush()
+
+        # THEN
+        assert response.status_code == 503
+        kept = sentry_events()
+        sent = kept.serialized()
+        assert stub.received(_SESSION_ID)
+        assert kept.items("event")
+        assert "ReadOnlyError" in sent
+        for needle in (_SESSION_ID, f"session:revoked:{_SESSION_ID}"):
+            assert needle not in sent

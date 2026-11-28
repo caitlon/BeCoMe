@@ -2,6 +2,7 @@
 
 import pytest
 import redis
+
 from api.redis_error_text import drop_pipeline_command
 
 _REASON = "You can't write against a read only replica."
