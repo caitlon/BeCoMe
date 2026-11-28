@@ -196,8 +196,8 @@ class TestLogsOfAnAnsweredTurnCarryNoText:
             the model was shown the question, the name and the position (workflow and hybrid
             read the project ahead; the tool modes through the tool), some library record was
             captured (so the capture is live), the app's own assistant_turn record was captured,
-            the trace client received runs when tracing is on, and no record's message, arguments, attributes, traceback or stack holds a
-            sentinel
+            the trace client received runs when tracing is on, and no record's message,
+            arguments, attributes, traceback or stack holds a sentinel
         """
         # GIVEN
         owner = _owner_project(client, position=_POSITION_SENTINEL, first_name=_NAME_SENTINEL)

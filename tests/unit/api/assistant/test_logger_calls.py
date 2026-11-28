@@ -222,9 +222,9 @@ def test_every_exc_info_has_a_reason_comment(module):
 
     # THEN
     assert not offenders, (
-        f"{_module_ids(module)} writes a traceback or stack without a '# exc_info: <reason>' comment "
-        f"on lines {offenders}. The traceback prints the exception's message: say why that "
-        "is needed and why it holds no user text."
+        f"{_module_ids(module)} writes a traceback or stack without a "
+        f"'# exc_info: <reason>' comment on lines {offenders}. The traceback prints the "
+        "exception's message: say why that is needed and why it holds no user text."
     )
 
 
