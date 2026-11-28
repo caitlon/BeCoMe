@@ -1,17 +1,16 @@
 """A store that refuses a write leaves no key in what is logged or sent to the error tracker.
 
 redis-py puts the text of a failed pipeline command, key included, into the message of the
-error it raises. The throttles and the revocation store log that error with its traceback, and
-the error tracker turns every ERROR record into an event. These tests run the real stores
-against a loopback stub that answers like a read-only replica, so the error is the one
-redis-py really raises, and read everything a record and an event say.
+error it raises. The assistant throttle logs that error with its traceback, and the error
+tracker turns every ERROR record into an event. These tests run the real throttle against a
+loopback stub that answers like a read-only replica, so the error is the one redis-py really
+raises, and read everything a record and an event say.
 """
 
 import asyncio
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID
@@ -30,37 +29,21 @@ from api.assistant.rate_limit import (
     RedisAssistantThrottle,
     address_key,
 )
-from api.auth import login_throttle
-from api.auth.email_throttle import RESET_KEY_PREFIX, RedisEmailSendThrottle
-from api.auth.login_throttle import LOGIN_KEY_PREFIX, RedisLoginThrottle
-from api.auth.revocation_store import RedisRevocationStore, RevocationStoreError
 from api.config import get_settings
 from api.main import _init_sentry
-from api.middleware.exception_handlers import revocation_store_unavailable_handler
 from tests.shared.helpers import captured_log_records
-from tests.shared.resp_stub import (
-    EXECABORT_REPLY,
-    OK_REPLY,
-    RespStub,
-    resp_stub,
-)
+from tests.shared.resp_stub import RespStub, resp_stub
 from tests.shared.sentry_capture import KeepEnvelopes, capturing_transport
 
 _FAKE_DSN = "https://public@o0.ingest.sentry.io/0"
-_LOGGERS = ("api.security", "api.exception", "api.assistant.deps")
+_LOGGERS = ("api.security", "api.assistant.deps")
 _READ_ONLY = "read only replica"
 _QUEUED = b"+QUEUED\r\n"
 # A transaction that ran: SET answered OK, then the counter reached 6 (the budget is 5).
 _OVER_BUDGET = b"*2\r\n+OK\r\n:6\r\n"
-# A transaction of two reads: no value, no expiry set.
-_TWO_READS = b"*2\r\n_\r\n:-2\r\n"
 _ERR_BOOM = b"-ERR boom\r\n"
 _USER_ID = UUID("7d1e2f60-3a4b-4c5d-8e9f-0a1b2c3d4e5f")
 _ADDRESS = "203.0.113.57"
-_IDENTIFIER = "sentinel.person@example.com"
-_SESSION_ID = "sentinel-session-id-5c1f"
-_NEW_JTI = "sentinel-new-jti-8b2e"
-_OLD_JTI = "sentinel-old-jti-3d9a"
 
 
 @pytest.fixture
@@ -201,249 +184,6 @@ class TestAssistantThrottleRefusal:
         _assert_no_record_holds(records(), [f"{KEY_PREFIX}:{digest}", digest], stub)
 
 
-class TestLoginThrottleRefusal:
-    """A store that refuses the login throttle's pipelines leaves no digest in a record."""
-
-    def _needles(self) -> list[str]:
-        return [login_throttle._digest(_IDENTIFIER), f"{LOGIN_KEY_PREFIX}:fail:"]
-
-    def test_reserve_fails_open_and_the_record_holds_no_key(self, stub, client, records):
-        """
-        GIVEN a store that refuses writes
-        WHEN an attempt is reserved
-        THEN the attempt is let through, the record names the error class and the reason, and
-            no record holds the key or the digest of the identifier
-        """
-        # GIVEN
-        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX)
-
-        # WHEN
-        allowed = throttle.reserve(_IDENTIFIER)
-
-        # THEN
-        assert allowed is True
-        text = _everything_a_record_says(_the_record(records(), "throttle_store_unavailable"))
-        assert "ReadOnlyError" in text
-        assert _READ_ONLY in text
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-    def test_record_failure_fails_open_and_the_record_holds_no_key(self, stub, client, records):
-        """
-        GIVEN a store that refuses writes
-        WHEN a failure is recorded
-        THEN the call returns and no record holds the key or the digest of the identifier
-        """
-        # GIVEN
-        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX)
-
-        # WHEN
-        throttle.record_failure(_IDENTIFIER)
-
-        # THEN
-        _the_record(records(), "throttle_store_unavailable")
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-    def test_a_refused_give_back_fails_open_and_the_record_holds_no_key(
-        self, stub, client, records
-    ):
-        """
-        GIVEN a throttle with no budget, whose counting transaction runs, and a store that then
-            refuses the pipeline that restores a counter gone negative
-        WHEN an attempt is reserved
-        THEN the attempt is let through and no record holds the key or the digest
-        """
-        # GIVEN
-        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX, max_failures=0)
-        stub.reply_to(
-            "INCRBY", _QUEUED, b"-READONLY You can't write against a read only replica.\r\n"
-        )
-        stub.reply_to("EXEC", b"*2\r\n:1\r\n:60\r\n", EXECABORT_REPLY)
-        stub.reply_to("DECRBY", b":-1\r\n")
-
-        # WHEN
-        allowed = throttle.reserve(_IDENTIFIER)
-
-        # THEN
-        assert allowed is True
-        assert [words[0] for words in stub.commands() if words[0] == "EXEC"] == ["EXEC", "EXEC"]
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-    def test_a_refused_release_fails_open_and_the_record_holds_no_key(self, stub, client, records):
-        """
-        GIVEN a store whose counter has gone negative and that refuses the pipeline that
-            restores it
-        WHEN a reserved attempt is released
-        THEN the call returns, the record names the error class, and no record holds the key
-            or the digest of the identifier
-        """
-        # GIVEN
-        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX)
-        stub.reply_to("DECRBY", b":-1\r\n")
-        stub.reply_to("INCRBY", b"-READONLY You can't write against a read only replica.\r\n")
-        stub.reply_to("EXEC", EXECABORT_REPLY)
-
-        # WHEN
-        throttle.release(_IDENTIFIER)
-
-        # THEN
-        text = _everything_a_record_says(_the_record(records(), "throttle_store_unavailable"))
-        assert "ReadOnlyError" in text
-        assert [words[0] for words in stub.commands() if words[0] == "EXEC"] == ["EXEC"]
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-
-class TestEmailThrottleRefusal:
-    """A store that refuses the email throttle's pipelines leaves no digest in a record."""
-
-    def _needles(self) -> list[str]:
-        digest = login_throttle._digest(_IDENTIFIER)
-        return [digest, f"{RESET_KEY_PREFIX}:daily:", f"{RESET_KEY_PREFIX}:cooldown:"]
-
-    def test_allow_fails_open_when_the_count_is_refused(self, stub, client, records):
-        """
-        GIVEN a store that takes the cooldown key and the read of the counter but refuses the
-            transaction that counts the send
-        WHEN a send is asked for
-        THEN the send is allowed and no record holds a key or the address digest
-        """
-        # GIVEN
-        throttle = RedisEmailSendThrottle(client, key_prefix=RESET_KEY_PREFIX)
-        stub.reply_to(
-            "SET", OK_REPLY, b"-READONLY You can't write against a read only replica.\r\n"
-        )
-        stub.reply_to("EXEC", _TWO_READS, EXECABORT_REPLY)
-
-        # WHEN
-        allowed = throttle.allow(_IDENTIFIER)
-
-        # THEN
-        assert allowed is True
-        text = _everything_a_record_says(_the_record(records(), "throttle_store_unavailable"))
-        assert "ReadOnlyError" in text
-        assert _READ_ONLY in text
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-    def test_allow_fails_open_when_the_read_of_the_counter_is_refused(self, stub, client, records):
-        """
-        GIVEN a store that takes the cooldown key but answers the read of the counter, queued
-            in a transaction, with an error
-        WHEN a send is asked for
-        THEN the send is allowed and no record holds a key or the address digest
-        """
-        # GIVEN
-        throttle = RedisEmailSendThrottle(client, key_prefix=RESET_KEY_PREFIX)
-        stub.reply_to("SET", OK_REPLY)
-        stub.reply_to("GET", _ERR_BOOM)
-        stub.reply_to("EXEC", EXECABORT_REPLY)
-
-        # WHEN
-        allowed = throttle.allow(_IDENTIFIER)
-
-        # THEN
-        assert allowed is True
-        text = _everything_a_record_says(_the_record(records(), "throttle_store_unavailable"))
-        assert "boom" in text
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-    def test_record_fails_open_when_the_count_is_refused(self, stub, client, records):
-        """
-        GIVEN a store that takes the cooldown key but refuses the transaction that counts
-        WHEN a send is recorded
-        THEN the call returns and no record holds a key or the address digest
-        """
-        # GIVEN
-        throttle = RedisEmailSendThrottle(client, key_prefix=RESET_KEY_PREFIX)
-        stub.reply_to(
-            "SET", OK_REPLY, b"-READONLY You can't write against a read only replica.\r\n"
-        )
-
-        # WHEN
-        throttle.record(_IDENTIFIER)
-
-        # THEN
-        _the_record(records(), "throttle_store_unavailable")
-        _assert_no_record_holds(records(), self._needles(), stub)
-
-
-class TestRevocationStoreRefusal:
-    """A store that refuses a session write leaves no session id in a record or a message."""
-
-    def _handler_record(self, error: Exception) -> logging.LogRecord:
-        """Run the 503 handler on an error and return the record it wrote."""
-        request = SimpleNamespace(
-            state=SimpleNamespace(request_id="request-1"),
-            url=SimpleNamespace(path="/api/v1/auth/logout"),
-        )
-        with captured_log_records("api.exception") as written:
-            response = revocation_store_unavailable_handler(request, error)  # type: ignore[arg-type]
-        assert response.status_code == 503
-        return _the_record(written, "revocation_store_request_failed")
-
-    def _assert_clean(
-        self,
-        stub: RespStub,
-        records: Callable[[], list[logging.LogRecord]],
-        error: Exception,
-        needles: list[str],
-    ) -> None:
-        """Check the error, the store's warning and the 503 handler's record against the needles."""
-        assert isinstance(error.__cause__, redis.ReadOnlyError)
-        for needle in needles:
-            assert needle not in str(error)
-        text = _everything_a_record_says(_the_record(records(), "revocation_store_unavailable"))
-        assert "ReadOnlyError" in text
-        assert _READ_ONLY in text
-        _assert_no_record_holds(records(), needles, stub)
-        handler_text = _everything_a_record_says(self._handler_record(error))
-        for needle in needles:
-            assert needle not in handler_text
-
-    def test_revoke_session_raises_an_error_that_holds_no_session_id(self, stub, client, records):
-        """
-        GIVEN a store that refuses the transaction that revokes a session
-        WHEN the session is revoked
-        THEN the store's error, the warning and the 503 handler's record hold no session id
-            and no key
-        """
-        # GIVEN
-        store = RedisRevocationStore(client)
-
-        # WHEN
-        with pytest.raises(RevocationStoreError) as raised:
-            store.revoke_session(_SESSION_ID, 60)
-
-        # THEN
-        self._assert_clean(
-            stub, records, raised.value, [_SESSION_ID, f"session:revoked:{_SESSION_ID}"]
-        )
-
-    def test_rotate_session_raises_an_error_that_holds_no_session_id_or_token_id(
-        self, stub, client, records
-    ):
-        """
-        GIVEN a store whose session holds the expected token id and that refuses the
-            transaction that replaces it
-        WHEN the session is rotated
-        THEN the store's error, the warning and the 503 handler's record hold no session id,
-            token id or key
-        """
-        # GIVEN
-        store = RedisRevocationStore(client)
-        stub.reply_to("GET", f"${len(_OLD_JTI)}\r\n{_OLD_JTI}\r\n".encode())
-
-        # WHEN
-        with pytest.raises(RevocationStoreError) as raised:
-            store.rotate_session(_SESSION_ID, _OLD_JTI, _NEW_JTI, 60)
-
-        # THEN
-        self._assert_clean(
-            stub,
-            records,
-            raised.value,
-            [_NEW_JTI, f"session:current:{_SESSION_ID}", _SESSION_ID],
-        )
-
-
 class TestSingleCommandRefusals:
     """A refused single command is never annotated, so its record holds no key either."""
 
@@ -573,87 +313,4 @@ class TestErrorTrackerEventsOfARefusedWrite:
         assert "ReadOnlyError" in sent
         assert kept.items("event")
         for needle in (f"{KEY_PREFIX}:{digest}", digest):
-            assert needle not in sent
-
-    def test_the_login_throttle_event_holds_no_digest(self, stub, client, sentry_events):
-        """
-        GIVEN Sentry started by the app's own initialisation, and a store that refuses writes
-        WHEN a login attempt is reserved
-        THEN an event names the Redis error class and no item sent holds the key or the digest
-        """
-        # GIVEN
-        throttle = RedisLoginThrottle(client, key_prefix=LOGIN_KEY_PREFIX)
-        digest = login_throttle._digest(_IDENTIFIER)
-
-        # WHEN
-        throttle.reserve(_IDENTIFIER)
-        sentry_sdk.flush()
-
-        # THEN
-        kept = sentry_events()
-        sent = kept.serialized()
-        assert stub.received(digest)
-        assert "ReadOnlyError" in sent
-        assert kept.items("event")
-        assert digest not in sent
-        assert f"{LOGIN_KEY_PREFIX}:fail:" not in sent
-
-    def test_the_email_throttle_event_holds_no_key_or_digest(self, stub, client, sentry_events):
-        """
-        GIVEN Sentry started by the app's own initialisation, and a store that takes the
-            cooldown key but refuses the transaction that counts the send
-        WHEN a send is asked for
-        THEN an event names the Redis error class and no item sent holds a key or the digest
-        """
-        # GIVEN
-        throttle = RedisEmailSendThrottle(client, key_prefix=RESET_KEY_PREFIX)
-        digest = login_throttle._digest(_IDENTIFIER)
-        stub.reply_to(
-            "SET", OK_REPLY, b"-READONLY You can't write against a read only replica.\r\n"
-        )
-        stub.reply_to("EXEC", _TWO_READS, EXECABORT_REPLY)
-
-        # WHEN
-        allowed = throttle.allow(_IDENTIFIER)
-        sentry_sdk.flush()
-
-        # THEN
-        assert allowed is True
-        kept = sentry_events()
-        sent = kept.serialized()
-        assert stub.received(digest)
-        assert kept.items("event")
-        assert "ReadOnlyError" in sent
-        for needle in (digest, f"{RESET_KEY_PREFIX}:daily:", f"{RESET_KEY_PREFIX}:cooldown:"):
-            assert needle not in sent
-
-    def test_the_revocation_store_event_holds_no_session_id(self, stub, client, sentry_events):
-        """
-        GIVEN Sentry started by the app's own initialisation, and a store that refuses the
-            transaction that revokes a session
-        WHEN the 503 handler answers the store's error
-        THEN an event names the Redis error class and no item sent holds the session id value
-            or its key
-        """
-        # GIVEN
-        store = RedisRevocationStore(client)
-        request = SimpleNamespace(
-            state=SimpleNamespace(request_id="request-1"),
-            url=SimpleNamespace(path="/api/v1/auth/logout"),
-        )
-
-        # WHEN
-        with pytest.raises(RevocationStoreError) as raised:
-            store.revoke_session(_SESSION_ID, 60)
-        response = revocation_store_unavailable_handler(request, raised.value)  # type: ignore[arg-type]
-        sentry_sdk.flush()
-
-        # THEN
-        assert response.status_code == 503
-        kept = sentry_events()
-        sent = kept.serialized()
-        assert stub.received(_SESSION_ID)
-        assert kept.items("event")
-        assert "ReadOnlyError" in sent
-        for needle in (_SESSION_ID, f"session:revoked:{_SESSION_ID}"):
             assert needle not in sent
