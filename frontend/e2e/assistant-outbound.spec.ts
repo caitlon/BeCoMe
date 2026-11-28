@@ -9,7 +9,8 @@ import { test, expect } from './fixtures/base';
 // asserts the thing that matters: no request leaves the app's own origin.
 //
 // Same gate as assistant-panel.spec.ts: the panel is built only with
-// VITE_ASSISTANT_ENABLED=true, so without the flag the file is skipped. To run it:
+// VITE_ASSISTANT_ENABLED=true, so without the flag the file is skipped. In CI it runs in
+// the `chromium-assistant` shard of the E2E job and skips in every other shard. To run it:
 //   VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-outbound.spec.ts --project=chromium
 // Nothing here needs the API: every request the app makes is answered by a route.
 test.skip(
@@ -91,35 +92,43 @@ const hostileStream = (route: Route) =>
   });
 
 /**
- * Records and aborts every http(s) request to an origin other than the app's own, and
- * returns the list it fills. Two nets, so a miss in one does not hide a request:
+ * Records and aborts every http(s) request to an origin other than the app's own, records
+ * every WebSocket to another host, and returns the set it fills (a Set, because both nets
+ * see the same request). Two nets, so a miss in one does not hide a request:
  *  - a catch-all route that aborts the request, so nothing real leaves this machine even
  *    if the app does misbehave, and
- *  - a `request` listener, which sees what the route did not (it fires for every request
- *    the page makes, whether or not a route handled it).
+ *  - a `request` listener on the context, which sees what the route did not (it fires for
+ *    every request of every page, popups included, whether or not a route handled it).
+ * Neither sees a WebSocket, so a `websocket` listener on the page records those; the dev
+ * server's own HMR socket is on the app's host and does not count.
  * The route is on the context, not the page: a page route does not see traffic of a
- * popup or a service worker, and the context one does. Page routes registered later (the
- * API mocks below) win over it, so the order of registration does not matter, and a
- * same-origin request falls through to the dev server with `fallback()`.
+ * popup or a service worker, and the context one does. Page routes always take precedence
+ * over context routes, whatever the order of registration (among page routes the last
+ * one registered wins), so the API mocks below answer first, and a same-origin request
+ * falls through to the dev server with `fallback()`.
  */
-async function watchOutbound(page: Page, baseURL: string): Promise<string[]> {
+async function watchOutbound(page: Page, baseURL: string): Promise<Set<string>> {
   const appOrigin = new URL(baseURL).origin;
-  const outside: string[] = [];
+  const appHost = new URL(baseURL).host;
+  const outside = new Set<string>();
   const isOutside = (url: string) => {
     const { protocol, origin } = new URL(url);
     return (protocol === 'http:' || protocol === 'https:') && origin !== appOrigin;
   };
+  page.on('websocket', (socket) => {
+    if (new URL(socket.url()).host !== appHost) outside.add(socket.url());
+  });
 
   await page.context().route('**/*', async (route) => {
     if (isOutside(route.request().url())) {
-      outside.push(route.request().url());
+      outside.add(route.request().url());
       await route.abort();
     } else {
       await route.fallback();
     }
   });
-  page.on('request', (request) => {
-    if (isOutside(request.url())) outside.push(request.url());
+  page.context().on('request', (request) => {
+    if (isOutside(request.url())) outside.add(request.url());
   });
   return outside;
 }
@@ -156,7 +165,7 @@ test.describe('Assistant panel, outbound requests', () => {
     );
 
     expect(result).toBe('blocked');
-    expect(outside).toContain('https://evil.example/canary');
+    expect(outside.has('https://evil.example/canary')).toBe(true);
   });
 
   test('a hostile streamed answer makes the page request nothing from another origin', async ({ page, baseURL }) => {
@@ -182,7 +191,7 @@ test.describe('Assistant panel, outbound requests', () => {
     // without a request in flight, which is longer than a browser takes to start one.
     await page.waitForLoadState('networkidle');
 
-    expect(outside).toEqual([]);
+    expect([...outside]).toEqual([]);
     // The same thing from the DOM: nothing that could fetch or navigate was rendered.
     for (const selector of ['img', 'iframe', 'script', '[src]', 'a[href]:not([href^="#"])']) {
       await expect(feed.locator(selector), selector).toHaveCount(0);

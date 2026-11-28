@@ -40,6 +40,12 @@ OPEN, CLOSE = "<project_data>", "</project_data>"
 BLOCK = re.compile(rf"{OPEN}(.*?){CLOSE}", re.DOTALL)
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv(monkeypatch, tmp_path):
+    """Keep Settings away from the repository's own .env file."""
+    monkeypatch.chdir(tmp_path)
+
+
 def _text(message: BaseMessage) -> str:
     content = message.content
     assert isinstance(content, str)

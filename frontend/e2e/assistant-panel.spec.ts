@@ -3,9 +3,10 @@ import type { Page, Request, Route } from '@playwright/test';
 
 import { test, expect } from './fixtures/base';
 
-// The panel exists only in a build made with VITE_ASSISTANT_ENABLED=true, which no CI
-// job sets, so there the whole file is skipped. To run it, start the suite with the
-// flag in the environment so the dev server Playwright launches picks it up:
+// The panel exists only in a build made with VITE_ASSISTANT_ENABLED=true. In CI only the
+// `chromium-assistant` shard of the E2E job sets it, so the file runs there and skips in
+// every other shard. To run it locally, start the suite with the flag in the environment
+// so the dev server Playwright launches picks it up:
 //   VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
 // Nothing here needs the API: every request the app makes is answered by a route.
 test.skip(

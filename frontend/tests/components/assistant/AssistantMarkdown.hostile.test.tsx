@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@tests/utils';
 import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown';
+import { sourceAnchorId } from '@/components/assistant/message-shape';
 import '@/components/assistant/i18n';
 
-// Pins the panel's only control against markup in a model's answer: the element
-// allowlist of AssistantMarkdown. Whatever a hostile or half-streamed answer contains,
+// Pins the element allowlist of AssistantMarkdown against markup in a model's answer. In
+// production nginx's Content-Security-Policy (`img-src 'self' data:`) is a second layer,
+// so these tests pin the allowlist on its own. Whatever a hostile or half-streamed answer contains,
 // the rendered tree holds no link that leaves the page, no image or embed, and no
 // element with an event handler, a style or a source, because any of them could
 // fetch or leak data from the reader's browser.
@@ -70,6 +72,11 @@ describe('AssistantMarkdown against hostile answers', () => {
       for (let i = 1; i <= answer.length; i += 1) {
         rerender(<AssistantMarkdown content={answer.slice(0, i)} messageId="m1" sourceNumbers={sourceNumbers} />);
         expectNothingOutbound(container);
+      }
+
+      // Every link left is a citation, and its href is the one the component builds.
+      for (const link of container.querySelectorAll('a[href]')) {
+        expect(link.getAttribute('href')).toBe(`#${sourceAnchorId('m1', 1)}`);
       }
     });
   });
