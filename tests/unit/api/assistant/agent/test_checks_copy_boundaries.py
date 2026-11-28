@@ -7,6 +7,7 @@ from api.assistant.agent.checks import find_ungrounded_numbers
 from tests.unit.api.assistant.agent.test_service import _ctx
 
 _B = "Budget 2027"
+_GAPS = {"newline": "\n", "tab": "\t", "three-spaces": "   ", "space-newline-space": " \n "}
 
 
 def _case(name, answer, copies, expected, kept=()):
@@ -43,11 +44,20 @@ _CASES = [
     _case("bracketed-copy-with-a-space-in-a-link-target", "[x](Plan (2027);2027)", ("Plan (2027)",), ["2027"]),
     _case("bracketed-copy-alone-in-a-link-target", "[x](Plan(2027))", ("Plan(2027)",), []),
     _case("bracketed-copy-in-running-text", "See (Plan(2027)) now.", ("Plan(2027)",), []),
+    _case("square-bracketed-copy-inside-a-link-target", "[x](Plan[2027];2027)", ("Plan[2027]",), ["2027"]),
     _case("bracket-inside-a-copy-in-a-link-target", "[x](Plan [2027];2027)", ("Plan [2027]",), ["2027"]),
     _case("copy-as-link-text", "[Plan 2027](https://x.y/a)", ("Plan 2027",), []),
     # A copy that starts with a URL keeps its scheme, so what is glued to it stays in the URL.
     _case("url-copy-glued-to-a-bracket", "See https://x.y/z[ 7] now.", ("https://x.y/z",), ["7"]),
     _case("url-copy-glued-to-a-parenthesis", "See https://x.y/z(77) now.", ("https://x.y/z",), []),
+    # A scheme inside a copy is kept as well, so a URL that starts there runs on past the copy.
+    _case("url-starts-inside-the-copy-and-swallows-a-parenthesis", "see https://x.y/z(77) now", ("see https://x.y/z",), []),
+    _case("url-ends-the-copy-and-swallows-a-bracket", "Jana http://[ 7] gave.", ("Jana http://",), ["7"]),
+    # Any run of whitespace in the copy ends a URL, as the first whitespace of the plain scan.
+    *[_case(f"url-ends-at-a-{name}-inside-the-copy", f"See https://x.y/Budget{gap}2027;99999 now.", (_B,), ["99999"])
+      for name, gap in _GAPS.items()],
+    *[_case(f"url-copy-with-a-{name}-inside", f"See https://x.y/a{gap}b 2027;8", ("https://x.y/a b 2027",), ["8"])
+      for name, gap in _GAPS.items()],
     # A kept copy stays as written, so the scan reads it as it reads the plain text.
     _case("kept-copy-in-a-url", "See https://x.y/Budget 2027;99999 now.", (), ["2027", "99999"], kept=(_B,)),
     _case("copy-shadowed-by-a-longer-kept-one", "See https://x.y/Budget 2027 plan;99999 now.", (_B,),
@@ -97,6 +107,13 @@ _STATED = [
         ("https://x.y/z", "Plan 7"),
         "7",
         id="url-name-glued-to-a-bracket",
+    ),
+    pytest.param("Jana http://[ 7] gave.", "Jana http://", "7", id="url-scheme-ends-the-name"),
+    pytest.param(
+        "Jana http://[ 7] gave. Plan 7 is open.",
+        ("Jana http://", "Plan 7"),
+        "7",
+        id="url-scheme-ends-the-name-beside-a-name-with-the-number",
     ),
 ]
 
