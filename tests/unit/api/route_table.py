@@ -1,8 +1,9 @@
 """The application's route table, read from the real app, for the structural guards.
 
 Shared by ``test_route_access_levels.py``, ``schemas/test_route_bodies_forbid_extra.py``
-and the anonymous-request test in the integration tier: the route walk, and the one
-decision they share, the list of routes a caller may reach without signing in.
+and, in the integration tier, the anonymous-request test, ``test_test_app_routes.py`` and
+``test_test_app_handlers.py``: the route walk, the one decision they share (the list of
+routes a caller may reach without signing in), and the real application, built once.
 """
 
 import logging
@@ -13,6 +14,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from unittest import mock
 
+from fastapi import FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
@@ -204,14 +206,14 @@ def unaccounted_routes(routes: Iterable[object]) -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def app_routes() -> tuple[object, ...]:
-    """Build the real application once, assistant router included, and return ``app.routes``.
+def real_app() -> FastAPI:
+    """Build the real application once, assistant router included, and return it.
 
     The flag is raised for the build only, in a scratch working directory so a
     developer's ``.env`` is not read, and the settings cache is cleared on both sides.
     No lifespan starts, so no database is opened and nothing reaches the network.
 
-    :return: The top-level routes and route containers, with the assistant switched on.
+    :return: The application ``create_app`` builds, with the assistant switched on.
     """
     from api.config import get_settings
 
@@ -225,11 +227,19 @@ def app_routes() -> tuple[object, ...]:
                 try:
                     from api.main import create_app
 
-                    return tuple(create_app().routes)
+                    return create_app()
                 finally:
                     get_settings.cache_clear()
         finally:
             os.chdir(cwd)
+
+
+def app_routes() -> tuple[object, ...]:
+    """Return ``app.routes`` of the application built by :func:`real_app`.
+
+    :return: The top-level routes and route containers, with the assistant switched on.
+    """
+    return tuple(real_app().routes)
 
 
 @lru_cache(maxsize=1)
