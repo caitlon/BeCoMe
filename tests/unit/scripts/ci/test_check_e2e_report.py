@@ -1,4 +1,4 @@
-"""Unit tests for the E2E report check: skips, failures and a short run all fail the shard."""
+"""Unit tests for the E2E report check: skips, failures, errors and a short run fail it."""
 
 import importlib.util
 import json

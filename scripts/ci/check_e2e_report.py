@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when a Playwright run skipped tests, ran fewer than expected, or reported errors.
+"""Fail when a Playwright run skipped or failed tests, ran too few, or reported errors.
 
 A spec that skips itself reports success, so a shard whose specs all skip stays green. The
 assistant specs do this when ``VITE_ASSISTANT_ENABLED`` does not reach the Playwright
@@ -132,8 +132,8 @@ def main(argv: list[str]) -> int:
     """Run the check over one report.
 
     :param argv: The command-line arguments, without the program name
-    :return: The exit status, 1 when the run skipped tests, ran fewer than the floor, or reported
-        errors
+    :return: The exit status, 1 when the run skipped or failed tests, ran fewer than the floor,
+        or reported errors outside the tests
     """
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0] if __doc__ else None)
     parser.add_argument("report", type=Path, help="Playwright JSON report file")
