@@ -158,7 +158,8 @@ tests/
 ├── shared/
 │   ├── assistant_fakes.py    # scripted chat model for the assistant tests
 │   ├── helpers.py            # constants and helpers used across tiers
-│   └── pdf_inspection.py     # reads colours back out of a rendered PDF
+│   ├── pdf_inspection.py     # reads colours back out of a rendered PDF
+│   └── resp_stub.py          # loopback Redis stub that answers like a read-only replica
 └── reference/
     ├── _case_factory.py  # builds a reference case from its data file
     ├── budget_case.py    # 22 experts, expected results

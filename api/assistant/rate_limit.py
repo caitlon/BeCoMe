@@ -82,6 +82,7 @@ import redis
 
 from api.assistant.errors import AssistantUnavailableError
 from api.config import get_settings
+from api.redis_error_text import drop_pipeline_command
 
 logger = logging.getLogger("api.security")
 
@@ -189,11 +190,13 @@ def _log_store_unavailable(exc: redis.RedisError) -> None:
 
     :param exc: The Redis error that refused the turn.
     """
+    drop_pipeline_command(exc)
     logger.error(
         "Assistant throttle store unavailable, turn refused",
         extra={"event": "assistant_throttle_unavailable"},
-        # exc_info: the traceback names the Redis error class, which tells a lost connection
-        # from a store that refuses writes.
+        # exc_info: the traceback names the Redis error class and the server's reason, which
+        # tells a lost connection from a store that refuses writes; the command text of the
+        # pipeline is dropped first, so it holds no key.
         exc_info=exc,
     )
 

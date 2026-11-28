@@ -59,6 +59,7 @@ from typing import Protocol, runtime_checkable
 import redis
 
 from api.config import get_settings
+from api.redis_error_text import drop_pipeline_command
 
 logger = logging.getLogger("api.security")
 
@@ -107,6 +108,7 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose lockout stopped being enforced.
     """
+    drop_pipeline_command(exc)
     logger.error(
         "Login throttle store unavailable, lockout not enforced",
         extra={"event": "throttle_store_unavailable", "op": op, "key_prefix": key_prefix},

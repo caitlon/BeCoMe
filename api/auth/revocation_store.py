@@ -11,6 +11,7 @@ from uuid import UUID
 import redis
 
 from api.config import get_settings
+from api.redis_error_text import drop_pipeline_command
 
 logger = logging.getLogger("api.security")
 
@@ -139,6 +140,7 @@ def _store_error(op: str, exc: redis.RedisError) -> RevocationStoreError:
     :param exc: The Redis error that caused it.
     :return: The error the caller should raise.
     """
+    drop_pipeline_command(exc)
     logger.warning(
         "Revocation store unavailable",
         extra={"event": "revocation_store_unavailable", "op": op},

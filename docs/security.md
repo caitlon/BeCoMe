@@ -856,8 +856,11 @@ Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throt
 `api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of
 the identifier. It exists to key the store, not to reach a log. Writing it out would rebuild
 exactly the oracle the key in `hash_email` prevents, so no record in those modules names the
-account. The two in `api/auth/` name the flow (`key_prefix`, `op`), and the assistant's names only
-its event. The address-scoped event belongs at the call site in
+account. That covers the traceback too: redis-py writes the text of a failed pipeline command, key
+included, into the error's message, so `api/redis_error_text.py` cuts the error back to the
+server's reason before a throttle or the revocation store logs it. A connection error keeps the
+host and port of the store. The two in `api/auth/` name the flow (`key_prefix`, `op`), and the
+assistant's names only its event. The address-scoped event belongs at the call site in
 `api/routes/auth.py`, which has the keyed tag. Second, `api/logging_config.py` pins
 `sqlalchemy.engine` at WARNING, and that logger must stay above DEBUG on any deployed
 service: its DEBUG level prints bound query parameters, which on this schema means bcrypt
