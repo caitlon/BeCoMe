@@ -188,10 +188,12 @@ VITE_ASSISTANT_ENABLED=true npm run build
 The feature lives in `src/components/assistant/`. Its backend half needs `ASSISTANT_ENABLED`
 on the API and runs on a developer machine and on the dev and prod services (`api/assistant/README.md`).
 
-`e2e/assistant-panel.spec.ts` needs no backend: it answers every API request with a route.
-It is skipped unless the flag is in the environment when Playwright starts its dev server:
+`e2e/assistant-panel.spec.ts` and `e2e/assistant-outbound.spec.ts` need no backend: they answer every
+API request with a route, and the outbound spec aborts and records any request to another origin.
+They are skipped unless the flag is in the environment when Playwright starts its dev server; in CI
+the `chromium-assistant` shard of the E2E job sets it:
 ```bash
-VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
+VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant- --project=chromium
 ```
 
 ## Server rendering
