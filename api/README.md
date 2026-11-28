@@ -96,6 +96,7 @@ api/
 ├── dependencies.py     # DI factories + authorization
 ├── exceptions.py       # API exception hierarchy
 ├── sentry_filter.py    # What reaches the error tracker: request-data allowlist, database error text
+├── redis_error_text.py # Cuts a Redis pipeline error back to the server's reason before it is logged
 └── main.py             # FastAPI application (+ setup_logging, Sentry init)
 ```
 
