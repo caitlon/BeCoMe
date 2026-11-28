@@ -330,7 +330,11 @@ exactly as `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is re
 request is answered `200`, and a tool asked for such a project tells the model `not_found:`
 and nothing else, so the answer says it found nothing. Should such a project's error escape a
 route anyway, it is answered `404` with `Project not found`, and an assistant error with no
-handler of its own `500` with `Internal server error`; neither body carries the error's text. A
+handler of its own `500` with `Internal server error`; neither body carries the error's text. An
+exception that no handler of the app maps, raised anywhere in a chat turn, is turned into
+`AssistantTurnFailedError`, which carries the exception's type and `where` it was raised and none
+of its text, and is answered the same `500`; a turn that fails before it is prepared gives its
+hourly messages back first. A
 failing model server, embedding server, vector database or application answers `503` with a fixed
 message, and so does a throttle store that cannot be reached. On any request until the
 retriever has been built once, that covers a vector database

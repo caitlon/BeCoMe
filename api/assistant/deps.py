@@ -23,18 +23,20 @@ from functools import lru_cache
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from langchain_core.language_models import BaseChatModel
 from langchain_postgres import PGEngine
 from sqlmodel import Session
 
 from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.generation import raised_at
 from api.assistant.agent.service import AssistantService
 from api.assistant.client import UserApiClient
 from api.assistant.errors import (
     AssistantBusyError,
     AssistantRateLimitedError,
+    AssistantTurnFailedError,
     AssistantUnavailableError,
 )
 from api.assistant.rag.models import (
@@ -715,6 +717,20 @@ class PreparedTurn:
     context: AssistantContext
 
 
+def _has_own_handler(app: FastAPI, exc: Exception) -> bool:
+    """Say whether the app maps this exception to a response of its own.
+
+    This is Starlette's lookup: a handler registered for a class in the exception's MRO other
+    than ``Exception``, which is the catch-all that answers every other failure.
+
+    :param app: The application, which holds the registered handlers.
+    :param exc: The exception that ended the turn.
+    :return: ``True`` when a handler other than the catch-all one exists for it.
+    """
+    handlers = app.exception_handlers
+    return any(cls in handlers for cls in type(exc).__mro__ if cls is not Exception)
+
+
 async def open_chat_turn(
     request: Request,
     counted: CountedChatRequestDep,
@@ -744,7 +760,11 @@ async def open_chat_turn(
     shows up, and a client that goes away, which ends the turn without an exception. Only an
     ``Exception`` triggers the refund, so a cancellation does not. A refund that itself fails
     is logged (``assistant_refund_failed``) and never replaces the turn's own error, and the
-    other refunds still run. Once the client and the context are built, this function owns the
+    other refunds still run. An exception the app has no handler for, whenever it ends the turn,
+    leaves here as :class:`~api.assistant.errors.AssistantTurnFailedError`, which carries the
+    exception's type and where it was raised and none of its text, so that no log record or
+    error report holds what the user or the model wrote. Once the client and the context are
+    built, this function owns the
     address's charge (``address.taken_over``), so :func:`charge_address_turn` leaves it alone;
     an error while building them leaves the charge to that dependency, which gives it back.
 
@@ -773,7 +793,7 @@ async def open_chat_turn(
     address.taken_over = True
     try:
         yield PreparedTurn(request=data, context=context)
-    except Exception:
+    except Exception as exc:
         if not context.prepared:
             for taker, charge in (
                 (throttle, counted.user_charge),
@@ -781,7 +801,9 @@ async def open_chat_turn(
                 (address.throttle, address.charge),
             ):
                 await _give_back(taker, charge)
-        raise
+        if _has_own_handler(request.app, exc):
+            raise
+        raise AssistantTurnFailedError(type(exc).__name__, raised_at(exc)) from None
     finally:
         await client.aclose()
 

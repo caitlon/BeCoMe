@@ -963,8 +963,9 @@ the data of log breadcrumbs and from the extras of an error event, because the S
 extra fields of a log record there. The Redis integration is disabled
 (`disabled_integrations`), since it records the first argument of each command, which for the
 throttles and the revocation store is a key built from a digest or an id. The LangChain
-integration is disabled there too, since it reports a failed model call as an event of its own
-with the exception's message, which can hold a question or the model's text; a failure of the
+and OpenAI integrations are disabled there too, since each reports a failed model call as an
+event of its own with the exception's message, which can hold a question or the model's text
+(the SDK switches OpenAI off while LangChain is on, so both are listed); a failure of the
 assistant reaches Sentry through its log record, which names the exception type only.
 `max_request_body_size="never"` keeps the SDK from attaching a body in the first place.
 `send_default_pii=False` stays on as well; it keeps the SDK's integrations from adding user

@@ -88,16 +88,22 @@ def _init_sentry(settings: Settings) -> None:
             # ids and a digest of the email address.
             RedisIntegration()
         ]
-        # The LangChain integration reports a failed model call as an event of its own, with
-        # the exception's message, which can hold the user's question or the model's text.
-        # The assistant's failures reach Sentry through their log records, which name only
-        # the exception type, and LangSmith keeps the traces. The module raises DidNotEnable
-        # on import without langchain, which only the assistant extra installs; then the
-        # integration cannot enable itself either, so nothing is lost.
+        # The LangChain and OpenAI integrations each report a failed model call as an event of
+        # their own, with the exception's message, which can hold the user's question or the
+        # provider's text. The assistant's failures reach Sentry through their log records,
+        # which name only the exception type, and LangSmith keeps the traces. Both are listed
+        # because the SDK switches OpenAI off while LangChain is on, so disabling LangChain
+        # alone would turn OpenAI on. Each module raises DidNotEnable on import without its
+        # package, which only the assistant extra installs; then the integration cannot enable
+        # itself either, so nothing is lost.
         with suppress(DidNotEnable):
             from sentry_sdk.integrations.langchain import LangchainIntegration
 
             disabled_integrations.append(LangchainIntegration())
+        with suppress(DidNotEnable):
+            from sentry_sdk.integrations.openai import OpenAIIntegration
+
+            disabled_integrations.append(OpenAIIntegration())
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,

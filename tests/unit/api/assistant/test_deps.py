@@ -25,6 +25,7 @@ from api.assistant.agent.context import AssistantContext
 from api.assistant.errors import (
     AssistantBusyError,
     AssistantRateLimitedError,
+    AssistantTurnFailedError,
     AssistantUnavailableError,
 )
 from api.assistant.exception_handlers import UNAVAILABLE_DETAIL, assistant_unavailable_handler
@@ -1551,10 +1552,10 @@ class TestOpenChatTurn:
         """
         GIVEN an opened turn
         WHEN the block raises
-        THEN the client was still closed exactly once and the error propagates
+        THEN the client was still closed exactly once and the failure leaves the turn
         """
         # WHEN
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(AssistantTurnFailedError):
             async with self._open(AssistantChatRequest(message="hi"), _request(), MagicMock()):
                 raise RuntimeError("boom")
 
@@ -1570,7 +1571,7 @@ class TestOpenChatTurn:
         GIVEN an opened turn whose context was not marked prepared
         WHEN the block raises an ordinary error
         THEN each charge is refunded on the throttle that took it, the address's included, the
-             error propagates and the client was still closed
+             failure leaves the turn and the client was still closed
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
@@ -1578,7 +1579,7 @@ class TestOpenChatTurn:
         data = AssistantChatRequest(message="hi")
 
         # WHEN
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(AssistantTurnFailedError):
             async with self._open(data, _request(), MagicMock(), throttle, ceiling, address):
                 raise RuntimeError("boom")
 
@@ -1597,7 +1598,7 @@ class TestOpenChatTurn:
         """
         GIVEN an opened turn that is not marked prepared and a user throttle whose refund raises
         WHEN the block raises an ordinary error
-        THEN that error propagates, the ceiling is still refunded and the failed refund is
+        THEN the failure leaves the turn, the ceiling is still refunded and the failed refund is
              logged as an event without the charge
         """
         # GIVEN
@@ -1607,7 +1608,7 @@ class TestOpenChatTurn:
         # WHEN
         with (
             captured_log_records("api.security") as records,
-            pytest.raises(RuntimeError, match="boom"),
+            pytest.raises(AssistantTurnFailedError),
         ):
             async with self._open(
                 AssistantChatRequest(message="hi"), _request(), MagicMock(), throttle, ceiling
@@ -1628,14 +1629,14 @@ class TestOpenChatTurn:
         """
         GIVEN an opened turn whose context was marked prepared
         WHEN the block raises an ordinary error, as a failing answer model would
-        THEN nothing is refunded and the error propagates
+        THEN nothing is refunded and the failure leaves the turn
         """
         # GIVEN
         throttle, ceiling = MagicMock(), MagicMock()
         address = deps.AddressCharge(MagicMock(), ADDRESS_CHARGE)
 
         # WHEN
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(AssistantTurnFailedError):
             async with self._open(
                 AssistantChatRequest(message="hi"),
                 _request(),
@@ -1651,6 +1652,53 @@ class TestOpenChatTurn:
         throttle.refund.assert_not_called()
         ceiling.refund.assert_not_called()
         address.throttle.refund.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_an_unmapped_failure_leaves_as_its_type_and_place_without_its_text(
+        self, fake_client
+    ):
+        """
+        GIVEN an opened turn on an app with no handler for RuntimeError
+        WHEN the block raises a RuntimeError whose message holds text
+        THEN the turn raises AssistantTurnFailedError naming RuntimeError and where it was
+             raised, its message and the chain it hangs on hold none of that text
+        """
+        # WHEN
+        with pytest.raises(AssistantTurnFailedError) as raised:
+            async with self._open(AssistantChatRequest(message="hi"), _request(), MagicMock()):
+                raise RuntimeError("the user asked about SENTINEL-TEXT")
+
+        # THEN
+        failure = raised.value
+        assert failure.failed_type == "RuntimeError"
+        assert failure.where.startswith("tests/unit/api/assistant/test_deps.py:")
+        assert "SENTINEL-TEXT" not in str(failure)
+        assert failure.__cause__ is None
+        assert failure.__suppress_context__ is True
+
+    @pytest.mark.asyncio
+    async def test_a_failure_the_app_has_a_handler_for_leaves_as_it_is(self, fake_client):
+        """
+        GIVEN an opened turn on an app with a handler for AssistantUnavailableError, and one
+            that is registered for Exception only
+        WHEN the block raises AssistantUnavailableError, and then a RuntimeError
+        THEN the first propagates unchanged, so its handler answers it, and the second is
+             replaced, since the handler for Exception is the catch-all and does not count
+        """
+        # GIVEN
+        request = _request()
+        request.app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)
+        request.app.add_exception_handler(Exception, lambda *_: None)
+        outage = AssistantUnavailableError("down")
+
+        # WHEN / THEN
+        with pytest.raises(AssistantUnavailableError) as mapped:
+            async with self._open(AssistantChatRequest(message="hi"), request, MagicMock()):
+                raise outage
+        assert mapped.value is outage
+        with pytest.raises(AssistantTurnFailedError):
+            async with self._open(AssistantChatRequest(message="hi"), request, MagicMock()):
+                raise RuntimeError("boom")
 
     @pytest.mark.asyncio
     async def test_a_turn_that_ends_without_an_error_keeps_every_message(self, fake_client):
