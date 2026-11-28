@@ -9,12 +9,14 @@ import openai
 import pytest
 from pydantic import SecretStr
 
+from api import startup_checks
 from api.assistant import startup
 from api.assistant.errors import AssistantUnavailableError
 from api.assistant.rag.models import make_answer_model
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.roles import tag_role
 from api.config import get_settings
+from tests.shared.helpers import captured_log_records
 
 _LOGGER = "api.assistant.startup"
 _SECRET_TEXT = "http://secret-host.internal:9999/v1 sk-leaked-key"  # pragma: allowlist secret
@@ -375,3 +377,46 @@ class TestARealClientCutOffByTheCap:
         (body,) = _completion_cut_off_by_the_cap.bodies
         assert body["max_completion_tokens"] == 8
         assert _records(caplog, logging.ERROR) == []
+
+
+@pytest.mark.asyncio
+class TestTurnCeilingRecord:
+    async def test_startup_logs_one_record_with_the_ceiling_across_workers(
+        self, settings, backends
+    ):
+        """
+        GIVEN three uvicorn workers and the default of 8 concurrent turns per process
+        WHEN the process runs its startup checks
+        THEN exactly one assistant_turn_ceiling record is logged, with 3 workers, 8 turns per
+        worker and a ceiling of 24
+        """
+        # GIVEN
+        configured = settings.model_copy(update={"uvicorn_workers": 3})
+        assert configured.assistant_max_concurrent_turns == 8
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            await startup_checks.run_startup_checks(configured)
+
+        # THEN
+        (record,) = [r for r in records if r.event == "assistant_turn_ceiling"]
+        assert record.levelno == logging.INFO
+        assert record.getMessage() == "Assistant turn ceiling"
+        assert (record.workers, record.turns_per_worker, record.turns_ceiling) == (3, 8, 24)
+
+    async def test_one_worker_gives_a_ceiling_of_the_per_process_limit(self, settings):
+        """
+        GIVEN the default worker count of 1 and a limit of 5 turns per process
+        WHEN the ceiling is logged
+        THEN the record names 1 worker, 5 turns per worker and a ceiling of 5
+        """
+        # GIVEN
+        configured = settings.model_copy(update={"assistant_max_concurrent_turns": 5})
+
+        # WHEN
+        with captured_log_records(_LOGGER) as records:
+            startup.log_turn_ceiling(configured)
+
+        # THEN
+        (record,) = records
+        assert (record.workers, record.turns_per_worker, record.turns_ceiling) == (1, 5, 5)

@@ -531,7 +531,9 @@ logged at WARNING with the exception's class in `reason`.
   and before the message limit, so a turn refused for a full process spends no message of the hourly
   budget, and a message the budget refuses gives its slot back at once. The slot is given back when
   the response is done, so a streamed answer holds it until the stream ends. The count is per
-  process: with several processes the ceiling is the setting times their number.
+  process: with several processes the ceiling is the setting times their number. At start, with
+  the assistant on, each worker logs the number of workers (`UVICORN_WORKERS`), the per-process
+  limit and the ceiling in one INFO record, `assistant_turn_ceiling`.
 - **Database session.** The chat routes look the caller up through their own dependency
   (`get_assistant_user` in `api/assistant/deps.py`), which closes its database session as soon as
   the caller is loaded. On a user-cache miss neither route therefore keeps a connection of the
