@@ -302,12 +302,10 @@ class Settings(BaseSettings):
     # API
     debug: bool = False
     api_version: str = _version
-    # The number of uvicorn worker processes of this container. Nothing here starts them: the
-    # image's CMD reads the same UVICORN_WORKERS and passes it to uvicorn as --workers, so
-    # this field only lets the application see the number. It is used for the startup record
-    # of the assistant's turn ceiling, which is the per-process cap times the workers. At
-    # least 1 and at most 32.
-    uvicorn_workers: int = Field(default=1, ge=1, le=32)
+    # Mirrors the UVICORN_WORKERS the image's CMD passes to uvicorn as --workers. It feeds only
+    # the startup record of the assistant's turn ceiling; 0 counts as one worker, as uvicorn
+    # reads it.
+    uvicorn_workers: int = Field(default=1, ge=0)
 
     # Logging. The field default is only a floor: when LOG_LEVEL is absent,
     # _apply_profile_log_level replaces it with the active profile's level from

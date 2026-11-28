@@ -3587,27 +3587,31 @@ class TestUvicornWorkersSetting:
         # THEN
         assert settings.uvicorn_workers == 3
 
-    @pytest.mark.parametrize("raw", ["0", "-1", "33"])
-    def test_refuses_a_count_outside_one_to_thirty_two(self, monkeypatch, raw):
+    def test_refuses_a_negative_count(self, monkeypatch):
         """
-        GIVEN UVICORN_WORKERS set to zero, a negative number or one above the bound
+        GIVEN UVICORN_WORKERS set to -1
         WHEN Settings is constructed
         THEN it is refused, naming the field
         """
         # GIVEN
-        monkeypatch.setenv("UVICORN_WORKERS", raw)
+        monkeypatch.setenv("UVICORN_WORKERS", "-1")
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match="uvicorn_workers"):
             Settings(secret_key="test-secret-key")
 
-    def test_accepts_the_bounds(self, monkeypatch):
+    @pytest.mark.parametrize("raw", ["0", "64"])
+    def test_accepts_every_count_uvicorn_runs_with(self, monkeypatch, raw):
         """
-        GIVEN UVICORN_WORKERS set to 1, then to 32
+        GIVEN UVICORN_WORKERS set to zero (which uvicorn runs as one worker) or to 64
         WHEN Settings is constructed
-        THEN both are accepted
+        THEN the value is accepted as it stands
         """
-        # GIVEN/WHEN/THEN
-        for raw in ("1", "32"):
-            monkeypatch.setenv("UVICORN_WORKERS", raw)
-            assert Settings(secret_key="test-secret-key").uvicorn_workers == int(raw)
+        # GIVEN
+        monkeypatch.setenv("UVICORN_WORKERS", raw)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.uvicorn_workers == int(raw)

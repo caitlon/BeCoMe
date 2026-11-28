@@ -139,13 +139,15 @@ def log_turn_ceiling(settings: Settings) -> None:
 
     :param settings: Application settings.
     """
+    # uvicorn reads --workers 0 as one worker, so the record does too.
+    workers = settings.uvicorn_workers or 1
     logger.info(
         "Assistant turn ceiling",
         extra={
             "event": "assistant_turn_ceiling",
-            "workers": settings.uvicorn_workers,
+            "workers": workers,
             "turns_per_worker": settings.assistant_max_concurrent_turns,
-            "turns_ceiling": settings.uvicorn_workers * settings.assistant_max_concurrent_turns,
+            "turns_ceiling": workers * settings.assistant_max_concurrent_turns,
         },
     )
 
