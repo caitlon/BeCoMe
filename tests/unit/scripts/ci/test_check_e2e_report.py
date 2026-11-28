@@ -241,6 +241,33 @@ def test_long_error_list_is_capped(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "  ... and 2 more" in err
 
 
+def test_skipped_list_at_the_cap_has_no_overflow_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """GIVEN exactly the capped number of skipped tests WHEN checked THEN all are listed, no overflow."""
+    status, _, err = _run(_write(tmp_path, _report(skipped=check.MAX_LISTED)), capsys)
+
+    assert status == 1
+    assert err.count("  skipped: ") == check.MAX_LISTED
+    assert "... and" not in err
+
+
+def test_error_list_at_the_cap_has_no_overflow_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """GIVEN exactly the capped number of top-level errors WHEN checked THEN all are listed, no overflow."""
+    report = _report(passed=15)
+    report["errors"] = [{"message": f"boom {index}\nstack"} for index in range(check.MAX_LISTED)]
+
+    status, _, err = _run(_write(tmp_path, report), capsys)
+
+    assert status == 1
+    assert len([line for line in err.splitlines() if line.startswith("  error: ")]) == (
+        check.MAX_LISTED
+    )
+    assert "... and" not in err
+
+
 def test_walk_tolerates_missing_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """GIVEN skipped stats but a suite tree with missing keys WHEN checked THEN it still fails cleanly."""
     report = {
