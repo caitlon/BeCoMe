@@ -5,8 +5,10 @@ import { sourceAnchorId } from '@/components/assistant/message-shape';
 import '@/components/assistant/i18n';
 
 // Pins the element allowlist of AssistantMarkdown against markup in a model's answer. In
-// production nginx's Content-Security-Policy (`img-src 'self' data:`) is a second layer,
-// so these tests pin the allowlist on its own. Whatever a hostile or half-streamed answer contains,
+// production nginx's Content-Security-Policy limits images, frames and scripts to the app's
+// and the API's origins (`img-src 'self' data:__API_ORIGIN__`, where __API_ORIGIN__ is the
+// API origin filled in at deploy), but it does not stop a link from navigating, so these
+// tests pin the allowlist on its own. Whatever a hostile or half-streamed answer contains,
 // the rendered tree holds no link that leaves the page, no image or embed, and no
 // element with an event handler, a style or a source, because any of them could
 // fetch or leak data from the reader's browser.
@@ -75,8 +77,15 @@ describe('AssistantMarkdown against hostile answers', () => {
       }
 
       // Every link left is a citation, and its href is the one the component builds.
-      for (const link of container.querySelectorAll('a[href]')) {
+      const links = container.querySelectorAll('a[href]');
+      for (const link of links) {
         expect(link.getAttribute('href')).toBe(`#${sourceAnchorId('m1', 1)}`);
+      }
+      // Not vacuous: with sources the citation link is there, without them none is.
+      if (sourceNumbers === undefined) {
+        expect(links.length).toBe(0);
+      } else {
+        expect(links.length).toBeGreaterThan(0);
       }
     });
   });

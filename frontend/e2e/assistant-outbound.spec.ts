@@ -6,7 +6,9 @@ import { test, expect } from './fixtures/base';
 // merely reading an answer would make the reader's browser fetch an address the model
 // chose, which leaks the reader's IP and a signal that the answer was read. The unit test
 // of AssistantMarkdown pins the element allowlist; this one watches the real browser and
-// asserts the thing that matters: no request leaves the app's own origin.
+// asserts the thing that matters: no request leaves the app's own origin. http(s) requests
+// to another origin are aborted, so nothing leaves the machine; a WebSocket to another host
+// is only recorded, not blocked, so the test fails on it but the socket may connect first.
 //
 // Same gate as assistant-panel.spec.ts: the panel is built only with
 // VITE_ASSISTANT_ENABLED=true, so without the flag the file is skipped. In CI it runs in
@@ -95,12 +97,14 @@ const hostileStream = (route: Route) =>
  * Records and aborts every http(s) request to an origin other than the app's own, records
  * every WebSocket to another host, and returns the set it fills (a Set, because both nets
  * see the same request). Two nets, so a miss in one does not hide a request:
- *  - a catch-all route that aborts the request, so nothing real leaves this machine even
- *    if the app does misbehave, and
+ *  - a catch-all route that aborts the request, so no http(s) request to another origin
+ *    leaves this machine even if the app does misbehave, and
  *  - a `request` listener on the context, which sees what the route did not (it fires for
  *    every request of every page, popups included, whether or not a route handled it).
- * Neither sees a WebSocket, so a `websocket` listener on the page records those; the dev
- * server's own HMR socket is on the app's host and does not count.
+ * Neither sees a WebSocket, so a `websocket` listener on the page records those; it only
+ * records, it does not block, so the test fails on a WebSocket to another host but the
+ * socket may already have connected. The dev server's own HMR socket is on the app's host
+ * and does not count.
  * The route is on the context, not the page: a page route does not see traffic of a
  * popup or a service worker, and the context one does. Page routes always take precedence
  * over context routes, whatever the order of registration (among page routes the last
