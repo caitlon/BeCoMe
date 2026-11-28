@@ -35,10 +35,11 @@ def _history(entries: int, chars: int = 2) -> list[dict[str, str]]:
 
 
 # The numbers are the limits written out, so that raising one fails here instead of moving the
-# test along with it. The history rows pin the schema's ceilings. The message row pins the
-# smaller of the two message ceilings: the configured length is capped at 4000 by its own
-# ``le=``, so it refuses 4001 before the schema does; the schema's own bound is pinned by
-# tests/unit/api/schemas/test_assistant.py.
+# test along with it. The history rows pin the schema's ceilings. The 4001-character row is
+# refused by the schema, but it pins the effective ceiling only: with the schema bound raised
+# alone, the configured length (4000 here, capped by its own ``le=``) would still refuse it. The
+# two bounds on their own are pinned in tests/unit/api/schemas/test_assistant.py and
+# tests/unit/api/test_config.py.
 # Each case is the configuration it needs, a request over a limit, and the same request
 # exactly at that limit.
 _CASES = {
@@ -47,7 +48,7 @@ _CASES = {
         {"message": "m" * 51},
         {"message": "m" * 50},
     ),
-    "the largest configurable message length": (
+    "the schema's message length": (
         {},
         {"message": "m" * 4001},
         {"message": "m" * 4000},

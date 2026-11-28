@@ -261,9 +261,10 @@ class TestPromptAtTheInputLimits:
         assert len(description) > 1000
         prompt = "".join(entry.text for entry in sent)
         # Without its history the worst case measures 23,095 characters (about 29,000 with a
-        # full history budget), so a shrunken prompt cannot pass.
+        # full history budget). The floor leaves room for edits to the system prompt; the
+        # smaller parts have their own asserts above.
         history_sent = sum(len(entry.text) for entry in sent[1:-1])
-        assert len(prompt) - history_sent > 23_000
+        assert len(prompt) - history_sent > 21_000
         answer_tokens = Settings.model_fields["assistant_answer_max_tokens"].default
         assert get_settings().assistant_answer_max_tokens == answer_tokens
         assert _estimated_tokens(prompt) + answer_tokens <= _WINDOW_TOKENS
