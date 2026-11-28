@@ -529,7 +529,8 @@ class TestSentryEventsOfAProviderErrorCarryNoText:
             answers 400 with a sentinel in the error message
         WHEN a turn is posted through /chat
         THEN the turn failed with the fixed 503, the stub was reached (so the real client made
-            the call), and no item of any envelope holds a sentinel
+            the call), Sentry received the record of that failure as an event, and no item of
+            any envelope holds a sentinel
         """
         # GIVEN
         owner = _owner_project(client, position=_POSITION_SENTINEL, first_name=_NAME_SENTINEL)
@@ -547,6 +548,13 @@ class TestSentryEventsOfAProviderErrorCarryNoText:
         assert response.status_code == 503
         assert response.json() == UNAVAILABLE_BODY
         assert server.bodies
+        # The failure was reported: the log record of the 503 became an event, so the check
+        # below reads a live capture.
+        # The 503's own log record became an event (so the capture is live and is this failure).
+        assert any(
+            event.get("extra", {}).get("event") == "assistant_unavailable"
+            for event in transport.events()
+        )
         sent = transport.serialized()
         for sentinel in _TEXT_SENTINELS:
             assert sentinel not in sent

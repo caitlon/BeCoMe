@@ -32,6 +32,7 @@ from api.assistant.errors import (
     AssistantError,
     AssistantNotFoundError,
     AssistantRateLimitedError,
+    AssistantTurnFailedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
@@ -389,6 +390,7 @@ _ANSWERS: dict[type[Exception], tuple[int, str, bool]] = {
     AssistantUnavailableError: (503, UNAVAILABLE_DETAIL, False),
     AssistantBusyError: (503, UNAVAILABLE_DETAIL, True),
     AssistantRateLimitedError: (429, "Too many assistant messages. Please try again later.", True),
+    AssistantTurnFailedError: (500, INTERNAL_ERROR_DETAIL, False),
 }
 _LEAKY_MESSAGE = "http://db.internal:5432/api/v1/projects/secret-host Traceback (most recent call)"
 
@@ -399,6 +401,8 @@ def _built(error_class: type[Exception]) -> Exception:
         return AssistantBusyError(_LEAKY_MESSAGE, retry_after=7, reason="process")
     if error_class is AssistantRateLimitedError:
         return AssistantRateLimitedError(_LEAKY_MESSAGE, retry_after=7)
+    if error_class is AssistantTurnFailedError:
+        return AssistantTurnFailedError("RuntimeError", _LEAKY_MESSAGE)
     return error_class(_LEAKY_MESSAGE)
 
 

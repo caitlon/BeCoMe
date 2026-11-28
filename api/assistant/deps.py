@@ -760,13 +760,17 @@ async def open_chat_turn(
     shows up, and a client that goes away, which ends the turn without an exception. Only an
     ``Exception`` triggers the refund, so a cancellation does not. A refund that itself fails
     is logged (``assistant_refund_failed``) and never replaces the turn's own error, and the
-    other refunds still run. An exception the app has no handler for, whenever it ends the turn,
-    leaves here as :class:`~api.assistant.errors.AssistantTurnFailedError`, which carries the
-    exception's type and where it was raised and none of its text, so that no log record or
-    error report holds what the user or the model wrote. Once the client and the context are
-    built, this function owns the
+    other refunds still run. Once the client and the context are built, this function owns the
     address's charge (``address.taken_over``), so :func:`charge_address_turn` leaves it alone;
     an error while building them leaves the charge to that dependency, which gives it back.
+
+    An exception the app has no handler for, raised after this function yields (the turn's checks
+    have passed) and before the response starts, leaves here as
+    :class:`~api.assistant.errors.AssistantTurnFailedError`. It carries the exception's type and
+    where it was raised and none of its text, so that no log record or error report holds what
+    the user or the model wrote. It does not reach an exception raised in a dependency resolved
+    before this one, nor one raised after a stream's response has started, which Starlette can
+    no longer answer.
 
     :param request: The incoming request, for its application and the caller's address.
     :param counted: The checked chat request and the two charges that paid for it.

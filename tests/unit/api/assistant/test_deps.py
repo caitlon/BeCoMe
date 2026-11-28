@@ -42,7 +42,7 @@ from api.assistant.rate_limit import (
     get_assistant_throttle,
 )
 from api.config import Settings
-from api.exceptions import ValidationError
+from api.exceptions import BeCoMeAPIError, ValidationError
 from api.schemas.assistant import AssistantChatRequest
 from tests.shared.assistant_fakes import tagged
 from tests.shared.helpers import captured_log_records
@@ -1699,6 +1699,32 @@ class TestOpenChatTurn:
         with pytest.raises(AssistantTurnFailedError):
             async with self._open(AssistantChatRequest(message="hi"), request, MagicMock()):
                 raise RuntimeError("boom")
+
+    @pytest.mark.asyncio
+    async def test_a_subclass_of_a_failure_the_app_has_a_handler_for_leaves_as_it_is(
+        self, fake_client
+    ):
+        """
+        GIVEN an opened turn on an app with a handler for BeCoMeAPIError only
+        WHEN the block raises a subclass of BeCoMeAPIError that has no handler of its own
+        THEN it propagates unchanged, since the handler of its parent class answers it
+        """
+
+        # GIVEN
+        class _RefusedError(BeCoMeAPIError):
+            """A domain error of a class no handler names."""
+
+        request = _request()
+        request.app.add_exception_handler(BeCoMeAPIError, lambda *_: None)
+        refused = _RefusedError("no")
+
+        # WHEN
+        with pytest.raises(_RefusedError) as raised:
+            async with self._open(AssistantChatRequest(message="hi"), request, MagicMock()):
+                raise refused
+
+        # THEN
+        assert raised.value is refused
 
     @pytest.mark.asyncio
     async def test_a_turn_that_ends_without_an_error_keeps_every_message(self, fake_client):
