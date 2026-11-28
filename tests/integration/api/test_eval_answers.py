@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import langsmith as ls
 import psycopg
 import pytest
@@ -297,6 +298,41 @@ class TestRunEval:
         assert second["status"] == "ok"
         assert third["status"] == "http_500"
         assert (summary["ok"], summary["failed"]) == (1, 2)
+
+    def test_a_transport_error_becomes_a_row_and_the_run_goes_on(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN an http client whose first request raises httpx.ConnectError
+        WHEN the runner asks two questions
+        THEN the first row's status is the error's type name and the second question is still asked
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Unused."))
+        questions = [
+            {"id": "q1", "question": "What is BeCoMe?"},
+            {"id": "q2", "question": "And again?"},
+        ]
+        output = tmp_path / "out.jsonl"
+        asked: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            asked.append(request.url.path)
+            if len(asked) == 1:
+                raise httpx.ConnectError("no route", request=request)
+            return httpx.Response(404)
+
+        monkeypatch.setattr(ea.httpx, "ASGITransport", lambda app: httpx.MockTransport(handler))
+
+        # WHEN
+        summary = _run(client, fixtures, questions, output)
+
+        # THEN
+        first, second = _rows(output)
+        assert (first["id"], first["status"], first["answer"]) == ("q1", "ConnectError", None)
+        assert (second["id"], second["status"]) == ("q2", "http_404")
+        assert len(asked) == 2
+        assert (summary["ok"], summary["failed"], summary["stop"]) == (0, 2, None)
 
     def test_done_rows_of_the_same_arm_are_skipped(self, assistant_settings, client, tmp_path):
         """

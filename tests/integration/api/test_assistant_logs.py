@@ -548,8 +548,6 @@ class TestSentryEventsOfAProviderErrorCarryNoText:
         assert response.status_code == 503
         assert response.json() == UNAVAILABLE_BODY
         assert server.bodies
-        # The failure was reported: the log record of the 503 became an event, so the check
-        # below reads a live capture.
         # The 503's own log record became an event (so the capture is live and is this failure).
         assert any(
             event.get("extra", {}).get("event") == "assistant_unavailable"
