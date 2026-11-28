@@ -107,9 +107,7 @@ def check_report(path: Path, min_tests: int) -> tuple[list[str], str]:
         problems.append(f"{unexpected} test(s) failed unexpectedly")
     if ran < min_tests:
         problems.append(f"only {ran} test(s) ran, at least {min_tests} expected")
-    summary = (
-        f"assistant E2E report: {ran} ran ({expected} passed, {flaky} flaky), {skipped} skipped"
-    )
+    summary = f"E2E report: {ran} ran ({expected} passed, {flaky} flaky), {skipped} skipped"
     return problems, summary
 
 

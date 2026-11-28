@@ -75,7 +75,7 @@ def test_all_tests_passed_succeeds(tmp_path: Path, capsys: pytest.CaptureFixture
     status, out, err = _run(_write(tmp_path, _report(passed=15)), capsys)
 
     assert status == 0
-    assert out.strip() == "assistant E2E report: 15 ran (15 passed, 0 flaky), 0 skipped"
+    assert out.strip() == "E2E report: 15 ran (15 passed, 0 flaky), 0 skipped"
     assert err == ""
 
 
@@ -155,6 +155,7 @@ def test_invalid_json_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         [],
         {"stats": {"expected": 15}},
         {"stats": {"expected": "15", "skipped": 0, "unexpected": 0, "flaky": 0}},
+        {"stats": {"expected": 15, "skipped": False, "unexpected": 0, "flaky": 0}},
     ],
 )
 def test_report_without_usable_stats_fails(
